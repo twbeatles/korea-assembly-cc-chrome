@@ -54,6 +54,7 @@ export interface SessionState {
   observerActive: boolean;
   lastObserverEventAt: number | null;
   lastKeepaliveAt: number | null;
+  lastPersistedAt: string | null;
 }
 
 export function createId(prefix: string): string {
@@ -113,6 +114,7 @@ export function createEmptySessionState(
     observerActive: false,
     lastObserverEventAt: null,
     lastKeepaliveAt: null,
+    lastPersistedAt: null,
   };
 }
 

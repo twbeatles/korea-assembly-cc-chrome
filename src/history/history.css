@@ -22,6 +22,11 @@ button {
   font-weight: 700;
 }
 
+input,
+button {
+  font: inherit;
+}
+
 button.secondary {
   background: #d8e7e2;
   color: #1d3d36;
@@ -37,7 +42,9 @@ button.secondary {
 .hero-actions,
 .detail-header,
 .detail-actions,
-.export-row {
+.export-row,
+.copy-row,
+.search-row {
   display: flex;
   gap: 12px;
 }
@@ -155,6 +162,23 @@ button.secondary {
 .entry-card p {
   margin: 0;
   line-height: 1.6;
+}
+
+.search-row {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.search-input {
+  width: min(420px, 100%);
+  border: 1px solid rgba(20, 52, 74, 0.16);
+  border-radius: 12px;
+  padding: 10px 12px;
+  box-sizing: border-box;
+}
+
+.copy-row {
+  margin-top: 12px;
 }
 
 .empty-card {

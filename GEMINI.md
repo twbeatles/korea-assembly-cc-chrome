@@ -15,6 +15,7 @@
   - suffix 기반 증분 처리
   - 세션 persistence
   - popup/options/history 동작
+  - 검색 / 복사 / autosave UX
 
 ## 3. 필수 명령
 
@@ -130,6 +131,12 @@ npm run build
 - `deleteSession`
 - `updateRunningSession`
 
+추가 UX 규칙:
+
+- popup 최근 자막 검색은 부분 문자열, 대소문자 비구분
+- 복사 포맷은 `[HH:MM:SS] text`
+- autosave를 꺼도 `Stop` 시 최종 저장은 유지
+
 ## 8. exporter 규칙
 
 - `SRT`: `HH:MM:SS,mmm`, 세션 시작 기준 상대 시간
@@ -141,6 +148,7 @@ npm run build
 - 국회 사이트 DOM 변경 시 selector / observer 안정성이 달라질 수 있습니다.
 - cross-origin frame 은 직접 DOM 접근이 제한될 수 있습니다.
 - observer 실패 시 polling fallback 의존도가 높아질 수 있습니다.
+- 영상 캡처, 중요 표시, 발언자 편집은 현재 범위 밖입니다.
 
 ## 10. 작업 원칙
 

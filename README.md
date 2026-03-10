@@ -29,6 +29,9 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - `subtitle_reset` 처리
 - 세션 저장 / 불러오기용 히스토리 관리
 - `TXT / SRT / VTT / JSON` 내보내기
+- popup 최근 자막 검색 / 복사
+- history 세션 내부 검색 / 복사
+- 실행 중 자동 저장 상태 표시 및 설정
 - popup / options / history UI
 - 최소 단위 테스트
 
@@ -42,9 +45,9 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 ## 1차 범위
 
 - 이미 열린 `https://assembly.webcast.go.kr/*` 페이지에서 자막 추출
-- popup에서 시작 / 중지 / 저장 / 내보내기
+- popup에서 시작 / 중지 / 저장 / 내보내기 / 최근 자막 검색 / 복사
 - options에서 수집 설정 조정
-- history에서 저장된 세션 목록, 삭제, 재열기, 내보내기
+- history에서 저장된 세션 목록, 삭제, 재열기, 내보내기, 세션 내부 검색 / 복사
 
 ## 제외 범위
 
@@ -55,6 +58,8 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - 데스크톱 병합 UI
 - 데스크톱 단축키 체계
 - 고급 preset / xcode -> xcgcd 자동 보완 UX
+- 영상 캡처
+- 중요 표시 / 발언자 편집
 
 ## 저장소 구조
 
@@ -75,6 +80,7 @@ legacy/python-desktop/
 
 기존 Python 데스크톱 코드, 알고리즘 분석 문서, 운영 메모는 `legacy/python-desktop/` 아래로 이동했습니다. 기존 의미론을 확인하려면 다음 문서를 참고하세요.
 
+- `DEPLOYMENT.md`
 - `CLAUDE.md`
 - `GEMINI.md`
 - `legacy/python-desktop/PIPELINE_LOCK.md`
@@ -134,8 +140,9 @@ npm run build
 2. 확장 popup을 연다
 3. `Start`를 눌러 수집을 시작한다
 4. preview와 최근 자막 목록을 확인한다
-5. 필요하면 `Save Session` 또는 `TXT / SRT / VTT / JSON` 내보내기를 실행한다
-6. `Stop`을 누르면 세션이 종료되고 IndexedDB에 정지 상태로 저장된다
+5. 필요하면 최근 자막 검색, preview 복사, 최근 N줄 복사, 검색 결과 복사를 사용한다
+6. 필요하면 `Save Session` 또는 `TXT / SRT / VTT / JSON` 내보내기를 실행한다
+7. `Stop`을 누르면 세션이 종료되고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 
 ## 권한 설명
 
@@ -172,6 +179,7 @@ npm run build
 - `IndexedDB`가 실패하면 `chrome.storage.local` fallback을 사용합니다
 - 두 저장소가 모두 실패하는 극단적 상황에서는 현재 런타임 동안 메모리 fallback을 유지합니다
 - 설정은 `chrome.storage.local`
+- 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
 
 ### background
 
@@ -194,6 +202,8 @@ npm run build
 - DOM 구조 변화에 대한 selector profile 추가
 - reconnect / restore robustness 강화
 - session detail 검색과 부분 export
+- 영상 캡처
+- 중요 표시 / 발언자 편집
 - 브라우저 E2E 테스트 추가
 
 ## 검증 기준

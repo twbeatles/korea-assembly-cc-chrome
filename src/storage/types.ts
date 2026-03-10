@@ -8,6 +8,9 @@ export interface ExtensionSettings {
   noiseFilterEnabled: boolean;
   noiseMinLength: number;
   filenamePattern: string;
+  runningAutoSaveEnabled: boolean;
+  runningAutoSaveDebounceMs: number;
+  recentCopyLineCount: number;
   debugLogging: boolean;
 }
 

@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { ASSEMBLY_HOST, POPUP_PORT_NAME } from "../shared/constants";
+import { ASSEMBLY_HOST, DEFAULT_EXTENSION_SETTINGS, POPUP_PORT_NAME } from "../shared/constants";
+import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import { connectToTab, queryActiveTab, sendRuntimeMessage } from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
   PopupToContentMessage,
   StatusSnapshot,
 } from "../shared/message-types";
+import { getSettings } from "../storage/settings-store";
+import type { ExtensionSettings } from "../storage/types";
 
 const EXPORT_FORMATS = ["txt", "srt", "vtt", "json"] as const;
 
@@ -26,11 +29,28 @@ function formatDate(value: string | null): string {
 
 export default function App() {
   const portRef = useRef<chrome.runtime.Port | null>(null);
+  const entryListRef = useRef<HTMLDivElement | null>(null);
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
   const [statusMessage, setStatusMessage] = useState("활성 탭을 확인하는 중입니다.");
   const [tabReady, setTabReady] = useState(false);
   const [unsupported, setUnsupported] = useState(false);
   const [requiresReload, setRequiresReload] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_EXTENSION_SETTINGS);
+
+  useEffect(() => {
+    void getSettings()
+      .then((loaded) => setSettings(loaded))
+      .catch(() => setSettings(DEFAULT_EXTENSION_SETTINGS));
+  }, []);
+
+  useEffect(() => {
+    if (!settings.autoScroll || !entryListRef.current) {
+      return;
+    }
+
+    entryListRef.current.scrollTop = entryListRef.current.scrollHeight;
+  }, [settings.autoScroll, snapshot?.recentEntries]);
 
   useEffect(() => {
     let active = true;
@@ -92,6 +112,7 @@ export default function App() {
               startedAt: message.payload.startedAt,
               endedAt: message.payload.endedAt,
               updatedAt: message.payload.updatedAt,
+              lastPersistedAt: message.payload.lastPersistedAt,
               observerActive: message.payload.observerActive,
               currentSelector: message.payload.currentSelector,
               currentFramePath: message.payload.currentFramePath,
@@ -157,6 +178,11 @@ export default function App() {
     };
   }, []);
 
+  const filteredEntries = useMemo(
+    () => filterEntriesByQuery(snapshot?.recentEntries ?? [], searchQuery),
+    [searchQuery, snapshot?.recentEntries],
+  );
+
   const sendCommand = (message: PopupToContentMessage, label: string): void => {
     if (!portRef.current) {
       setStatusMessage("현재 탭과 연결되지 않았습니다.");
@@ -179,6 +205,22 @@ export default function App() {
       setStatusMessage(response.error);
     }
   };
+
+  const handleCopy = async (text: string, label: string): Promise<void> => {
+    try {
+      await copyTextToClipboard(text);
+      setStatusMessage(label);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "텍스트 복사에 실패했습니다.");
+    }
+  };
+
+  const recentCopyText = buildCopyText(snapshot?.recentEntries ?? [], {
+    limit: settings.recentCopyLineCount,
+  });
+  const filteredCopyText = buildCopyText(snapshot?.recentEntries ?? [], {
+    query: searchQuery,
+  });
 
   return (
     <div className="popup-shell">
@@ -208,6 +250,14 @@ export default function App() {
         <div className="meta-row">
           <span>세션 시작</span>
           <strong>{formatDate(snapshot?.startedAt ?? null)}</strong>
+        </div>
+        <div className="meta-row">
+          <span>마지막 저장</span>
+          <strong>
+            {settings.runningAutoSaveEnabled
+              ? formatDate(snapshot?.lastPersistedAt ?? null)
+              : "자동 저장 꺼짐"}
+          </strong>
         </div>
         <div className="status-line">{statusMessage}</div>
         {requiresReload ? (
@@ -254,23 +304,63 @@ export default function App() {
         <div className="preview-box">
           {snapshot?.previewText || "자막이 감지되면 이 영역에 최신 누적 텍스트가 표시됩니다."}
         </div>
+        <div className="copy-actions">
+          <button
+            onClick={() =>
+              void handleCopy(snapshot?.previewText ?? "", "현재 preview를 복사했습니다.")
+            }
+            disabled={!snapshot?.previewText}
+          >
+            Preview 복사
+          </button>
+          <button
+            onClick={() =>
+              void handleCopy(
+                recentCopyText,
+                `최근 ${settings.recentCopyLineCount}줄을 복사했습니다.`,
+              )
+            }
+            disabled={!recentCopyText}
+          >
+            최근 {settings.recentCopyLineCount}줄 복사
+          </button>
+        </div>
       </section>
 
       <section className="panel">
         <div className="panel-header">
           <h2>최근 자막</h2>
-          <span>{snapshot?.recentEntries.length ?? 0}개 표시</span>
+          <span>
+            {filteredEntries.length} / {snapshot?.recentEntries.length ?? 0}개
+          </span>
         </div>
-        <div className="entry-list">
-          {(snapshot?.recentEntries ?? []).length ? (
-            snapshot?.recentEntries.map((entry) => (
+        <input
+          className="search-input"
+          type="search"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="최근 자막 검색"
+        />
+        <div className="copy-actions">
+          <button
+            onClick={() => void handleCopy(filteredCopyText, "검색 결과를 복사했습니다.")}
+            disabled={!filteredCopyText}
+          >
+            검색 결과 복사
+          </button>
+        </div>
+        <div className="entry-list" ref={entryListRef}>
+          {filteredEntries.length ? (
+            filteredEntries.map((entry) => (
               <article className="entry-card" key={entry.id}>
                 <time>{formatDate(entry.startTime)}</time>
                 <p>{entry.text}</p>
               </article>
             ))
           ) : (
-            <p className="empty-state">아직 수집된 자막이 없습니다.</p>
+            <p className="empty-state">
+              {searchQuery ? "검색 결과가 없습니다." : "아직 수집된 자막이 없습니다."}
+            </p>
           )}
         </div>
       </section>

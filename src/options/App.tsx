@@ -8,6 +8,8 @@ const numericFields: Array<keyof ExtensionSettings> = [
   "pollingFallbackIntervalMs",
   "maxBufferLength",
   "noiseMinLength",
+  "runningAutoSaveDebounceMs",
+  "recentCopyLineCount",
 ];
 
 export default function App() {
@@ -98,20 +100,49 @@ export default function App() {
           />
         </label>
 
+        <label className="setting-card">
+          <div>
+            <strong>실행 중 자동 저장</strong>
+            <span>수집 중인 세션 snapshot을 백그라운드 저장소에 주기적으로 저장합니다.</span>
+          </div>
+          <input
+            type="checkbox"
+            checked={settings.runningAutoSaveEnabled}
+            onChange={(event) => updateField("runningAutoSaveEnabled", event.target.checked)}
+          />
+        </label>
+
         {numericFields.map((field) => (
           <label className="setting-card input-card" key={field}>
             <div>
-              <strong>{field}</strong>
+              <strong>
+                {field === "keepaliveIntervalMs" && "keepalive 간격(ms)"}
+                {field === "pollingFallbackIntervalMs" && "polling fallback 간격(ms)"}
+                {field === "maxBufferLength" && "최대 compact 버퍼 길이"}
+                {field === "noiseMinLength" && "노이즈 최소 길이"}
+                {field === "runningAutoSaveDebounceMs" && "자동 저장 debounce(ms)"}
+                {field === "recentCopyLineCount" && "최근 복사 줄 수"}
+              </strong>
               <span>
                 {field === "keepaliveIntervalMs" && "동일 raw 유지 시 endTime 갱신 간격"}
                 {field === "pollingFallbackIntervalMs" && "observer 불안정 시 polling 간격"}
                 {field === "maxBufferLength" && "compact history 메모리 상한"}
                 {field === "noiseMinLength" && "후단 정제용 최소 길이 기준"}
+                {field === "runningAutoSaveDebounceMs" &&
+                  "실행 중 session-store 갱신을 지연시켜 과도한 쓰기를 줄입니다."}
+                {field === "recentCopyLineCount" &&
+                  "popup에서 최근 복사 버튼이 포함할 문장 수입니다."}
               </span>
             </div>
             <input
               type="number"
-              min={field === "maxBufferLength" ? 1000 : 1}
+              min={
+                field === "maxBufferLength"
+                  ? 1000
+                  : field === "runningAutoSaveDebounceMs"
+                    ? 250
+                    : 1
+              }
               value={settings[field]}
               onChange={(event) =>
                 updateField(field, Number(event.target.value) as ExtensionSettings[typeof field])

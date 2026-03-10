@@ -7,6 +7,7 @@
 - 이 저장소의 활성 구현은 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 입니다.
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
+- 현재 UI 보강 범위에는 `popup 최근 자막 검색/복사`, `history 세션 내부 검색/복사`, `autosave 상태 표시`가 포함됩니다.
 - 현재 기준 기본 검증 명령은 아래 3개입니다.
 
 ```bash
@@ -119,6 +120,12 @@ GEMINI.md
 
 위 5개 API 는 항상 유지해야 합니다.
 
+### 7.3 UX 보강 규칙
+
+- popup 검색은 최근 자막 목록에 대해 부분 문자열, 대소문자 비구분으로 동작합니다.
+- 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
+- autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
+
 ## 8. 작업 시 주의사항
 
 - popup 이 닫혀도 수집이 멈추면 안 됩니다.
@@ -132,3 +139,4 @@ GEMINI.md
 - 메인 설명: `README.md`
 - 과거 의미론 참고: `legacy/python-desktop/PIPELINE_LOCK.md`
 - 과거 운영 설명 참고: `legacy/python-desktop/README.md`
+- 배포 절차: `DEPLOYMENT.md`

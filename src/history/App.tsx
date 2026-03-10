@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
+import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
 import { deleteSession, exportSessionData, listSessions } from "../storage/session-store";
 
@@ -17,10 +18,15 @@ export default function App() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [message, setMessage] = useState("세션을 불러오는 중입니다.");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedId) ?? sessions[0],
     [sessions, selectedId],
+  );
+  const filteredEntries = useMemo(
+    () => filterEntriesByQuery(selectedSession?.entries ?? [], searchQuery),
+    [searchQuery, selectedSession],
   );
 
   const refresh = async (): Promise<void> => {
@@ -69,6 +75,15 @@ export default function App() {
       return;
     }
     setMessage(`${format.toUpperCase()} 내보내기를 시작했습니다.`);
+  };
+
+  const handleCopy = async (text: string, label: string): Promise<void> => {
+    try {
+      await copyTextToClipboard(text);
+      setMessage(label);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "텍스트 복사에 실패했습니다.");
+    }
   };
 
   return (
@@ -143,6 +158,19 @@ export default function App() {
                 </div>
               </dl>
 
+              <div className="search-row">
+                <input
+                  className="search-input"
+                  type="search"
+                  value={searchQuery}
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="이 세션 내부 검색"
+                />
+                <span>
+                  {filteredEntries.length} / {selectedSession.entries.length}개
+                </span>
+              </div>
+
               <div className="export-row">
                 {EXPORT_FORMATS.map((format) => (
                   <button key={format} onClick={() => void handleExport(format)}>
@@ -151,13 +179,45 @@ export default function App() {
                 ))}
               </div>
 
+              <div className="copy-row">
+                <button
+                  onClick={() =>
+                    void handleCopy(
+                      buildCopyText(selectedSession.entries, { query: searchQuery }),
+                      "검색 결과를 복사했습니다.",
+                    )
+                  }
+                  disabled={!filteredEntries.length}
+                >
+                  검색 결과 복사
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    void handleCopy(
+                      buildCopyText(selectedSession.entries),
+                      "전체 세션 텍스트를 복사했습니다.",
+                    )
+                  }
+                  disabled={!selectedSession.entries.length}
+                >
+                  전체 세션 복사
+                </button>
+              </div>
+
               <div className="entries">
-                {selectedSession.entries.map((entry) => (
-                  <article key={entry.id} className="entry-card">
-                    <time>{formatDate(entry.startTime)}</time>
-                    <p>{entry.text}</p>
-                  </article>
-                ))}
+                {filteredEntries.length ? (
+                  filteredEntries.map((entry) => (
+                    <article key={entry.id} className="entry-card">
+                      <time>{formatDate(entry.startTime)}</time>
+                      <p>{entry.text}</p>
+                    </article>
+                  ))
+                ) : (
+                  <div className="empty-card">
+                    {searchQuery ? "검색 결과가 없습니다." : "세션에 자막이 없습니다."}
+                  </div>
+                )}
               </div>
             </>
           ) : (

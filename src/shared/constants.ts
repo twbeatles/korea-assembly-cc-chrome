@@ -30,6 +30,9 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   noiseFilterEnabled: true,
   noiseMinLength: 3,
   filenamePattern: "{date}_{committee}_{time}",
+  runningAutoSaveEnabled: true,
+  runningAutoSaveDebounceMs: 800,
+  recentCopyLineCount: 5,
   debugLogging: false,
 };
 

@@ -24,6 +24,11 @@ button {
   padding: 10px 12px;
 }
 
+input,
+button {
+  font: inherit;
+}
+
 button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
@@ -132,6 +137,25 @@ button:disabled {
   padding: 12px;
   font-size: 13px;
   line-height: 1.55;
+}
+
+.search-input {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid rgba(20, 48, 86, 0.12);
+  border-radius: 12px;
+  padding: 10px 12px;
+  margin-top: 10px;
+}
+
+.copy-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.copy-actions button {
+  flex: 1;
 }
 
 .entry-card {

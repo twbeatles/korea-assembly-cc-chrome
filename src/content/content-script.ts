@@ -12,6 +12,7 @@ import {
 } from "../core/subtitle-models";
 import { compactSubtitleText, normalizeRawText } from "../core/text-normalizer";
 import {
+  EXTENSION_STORAGE_KEY,
   FRAME_FORWARD_SOURCE,
   OBSERVER_BRIDGE_SOURCE,
   OBSERVER_CONFIG_EVENT,
@@ -19,6 +20,12 @@ import {
   POPUP_PORT_NAME,
   SUBTITLE_SELECTOR_CANDIDATES,
 } from "../shared/constants";
+import {
+  applyPersistSuccess,
+  resolveRunningPersistDebounceMs,
+  shouldPersistFinalSession,
+  shouldScheduleRunningPersist,
+} from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
@@ -30,7 +37,7 @@ import type {
 import { probeBestAccessibleSubtitle, computeCurrentFramePath } from "./frame-probe";
 import { estimateRecentRaw } from "./dom-probe";
 import { exportSessionData, saveSession, updateRunningSession } from "../storage/session-store";
-import { getSettings } from "../storage/settings-store";
+import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
 
 const isTopFrame = window.top === window;
@@ -45,6 +52,9 @@ let settings: ExtensionSettings = {
   noiseFilterEnabled: true,
   noiseMinLength: 3,
   filenamePattern: "{date}_{committee}_{time}",
+  runningAutoSaveEnabled: true,
+  runningAutoSaveDebounceMs: 800,
+  recentCopyLineCount: 5,
   debugLogging: false,
 };
 let state: SessionState = createEmptySessionState(window.location.href, document.title);
@@ -96,6 +106,7 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
     startedAt: state.startedAt,
     endedAt: state.endedAt,
     updatedAt: state.updatedAt,
+    lastPersistedAt: state.lastPersistedAt,
     observerActive: state.observerActive,
     currentSelector: state.currentSelector,
     currentFramePath: [...state.currentFramePath],
@@ -122,6 +133,7 @@ function createPopupMessages(requiresReload = false): ContentToPopupMessage[] {
         startedAt: snapshot.startedAt,
         endedAt: snapshot.endedAt,
         updatedAt: snapshot.updatedAt,
+        lastPersistedAt: snapshot.lastPersistedAt,
         observerActive: snapshot.observerActive,
         currentSelector: snapshot.currentSelector,
         currentFramePath: snapshot.currentFramePath,
@@ -162,7 +174,11 @@ function syncPortState(port: chrome.runtime.Port, requiresReload = false): void 
 }
 
 function scheduleRunningPersist(): void {
-  if (!isTopFrame || state.status !== "running") {
+  if (!shouldScheduleRunningPersist(isTopFrame, state, settings)) {
+    if (persistTimer) {
+      window.clearTimeout(persistTimer);
+      persistTimer = null;
+    }
     return;
   }
 
@@ -172,31 +188,38 @@ function scheduleRunningPersist(): void {
 
   persistTimer = window.setTimeout(() => {
     const record = toSessionRecord(state, "running");
-    void updateRunningSession(record).catch((error: unknown) => {
-      reportRuntimeError("실행 중 세션 저장에 실패했습니다.", error);
-    });
-  }, 800);
+    void updateRunningSession(record)
+      .then((saved) => {
+        state = applyPersistSuccess(state, saved.updatedAt);
+        broadcastPopupState();
+      })
+      .catch((error: unknown) => {
+        reportRuntimeError("실행 중 세션 저장에 실패했습니다.", error);
+      });
+  }, resolveRunningPersistDebounceMs(settings));
 }
 
 async function persistStoppedSession(): Promise<void> {
-  if (!isTopFrame || !state.entries.length) {
+  if (!shouldPersistFinalSession(isTopFrame, state.entries.length)) {
     return;
   }
 
   try {
-    await saveSession(toSessionRecord(state, "stopped"));
+    const saved = await saveSession(toSessionRecord(state, "stopped"));
+    state = applyPersistSuccess(state, saved.updatedAt);
   } catch (error) {
     reportRuntimeError("중지된 세션 저장에 실패했습니다.", error);
   }
 }
 
 async function saveCurrentSessionSnapshot(): Promise<void> {
-  if (!isTopFrame || !state.entries.length) {
+  if (!shouldPersistFinalSession(isTopFrame, state.entries.length)) {
     return;
   }
 
   try {
-    await saveSession(toSessionRecord(state, "saved"));
+    const saved = await saveSession(toSessionRecord(state, "saved"));
+    state = applyPersistSuccess(state, saved.updatedAt);
   } catch (error) {
     reportRuntimeError("세션 스냅샷 저장에 실패했습니다.", error);
   }
@@ -420,10 +443,13 @@ async function startCapture(): Promise<void> {
   state.title = document.title;
   state.committeeName = deriveCommitteeName(document.title);
   dispatchObserverConfig();
-  try {
-    await updateRunningSession(toSessionRecord(state, "running"));
-  } catch (error) {
-    reportRuntimeError("실행 중 세션 초기 저장에 실패했습니다.", error);
+  if (settings.runningAutoSaveEnabled) {
+    try {
+      const saved = await updateRunningSession(toSessionRecord(state, "running"));
+      state = applyPersistSuccess(state, saved.updatedAt);
+    } catch (error) {
+      reportRuntimeError("실행 중 세션 초기 저장에 실패했습니다.", error);
+    }
   }
   broadcastPopupState();
 }
@@ -527,6 +553,33 @@ function bindPopupPort(): void {
   });
 }
 
+function bindSettingsChanges(): void {
+  if (typeof chrome === "undefined" || !chrome.storage?.onChanged) {
+    return;
+  }
+
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== "local" || !changes[EXTENSION_STORAGE_KEY]) {
+      return;
+    }
+
+    settings = sanitizeSettings(
+      (changes[EXTENSION_STORAGE_KEY].newValue as Partial<ExtensionSettings> | undefined) ?? {},
+    );
+
+    dispatchObserverConfig();
+    startLocalPolling();
+    startTopFrameFallback();
+
+    if (!settings.runningAutoSaveEnabled && persistTimer) {
+      window.clearTimeout(persistTimer);
+      persistTimer = null;
+    }
+
+    broadcastPopupState();
+  });
+}
+
 function bindBridgeMessages(): void {
   window.addEventListener("message", (event) => {
     const data = event.data as Partial<ObserverBridgeEvent> | Partial<FrameForwardMessage> | undefined;
@@ -558,6 +611,7 @@ async function bootstrap(): Promise<void> {
   state.committeeName = deriveCommitteeName(document.title);
   bindBridgeMessages();
   bindPopupPort();
+  bindSettingsChanges();
 
   try {
     await injectObserverScript();

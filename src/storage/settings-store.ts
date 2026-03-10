@@ -3,6 +3,13 @@ import type { ExtensionSettings } from "./types";
 
 let memorySettings: ExtensionSettings = { ...DEFAULT_EXTENSION_SETTINGS };
 
+function getChromeLocalStorage(): typeof chrome.storage.local | null {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) {
+    return null;
+  }
+  return chrome.storage.local;
+}
+
 function sanitizeNumber(value: unknown, fallback: number, minimum: number): number {
   const parsed = Number(value);
   if (Number.isFinite(parsed) && parsed >= minimum) {
@@ -45,6 +52,20 @@ function sanitizeSettings(settings: Partial<ExtensionSettings>): ExtensionSettin
       typeof settings.filenamePattern === "string" && settings.filenamePattern.trim()
         ? settings.filenamePattern.trim()
         : DEFAULT_EXTENSION_SETTINGS.filenamePattern,
+    runningAutoSaveEnabled:
+      typeof settings.runningAutoSaveEnabled === "boolean"
+        ? settings.runningAutoSaveEnabled
+        : DEFAULT_EXTENSION_SETTINGS.runningAutoSaveEnabled,
+    runningAutoSaveDebounceMs: sanitizeNumber(
+      settings.runningAutoSaveDebounceMs,
+      DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+      250,
+    ),
+    recentCopyLineCount: sanitizeNumber(
+      settings.recentCopyLineCount,
+      DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
+      1,
+    ),
     debugLogging:
       typeof settings.debugLogging === "boolean"
         ? settings.debugLogging
@@ -53,11 +74,12 @@ function sanitizeSettings(settings: Partial<ExtensionSettings>): ExtensionSettin
 }
 
 export async function getSettings(): Promise<ExtensionSettings> {
-  if (!chrome?.storage?.local) {
+  const localStorage = getChromeLocalStorage();
+  if (!localStorage) {
     return memorySettings;
   }
 
-  const data = await chrome.storage.local.get(EXTENSION_STORAGE_KEY);
+  const data = await localStorage.get(EXTENSION_STORAGE_KEY);
   const merged = sanitizeSettings({
     ...DEFAULT_EXTENSION_SETTINGS,
     ...(data[EXTENSION_STORAGE_KEY] as Partial<ExtensionSettings> | undefined),
@@ -65,6 +87,8 @@ export async function getSettings(): Promise<ExtensionSettings> {
   memorySettings = merged;
   return merged;
 }
+
+export { sanitizeSettings };
 
 export async function saveSettings(
   partial: Partial<ExtensionSettings>,
@@ -75,8 +99,9 @@ export async function saveSettings(
   });
   memorySettings = next;
 
-  if (chrome?.storage?.local) {
-    await chrome.storage.local.set({
+  const localStorage = getChromeLocalStorage();
+  if (localStorage) {
+    await localStorage.set({
       [EXTENSION_STORAGE_KEY]: next,
     });
   }
@@ -87,8 +112,9 @@ export async function saveSettings(
 export async function resetSettings(): Promise<ExtensionSettings> {
   memorySettings = { ...DEFAULT_EXTENSION_SETTINGS };
 
-  if (chrome?.storage?.local) {
-    await chrome.storage.local.set({
+  const localStorage = getChromeLocalStorage();
+  if (localStorage) {
+    await localStorage.set({
       [EXTENSION_STORAGE_KEY]: memorySettings,
     });
   }
