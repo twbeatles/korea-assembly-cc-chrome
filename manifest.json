@@ -1,0 +1,43 @@
+{
+  "manifest_version": 3,
+  "name": "국회 AI 자막 추출기",
+  "version": "0.1.0",
+  "description": "국회 의사중계 페이지에서 AI 자막을 실시간으로 추출하고 TXT/SRT/VTT/JSON으로 내보내는 Chrome 확장프로그램",
+  "action": {
+    "default_title": "국회 AI 자막 추출기",
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "options_page": "options.html",
+  "permissions": ["storage", "downloads", "activeTab", "scripting"],
+  "host_permissions": ["https://assembly.webcast.go.kr/*"],
+  "content_scripts": [
+    {
+      "matches": ["https://assembly.webcast.go.kr/*"],
+      "js": ["src/content/content-script.ts"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["injected-observer.js"],
+      "matches": ["https://assembly.webcast.go.kr/*"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

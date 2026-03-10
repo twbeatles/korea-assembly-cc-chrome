@@ -1,0 +1,42 @@
+import { buildJsonExport, exportJson } from "../src/core/exporters/json";
+import type { SessionRecord } from "../src/core/subtitle-models";
+
+const session: SessionRecord = {
+  id: "session_json",
+  version: "1",
+  title: "법사위",
+  committeeName: "법제사법위원회",
+  sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+  startedAt: "2026-03-10T09:00:00.000Z",
+  endedAt: "2026-03-10T09:00:04.000Z",
+  createdAt: "2026-03-10T09:00:00.000Z",
+  updatedAt: "2026-03-10T09:00:04.000Z",
+  subtitleCount: 1,
+  charCount: 5,
+  status: "saved",
+  entries: [
+    {
+      id: "subtitle_json_1",
+      text: "안녕하세요",
+      timestamp: "2026-03-10T09:00:01.200Z",
+      startTime: "2026-03-10T09:00:01.200Z",
+      endTime: "2026-03-10T09:00:04.000Z",
+      sourceFramePath: [0, 1],
+    },
+  ],
+};
+
+describe("JSON exporter", () => {
+  it("includes the fields required to restore the whole session", () => {
+    const json = exportJson(session);
+    const parsed = JSON.parse(json) as ReturnType<typeof buildJsonExport>;
+
+    expect(parsed.id).toBe(session.id);
+    expect(parsed.version).toBe(session.version);
+    expect(parsed.sourceUrl).toBe(session.sourceUrl);
+    expect(parsed.startedAt).toBe(session.startedAt);
+    expect(parsed.endedAt).toBe(session.endedAt);
+    expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0].sourceFramePath).toEqual([0, 1]);
+  });
+});

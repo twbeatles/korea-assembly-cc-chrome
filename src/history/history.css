@@ -1,0 +1,162 @@
+:root {
+  color: #15273e;
+  background:
+    radial-gradient(circle at top right, rgba(38, 111, 91, 0.12), transparent 28%),
+    linear-gradient(180deg, #f4faf8 0%, #ebf2f6 100%);
+  font-family:
+    "Noto Sans KR", "Pretendard", "Malgun Gothic", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+button {
+  border: 0;
+  border-radius: 12px;
+  background: #1a6c58;
+  color: #fff;
+  cursor: pointer;
+  padding: 10px 14px;
+  font: inherit;
+  font-weight: 700;
+}
+
+button.secondary {
+  background: #d8e7e2;
+  color: #1d3d36;
+}
+
+.history-shell {
+  min-height: 100vh;
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+.hero,
+.hero-actions,
+.detail-header,
+.detail-actions,
+.export-row {
+  display: flex;
+  gap: 12px;
+}
+
+.hero,
+.detail-header {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.hero h1,
+.detail-header h2 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #587368;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.session-list,
+.session-detail {
+  background: rgba(255, 255, 255, 0.92);
+  border-radius: 22px;
+  padding: 16px;
+  box-shadow: 0 22px 50px rgba(17, 58, 86, 0.08);
+}
+
+.session-list {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+}
+
+.session-item {
+  text-align: left;
+  background: #f5faf8;
+  color: #17374a;
+}
+
+.session-item.active {
+  background: #1a6c58;
+  color: #fff;
+}
+
+.session-item strong,
+.session-item span,
+.session-item small {
+  display: block;
+}
+
+.session-item span,
+.session-item small,
+.detail-header p,
+.empty-card {
+  margin-top: 4px;
+  color: inherit;
+  opacity: 0.85;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 18px 0;
+}
+
+.stats-grid div {
+  border-radius: 16px;
+  background: #f4f7fa;
+  padding: 14px;
+}
+
+.stats-grid dt {
+  color: #597184;
+  font-size: 12px;
+}
+
+.stats-grid dd {
+  margin: 6px 0 0;
+  font-weight: 700;
+}
+
+.entries {
+  margin-top: 18px;
+  display: grid;
+  gap: 12px;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.entry-card {
+  border-radius: 16px;
+  background: #f4f7fa;
+  padding: 14px;
+}
+
+.entry-card time {
+  display: block;
+  color: #5c7789;
+  font-size: 12px;
+  margin-bottom: 6px;
+}
+
+.entry-card p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+.empty-card {
+  padding: 20px;
+}

@@ -1,0 +1,577 @@
+import {
+  applyKeepalive,
+  applyPreview,
+  applyReset,
+  finalizeSession,
+} from "../core/subtitle-pipeline";
+import {
+  createEmptySessionState,
+  getSessionCharCount,
+  toSessionRecord,
+  type SessionState,
+} from "../core/subtitle-models";
+import { compactSubtitleText, normalizeRawText } from "../core/text-normalizer";
+import {
+  FRAME_FORWARD_SOURCE,
+  OBSERVER_BRIDGE_SOURCE,
+  OBSERVER_CONFIG_EVENT,
+  PIPELINE_DEFAULTS,
+  POPUP_PORT_NAME,
+  SUBTITLE_SELECTOR_CANDIDATES,
+} from "../shared/constants";
+import { sendRuntimeMessage } from "../shared/chrome-api";
+import type {
+  ContentToPopupMessage,
+  FrameForwardMessage,
+  ObserverBridgeEvent,
+  PopupToContentMessage,
+  StatusSnapshot,
+} from "../shared/message-types";
+import { probeBestAccessibleSubtitle, computeCurrentFramePath } from "./frame-probe";
+import { estimateRecentRaw } from "./dom-probe";
+import { exportSessionData, saveSession, updateRunningSession } from "../storage/session-store";
+import { getSettings } from "../storage/settings-store";
+import type { ExtensionSettings } from "../storage/types";
+
+const isTopFrame = window.top === window;
+const localFramePath = computeCurrentFramePath();
+const injectedScriptId = "assembly-subtitle-observer-script";
+
+let settings: ExtensionSettings = {
+  autoScroll: true,
+  keepaliveIntervalMs: PIPELINE_DEFAULTS.keepaliveIntervalMs,
+  pollingFallbackIntervalMs: 200,
+  maxBufferLength: PIPELINE_DEFAULTS.confirmedCompactMaxLength,
+  noiseFilterEnabled: true,
+  noiseMinLength: 3,
+  filenamePattern: "{date}_{committee}_{time}",
+  debugLogging: false,
+};
+let state: SessionState = createEmptySessionState(window.location.href, document.title);
+const popupPorts = new Set<chrome.runtime.Port>();
+let localPollingTimer: number | null = null;
+let topFallbackTimer: number | null = null;
+let persistTimer: number | null = null;
+let localLastProbeCompact = "";
+let localHadProbeText = false;
+
+function reportRuntimeError(message: string, error?: unknown): void {
+  console.warn(`[assembly-subtitle] ${message}`, error);
+  if (!isTopFrame) {
+    return;
+  }
+
+  popupPorts.forEach((port) => {
+    postToPort(port, {
+      type: "ERROR",
+      message,
+    });
+  });
+}
+
+function deriveCommitteeName(title: string): string {
+  return title.replace(/\s*[-|].*$/, "").trim();
+}
+
+function logDebug(message: string, payload?: unknown): void {
+  if (!settings.debugLogging) {
+    return;
+  }
+  console.debug("[assembly-subtitle]", message, payload);
+}
+
+function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
+  return {
+    connected: window.location.hostname === "assembly.webcast.go.kr",
+    requiresReload,
+    status: state.status,
+    sessionId: state.sessionId,
+    title: state.title,
+    committeeName: state.committeeName,
+    sourceUrl: state.sourceUrl,
+    subtitleCount: state.entries.length,
+    charCount: getSessionCharCount(state.entries),
+    previewText: state.previewText,
+    recentEntries: state.entries.slice(-20),
+    startedAt: state.startedAt,
+    endedAt: state.endedAt,
+    updatedAt: state.updatedAt,
+    observerActive: state.observerActive,
+    currentSelector: state.currentSelector,
+    currentFramePath: [...state.currentFramePath],
+  };
+}
+
+function postToPort(port: chrome.runtime.Port, message: ContentToPopupMessage): void {
+  port.postMessage(message);
+}
+
+function createPopupMessages(requiresReload = false): ContentToPopupMessage[] {
+  const snapshot = buildStatusSnapshot(requiresReload);
+  return [
+    {
+      type: "CAPTURE_STATUS",
+      payload: {
+        connected: snapshot.connected,
+        requiresReload: snapshot.requiresReload,
+        status: snapshot.status,
+        sessionId: snapshot.sessionId,
+        title: snapshot.title,
+        committeeName: snapshot.committeeName,
+        sourceUrl: snapshot.sourceUrl,
+        startedAt: snapshot.startedAt,
+        endedAt: snapshot.endedAt,
+        updatedAt: snapshot.updatedAt,
+        observerActive: snapshot.observerActive,
+        currentSelector: snapshot.currentSelector,
+        currentFramePath: snapshot.currentFramePath,
+      },
+    },
+    {
+      type: "PREVIEW_UPDATE",
+      payload: {
+        sessionId: snapshot.sessionId,
+        previewText: snapshot.previewText,
+        recentEntries: snapshot.recentEntries,
+      },
+    },
+    {
+      type: "SESSION_STATS",
+      payload: {
+        sessionId: snapshot.sessionId,
+        subtitleCount: snapshot.subtitleCount,
+        charCount: snapshot.charCount,
+      },
+    },
+  ];
+}
+
+function broadcastPopupState(requiresReload = false): void {
+  if (!isTopFrame) {
+    return;
+  }
+
+  const messages = createPopupMessages(requiresReload);
+  popupPorts.forEach((port) => {
+    messages.forEach((message) => postToPort(port, message));
+  });
+}
+
+function syncPortState(port: chrome.runtime.Port, requiresReload = false): void {
+  createPopupMessages(requiresReload).forEach((message) => postToPort(port, message));
+}
+
+function scheduleRunningPersist(): void {
+  if (!isTopFrame || state.status !== "running") {
+    return;
+  }
+
+  if (persistTimer) {
+    window.clearTimeout(persistTimer);
+  }
+
+  persistTimer = window.setTimeout(() => {
+    const record = toSessionRecord(state, "running");
+    void updateRunningSession(record).catch((error: unknown) => {
+      reportRuntimeError("실행 중 세션 저장에 실패했습니다.", error);
+    });
+  }, 800);
+}
+
+async function persistStoppedSession(): Promise<void> {
+  if (!isTopFrame || !state.entries.length) {
+    return;
+  }
+
+  try {
+    await saveSession(toSessionRecord(state, "stopped"));
+  } catch (error) {
+    reportRuntimeError("중지된 세션 저장에 실패했습니다.", error);
+  }
+}
+
+async function saveCurrentSessionSnapshot(): Promise<void> {
+  if (!isTopFrame || !state.entries.length) {
+    return;
+  }
+
+  try {
+    await saveSession(toSessionRecord(state, "saved"));
+  } catch (error) {
+    reportRuntimeError("세션 스냅샷 저장에 실패했습니다.", error);
+  }
+}
+
+function dispatchObserverConfig(): void {
+  window.dispatchEvent(
+    new CustomEvent(OBSERVER_CONFIG_EVENT, {
+      detail: {
+        selectors: [...SUBTITLE_SELECTOR_CANDIDATES],
+        pollingIntervalMs: settings.pollingFallbackIntervalMs,
+      },
+    }),
+  );
+}
+
+async function injectObserverScript(): Promise<void> {
+  if (document.getElementById(injectedScriptId)) {
+    dispatchObserverConfig();
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.id = injectedScriptId;
+    script.src = chrome.runtime.getURL("injected-observer.js");
+    script.async = false;
+    script.onload = () => {
+      dispatchObserverConfig();
+      resolve();
+    };
+    script.onerror = () => reject(new Error("Failed to inject observer bridge"));
+    (document.head || document.documentElement).appendChild(script);
+  });
+}
+
+function forwardToTop(event: ObserverBridgeEvent): void {
+  if (isTopFrame) {
+    handleTopFrameEvent(event);
+    return;
+  }
+
+  const payload: FrameForwardMessage = {
+    source: FRAME_FORWARD_SOURCE,
+    event,
+  };
+  window.top?.postMessage(payload, "*");
+}
+
+function handleTopFrameEvent(event: ObserverBridgeEvent): void {
+  if (!isTopFrame) {
+    return;
+  }
+
+  try {
+    state.observerActive = Boolean(event.observerActive);
+    if (event.selector) {
+      state.currentSelector = event.selector;
+    }
+    if (event.framePath) {
+      state.currentFramePath = [...event.framePath];
+    }
+
+    const now = event.timestamp || Date.now();
+    if (event.kind === "subtitle:health") {
+      state.lastObserverEventAt = now;
+      broadcastPopupState();
+      return;
+    }
+
+    if (state.status !== "running") {
+      broadcastPopupState();
+      return;
+    }
+
+    if (event.kind === "subtitle:reset") {
+      state = applyReset(state, now).state;
+      scheduleRunningPersist();
+      broadcastPopupState();
+      return;
+    }
+
+    const normalized = normalizeRawText(event.raw ?? "");
+    if (!normalized) {
+      return;
+    }
+
+    if (
+      normalized === state.lastObservedRaw &&
+      (!state.lastKeepaliveAt || now - state.lastKeepaliveAt >= settings.keepaliveIntervalMs)
+    ) {
+      state = applyKeepalive(state, now).state;
+      scheduleRunningPersist();
+      broadcastPopupState();
+      return;
+    }
+
+    const result = applyPreview(state, normalized, now, settings, {
+      selector: event.selector,
+      framePath: event.framePath,
+    });
+    state = result.state;
+    if (result.changed) {
+      scheduleRunningPersist();
+      broadcastPopupState();
+    }
+  } catch (error) {
+    reportRuntimeError("자막 파이프라인 처리 중 오류가 발생했습니다.", error);
+  }
+}
+
+function emitLocalProbeEvent(
+  kind: "subtitle:update" | "subtitle:reset",
+  raw?: string,
+  selector?: string,
+): void {
+  forwardToTop({
+    source: OBSERVER_BRIDGE_SOURCE,
+    kind,
+    raw,
+    selector,
+    framePath: localFramePath,
+    timestamp: Date.now(),
+    sourceUrl: window.location.href,
+    observerActive: false,
+  });
+}
+
+function startLocalPolling(): void {
+  if (localPollingTimer) {
+    window.clearInterval(localPollingTimer);
+  }
+
+  localPollingTimer = window.setInterval(() => {
+    try {
+      const probe = estimateRecentRaw(document, state.currentSelector);
+      if (!probe.found || !probe.text) {
+        if (localHadProbeText) {
+          localHadProbeText = false;
+          localLastProbeCompact = "";
+          emitLocalProbeEvent("subtitle:reset");
+        }
+        return;
+      }
+
+      const compact = compactSubtitleText(probe.text);
+      if (!compact || compact === localLastProbeCompact) {
+        return;
+      }
+
+      localHadProbeText = true;
+      localLastProbeCompact = compact;
+      emitLocalProbeEvent("subtitle:update", probe.text, probe.matchedSelector);
+    } catch (error) {
+      reportRuntimeError("로컬 자막 폴링 중 오류가 발생했습니다.", error);
+    }
+  }, settings.pollingFallbackIntervalMs);
+}
+
+function startTopFrameFallback(): void {
+  if (!isTopFrame) {
+    return;
+  }
+
+  if (topFallbackTimer) {
+    window.clearInterval(topFallbackTimer);
+  }
+
+  topFallbackTimer = window.setInterval(() => {
+    try {
+      if (state.status !== "running") {
+        return;
+      }
+
+      const now = Date.now();
+      const staleFor = state.lastObserverEventAt
+        ? now - state.lastObserverEventAt
+        : Number.MAX_SAFE_INTEGER;
+      if (staleFor < settings.pollingFallbackIntervalMs * 2) {
+        return;
+      }
+
+      const probe = probeBestAccessibleSubtitle(state.currentSelector);
+      if (!probe.found || !probe.text) {
+        return;
+      }
+
+      handleTopFrameEvent({
+        source: OBSERVER_BRIDGE_SOURCE,
+        kind: "subtitle:update",
+        raw: probe.text,
+        selector: probe.matchedSelector,
+        framePath: probe.framePath,
+        timestamp: now,
+        sourceUrl: window.location.href,
+        observerActive: false,
+      });
+    } catch (error) {
+      reportRuntimeError("프레임 자막 fallback 탐색 중 오류가 발생했습니다.", error);
+    }
+  }, settings.pollingFallbackIntervalMs);
+}
+
+function resetRuntimeState(): void {
+  state = createEmptySessionState(
+    window.location.href,
+    document.title,
+    deriveCommitteeName(document.title),
+  );
+  localLastProbeCompact = "";
+  localHadProbeText = false;
+}
+
+async function startCapture(): Promise<void> {
+  resetRuntimeState();
+  const now = new Date().toISOString();
+  state.status = "running";
+  state.createdAt = now;
+  state.startedAt = now;
+  state.updatedAt = now;
+  state.title = document.title;
+  state.committeeName = deriveCommitteeName(document.title);
+  dispatchObserverConfig();
+  try {
+    await updateRunningSession(toSessionRecord(state, "running"));
+  } catch (error) {
+    reportRuntimeError("실행 중 세션 초기 저장에 실패했습니다.", error);
+  }
+  broadcastPopupState();
+}
+
+async function stopCapture(): Promise<void> {
+  state = finalizeSession(state, Date.now()).state;
+  await persistStoppedSession();
+  broadcastPopupState();
+}
+
+async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Promise<void> {
+  if (!state.entries.length) {
+    return;
+  }
+
+  const session = toSessionRecord(state, state.status === "running" ? "running" : "stopped");
+  const payload = await exportSessionData(session, format, settings.filenamePattern);
+  const response = await sendRuntimeMessage({
+    type: "DOWNLOAD_REQUEST",
+    filename: payload.filename,
+    content: payload.content,
+    mimeType: payload.mimeType,
+  });
+  if (!response.ok) {
+    throw new Error(response.error);
+  }
+}
+
+async function handleCommand(
+  port: chrome.runtime.Port,
+  message: PopupToContentMessage,
+): Promise<void> {
+  switch (message.type) {
+    case "PING":
+      syncPortState(port);
+      return;
+    case "GET_STATUS":
+      syncPortState(port);
+      return;
+    case "START_CAPTURE":
+      await startCapture();
+      syncPortState(port);
+      return;
+    case "STOP_CAPTURE":
+      await stopCapture();
+      syncPortState(port);
+      return;
+    case "CLEAR_SESSION":
+      resetRuntimeState();
+      syncPortState(port);
+      return;
+    case "SAVE_SESSION":
+      await saveCurrentSessionSnapshot();
+      syncPortState(port);
+      return;
+    case "EXPORT_REQUEST":
+      await exportCurrentSession(message.format);
+      syncPortState(port);
+      return;
+  }
+}
+
+function bindPopupPort(): void {
+  if (!isTopFrame) {
+    return;
+  }
+
+  chrome.runtime.onConnect.addListener((port) => {
+    if (port.name !== POPUP_PORT_NAME) {
+      return;
+    }
+
+    popupPorts.add(port);
+    syncPortState(port);
+
+    port.onMessage.addListener((message: PopupToContentMessage) => {
+      void handleCommand(port, message).catch((error: unknown) => {
+        postToPort(port, {
+          type: "ERROR",
+          message: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
+        });
+      });
+    });
+
+    port.onDisconnect.addListener(() => {
+      popupPorts.delete(port);
+    });
+  });
+
+  chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    const typedMessage = message as PopupToContentMessage;
+    if (typedMessage.type === "PING") {
+      sendResponse({ ok: true });
+      return true;
+    }
+    if (typedMessage.type === "GET_STATUS") {
+      sendResponse(buildStatusSnapshot(false));
+      return true;
+    }
+    return undefined;
+  });
+}
+
+function bindBridgeMessages(): void {
+  window.addEventListener("message", (event) => {
+    const data = event.data as Partial<ObserverBridgeEvent> | Partial<FrameForwardMessage> | undefined;
+    if (!data || typeof data !== "object") {
+      return;
+    }
+
+    if (data.source === OBSERVER_BRIDGE_SOURCE && "kind" in data) {
+      const bridgeEvent = data as ObserverBridgeEvent;
+      bridgeEvent.framePath = bridgeEvent.framePath ?? localFramePath;
+      forwardToTop(bridgeEvent);
+      return;
+    }
+
+    if (isTopFrame && data.source === FRAME_FORWARD_SOURCE && "event" in data) {
+      handleTopFrameEvent((data as FrameForwardMessage).event);
+    }
+  });
+}
+
+async function bootstrap(): Promise<void> {
+  try {
+    settings = await getSettings();
+  } catch (error) {
+    reportRuntimeError("확장 설정을 불러오지 못해 기본값으로 계속 진행합니다.", error);
+  }
+
+  state.title = document.title;
+  state.committeeName = deriveCommitteeName(document.title);
+  bindBridgeMessages();
+  bindPopupPort();
+
+  try {
+    await injectObserverScript();
+  } catch (error) {
+    reportRuntimeError("MutationObserver 주입에 실패해 polling fallback으로 계속 진행합니다.", error);
+  }
+
+  startLocalPolling();
+  startTopFrameFallback();
+  logDebug("content script bootstrapped", { isTopFrame, localFramePath });
+}
+
+void bootstrap().catch((error: unknown) => {
+  reportRuntimeError("content script 초기화 중 오류가 발생했습니다.", error);
+  startLocalPolling();
+  startTopFrameFallback();
+});

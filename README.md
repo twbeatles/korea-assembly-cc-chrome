@@ -1,0 +1,207 @@
+# 국회 AI 자막 추출기 Chrome Extension
+
+기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 세션을 저장하며, `TXT / SRT / VTT / JSON`으로 내보내는 최소 실용 버전을 제공하는 것입니다.
+
+## 왜 데스크톱 앱에서 크롬 확장으로 바꿨나
+
+Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `0.2초 폴링`, WebDriver 상태 불안정, 데스크톱 GUI/스레드 수명주기 관리 비용이 컸습니다. 이번 전환에서는 브라우저 DOM에 직접 접근하는 MV3 확장 구조로 바꿔서 `MutationObserver 우선 + polling fallback`, popup 종료와 무관한 content script 수집, IndexedDB 기반 세션 저장으로 구조를 단순화했습니다.
+
+## 기술 선택
+
+- 빌드 도구: `Vite + @crxjs/vite-plugin`
+- 언어: `TypeScript`
+- UI: `React`
+- 스타일링: 페이지별 scoped CSS 파일
+- 테스트: `Vitest`
+- 린트/포맷: `ESLint + Prettier`
+
+`Vite`를 선택한 이유는 popup/options/history 같은 multi-entry HTML 제어가 쉽고, MV3 manifest를 직접 관리하면서도 순수 TypeScript 모듈 테스트와 빌드 구성을 간결하게 유지할 수 있기 때문입니다.
+
+## 주요 기능
+
+- 국회 의사중계 페이지의 AI 자막 실시간 추출
+- 실시간 자막 누적 표시
+- `MutationObserver` 우선 + polling fallback
+- `.smi_word` 목록 window 조합, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
+- `preview / normalize / gate`
+- 글로벌 히스토리 + `rfind` suffix 기반 증분 추출
+- keepalive 기반 마지막 자막 `endTime` 갱신
+- `subtitle_reset` 처리
+- 세션 저장 / 불러오기용 히스토리 관리
+- `TXT / SRT / VTT / JSON` 내보내기
+- popup / options / history UI
+- 최소 단위 테스트
+
+## 자막 및 내보내기 정합성
+
+- SRT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS,mmm` 형식으로 출력합니다
+- VTT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS.mmm` 형식으로 출력합니다
+- JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
+- 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
+
+## 1차 범위
+
+- 이미 열린 `https://assembly.webcast.go.kr/*` 페이지에서 자막 추출
+- popup에서 시작 / 중지 / 저장 / 내보내기
+- options에서 수집 설정 조정
+- history에서 저장된 세션 목록, 삭제, 재열기, 내보내기
+
+## 제외 범위
+
+- PyQt6 GUI
+- Selenium / WebDriver
+- SQLite 직접 운용
+- DOCX / HWP / RTF
+- 데스크톱 병합 UI
+- 데스크톱 단축키 체계
+- 고급 preset / xcode -> xcgcd 자동 보완 UX
+
+## 저장소 구조
+
+```text
+manifest.json
+src/
+  background/
+  content/
+  core/
+  history/
+  options/
+  popup/
+  shared/
+  storage/
+tests/
+legacy/python-desktop/
+```
+
+기존 Python 데스크톱 코드, 알고리즘 분석 문서, 운영 메모는 `legacy/python-desktop/` 아래로 이동했습니다. 기존 의미론을 확인하려면 다음 문서를 참고하세요.
+
+- `CLAUDE.md`
+- `GEMINI.md`
+- `legacy/python-desktop/PIPELINE_LOCK.md`
+- `legacy/python-desktop/ALGORITHM_ANALYSIS.md`
+- `legacy/python-desktop/CLAUDE.md`
+
+## 설치 방법
+
+### 1. 의존성 설치
+
+```bash
+npm install
+```
+
+### 2. 개발 서버
+
+```bash
+npm run dev
+```
+
+`dev` 스크립트는 page-world observer 번들(`public/injected-observer.js`)을 먼저 생성한 뒤 Vite를 실행합니다.
+
+### 3. 테스트
+
+```bash
+npm run test
+```
+
+정적 점검까지 포함한 기본 검증은 아래 세 명령을 기준으로 합니다.
+
+```bash
+npm run lint
+npm run test
+npm run build
+```
+
+### 4. 빌드
+
+```bash
+npm run build
+```
+
+빌드 결과물은 `dist/`에 생성됩니다.
+
+## 크롬에서 unpacked extension 로드하기
+
+1. `npm run build`
+2. Chrome 주소창에 `chrome://extensions`
+3. 우측 상단 `개발자 모드` 활성화
+4. `압축해제된 확장 프로그램을 로드합니다`
+5. 저장소의 `dist/` 폴더 선택
+6. 국회 의사중계 페이지를 새로고침한 뒤 popup 열기
+
+## 사용 방법
+
+1. `https://assembly.webcast.go.kr/*` 페이지를 연다
+2. 확장 popup을 연다
+3. `Start`를 눌러 수집을 시작한다
+4. preview와 최근 자막 목록을 확인한다
+5. 필요하면 `Save Session` 또는 `TXT / SRT / VTT / JSON` 내보내기를 실행한다
+6. `Stop`을 누르면 세션이 종료되고 IndexedDB에 정지 상태로 저장된다
+
+## 권한 설명
+
+- `storage`: options 저장, lightweight state 저장
+- `downloads`: TXT/SRT/VTT/JSON 파일 다운로드
+- `activeTab`: 현재 탭 상태 조회
+- `scripting`: MV3 런타임 보조 권한
+- `host_permissions: https://assembly.webcast.go.kr/*`
+  국회 의사중계 도메인만 대상으로 제한합니다
+
+## 동작 구조
+
+### content script
+
+- 현재 탭에서 세션 상태를 보유합니다
+- popup이 닫혀도 수집은 계속됩니다
+- page-world `MutationObserver` 이벤트와 polling fallback을 파이프라인에 전달합니다
+
+### injected observer
+
+- page context에서 DOM 변화를 감시합니다
+- `window.postMessage`로 `subtitle:update`, `subtitle:reset`, `subtitle:health`를 브리지합니다
+
+### pipeline
+
+- `normalize -> preview gate -> suffix diff -> noise filter -> merge/add`
+- `rfind` 기반 suffix 추적
+- recent compact tail 기반 중복 차단
+- keepalive / reset / finalize 처리
+
+### storage
+
+- 세션 본문은 `IndexedDB`를 우선 사용합니다
+- `IndexedDB`가 실패하면 `chrome.storage.local` fallback을 사용합니다
+- 두 저장소가 모두 실패하는 극단적 상황에서는 현재 런타임 동안 메모리 fallback을 유지합니다
+- 설정은 `chrome.storage.local`
+
+### background
+
+- 다운로드 처리
+- history/options 페이지 열기
+- content script 준비 여부 확인
+
+## 알려진 한계
+
+- 국회 사이트 DOM 구조가 바뀌면 selector 우선순위와 fallback 성능이 달라질 수 있습니다
+- cross-origin frame 내부 DOM은 브라우저 보안 정책 때문에 직접 순회하지 못할 수 있습니다
+- 일부 페이지는 observer보다 polling fallback 의존도가 높을 수 있습니다
+- `xcode -> xcgcd` 자동 보완 흐름은 이번 1차 범위에 포함하지 않았습니다
+- popup 연결 전에 열린 탭은 확장 설치 시점에 따라 새로고침이 필요할 수 있습니다
+- 브라우저 저장소가 모두 실패하면 세션 persistence는 현재 탭 런타임 범위로 제한됩니다
+
+## 향후 계획
+
+- 페이지/위원회 preset 관리
+- DOM 구조 변화에 대한 selector profile 추가
+- reconnect / restore robustness 강화
+- session detail 검색과 부분 export
+- 브라우저 E2E 테스트 추가
+
+## 검증 기준
+
+현재 기준 기본 검증은 아래 세 명령입니다.
+
+```bash
+npm run lint
+npm run test
+npm run build
+```

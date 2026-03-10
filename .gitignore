@@ -1,0 +1,94 @@
+# -----------------------------------------------------------------------------
+# Python cache / tooling
+# -----------------------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+
+# -----------------------------------------------------------------------------
+# Virtual environments / local IDE
+# -----------------------------------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+.python-version
+.vscode/
+.idea/
+*.code-workspace
+
+# -----------------------------------------------------------------------------
+# Build / packaging artifacts
+# -----------------------------------------------------------------------------
+build/
+dist/
+coverage/
+node_modules/
+.vite/
+.cache/
+.eslintcache
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.egg-info/
+*.spec.bak
+pip-wheel-metadata/
+public/injected-observer.js
+public/injected-observer.js.map
+
+# -----------------------------------------------------------------------------
+# Project runtime outputs (do not upload)
+# -----------------------------------------------------------------------------
+logs/
+sessions/
+realtime_output/
+backups/
+legacy/
+tmp_extension_unpacked/
+tmp_extension.crx
+*.tmp
+*.orig
+
+# -----------------------------------------------------------------------------
+# Local database/state files
+# -----------------------------------------------------------------------------
+*.db
+subtitle_history.db
+subtitle_history.db-*
+*.db-shm
+*.db-wal
+url_history.json
+committee_presets.json
+presets_*.json
+
+# -----------------------------------------------------------------------------
+# User-exported result files (root-level exports only)
+# -----------------------------------------------------------------------------
+/*.txt
+/*.log
+/*.srt
+/*.vtt
+/*.rtf
+/*.hwp
+/*.docx
+국회자막_*.hwp
+자막통계_*.txt
+backup_*.json
+
+# -----------------------------------------------------------------------------
+# OS junk
+# -----------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini

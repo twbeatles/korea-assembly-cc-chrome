@@ -1,0 +1,108 @@
+:root {
+  color: #132236;
+  background:
+    radial-gradient(circle at top left, rgba(0, 108, 141, 0.13), transparent 30%),
+    linear-gradient(180deg, #f7fbfd 0%, #edf3f8 100%);
+  font-family:
+    "Noto Sans KR", "Pretendard", "Malgun Gothic", sans-serif;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 12px;
+  background: #0d5b72;
+  color: #fff;
+  cursor: pointer;
+  padding: 11px 14px;
+  font-weight: 700;
+}
+
+button.secondary {
+  background: #dbe8ee;
+  color: #183248;
+}
+
+input[type="text"],
+input[type="number"] {
+  width: 220px;
+  border: 1px solid rgba(12, 55, 84, 0.16);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.options-shell {
+  min-height: 100vh;
+  padding: 32px;
+  box-sizing: border-box;
+}
+
+.hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+.hero h1 {
+  margin: 0;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: #4d6879;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.setting-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 18px;
+  box-shadow: 0 20px 50px rgba(17, 51, 83, 0.08);
+}
+
+.setting-card strong,
+.setting-card span {
+  display: block;
+}
+
+.setting-card span {
+  margin-top: 6px;
+  color: #4e667c;
+  font-size: 13px;
+}
+
+.input-card {
+  align-items: flex-start;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 24px;
+}
