@@ -35,6 +35,11 @@ import type {
   StatusSnapshot,
 } from "../shared/message-types";
 import { probeBestAccessibleSubtitle, computeCurrentFramePath } from "./frame-probe";
+import {
+  buildInPagePanelState,
+  createInPagePanel,
+  type InPagePanelController,
+} from "./inpage-panel";
 import { estimateRecentRaw } from "./dom-probe";
 import { exportSessionData, saveSession, updateRunningSession } from "../storage/session-store";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
@@ -43,6 +48,7 @@ import type { ExtensionSettings } from "../storage/types";
 const isTopFrame = window.top === window;
 const localFramePath = computeCurrentFramePath();
 const injectedScriptId = "assembly-subtitle-observer-script";
+const DEFAULT_IN_PAGE_NOTICE = "이 페이지 오른쪽에서 자막을 바로 볼 수 있습니다.";
 
 let settings: ExtensionSettings = {
   autoScroll: true,
@@ -64,9 +70,18 @@ let topFallbackTimer: number | null = null;
 let persistTimer: number | null = null;
 let localLastProbeCompact = "";
 let localHadProbeText = false;
+let panelCollapsed = false;
+let panelNotice = DEFAULT_IN_PAGE_NOTICE;
+let inPagePanel: InPagePanelController | null = null;
+
+function setPanelNotice(message: string): void {
+  panelNotice = message;
+}
 
 function reportRuntimeError(message: string, error?: unknown): void {
   console.warn(`[assembly-subtitle] ${message}`, error);
+  setPanelNotice(message);
+  updateInPagePanel();
   if (!isTopFrame) {
     return;
   }
@@ -173,6 +188,24 @@ function syncPortState(port: chrome.runtime.Port, requiresReload = false): void 
   createPopupMessages(requiresReload).forEach((message) => postToPort(port, message));
 }
 
+function updateInPagePanel(): void {
+  if (!isTopFrame || !inPagePanel) {
+    return;
+  }
+
+  inPagePanel.update(
+    buildInPagePanelState(buildStatusSnapshot(false), {
+      collapsed: panelCollapsed,
+      notice: panelNotice,
+    }),
+  );
+}
+
+function syncUserInterfaces(requiresReload = false): void {
+  updateInPagePanel();
+  broadcastPopupState(requiresReload);
+}
+
 function scheduleRunningPersist(): void {
   if (!shouldScheduleRunningPersist(isTopFrame, state, settings)) {
     if (persistTimer) {
@@ -191,7 +224,7 @@ function scheduleRunningPersist(): void {
     void updateRunningSession(record)
       .then((saved) => {
         state = applyPersistSuccess(state, saved.updatedAt);
-        broadcastPopupState();
+        syncUserInterfaces();
       })
       .catch((error: unknown) => {
         reportRuntimeError("실행 중 세션 저장에 실패했습니다.", error);
@@ -207,6 +240,7 @@ async function persistStoppedSession(): Promise<void> {
   try {
     const saved = await saveSession(toSessionRecord(state, "stopped"));
     state = applyPersistSuccess(state, saved.updatedAt);
+    setPanelNotice("모은 자막을 저장했습니다.");
   } catch (error) {
     reportRuntimeError("중지된 세션 저장에 실패했습니다.", error);
   }
@@ -220,6 +254,7 @@ async function saveCurrentSessionSnapshot(): Promise<void> {
   try {
     const saved = await saveSession(toSessionRecord(state, "saved"));
     state = applyPersistSuccess(state, saved.updatedAt);
+    setPanelNotice("현재까지 모은 내용을 저장했습니다.");
   } catch (error) {
     reportRuntimeError("세션 스냅샷 저장에 실패했습니다.", error);
   }
@@ -286,19 +321,20 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     const now = event.timestamp || Date.now();
     if (event.kind === "subtitle:health") {
       state.lastObserverEventAt = now;
-      broadcastPopupState();
+      syncUserInterfaces();
       return;
     }
 
     if (state.status !== "running") {
-      broadcastPopupState();
+      syncUserInterfaces();
       return;
     }
 
     if (event.kind === "subtitle:reset") {
       state = applyReset(state, now).state;
+      setPanelNotice("자막 영역이 비워져서 내용을 다시 모으고 있습니다.");
       scheduleRunningPersist();
-      broadcastPopupState();
+      syncUserInterfaces();
       return;
     }
 
@@ -313,7 +349,7 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     ) {
       state = applyKeepalive(state, now).state;
       scheduleRunningPersist();
-      broadcastPopupState();
+      syncUserInterfaces();
       return;
     }
 
@@ -324,7 +360,7 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     state = result.state;
     if (result.changed) {
       scheduleRunningPersist();
-      broadcastPopupState();
+      syncUserInterfaces();
     }
   } catch (error) {
     reportRuntimeError("자막 파이프라인 처리 중 오류가 발생했습니다.", error);
@@ -431,17 +467,20 @@ function resetRuntimeState(): void {
   );
   localLastProbeCompact = "";
   localHadProbeText = false;
+  setPanelNotice(DEFAULT_IN_PAGE_NOTICE);
 }
 
 async function startCapture(): Promise<void> {
   resetRuntimeState();
   const now = new Date().toISOString();
+  panelCollapsed = false;
   state.status = "running";
   state.createdAt = now;
   state.startedAt = now;
   state.updatedAt = now;
   state.title = document.title;
   state.committeeName = deriveCommitteeName(document.title);
+  setPanelNotice("자막 모으기를 시작했습니다.");
   dispatchObserverConfig();
   if (settings.runningAutoSaveEnabled) {
     try {
@@ -451,17 +490,20 @@ async function startCapture(): Promise<void> {
       reportRuntimeError("실행 중 세션 초기 저장에 실패했습니다.", error);
     }
   }
-  broadcastPopupState();
+  syncUserInterfaces();
 }
 
 async function stopCapture(): Promise<void> {
   state = finalizeSession(state, Date.now()).state;
+  setPanelNotice("자막 모으기를 멈췄습니다.");
   await persistStoppedSession();
-  broadcastPopupState();
+  syncUserInterfaces();
 }
 
 async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Promise<void> {
   if (!state.entries.length) {
+    setPanelNotice("먼저 자막을 모은 뒤 파일로 저장하세요.");
+    syncUserInterfaces();
     return;
   }
 
@@ -476,6 +518,106 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
   if (!response.ok) {
     throw new Error(response.error);
   }
+  setPanelNotice(`${payload.filename} 파일 저장 창을 열었습니다.`);
+  syncUserInterfaces();
+}
+
+async function openHistoryPage(): Promise<void> {
+  const response = await sendRuntimeMessage({ type: "OPEN_HISTORY_PAGE" });
+  if (!response.ok) {
+    throw new Error(response.error);
+  }
+  setPanelNotice("저장된 기록 화면을 열었습니다.");
+  syncUserInterfaces();
+}
+
+async function openOptionsPage(): Promise<void> {
+  const response = await sendRuntimeMessage({ type: "OPEN_OPTIONS_PAGE" });
+  if (!response.ok) {
+    throw new Error(response.error);
+  }
+  setPanelNotice("환경 설정 화면을 열었습니다.");
+  syncUserInterfaces();
+}
+
+function openInPagePanel(): void {
+  panelCollapsed = false;
+  setPanelNotice("페이지 오른쪽 패널을 열었습니다.");
+  syncUserInterfaces();
+}
+
+function collapseInPagePanel(): void {
+  panelCollapsed = true;
+  setPanelNotice("오른쪽 가장자리의 '자막 보기' 버튼으로 다시 열 수 있습니다.");
+  syncUserInterfaces();
+}
+
+function mountInPagePanel(): void {
+  if (!isTopFrame || inPagePanel) {
+    return;
+  }
+
+  inPagePanel = createInPagePanel({
+    onStartCapture: () => {
+      void startCapture().catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "자막 모으기를 시작하지 못했습니다.",
+          error,
+        );
+      });
+    },
+    onStopCapture: () => {
+      void stopCapture().catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "자막 모으기를 멈추지 못했습니다.",
+          error,
+        );
+      });
+    },
+    onClearSession: () => {
+      resetRuntimeState();
+      setPanelNotice("화면을 비우고 새로 시작할 준비를 마쳤습니다.");
+      syncUserInterfaces();
+    },
+    onSaveSession: () => {
+      void saveCurrentSessionSnapshot()
+        .then(() => syncUserInterfaces())
+        .catch((error: unknown) => {
+          reportRuntimeError(
+            error instanceof Error ? error.message : "지금 저장을 완료하지 못했습니다.",
+            error,
+          );
+        });
+    },
+    onExport: (format) => {
+      void exportCurrentSession(format).catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "파일 저장을 시작하지 못했습니다.",
+          error,
+        );
+      });
+    },
+    onOpenHistory: () => {
+      void openHistoryPage().catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "저장된 기록 화면을 열지 못했습니다.",
+          error,
+        );
+      });
+    },
+    onOpenOptions: () => {
+      void openOptionsPage().catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "환경 설정 화면을 열지 못했습니다.",
+          error,
+        );
+      });
+    },
+    onExpand: openInPagePanel,
+    onCollapse: collapseInPagePanel,
+  });
+
+  updateInPagePanel();
 }
 
 async function handleCommand(
@@ -489,6 +631,10 @@ async function handleCommand(
     case "GET_STATUS":
       syncPortState(port);
       return;
+    case "OPEN_INPAGE_PANEL":
+      openInPagePanel();
+      syncPortState(port);
+      return;
     case "START_CAPTURE":
       await startCapture();
       syncPortState(port);
@@ -499,10 +645,13 @@ async function handleCommand(
       return;
     case "CLEAR_SESSION":
       resetRuntimeState();
+      setPanelNotice("화면을 비우고 새로 시작할 준비를 마쳤습니다.");
+      syncUserInterfaces();
       syncPortState(port);
       return;
     case "SAVE_SESSION":
       await saveCurrentSessionSnapshot();
+      syncUserInterfaces();
       syncPortState(port);
       return;
     case "EXPORT_REQUEST":
@@ -576,7 +725,7 @@ function bindSettingsChanges(): void {
       persistTimer = null;
     }
 
-    broadcastPopupState();
+    syncUserInterfaces();
   });
 }
 
@@ -612,6 +761,8 @@ async function bootstrap(): Promise<void> {
   bindBridgeMessages();
   bindPopupPort();
   bindSettingsChanges();
+  mountInPagePanel();
+  updateInPagePanel();
 
   try {
     await injectObserverScript();
@@ -621,11 +772,14 @@ async function bootstrap(): Promise<void> {
 
   startLocalPolling();
   startTopFrameFallback();
+  syncUserInterfaces();
   logDebug("content script bootstrapped", { isTopFrame, localFramePath });
 }
 
 void bootstrap().catch((error: unknown) => {
   reportRuntimeError("content script 초기화 중 오류가 발생했습니다.", error);
+  mountInPagePanel();
+  updateInPagePanel();
   startLocalPolling();
   startTopFrameFallback();
 });

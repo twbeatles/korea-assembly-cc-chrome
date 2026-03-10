@@ -4,6 +4,7 @@ import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
 import { deleteSession, exportSessionData, listSessions } from "../storage/session-store";
+import { getExportFormatLabel, getPersistedStatusLabel } from "../shared/ui-labels";
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
 
@@ -17,7 +18,7 @@ function formatDate(value: string | null): string {
 export default function App() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
-  const [message, setMessage] = useState("세션을 불러오는 중입니다.");
+  const [message, setMessage] = useState("기록을 불러오는 중입니다.");
   const [searchQuery, setSearchQuery] = useState("");
 
   const selectedSession = useMemo(
@@ -33,12 +34,12 @@ export default function App() {
     const nextSessions = await listSessions({ limit: 200 });
     setSessions(nextSessions);
     setSelectedId((current) => current || nextSessions[0]?.id || "");
-    setMessage(nextSessions.length ? "최신 세션순으로 정렬했습니다." : "저장된 세션이 없습니다.");
+    setMessage(nextSessions.length ? "최신 기록부터 보여주고 있습니다." : "저장된 기록이 없습니다.");
   };
 
   useEffect(() => {
     void refresh().catch((error: unknown) => {
-      setMessage(error instanceof Error ? error.message : "세션 목록을 읽지 못했습니다.");
+      setMessage(error instanceof Error ? error.message : "기록 목록을 읽지 못했습니다.");
     });
   }, []);
 
@@ -47,7 +48,7 @@ export default function App() {
       return;
     }
     await deleteSession(selectedSession.id);
-    setMessage("선택한 세션을 삭제했습니다.");
+    setMessage("선택한 기록을 삭제했습니다.");
     await refresh();
   };
 
@@ -74,7 +75,7 @@ export default function App() {
       setMessage(response.error);
       return;
     }
-    setMessage(`${format.toUpperCase()} 내보내기를 시작했습니다.`);
+    setMessage(`${getExportFormatLabel(format)} 파일 저장을 시작했습니다.`);
   };
 
   const handleCopy = async (text: string, label: string): Promise<void> => {
@@ -90,11 +91,11 @@ export default function App() {
     <main className="history-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">History</p>
-          <h1>국회 자막 세션 히스토리</h1>
+          <p className="eyebrow">기록 보기</p>
+          <h1>저장된 자막 기록</h1>
         </div>
         <div className="hero-actions">
-          <button onClick={() => void refresh()}>새로고침</button>
+          <button onClick={() => void refresh()}>목록 새로고침</button>
           <span>{message}</span>
         </div>
       </header>
@@ -113,11 +114,11 @@ export default function App() {
                 <span>
                   {session.subtitleCount}문장 / {session.charCount}자
                 </span>
-                <small>{session.status}</small>
+                <small>{getPersistedStatusLabel(session.status)}</small>
               </button>
             ))
           ) : (
-            <div className="empty-card">아직 저장된 세션이 없습니다.</div>
+            <div className="empty-card">아직 저장해 둔 기록이 없습니다.</div>
           )}
         </aside>
 
@@ -131,10 +132,10 @@ export default function App() {
                 </div>
                 <div className="detail-actions">
                   <button onClick={handleReopen} disabled={!selectedSession.sourceUrl}>
-                    Reopen
+                    원본 페이지 열기
                   </button>
                   <button className="secondary" onClick={handleDelete}>
-                    Delete
+                    삭제
                   </button>
                 </div>
               </div>
@@ -164,7 +165,7 @@ export default function App() {
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="이 세션 내부 검색"
+                  placeholder="이 기록 안에서 내용 찾기"
                 />
                 <span>
                   {filteredEntries.length} / {selectedSession.entries.length}개
@@ -174,7 +175,7 @@ export default function App() {
               <div className="export-row">
                 {EXPORT_FORMATS.map((format) => (
                   <button key={format} onClick={() => void handleExport(format)}>
-                    {format.toUpperCase()}
+                    {getExportFormatLabel(format)}
                   </button>
                 ))}
               </div>
@@ -184,24 +185,24 @@ export default function App() {
                   onClick={() =>
                     void handleCopy(
                       buildCopyText(selectedSession.entries, { query: searchQuery }),
-                      "검색 결과를 복사했습니다.",
+                      "찾은 내용을 복사했습니다.",
                     )
                   }
                   disabled={!filteredEntries.length}
                 >
-                  검색 결과 복사
+                  찾은 내용 복사
                 </button>
                 <button
                   className="secondary"
                   onClick={() =>
                     void handleCopy(
                       buildCopyText(selectedSession.entries),
-                      "전체 세션 텍스트를 복사했습니다.",
+                      "전체 내용을 복사했습니다.",
                     )
                   }
                   disabled={!selectedSession.entries.length}
                 >
-                  전체 세션 복사
+                  전체 내용 복사
                 </button>
               </div>
 
@@ -215,13 +216,13 @@ export default function App() {
                   ))
                 ) : (
                   <div className="empty-card">
-                    {searchQuery ? "검색 결과가 없습니다." : "세션에 자막이 없습니다."}
+                    {searchQuery ? "찾는 내용이 없습니다." : "이 기록에 자막이 없습니다."}
                   </div>
                 )}
               </div>
             </>
           ) : (
-            <div className="empty-card">왼쪽에서 세션을 선택하세요.</div>
+            <div className="empty-card">왼쪽에서 기록을 선택하세요.</div>
           )}
         </section>
       </section>

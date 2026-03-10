@@ -4,7 +4,7 @@
 
 ## 1. 프로젝트 한 줄 요약
 
-국회 의사중계 페이지에서 AI 자막을 실시간 추출하고, 세션을 저장하며, `TXT / SRT / VTT / JSON` 으로 내보내는 `Manifest V3` 기반 확장프로그램입니다.
+국회 의사중계 페이지에서 AI 자막을 실시간 추출하고, 페이지 오른쪽 패널에서 바로 보여 주며, 기록을 저장하고 `TXT / SRT / VTT / JSON` 으로 내보내는 `Manifest V3` 기반 확장프로그램입니다.
 
 ## 2. 현재 활성 범위
 
@@ -14,8 +14,8 @@
   - 국회 AI 자막 추출
   - suffix 기반 증분 처리
   - 세션 persistence
-  - popup/options/history 동작
-  - 검색 / 복사 / autosave UX
+  - 우측 패널 + popup/options/history 동작
+  - 쉬운 한국어 UI / 검색 / 복사 / autosave UX
 
 ## 3. 필수 명령
 
@@ -61,6 +61,7 @@ npm run build
 
 ### popup -> content
 
+- `OPEN_INPAGE_PANEL`
 - `START_CAPTURE`
 - `STOP_CAPTURE`
 - `CLEAR_SESSION`
@@ -133,7 +134,8 @@ npm run build
 
 추가 UX 규칙:
 
-- popup 최근 자막 검색은 부분 문자열, 대소문자 비구분
+- top frame 에 우측 패널이 자동 삽입됨
+- popup 은 페이지 패널 다시 열기용 보조 화면
 - 복사 포맷은 `[HH:MM:SS] text`
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
 

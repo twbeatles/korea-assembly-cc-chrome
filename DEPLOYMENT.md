@@ -47,10 +47,11 @@ npm run build
 
 추가 확인 권장:
 - 국회 의사중계 페이지에서 실제 자막 추출
-- popup 검색 / 최근 복사 / 검색 결과 복사 확인
-- popup 에서 `Start`, `Stop`, `Save Session`, `TXT / SRT / VTT / JSON` 내보내기 확인
-- history 검색 / 전체 세션 복사 / 검색 결과 복사 확인
-- options 페이지에서 autosave 설정 변경 확인
+- 페이지 오른쪽 패널이 자동으로 뜨는지 확인
+- 패널에서 `자막 모으기`, `멈추기`, `지금 저장`, `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
+- popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정` 이동 확인
+- history 검색 / 전체 내용 복사 / 찾은 내용 복사 확인
+- options 페이지에서 자동 저장 관련 설정 변경 확인
 
 ## 4. 로컬 설치
 
@@ -67,9 +68,9 @@ npm run build
 아래를 확인합니다.
 
 1. 확장 popup 이 열리는지
-2. 국회 페이지에서 content script 가 붙는지
+2. 국회 페이지 오른쪽에 패널이 자동으로 나타나는지
 3. 기존에 열려 있던 국회 탭은 새로고침이 필요한지
-4. 확장 아이콘의 popup 에서 상태가 `connected` 로 보이는지
+4. 확장 아이콘의 popup 에서 현재 상태가 보이는지
 
 ## 5. 내부 공유용 배포
 
@@ -156,11 +157,11 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 3. observer 실패 시 polling fallback 이 계속 동작하는지
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
-6. popup 에 마지막 autosave 시각이 보이는지
+6. 페이지 패널과 popup 에 마지막 자동 저장 시각이 보이는지
 
 ## 9. 자주 발생하는 문제
 
-### 9.1 확장을 로드했는데 popup 만 보이고 수집이 안 됨
+### 9.1 확장을 로드했는데 페이지 패널이 보이지 않음
 
 - 국회 페이지가 이미 열려 있었다면 새로고침이 필요할 수 있습니다.
 - 대상 URL 이 `https://assembly.webcast.go.kr/*` 범위인지 확인합니다.

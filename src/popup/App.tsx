@@ -1,24 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
-import { ASSEMBLY_HOST, DEFAULT_EXTENSION_SETTINGS, POPUP_PORT_NAME } from "../shared/constants";
-import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
+import { ASSEMBLY_HOST, POPUP_PORT_NAME } from "../shared/constants";
 import { connectToTab, queryActiveTab, sendRuntimeMessage } from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
   PopupToContentMessage,
   StatusSnapshot,
 } from "../shared/message-types";
-import { getSettings } from "../storage/settings-store";
-import type { ExtensionSettings } from "../storage/types";
-
-const EXPORT_FORMATS = ["txt", "srt", "vtt", "json"] as const;
-
-const STATUS_LABELS: Record<string, string> = {
-  idle: "대기 중",
-  running: "수집 중",
-  stopped: "중지됨",
-  error: "오류",
-};
+import { getCaptureStatusLabel, UI_TEXT } from "../shared/ui-labels";
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -28,29 +17,12 @@ function formatDate(value: string | null): string {
 }
 
 export default function App() {
-  const portRef = useRef<chrome.runtime.Port | null>(null);
-  const entryListRef = useRef<HTMLDivElement | null>(null);
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
-  const [statusMessage, setStatusMessage] = useState("활성 탭을 확인하는 중입니다.");
+  const [statusMessage, setStatusMessage] = useState("현재 페이지를 확인하고 있습니다.");
   const [tabReady, setTabReady] = useState(false);
   const [unsupported, setUnsupported] = useState(false);
   const [requiresReload, setRequiresReload] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [settings, setSettings] = useState<ExtensionSettings>(DEFAULT_EXTENSION_SETTINGS);
-
-  useEffect(() => {
-    void getSettings()
-      .then((loaded) => setSettings(loaded))
-      .catch(() => setSettings(DEFAULT_EXTENSION_SETTINGS));
-  }, []);
-
-  useEffect(() => {
-    if (!settings.autoScroll || !entryListRef.current) {
-      return;
-    }
-
-    entryListRef.current.scrollTop = entryListRef.current.scrollHeight;
-  }, [settings.autoScroll, snapshot?.recentEntries]);
+  const [port, setPort] = useState<chrome.runtime.Port | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -62,7 +34,7 @@ export default function App() {
       }
 
       if (!tab?.id || !tab.url) {
-        setStatusMessage("활성 탭 정보를 읽을 수 없습니다.");
+        setStatusMessage("현재 탭 정보를 읽지 못했습니다.");
         return;
       }
 
@@ -87,8 +59,8 @@ export default function App() {
       }
 
       setRequiresReload(Boolean(ensure.requiresReload));
-      const port = connectToTab(tab.id, 0, POPUP_PORT_NAME);
-      portRef.current = port;
+      const nextPort = connectToTab(tab.id, 0, POPUP_PORT_NAME);
+      setPort(nextPort);
 
       const onMessage = (message: ContentToPopupMessage): void => {
         if (!active) {
@@ -118,14 +90,13 @@ export default function App() {
               currentFramePath: message.payload.currentFramePath,
             }));
             setTabReady(true);
-            setStatusMessage("현재 탭과 연결되었습니다.");
+            setStatusMessage("페이지 안 패널과 연결되었습니다.");
             return;
           case "PREVIEW_UPDATE":
             setSnapshot((current) =>
               current
                 ? {
                     ...current,
-                    sessionId: message.payload.sessionId,
                     previewText: message.payload.previewText,
                     recentEntries: message.payload.recentEntries,
                   }
@@ -137,7 +108,6 @@ export default function App() {
               current
                 ? {
                     ...current,
-                    sessionId: message.payload.sessionId,
                     subtitleCount: message.payload.subtitleCount,
                     charCount: message.payload.charCount,
                   }
@@ -154,244 +124,133 @@ export default function App() {
         if (!active) {
           return;
         }
+        setPort(null);
         setTabReady(false);
         setRequiresReload(true);
-        setStatusMessage("content script 연결이 끊겼습니다. 탭 새로고침 후 다시 시도하세요.");
+        setStatusMessage("연결이 끊겼습니다. 탭을 새로고침한 뒤 다시 열어주세요.");
       };
 
-      port.onMessage.addListener(onMessage);
-      port.onDisconnect.addListener(onDisconnect);
-      port.postMessage({ type: "GET_STATUS" } satisfies PopupToContentMessage);
+      nextPort.onMessage.addListener(onMessage);
+      nextPort.onDisconnect.addListener(onDisconnect);
+      nextPort.postMessage({ type: "GET_STATUS" } satisfies PopupToContentMessage);
     };
 
     void connect().catch((error: unknown) => {
       if (!active) {
         return;
       }
-      setStatusMessage(error instanceof Error ? error.message : "popup 초기화에 실패했습니다.");
+      setStatusMessage(error instanceof Error ? error.message : "팝업을 준비하지 못했습니다.");
     });
 
     return () => {
       active = false;
-      portRef.current?.disconnect();
-      portRef.current = null;
+      setPort((current) => {
+        current?.disconnect();
+        return null;
+      });
     };
   }, []);
 
-  const filteredEntries = useMemo(
-    () => filterEntriesByQuery(snapshot?.recentEntries ?? [], searchQuery),
-    [searchQuery, snapshot?.recentEntries],
-  );
-
   const sendCommand = (message: PopupToContentMessage, label: string): void => {
-    if (!portRef.current) {
-      setStatusMessage("현재 탭과 연결되지 않았습니다.");
+    if (!port) {
+      setStatusMessage("현재 페이지와 아직 연결되지 않았습니다.");
       return;
     }
+
     setStatusMessage(label);
-    portRef.current.postMessage(message);
+    port.postMessage(message);
   };
 
   const openHistory = async (): Promise<void> => {
     const response = await sendRuntimeMessage({ type: "OPEN_HISTORY_PAGE" });
     if (!response.ok) {
       setStatusMessage(response.error);
+      return;
     }
+    setStatusMessage("저장된 기록 화면을 열었습니다.");
   };
 
   const openOptions = async (): Promise<void> => {
     const response = await sendRuntimeMessage({ type: "OPEN_OPTIONS_PAGE" });
     if (!response.ok) {
       setStatusMessage(response.error);
+      return;
     }
+    setStatusMessage("환경 설정 화면을 열었습니다.");
   };
-
-  const handleCopy = async (text: string, label: string): Promise<void> => {
-    try {
-      await copyTextToClipboard(text);
-      setStatusMessage(label);
-    } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "텍스트 복사에 실패했습니다.");
-    }
-  };
-
-  const recentCopyText = buildCopyText(snapshot?.recentEntries ?? [], {
-    limit: settings.recentCopyLineCount,
-  });
-  const filteredCopyText = buildCopyText(snapshot?.recentEntries ?? [], {
-    query: searchQuery,
-  });
 
   return (
     <div className="popup-shell">
       <header className="popup-header">
         <div>
-          <p className="eyebrow">Assembly Subtitle Capture</p>
-          <h1>국회 AI 자막 추출기</h1>
+          <p className="eyebrow">빠른 열기</p>
+          <h1>{UI_TEXT.appName}</h1>
         </div>
         <span className={`status-badge ${snapshot?.status ?? "idle"}`}>
-          {snapshot ? STATUS_LABELS[snapshot.status] : "연결 전"}
+          {snapshot ? getCaptureStatusLabel(snapshot.status) : "연결 전"}
         </span>
       </header>
 
       <section className="panel">
         <div className="meta-row">
-          <span>탭 연결</span>
-          <strong>{tabReady ? "연결됨" : unsupported ? "비지원 페이지" : "대기 중"}</strong>
+          <span>현재 페이지</span>
+          <strong>{unsupported ? "지원되지 않음" : tabReady ? "연결됨" : "대기 중"}</strong>
         </div>
         <div className="meta-row">
-          <span>옵저버</span>
-          <strong>{snapshot?.observerActive ? "활성" : "fallback / 미감지"}</strong>
+          <span>상태</span>
+          <strong>{snapshot ? getCaptureStatusLabel(snapshot.status) : "-"}</strong>
         </div>
         <div className="meta-row">
-          <span>위원회</span>
-          <strong>{snapshot?.committeeName || "-"}</strong>
+          <span>회의 이름</span>
+          <strong>{snapshot?.committeeName || snapshot?.title || "-"}</strong>
         </div>
         <div className="meta-row">
-          <span>세션 시작</span>
+          <span>모인 자막</span>
+          <strong>
+            {snapshot?.subtitleCount ?? 0}문장 / {snapshot?.charCount ?? 0}자
+          </strong>
+        </div>
+        <div className="meta-row">
+          <span>시작 시각</span>
           <strong>{formatDate(snapshot?.startedAt ?? null)}</strong>
         </div>
         <div className="meta-row">
           <span>마지막 저장</span>
-          <strong>
-            {settings.runningAutoSaveEnabled
-              ? formatDate(snapshot?.lastPersistedAt ?? null)
-              : "자동 저장 꺼짐"}
-          </strong>
+          <strong>{formatDate(snapshot?.lastPersistedAt ?? null)}</strong>
         </div>
         <div className="status-line">{statusMessage}</div>
         {requiresReload ? (
           <div className="warning-box">
-            확장 설치 이후 열려 있던 탭이면 새로고침이 필요할 수 있습니다.
+            확장 설치 전부터 열려 있던 탭이면 새로고침이 필요할 수 있습니다.
           </div>
         ) : null}
       </section>
 
-      <section className="actions-grid">
-        <button
-          onClick={() => sendCommand({ type: "START_CAPTURE" }, "자막 수집 시작을 요청했습니다.")}
-          disabled={!tabReady}
-        >
-          Start
-        </button>
-        <button
-          onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "자막 수집 중지를 요청했습니다.")}
-          disabled={!tabReady}
-        >
-          Stop
-        </button>
-        <button
-          onClick={() => sendCommand({ type: "CLEAR_SESSION" }, "현재 세션 초기화를 요청했습니다.")}
-          disabled={!tabReady}
-        >
-          Clear
-        </button>
-        <button
-          onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션 저장을 요청했습니다.")}
-          disabled={!tabReady}
-        >
-          Save Session
-        </button>
-      </section>
-
       <section className="panel">
         <div className="panel-header">
-          <h2>실시간 Preview</h2>
-          <span>
-            {snapshot?.subtitleCount ?? 0}문장 / {snapshot?.charCount ?? 0}자
-          </span>
+          <h2>사용 방법</h2>
         </div>
-        <div className="preview-box">
-          {snapshot?.previewText || "자막이 감지되면 이 영역에 최신 누적 텍스트가 표시됩니다."}
-        </div>
-        <div className="copy-actions">
+        <p className="help-text">
+          이제 자막 수집 화면은 확장 아이콘 안이 아니라 국회 사이트 오른쪽 패널에 바로
+          나타납니다.
+        </p>
+        <div className="actions-stack">
           <button
             onClick={() =>
-              void handleCopy(snapshot?.previewText ?? "", "현재 preview를 복사했습니다.")
+              sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 오른쪽 패널을 다시 열고 있습니다.")
             }
-            disabled={!snapshot?.previewText}
+            disabled={!tabReady}
           >
-            Preview 복사
+            {UI_TEXT.openPanel}
           </button>
-          <button
-            onClick={() =>
-              void handleCopy(
-                recentCopyText,
-                `최근 ${settings.recentCopyLineCount}줄을 복사했습니다.`,
-              )
-            }
-            disabled={!recentCopyText}
-          >
-            최근 {settings.recentCopyLineCount}줄 복사
+          <button className="secondary" onClick={() => void openHistory()}>
+            {UI_TEXT.openHistory}
+          </button>
+          <button className="secondary" onClick={() => void openOptions()}>
+            {UI_TEXT.openOptions}
           </button>
         </div>
       </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <h2>최근 자막</h2>
-          <span>
-            {filteredEntries.length} / {snapshot?.recentEntries.length ?? 0}개
-          </span>
-        </div>
-        <input
-          className="search-input"
-          type="search"
-          value={searchQuery}
-          onChange={(event) => setSearchQuery(event.target.value)}
-          placeholder="최근 자막 검색"
-        />
-        <div className="copy-actions">
-          <button
-            onClick={() => void handleCopy(filteredCopyText, "검색 결과를 복사했습니다.")}
-            disabled={!filteredCopyText}
-          >
-            검색 결과 복사
-          </button>
-        </div>
-        <div className="entry-list" ref={entryListRef}>
-          {filteredEntries.length ? (
-            filteredEntries.map((entry) => (
-              <article className="entry-card" key={entry.id}>
-                <time>{formatDate(entry.startTime)}</time>
-                <p>{entry.text}</p>
-              </article>
-            ))
-          ) : (
-            <p className="empty-state">
-              {searchQuery ? "검색 결과가 없습니다." : "아직 수집된 자막이 없습니다."}
-            </p>
-          )}
-        </div>
-      </section>
-
-      <section className="panel">
-        <div className="panel-header">
-          <h2>내보내기</h2>
-          <span>TXT / SRT / VTT / JSON</span>
-        </div>
-        <div className="export-grid">
-          {EXPORT_FORMATS.map((format) => (
-            <button
-              key={format}
-              onClick={() =>
-                sendCommand(
-                  { type: "EXPORT_REQUEST", format },
-                  `${format.toUpperCase()} 내보내기를 요청했습니다.`,
-                )
-              }
-              disabled={!tabReady || !snapshot?.subtitleCount}
-            >
-              {format.toUpperCase()}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <footer className="footer-actions">
-        <button onClick={openHistory}>History</button>
-        <button onClick={openOptions}>Settings</button>
-      </footer>
     </div>
   );
 }

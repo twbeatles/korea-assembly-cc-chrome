@@ -1,6 +1,6 @@
 # 국회 AI 자막 추출기 Chrome Extension
 
-기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 세션을 저장하며, `TXT / SRT / VTT / JSON`으로 내보내는 최소 실용 버전을 제공하는 것입니다.
+기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON`으로 저장하는 최소 실용 버전을 제공하는 것입니다.
 
 ## 왜 데스크톱 앱에서 크롬 확장으로 바꿨나
 
@@ -27,12 +27,13 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - 글로벌 히스토리 + `rfind` suffix 기반 증분 추출
 - keepalive 기반 마지막 자막 `endTime` 갱신
 - `subtitle_reset` 처리
-- 세션 저장 / 불러오기용 히스토리 관리
+- 저장된 기록 관리
 - `TXT / SRT / VTT / JSON` 내보내기
-- popup 최근 자막 검색 / 복사
-- history 세션 내부 검색 / 복사
+- 사이트 안 우측 패널에서 실시간 자막 확인
+- popup 보조 화면
+- history 기록 내부 검색 / 복사
 - 실행 중 자동 저장 상태 표시 및 설정
-- popup / options / history UI
+- 페이지 패널 / options / history UI
 - 최소 단위 테스트
 
 ## 자막 및 내보내기 정합성
@@ -45,9 +46,9 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 ## 1차 범위
 
 - 이미 열린 `https://assembly.webcast.go.kr/*` 페이지에서 자막 추출
-- popup에서 시작 / 중지 / 저장 / 내보내기 / 최근 자막 검색 / 복사
+- 페이지 오른쪽 패널에서 시작 / 중지 / 저장 / 파일 저장
 - options에서 수집 설정 조정
-- history에서 저장된 세션 목록, 삭제, 재열기, 내보내기, 세션 내부 검색 / 복사
+- history에서 저장된 기록 목록, 삭제, 재열기, 파일 저장, 기록 내부 검색 / 복사
 
 ## 제외 범위
 
@@ -132,17 +133,17 @@ npm run build
 3. 우측 상단 `개발자 모드` 활성화
 4. `압축해제된 확장 프로그램을 로드합니다`
 5. 저장소의 `dist/` 폴더 선택
-6. 국회 의사중계 페이지를 새로고침한 뒤 popup 열기
+6. 국회 의사중계 페이지를 새로고침하면 오른쪽에 패널이 자동으로 나타납니다
 
 ## 사용 방법
 
 1. `https://assembly.webcast.go.kr/*` 페이지를 연다
-2. 확장 popup을 연다
-3. `Start`를 눌러 수집을 시작한다
-4. preview와 최근 자막 목록을 확인한다
-5. 필요하면 최근 자막 검색, preview 복사, 최근 N줄 복사, 검색 결과 복사를 사용한다
-6. 필요하면 `Save Session` 또는 `TXT / SRT / VTT / JSON` 내보내기를 실행한다
-7. `Stop`을 누르면 세션이 종료되고 저장소 fallback 정책에 따라 정지 상태로 저장된다
+2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
+3. `자막 모으기`를 눌러 수집을 시작한다
+4. `실시간 내용`과 `방금 나온 자막`을 바로 확인한다
+5. 필요하면 `지금 저장` 또는 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다
+6. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
+7. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`을 빠르게 여는 보조 화면으로 사용한다
 
 ## 권한 설명
 
@@ -159,6 +160,7 @@ npm run build
 
 - 현재 탭에서 세션 상태를 보유합니다
 - popup이 닫혀도 수집은 계속됩니다
+- top frame에 우측 패널을 삽입해 현재 상태를 바로 보여 줍니다
 - page-world `MutationObserver` 이벤트와 polling fallback을 파이프라인에 전달합니다
 
 ### injected observer
@@ -193,7 +195,7 @@ npm run build
 - cross-origin frame 내부 DOM은 브라우저 보안 정책 때문에 직접 순회하지 못할 수 있습니다
 - 일부 페이지는 observer보다 polling fallback 의존도가 높을 수 있습니다
 - `xcode -> xcgcd` 자동 보완 흐름은 이번 1차 범위에 포함하지 않았습니다
-- popup 연결 전에 열린 탭은 확장 설치 시점에 따라 새로고침이 필요할 수 있습니다
+- 확장 설치 전에 열려 있던 탭은 새로고침이 필요할 수 있습니다
 - 브라우저 저장소가 모두 실패하면 세션 persistence는 현재 탭 런타임 범위로 제한됩니다
 
 ## 향후 계획

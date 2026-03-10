@@ -101,6 +101,25 @@ input[type="number"] {
   grid-column: 1 / -1;
 }
 
+.advanced-card {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 18px;
+  box-shadow: 0 20px 50px rgba(17, 51, 83, 0.08);
+}
+
+.advanced-card summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.advanced-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
 .actions {
   display: flex;
   gap: 10px;

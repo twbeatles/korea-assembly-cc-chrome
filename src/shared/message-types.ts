@@ -57,6 +57,7 @@ export interface SessionStatsPayload {
 export type PopupToContentMessage =
   | { type: "PING" }
   | { type: "GET_STATUS" }
+  | { type: "OPEN_INPAGE_PANEL" }
   | { type: "START_CAPTURE" }
   | { type: "STOP_CAPTURE" }
   | { type: "CLEAR_SESSION" }

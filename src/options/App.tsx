@@ -3,14 +3,66 @@ import { useEffect, useState } from "react";
 import { getSettings, resetSettings, saveSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
 
-const numericFields: Array<keyof ExtensionSettings> = [
+const BASIC_NUMBER_FIELDS: Array<keyof ExtensionSettings> = [
+  "runningAutoSaveDebounceMs",
+  "recentCopyLineCount",
+];
+
+const ADVANCED_NUMBER_FIELDS: Array<keyof ExtensionSettings> = [
   "keepaliveIntervalMs",
   "pollingFallbackIntervalMs",
   "maxBufferLength",
   "noiseMinLength",
-  "runningAutoSaveDebounceMs",
-  "recentCopyLineCount",
 ];
+
+function getFieldLabel(field: keyof ExtensionSettings): string {
+  switch (field) {
+    case "runningAutoSaveDebounceMs":
+      return "자동 저장 간격(ms)";
+    case "recentCopyLineCount":
+      return "방금 복사 줄 수";
+    case "keepaliveIntervalMs":
+      return "같은 자막 유지 확인 간격(ms)";
+    case "pollingFallbackIntervalMs":
+      return "보조 확인 간격(ms)";
+    case "maxBufferLength":
+      return "최대 기억 길이";
+    case "noiseMinLength":
+      return "짧은 잡음 판단 기준";
+    default:
+      return field;
+  }
+}
+
+function getFieldDescription(field: keyof ExtensionSettings): string {
+  switch (field) {
+    case "runningAutoSaveDebounceMs":
+      return "수집 중 저장을 너무 자주 하지 않도록 간격을 둡니다.";
+    case "recentCopyLineCount":
+      return "최근 내용 복사 버튼에 포함할 문장 수입니다.";
+    case "keepaliveIntervalMs":
+      return "같은 자막이 이어질 때 종료 시각을 얼마나 자주 늘릴지 정합니다.";
+    case "pollingFallbackIntervalMs":
+      return "자동 감시가 약할 때 페이지를 다시 읽는 간격입니다.";
+    case "maxBufferLength":
+      return "중복 확인에 쓰는 내부 기억 길이입니다.";
+    case "noiseMinLength":
+      return "짧고 의미 없는 텍스트를 걸러낼 기준입니다.";
+    default:
+      return "";
+  }
+}
+
+function getFieldMin(field: keyof ExtensionSettings): number {
+  switch (field) {
+    case "maxBufferLength":
+      return 1000;
+    case "runningAutoSaveDebounceMs":
+      return 250;
+    default:
+      return 1;
+  }
+}
 
 export default function App() {
   const [settings, setSettings] = useState<ExtensionSettings | null>(null);
@@ -20,7 +72,7 @@ export default function App() {
     void getSettings()
       .then((data) => {
         setSettings(data);
-        setMessage("설정을 수정한 뒤 저장하세요.");
+        setMessage("필요한 값을 바꾼 뒤 저장하세요.");
       })
       .catch((error: unknown) => {
         setMessage(error instanceof Error ? error.message : "설정을 읽지 못했습니다.");
@@ -46,7 +98,7 @@ export default function App() {
   const handleReset = async (): Promise<void> => {
     const next = await resetSettings();
     setSettings(next);
-    setMessage("기본 설정으로 되돌렸습니다.");
+    setMessage("기본값으로 되돌렸습니다.");
   };
 
   if (!settings) {
@@ -57,8 +109,8 @@ export default function App() {
     <main className="options-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">Options</p>
-          <h1>국회 자막 추출 설정</h1>
+          <p className="eyebrow">쉽게 설정</p>
+          <h1>자막 도우미 환경 설정</h1>
         </div>
         <p>{message}</p>
       </header>
@@ -66,8 +118,8 @@ export default function App() {
       <section className="settings-grid">
         <label className="setting-card">
           <div>
-            <strong>자동 스크롤</strong>
-            <span>popup preview 영역을 최신 항목에 맞춰 유지합니다.</span>
+            <strong>자동으로 따라가기</strong>
+            <span>내용이 늘어나면 화면을 맨 아래로 맞춥니다.</span>
           </div>
           <input
             type="checkbox"
@@ -78,32 +130,8 @@ export default function App() {
 
         <label className="setting-card">
           <div>
-            <strong>디버그 로깅</strong>
-            <span>content script 콘솔 로그를 상세하게 남깁니다.</span>
-          </div>
-          <input
-            type="checkbox"
-            checked={settings.debugLogging}
-            onChange={(event) => updateField("debugLogging", event.target.checked)}
-          />
-        </label>
-
-        <label className="setting-card">
-          <div>
-            <strong>노이즈 필터 활성화</strong>
-            <span>숫자-only / 기호-only 자막을 필터링합니다.</span>
-          </div>
-          <input
-            type="checkbox"
-            checked={settings.noiseFilterEnabled}
-            onChange={(event) => updateField("noiseFilterEnabled", event.target.checked)}
-          />
-        </label>
-
-        <label className="setting-card">
-          <div>
-            <strong>실행 중 자동 저장</strong>
-            <span>수집 중인 세션 snapshot을 백그라운드 저장소에 주기적으로 저장합니다.</span>
+            <strong>수집 중 자동 저장</strong>
+            <span>모으는 동안 중간 결과를 자동으로 저장해 둡니다.</span>
           </div>
           <input
             type="checkbox"
@@ -112,37 +140,15 @@ export default function App() {
           />
         </label>
 
-        {numericFields.map((field) => (
+        {BASIC_NUMBER_FIELDS.map((field) => (
           <label className="setting-card input-card" key={field}>
             <div>
-              <strong>
-                {field === "keepaliveIntervalMs" && "keepalive 간격(ms)"}
-                {field === "pollingFallbackIntervalMs" && "polling fallback 간격(ms)"}
-                {field === "maxBufferLength" && "최대 compact 버퍼 길이"}
-                {field === "noiseMinLength" && "노이즈 최소 길이"}
-                {field === "runningAutoSaveDebounceMs" && "자동 저장 debounce(ms)"}
-                {field === "recentCopyLineCount" && "최근 복사 줄 수"}
-              </strong>
-              <span>
-                {field === "keepaliveIntervalMs" && "동일 raw 유지 시 endTime 갱신 간격"}
-                {field === "pollingFallbackIntervalMs" && "observer 불안정 시 polling 간격"}
-                {field === "maxBufferLength" && "compact history 메모리 상한"}
-                {field === "noiseMinLength" && "후단 정제용 최소 길이 기준"}
-                {field === "runningAutoSaveDebounceMs" &&
-                  "실행 중 session-store 갱신을 지연시켜 과도한 쓰기를 줄입니다."}
-                {field === "recentCopyLineCount" &&
-                  "popup에서 최근 복사 버튼이 포함할 문장 수입니다."}
-              </span>
+              <strong>{getFieldLabel(field)}</strong>
+              <span>{getFieldDescription(field)}</span>
             </div>
             <input
               type="number"
-              min={
-                field === "maxBufferLength"
-                  ? 1000
-                  : field === "runningAutoSaveDebounceMs"
-                    ? 250
-                    : 1
-              }
+              min={getFieldMin(field)}
               value={settings[field]}
               onChange={(event) =>
                 updateField(field, Number(event.target.value) as ExtensionSettings[typeof field])
@@ -153,8 +159,8 @@ export default function App() {
 
         <label className="setting-card input-card full-width">
           <div>
-            <strong>파일명 패턴</strong>
-            <span>{`지원 토큰: {date}, {committee}, {time}`}</span>
+            <strong>파일 이름 규칙</strong>
+            <span>{`쓸 수 있는 값: {date}, {committee}, {time}`}</span>
           </div>
           <input
             type="text"
@@ -162,12 +168,61 @@ export default function App() {
             onChange={(event) => updateField("filenamePattern", event.target.value)}
           />
         </label>
+
+        <details className="advanced-card full-width">
+          <summary>고급 설정 보기</summary>
+          <div className="advanced-grid">
+            <label className="setting-card">
+              <div>
+                <strong>불필요한 자막 걸러내기</strong>
+                <span>숫자만 있거나 기호만 있는 자막을 자동으로 줄입니다.</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.noiseFilterEnabled}
+                onChange={(event) => updateField("noiseFilterEnabled", event.target.checked)}
+              />
+            </label>
+
+            <label className="setting-card">
+              <div>
+                <strong>개발용 자세한 기록</strong>
+                <span>문제가 있을 때 브라우저 콘솔에 더 많은 정보를 남깁니다.</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.debugLogging}
+                onChange={(event) => updateField("debugLogging", event.target.checked)}
+              />
+            </label>
+
+            {ADVANCED_NUMBER_FIELDS.map((field) => (
+              <label className="setting-card input-card" key={field}>
+                <div>
+                  <strong>{getFieldLabel(field)}</strong>
+                  <span>{getFieldDescription(field)}</span>
+                </div>
+                <input
+                  type="number"
+                  min={getFieldMin(field)}
+                  value={settings[field]}
+                  onChange={(event) =>
+                    updateField(
+                      field,
+                      Number(event.target.value) as ExtensionSettings[typeof field],
+                    )
+                  }
+                />
+              </label>
+            ))}
+          </div>
+        </details>
       </section>
 
       <footer className="actions">
         <button onClick={handleSave}>저장</button>
         <button className="secondary" onClick={handleReset}>
-          기본값 복원
+          기본값으로 되돌리기
         </button>
       </footer>
     </main>

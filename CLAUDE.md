@@ -7,7 +7,8 @@
 - 이 저장소의 활성 구현은 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 입니다.
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
-- 현재 UI 보강 범위에는 `popup 최근 자막 검색/복사`, `history 세션 내부 검색/복사`, `autosave 상태 표시`가 포함됩니다.
+- 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정` 중심의 보조 화면입니다.
+- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `autosave 상태 표시`가 포함됩니다.
 - 현재 기준 기본 검증 명령은 아래 3개입니다.
 
 ```bash
@@ -122,8 +123,10 @@ GEMINI.md
 
 ### 7.3 UX 보강 규칙
 
-- popup 검색은 최근 자막 목록에 대해 부분 문자열, 대소문자 비구분으로 동작합니다.
-- 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
+- top frame 의 content script 가 우측 패널을 자동으로 삽입합니다.
+- 기본 상태는 `펼쳐짐` 이고, 접으면 오른쪽의 `자막 보기` 탭만 남습니다.
+- popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
+- history 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 
 ## 8. 작업 시 주의사항
