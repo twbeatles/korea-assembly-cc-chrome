@@ -314,6 +314,27 @@ function applyStructuredRowsEvent(
   framePath?: number[],
 ): boolean {
   const activeRow = rows.at(-1) ?? null;
+  const lastEntry = state.entries.at(-1);
+
+  // nodeKey가 동일하면 텍스트가 바뀐 경우에만 업데이트(참조 확장프로그램 방식)
+  if (activeRow && lastEntry?.sourceNodeKey === activeRow.nodeKey) {
+    if (lastEntry.text !== activeRow.text) {
+      // 같은 nodeKey인데 텍스트가 바뀐 경우 → 마지막 entry를 제자리 업데이트
+      state = applyStructuredEntry(state, activeRow.text, previewText, now, settings, {
+        selector,
+        framePath,
+        sourceNodeKey: activeRow.nodeKey,
+        forceNewEntry: false,
+      }).state;
+      lastObservedStableRow = activeRow;
+      return true;
+    }
+    // 텍스트도 동일 → 아무것도 안 함
+    lastObservedStableRow = activeRow;
+    return false;
+  }
+
+  // 새로운 nodeKey → 신규 entry 추가
   const rowChanged =
     Boolean(activeRow) &&
     (!lastObservedStableRow ||
@@ -336,7 +357,7 @@ function applyStructuredRowsEvent(
     selector,
     framePath,
     sourceNodeKey: activeRow.nodeKey,
-    forceNewEntry: state.entries.at(-1)?.sourceNodeKey !== activeRow.nodeKey,
+    forceNewEntry: true,
   }).state;
 
   return true;
