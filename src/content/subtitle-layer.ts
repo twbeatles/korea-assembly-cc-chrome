@@ -64,6 +64,41 @@ function findActivationControl(root: ParentNode): { selector: string; element: H
   return null;
 }
 
+function walkFramesForControl(
+  rootDocument: Document,
+  depth: number = 0,
+  maxDepth: number = 3,
+): { selector: string; element: HTMLElement } | null {
+  if (depth > maxDepth) {
+    return null;
+  }
+
+  const direct = findActivationControl(rootDocument);
+  if (direct) {
+    return direct;
+  }
+
+  const frames = Array.from(
+    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+  );
+
+  for (const frame of frames) {
+    try {
+      const childDoc = frame.contentDocument;
+      if (!childDoc) continue;
+
+      const found = walkFramesForControl(childDoc, depth + 1, maxDepth);
+      if (found) {
+        return found;
+      }
+    } catch {
+      // Cross-origin access ignored
+    }
+  }
+
+  return null;
+}
+
 export function readSubtitleLayerState(root: ParentNode = document): SubtitleLayerState {
   const layer = root.querySelector(SUBTITLE_LAYER_SELECTOR);
   if (!isHTMLElement(layer)) {
@@ -93,7 +128,8 @@ export function tryDomSubtitleActivation(root: ParentNode = document): SubtitleA
     };
   }
 
-  const control = findActivationControl(root);
+  const isDoc = root.nodeType === Node.DOCUMENT_NODE;
+  const control = isDoc ? walkFramesForControl(root as Document) : findActivationControl(root);
   if (control) {
     control.element.click();
     return {
