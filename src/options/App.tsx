@@ -12,7 +12,7 @@ const ADVANCED_NUMBER_FIELDS: Array<keyof ExtensionSettings> = [
   "keepaliveIntervalMs",
   "pollingFallbackIntervalMs",
   "maxBufferLength",
-  "noiseMinLength",
+  "recentDuplicateMinLength",
 ];
 
 function getFieldLabel(field: keyof ExtensionSettings): string {
@@ -27,8 +27,8 @@ function getFieldLabel(field: keyof ExtensionSettings): string {
       return "보조 확인 간격(ms)";
     case "maxBufferLength":
       return "최대 기억 길이";
-    case "noiseMinLength":
-      return "짧은 잡음 판단 기준";
+    case "recentDuplicateMinLength":
+      return "중복 차단 최소 길이";
     default:
       return field;
   }
@@ -46,8 +46,8 @@ function getFieldDescription(field: keyof ExtensionSettings): string {
       return "자동 감시가 약할 때 페이지를 다시 읽는 간격입니다.";
     case "maxBufferLength":
       return "중복 확인에 쓰는 내부 기억 길이입니다.";
-    case "noiseMinLength":
-      return "짧고 의미 없는 텍스트를 걸러낼 기준입니다.";
+    case "recentDuplicateMinLength":
+      return "최근 자막 tail과 비교해 중복으로 무시할 최소 compact 길이입니다.";
     default:
       return "";
   }
@@ -119,7 +119,7 @@ export default function App() {
         <label className="setting-card">
           <div>
             <strong>자동으로 따라가기</strong>
-            <span>내용이 늘어나면 화면을 맨 아래로 맞춥니다.</span>
+            <span>페이지 패널의 실시간 내용과 최근 자막 목록을 자동으로 맨 아래로 맞춥니다.</span>
           </div>
           <input
             type="checkbox"
@@ -174,9 +174,9 @@ export default function App() {
           <div className="advanced-grid">
             <label className="setting-card">
               <div>
-                <strong>불필요한 자막 걸러내기</strong>
-                <span>숫자만 있거나 기호만 있는 자막을 자동으로 줄입니다.</span>
-              </div>
+            <strong>불필요한 자막 걸러내기</strong>
+            <span>숫자만 있거나 기호만 있는 자막을 자동으로 제외합니다. 끄면 원문을 최대한 남깁니다.</span>
+          </div>
               <input
                 type="checkbox"
                 checked={settings.noiseFilterEnabled}

@@ -52,10 +52,13 @@ describe("in-page panel", () => {
     const view = buildInPagePanelState(createSnapshot(), {
       collapsed: false,
       notice: "자막을 모으는 중입니다.",
+      autoScroll: true,
+      recentCopyLineCount: 5,
     });
 
     expect(view.visible).toBe(true);
     expect(view.collapsed).toBe(false);
+    expect(view.autoScroll).toBe(true);
     expect(view.statusLabel).toBe("수집 중");
     expect(view.committeeName).toBe("정무위원회");
     expect(view.notice).toBe("자막을 모으는 중입니다.");
@@ -68,6 +71,7 @@ describe("in-page panel", () => {
       onClearSession: vi.fn(),
       onSaveSession: vi.fn(),
       onExport: vi.fn(),
+      onCopyRecent: vi.fn(),
       onOpenHistory: vi.fn(),
       onOpenOptions: vi.fn(),
       onExpand: vi.fn(),
@@ -78,6 +82,8 @@ describe("in-page panel", () => {
       buildInPagePanelState(createSnapshot(), {
         collapsed: false,
         notice: "자막을 모으는 중입니다.",
+        autoScroll: true,
+        recentCopyLineCount: 5,
       }),
     );
 
@@ -89,6 +95,8 @@ describe("in-page panel", () => {
     expect(shadowRoot?.textContent).toContain("국회 자막 도우미");
     expect(shadowRoot?.textContent).toContain("정무위원회");
     expect(shadowRoot?.textContent).toContain("방금 나온 자막");
+    expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
+    expect(shadowRoot?.textContent).toContain("저장 / 내보내기");
 
     controller.destroy();
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
@@ -102,17 +110,20 @@ describe("in-page panel", () => {
       onClearSession: vi.fn(),
       onSaveSession: vi.fn(),
       onExport: vi.fn(),
+      onCopyRecent: vi.fn(),
       onOpenHistory: vi.fn(),
       onOpenOptions: vi.fn(),
       onExpand: vi.fn(),
       onCollapse: () => {
         collapsed = true;
         controller.update(
-          buildInPagePanelState(createSnapshot(), {
-            collapsed: true,
-            notice: "패널을 접었습니다.",
-          }),
-        );
+        buildInPagePanelState(createSnapshot(), {
+          collapsed: true,
+          notice: "패널을 접었습니다.",
+          autoScroll: true,
+          recentCopyLineCount: 5,
+        }),
+      );
       },
     });
 
@@ -120,6 +131,8 @@ describe("in-page panel", () => {
       buildInPagePanelState(createSnapshot(), {
         collapsed: false,
         notice: "자막을 모으는 중입니다.",
+        autoScroll: true,
+        recentCopyLineCount: 5,
       }),
     );
 
@@ -132,6 +145,39 @@ describe("in-page panel", () => {
     expect(collapsed).toBe(true);
     expect(shadowRoot?.querySelector(".host")?.classList.contains("collapsed")).toBe(true);
     expect(shadowRoot?.textContent).toContain("자막 보기");
+
+    controller.destroy();
+  });
+
+  it("does not force scroll when autoScroll is disabled", () => {
+    const controller = createInPagePanel({
+      onStartCapture: vi.fn(),
+      onStopCapture: vi.fn(),
+      onClearSession: vi.fn(),
+      onSaveSession: vi.fn(),
+      onExport: vi.fn(),
+      onCopyRecent: vi.fn(),
+      onOpenHistory: vi.fn(),
+      onOpenOptions: vi.fn(),
+      onExpand: vi.fn(),
+      onCollapse: vi.fn(),
+    });
+
+    controller.update(
+      buildInPagePanelState(createSnapshot(), {
+        collapsed: false,
+        notice: "자동 스크롤을 끈 상태입니다.",
+        autoScroll: false,
+        recentCopyLineCount: 3,
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const previewBox = shadowRoot?.querySelector(".preview-box") as HTMLDivElement | null;
+    const entryList = shadowRoot?.querySelector(".entry-list") as HTMLDivElement | null;
+
+    expect(previewBox?.scrollTop ?? 0).toBe(0);
+    expect(entryList?.scrollTop ?? 0).toBe(0);
 
     controller.destroy();
   });

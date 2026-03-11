@@ -1,10 +1,12 @@
 import {
   applyPersistSuccess,
+  clearScheduledRunningPersist,
   resolveRunningPersistDebounceMs,
+  scheduleRunningPersistTimer,
   shouldPersistFinalSession,
   shouldScheduleRunningPersist,
 } from "../src/content/autosave";
-import { createEmptySessionState } from "../src/core/subtitle-models";
+import { createEmptySessionState, toSessionRecord } from "../src/core/subtitle-models";
 import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
 
 describe("content autosave policy", () => {
@@ -52,5 +54,50 @@ describe("content autosave policy", () => {
       }),
     ).toBe(DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs);
     expect(resolveRunningPersistDebounceMs({ runningAutoSaveDebounceMs: 100 })).toBe(250);
+  });
+
+  it("clears the pending timer handle", () => {
+    const clearTimer = vi.fn();
+
+    expect(clearScheduledRunningPersist(42, clearTimer)).toBeNull();
+    expect(clearTimer).toHaveBeenCalledWith(42);
+  });
+
+  it("skips persisting when the session stops before debounce fires", async () => {
+    vi.useFakeTimers();
+    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    state.status = "running";
+    state.startedAt = "2026-03-10T09:00:00.000Z";
+    state.createdAt = "2026-03-10T09:00:00.000Z";
+    state.updatedAt = "2026-03-10T09:00:00.000Z";
+
+    const persistRecord = vi.fn().mockResolvedValue(toSessionRecord(state, "running"));
+    const onPersisted = vi.fn();
+    const onError = vi.fn();
+
+    const timer = scheduleRunningPersistTimer({
+      currentTimer: null,
+      delayMs: 800,
+      shouldSchedule: true,
+      clearTimer: (timerId) => clearTimeout(timerId),
+      setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
+      getSnapshot: () => ({
+        status: state.status,
+        record: toSessionRecord(state, "running"),
+      }),
+      persistRecord,
+      onPersisted,
+      onError,
+    });
+
+    expect(timer).not.toBeNull();
+
+    state.status = "stopped";
+    await vi.advanceTimersByTimeAsync(800);
+
+    expect(persistRecord).not.toHaveBeenCalled();
+    expect(onPersisted).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    vi.useRealTimers();
   });
 });

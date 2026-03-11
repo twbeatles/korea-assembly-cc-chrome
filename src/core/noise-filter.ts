@@ -61,3 +61,7 @@ export function isMeaningfulSubtitleText(text: string): boolean {
 
   return !isNoiseOnly(normalized);
 }
+
+export function hasRequiredSubtitleContent(text: string): boolean {
+  return Boolean(normalizeForNoiseCheck(text));
+}

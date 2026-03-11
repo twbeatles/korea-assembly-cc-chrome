@@ -14,6 +14,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         history: resolve(__dirname, "history.html"),
+        offscreen: resolve(__dirname, "offscreen.html"),
       },
     },
   },

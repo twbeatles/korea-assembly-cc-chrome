@@ -1,3 +1,5 @@
+import { OBSERVER_ACTIVATE_EVENT } from "../shared/constants";
+
 const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";
 const OBSERVER_STOP_EVENT = "assembly-subtitle-observer:stop";
 const OBSERVER_BRIDGE_SOURCE = "assembly-subtitle-observer";
@@ -69,6 +71,91 @@ function queryAll(selector: string): HTMLElement[] {
   } catch {
     return [];
   }
+}
+
+function isVisible(node: HTMLElement | null): boolean {
+  if (!node) {
+    return false;
+  }
+
+  const style = window.getComputedStyle(node);
+  return style.display !== "none" && style.visibility !== "hidden";
+}
+
+function isSubtitleLayerVisible(): boolean {
+  const layer = queryOne("#viewSubtit");
+  return isVisible(layer);
+}
+
+function isActivationControlActive(node: HTMLElement): boolean {
+  const className = String(node.className || "");
+  const title = String(node.getAttribute("title") || "");
+  const ariaPressed = String(node.getAttribute("aria-pressed") || "");
+  return /\bon\b/.test(className) || /(끄기|닫기)/.test(title) || ariaPressed === "true";
+}
+
+function clickActivationControl(selector: string): boolean {
+  const button = queryOne(selector);
+  if (!button || !isVisible(button) || isActivationControlActive(button)) {
+    return false;
+  }
+
+  button.click();
+  return true;
+}
+
+function invokeActivationFunction<T extends unknown[]>(
+  candidate: unknown,
+  ...args: T
+): boolean {
+  if (typeof candidate !== "function") {
+    return false;
+  }
+
+  try {
+    candidate(...args);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function ensureSubtitleLayerVisible(): boolean {
+  if (isSubtitleLayerVisible()) {
+    return true;
+  }
+
+  if (invokeActivationFunction((window as Window & { smi_mode_act?: (value: number) => void }).smi_mode_act, 1)) {
+    return true;
+  }
+
+  if (invokeActivationFunction((window as Window & { smi_on?: () => void }).smi_on)) {
+    return true;
+  }
+
+  if (
+    invokeActivationFunction(
+      (window as Window & { layerSubtit?: () => void }).layerSubtit,
+    )
+  ) {
+    return true;
+  }
+
+  if (clickActivationControl(".btn_subtit_ai") || clickActivationControl(".btn_subtit_def")) {
+    return true;
+  }
+
+  if (clickActivationControl(".btn_subtit") || clickActivationControl("#smi_btn")) {
+    return true;
+  }
+
+  const layer = queryOne("#viewSubtit");
+  if (layer) {
+    layer.style.display = "block";
+    return isSubtitleLayerVisible();
+  }
+
+  return false;
 }
 
 function readContainerText(node: HTMLElement | null): string {
@@ -350,6 +437,17 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
     const state = (window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY];
     if (state) {
       teardownBridge(state);
+    }
+  });
+
+  window.addEventListener(OBSERVER_ACTIVATE_EVENT, () => {
+    const state = (window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY];
+    const activated = ensureSubtitleLayerVisible();
+    if (state && activated) {
+      installBridge({
+        selectors: state.selectors,
+        pollingIntervalMs: state.pollingIntervalMs,
+      });
     }
   });
 }

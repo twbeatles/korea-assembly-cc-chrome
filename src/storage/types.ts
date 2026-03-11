@@ -6,7 +6,7 @@ export interface ExtensionSettings {
   pollingFallbackIntervalMs: number;
   maxBufferLength: number;
   noiseFilterEnabled: boolean;
-  noiseMinLength: number;
+  recentDuplicateMinLength: number;
   filenamePattern: string;
   runningAutoSaveEnabled: boolean;
   runningAutoSaveDebounceMs: number;

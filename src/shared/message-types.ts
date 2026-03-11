@@ -72,6 +72,7 @@ export type ContentToPopupMessage =
 
 export type BackgroundCommandMessage =
   | { type: "ENSURE_CONTENT_SCRIPT"; tabId: number; url?: string }
+  | { type: "GET_FRAME_FORWARD_NONCE" }
   | {
       type: "DOWNLOAD_REQUEST";
       filename: string;
@@ -82,7 +83,7 @@ export type BackgroundCommandMessage =
   | { type: "OPEN_OPTIONS_PAGE" };
 
 export type BackgroundCommandResponse =
-  | { ok: true; ready?: boolean; requiresReload?: boolean; downloadId?: number }
+  | { ok: true; ready?: boolean; requiresReload?: boolean; downloadId?: number; nonce?: string }
   | { ok: false; error: string; requiresReload?: boolean };
 
 export interface ObserverBridgeEvent {
@@ -98,5 +99,26 @@ export interface ObserverBridgeEvent {
 
 export interface FrameForwardMessage {
   source: string;
+  nonce: string;
   event: ObserverBridgeEvent;
 }
+
+export interface FrameForwardNonceMessage {
+  source: string;
+  nonce: string;
+}
+
+export type OffscreenDocumentMessage =
+  | {
+      type: "OFFSCREEN_CREATE_BLOB_URL";
+      content: string;
+      mimeType: string;
+    }
+  | {
+      type: "OFFSCREEN_REVOKE_BLOB_URL";
+      url: string;
+    };
+
+export type OffscreenDocumentResponse =
+  | { ok: true; url?: string }
+  | { ok: false; error: string };

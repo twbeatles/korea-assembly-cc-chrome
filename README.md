@@ -30,6 +30,9 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - 저장된 기록 관리
 - `TXT / SRT / VTT / JSON` 내보내기
 - 사이트 안 우측 패널에서 실시간 자막 확인
+- 수집 시작 시 AI 자막 레이어 자동 활성화 시도
+- 페이지 패널 / history에서 최근 `N`줄 복사
+- `autoScroll`, 중복 차단 최소 길이, noise filter 토글 등 옵션 반영
 - popup 보조 화면
 - history 기록 내부 검색 / 복사
 - 실행 중 자동 저장 상태 표시 및 설정
@@ -140,15 +143,19 @@ npm run build
 1. `https://assembly.webcast.go.kr/*` 페이지를 연다
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
 3. `자막 모으기`를 눌러 수집을 시작한다
-4. `실시간 내용`과 `방금 나온 자막`을 바로 확인한다
-5. 필요하면 `지금 저장` 또는 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다
-6. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
-7. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`을 빠르게 여는 보조 화면으로 사용한다
+4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 실패하면 패널 notice 로 수동 클릭 안내를 표시한다
+5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인한다
+6. 필요하면 접이식 `저장 / 내보내기` 메뉴를 열어 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다
+7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다
+8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
+9. 브라우저/확장을 다시 시작하면 남아 있던 `running` 세션은 자동으로 `stopped`로 정리된다
+10. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`을 빠르게 여는 보조 화면으로 사용한다
 
 ## 권한 설명
 
 - `storage`: options 저장, lightweight state 저장
 - `downloads`: TXT/SRT/VTT/JSON 파일 다운로드
+- `offscreen`: 대용량 export용 Blob URL 생성
 - `activeTab`: 현재 탭 상태 조회
 - `scripting`: MV3 런타임 보조 권한
 - `host_permissions: https://assembly.webcast.go.kr/*`
@@ -162,6 +169,7 @@ npm run build
 - popup이 닫혀도 수집은 계속됩니다
 - top frame에 우측 패널을 삽입해 현재 상태를 바로 보여 줍니다
 - page-world `MutationObserver` 이벤트와 polling fallback을 파이프라인에 전달합니다
+- 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도합니다
 
 ### injected observer
 
@@ -178,16 +186,19 @@ npm run build
 ### storage
 
 - 세션 본문은 `IndexedDB`를 우선 사용합니다
-- `IndexedDB`가 실패하면 `chrome.storage.local` fallback을 사용합니다
+- `IndexedDB`가 실패하면 `chrome.storage.local` per-session fallback을 사용합니다
 - 두 저장소가 모두 실패하는 극단적 상황에서는 현재 런타임 동안 메모리 fallback을 유지합니다
 - 설정은 `chrome.storage.local`
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
+- 브라우저/확장 cold start 시 남아 있던 `running` 세션은 `stopped`로 자동 정리됩니다
 
 ### background
 
-- 다운로드 처리
+- offscreen Blob 우선 + data URL fallback 다운로드 처리
 - history/options 페이지 열기
 - content script 준비 여부 확인
+- 이미 열려 있던 탭에는 필요 시 content script 재주입 시도
+- frame forwarding nonce 발급
 
 ## 알려진 한계
 
@@ -195,8 +206,9 @@ npm run build
 - cross-origin frame 내부 DOM은 브라우저 보안 정책 때문에 직접 순회하지 못할 수 있습니다
 - 일부 페이지는 observer보다 polling fallback 의존도가 높을 수 있습니다
 - `xcode -> xcgcd` 자동 보완 흐름은 이번 1차 범위에 포함하지 않았습니다
-- 확장 설치 전에 열려 있던 탭은 새로고침이 필요할 수 있습니다
+- 확장 설치 전에 열려 있던 탭은 재주입으로 복구를 시도하지만, 탭 상태에 따라 새로고침이 필요할 수 있습니다
 - 브라우저 저장소가 모두 실패하면 세션 persistence는 현재 탭 런타임 범위로 제한됩니다
+- 매우 큰 export는 Blob 경로를 우선 사용하지만, 브라우저 정책에 따라 data URL fallback으로 내려갈 수 있습니다
 
 ## 향후 계획
 

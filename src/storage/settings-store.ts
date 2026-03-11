@@ -3,6 +3,10 @@ import type { ExtensionSettings } from "./types";
 
 let memorySettings: ExtensionSettings = { ...DEFAULT_EXTENSION_SETTINGS };
 
+type StoredSettings = Partial<ExtensionSettings> & {
+  noiseMinLength?: number;
+};
+
 function getChromeLocalStorage(): typeof chrome.storage.local | null {
   if (typeof chrome === "undefined" || !chrome.storage?.local) {
     return null;
@@ -18,7 +22,9 @@ function sanitizeNumber(value: unknown, fallback: number, minimum: number): numb
   return fallback;
 }
 
-function sanitizeSettings(settings: Partial<ExtensionSettings>): ExtensionSettings {
+function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
+  const legacyRecentDuplicateMinLength =
+    settings.recentDuplicateMinLength ?? settings.noiseMinLength;
   return {
     autoScroll:
       typeof settings.autoScroll === "boolean"
@@ -43,9 +49,9 @@ function sanitizeSettings(settings: Partial<ExtensionSettings>): ExtensionSettin
       typeof settings.noiseFilterEnabled === "boolean"
         ? settings.noiseFilterEnabled
         : DEFAULT_EXTENSION_SETTINGS.noiseFilterEnabled,
-    noiseMinLength: sanitizeNumber(
-      settings.noiseMinLength,
-      DEFAULT_EXTENSION_SETTINGS.noiseMinLength,
+    recentDuplicateMinLength: sanitizeNumber(
+      legacyRecentDuplicateMinLength,
+      DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
       1,
     ),
     filenamePattern:
@@ -82,7 +88,7 @@ export async function getSettings(): Promise<ExtensionSettings> {
   const data = await localStorage.get(EXTENSION_STORAGE_KEY);
   const merged = sanitizeSettings({
     ...DEFAULT_EXTENSION_SETTINGS,
-    ...(data[EXTENSION_STORAGE_KEY] as Partial<ExtensionSettings> | undefined),
+    ...(data[EXTENSION_STORAGE_KEY] as StoredSettings | undefined),
   });
   memorySettings = merged;
   return merged;

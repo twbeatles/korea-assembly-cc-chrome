@@ -3,18 +3,22 @@ import {
   applyPreview,
   applyReset,
   finalizeSession,
+  flushPendingPreviews,
 } from "../core/subtitle-pipeline";
 import {
   createEmptySessionState,
   getSessionCharCount,
   toSessionRecord,
+  type SessionRecord,
   type SessionState,
 } from "../core/subtitle-models";
 import { compactSubtitleText, normalizeRawText } from "../core/text-normalizer";
 import {
   EXTENSION_STORAGE_KEY,
+  FRAME_FORWARD_NONCE_SOURCE,
   FRAME_FORWARD_SOURCE,
   OBSERVER_BRIDGE_SOURCE,
+  OBSERVER_ACTIVATE_EVENT,
   OBSERVER_CONFIG_EVENT,
   PIPELINE_DEFAULTS,
   POPUP_PORT_NAME,
@@ -22,11 +26,14 @@ import {
 } from "../shared/constants";
 import {
   applyPersistSuccess,
+  clearScheduledRunningPersist,
   resolveRunningPersistDebounceMs,
+  scheduleRunningPersistTimer,
   shouldPersistFinalSession,
   shouldScheduleRunningPersist,
 } from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
+import { buildCopyText, copyTextToClipboard } from "../shared/copy-utils";
 import type {
   ContentToPopupMessage,
   FrameForwardMessage,
@@ -44,11 +51,13 @@ import { estimateRecentRaw } from "./dom-probe";
 import { exportSessionData, saveSession, updateRunningSession } from "../storage/session-store";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
+import { tryDomSubtitleActivation, waitForSubtitleLayer } from "./subtitle-layer";
 
 const isTopFrame = window.top === window;
 const localFramePath = computeCurrentFramePath();
 const injectedScriptId = "assembly-subtitle-observer-script";
 const DEFAULT_IN_PAGE_NOTICE = "이 페이지 오른쪽에서 자막을 바로 볼 수 있습니다.";
+const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-script";
 
 let settings: ExtensionSettings = {
   autoScroll: true,
@@ -56,7 +65,7 @@ let settings: ExtensionSettings = {
   pollingFallbackIntervalMs: 200,
   maxBufferLength: PIPELINE_DEFAULTS.confirmedCompactMaxLength,
   noiseFilterEnabled: true,
-  noiseMinLength: 3,
+  recentDuplicateMinLength: PIPELINE_DEFAULTS.recentDuplicateMinLength,
   filenamePattern: "{date}_{committee}_{time}",
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
@@ -73,6 +82,8 @@ let localHadProbeText = false;
 let panelCollapsed = false;
 let panelNotice = DEFAULT_IN_PAGE_NOTICE;
 let inPagePanel: InPagePanelController | null = null;
+let frameForwardNonce = "";
+let lastSubtitleActivationAttemptAt = 0;
 
 function setPanelNotice(message: string): void {
   panelNotice = message;
@@ -188,6 +199,25 @@ function syncPortState(port: chrome.runtime.Port, requiresReload = false): void 
   createPopupMessages(requiresReload).forEach((message) => postToPort(port, message));
 }
 
+function clearRunningPersistTimer(): void {
+  persistTimer = clearScheduledRunningPersist(persistTimer, (timerId) => window.clearTimeout(timerId));
+}
+
+function buildPreparedSessionState(now = Date.now()): SessionState {
+  return flushPendingPreviews(state, now, settings);
+}
+
+function buildPreparedSessionRecord(
+  persistedStatus: "running" | "saved" | "stopped",
+  now = Date.now(),
+): SessionRecord {
+  const preparedState =
+    persistedStatus === "stopped"
+      ? finalizeSession(state, now, settings).state
+      : buildPreparedSessionState(now);
+  return toSessionRecord(preparedState, persistedStatus);
+}
+
 function updateInPagePanel(): void {
   if (!isTopFrame || !inPagePanel) {
     return;
@@ -197,6 +227,8 @@ function updateInPagePanel(): void {
     buildInPagePanelState(buildStatusSnapshot(false), {
       collapsed: panelCollapsed,
       notice: panelNotice,
+      autoScroll: settings.autoScroll,
+      recentCopyLineCount: settings.recentCopyLineCount,
     }),
   );
 }
@@ -207,38 +239,34 @@ function syncUserInterfaces(requiresReload = false): void {
 }
 
 function scheduleRunningPersist(): void {
-  if (!shouldScheduleRunningPersist(isTopFrame, state, settings)) {
-    if (persistTimer) {
-      window.clearTimeout(persistTimer);
-      persistTimer = null;
-    }
-    return;
-  }
-
-  if (persistTimer) {
-    window.clearTimeout(persistTimer);
-  }
-
-  persistTimer = window.setTimeout(() => {
-    const record = toSessionRecord(state, "running");
-    void updateRunningSession(record)
-      .then((saved) => {
-        state = applyPersistSuccess(state, saved.updatedAt);
-        syncUserInterfaces();
-      })
-      .catch((error: unknown) => {
-        reportRuntimeError("실행 중 세션 저장에 실패했습니다.", error);
-      });
-  }, resolveRunningPersistDebounceMs(settings));
+  persistTimer = scheduleRunningPersistTimer({
+    currentTimer: persistTimer,
+    delayMs: resolveRunningPersistDebounceMs(settings),
+    shouldSchedule: shouldScheduleRunningPersist(isTopFrame, state, settings),
+    clearTimer: (timerId) => window.clearTimeout(timerId),
+    setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
+    getSnapshot: () => ({
+      status: state.status,
+      record: buildPreparedSessionRecord("running"),
+    }),
+    persistRecord: updateRunningSession,
+    onPersisted: (saved) => {
+      state = applyPersistSuccess(state, saved.updatedAt);
+      syncUserInterfaces();
+    },
+    onError: (error) => {
+      reportRuntimeError("실행 중 세션 저장에 실패했습니다.", error);
+    },
+  });
 }
 
-async function persistStoppedSession(): Promise<void> {
-  if (!shouldPersistFinalSession(isTopFrame, state.entries.length)) {
+async function persistStoppedSession(record: SessionRecord): Promise<void> {
+  if (!shouldPersistFinalSession(isTopFrame, record.entries.length)) {
     return;
   }
 
   try {
-    const saved = await saveSession(toSessionRecord(state, "stopped"));
+    const saved = await saveSession(record);
     state = applyPersistSuccess(state, saved.updatedAt);
     setPanelNotice("모은 자막을 저장했습니다.");
   } catch (error) {
@@ -247,12 +275,13 @@ async function persistStoppedSession(): Promise<void> {
 }
 
 async function saveCurrentSessionSnapshot(): Promise<void> {
-  if (!shouldPersistFinalSession(isTopFrame, state.entries.length)) {
+  const record = buildPreparedSessionRecord("saved");
+  if (!shouldPersistFinalSession(isTopFrame, record.entries.length)) {
     return;
   }
 
   try {
-    const saved = await saveSession(toSessionRecord(state, "saved"));
+    const saved = await saveSession(record);
     state = applyPersistSuccess(state, saved.updatedAt);
     setPanelNotice("현재까지 모은 내용을 저장했습니다.");
   } catch (error) {
@@ -269,6 +298,21 @@ function dispatchObserverConfig(): void {
       },
     }),
   );
+}
+
+function requestSubtitleLayerActivation(): void {
+  lastSubtitleActivationAttemptAt = Date.now();
+  tryDomSubtitleActivation();
+  window.dispatchEvent(new CustomEvent(OBSERVER_ACTIVATE_EVENT));
+}
+
+async function ensureSubtitleLayerActive(): Promise<boolean> {
+  requestSubtitleLayerActivation();
+  const layer = await waitForSubtitleLayer({
+    timeoutMs: Math.max(1200, settings.pollingFallbackIntervalMs * 10),
+    intervalMs: Math.max(80, settings.pollingFallbackIntervalMs),
+  });
+  return layer.visible;
 }
 
 async function injectObserverScript(): Promise<void> {
@@ -297,8 +341,13 @@ function forwardToTop(event: ObserverBridgeEvent): void {
     return;
   }
 
+  if (!frameForwardNonce) {
+    return;
+  }
+
   const payload: FrameForwardMessage = {
     source: FRAME_FORWARD_SOURCE,
+    nonce: frameForwardNonce,
     event,
   };
   window.top?.postMessage(payload, "*");
@@ -331,7 +380,7 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     }
 
     if (event.kind === "subtitle:reset") {
-      state = applyReset(state, now).state;
+      state = applyReset(state, now, settings).state;
       setPanelNotice("자막 영역이 비워져서 내용을 다시 모으고 있습니다.");
       scheduleRunningPersist();
       syncUserInterfaces();
@@ -440,6 +489,9 @@ function startTopFrameFallback(): void {
 
       const probe = probeBestAccessibleSubtitle(state.currentSelector);
       if (!probe.found || !probe.text) {
+        if (now - lastSubtitleActivationAttemptAt >= 2000) {
+          requestSubtitleLayerActivation();
+        }
         return;
       }
 
@@ -460,6 +512,7 @@ function startTopFrameFallback(): void {
 }
 
 function resetRuntimeState(): void {
+  clearRunningPersistTimer();
   state = createEmptySessionState(
     window.location.href,
     document.title,
@@ -467,6 +520,7 @@ function resetRuntimeState(): void {
   );
   localLastProbeCompact = "";
   localHadProbeText = false;
+  lastSubtitleActivationAttemptAt = 0;
   setPanelNotice(DEFAULT_IN_PAGE_NOTICE);
 }
 
@@ -482,6 +536,16 @@ async function startCapture(): Promise<void> {
   state.committeeName = deriveCommitteeName(document.title);
   setPanelNotice("자막 모으기를 시작했습니다.");
   dispatchObserverConfig();
+  syncUserInterfaces();
+
+  const subtitleLayerReady = await ensureSubtitleLayerActive().catch((error: unknown) => {
+    reportRuntimeError("AI 자막 레이어를 자동으로 열지 못했습니다.", error);
+    return false;
+  });
+  if (!subtitleLayerReady) {
+    setPanelNotice("자막 모으기를 시작했습니다. 페이지의 'AI 자막보기'를 한 번 눌러주세요.");
+  }
+
   if (settings.runningAutoSaveEnabled) {
     try {
       const saved = await updateRunningSession(toSessionRecord(state, "running"));
@@ -494,21 +558,24 @@ async function startCapture(): Promise<void> {
 }
 
 async function stopCapture(): Promise<void> {
-  state = finalizeSession(state, Date.now()).state;
+  clearRunningPersistTimer();
+  const now = Date.now();
+  const stoppedRecord = buildPreparedSessionRecord("stopped", now);
+  state = finalizeSession(state, now, settings).state;
   setPanelNotice("자막 모으기를 멈췄습니다.");
-  await persistStoppedSession();
+  await persistStoppedSession(stoppedRecord);
   syncUserInterfaces();
 }
 
 async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Promise<void> {
-  if (!state.entries.length) {
+  const record = buildPreparedSessionRecord(state.status === "running" ? "running" : "stopped");
+  if (!record.entries.length) {
     setPanelNotice("먼저 자막을 모은 뒤 파일로 저장하세요.");
     syncUserInterfaces();
     return;
   }
 
-  const session = toSessionRecord(state, state.status === "running" ? "running" : "stopped");
-  const payload = await exportSessionData(session, format, settings.filenamePattern);
+  const payload = await exportSessionData(record, format, settings.filenamePattern);
   const response = await sendRuntimeMessage({
     type: "DOWNLOAD_REQUEST",
     filename: payload.filename,
@@ -519,6 +586,23 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
     throw new Error(response.error);
   }
   setPanelNotice(`${payload.filename} 파일 저장 창을 열었습니다.`);
+  syncUserInterfaces();
+}
+
+async function copyRecentSessionLines(): Promise<void> {
+  const prepared = buildPreparedSessionState();
+  const copyText = buildCopyText(prepared.entries, {
+    limit: settings.recentCopyLineCount,
+  });
+
+  if (!copyText) {
+    setPanelNotice("복사할 자막이 아직 없습니다.");
+    syncUserInterfaces();
+    return;
+  }
+
+  await copyTextToClipboard(copyText);
+  setPanelNotice(`최근 ${settings.recentCopyLineCount}줄을 복사했습니다.`);
   syncUserInterfaces();
 }
 
@@ -593,6 +677,14 @@ function mountInPagePanel(): void {
       void exportCurrentSession(format).catch((error: unknown) => {
         reportRuntimeError(
           error instanceof Error ? error.message : "파일 저장을 시작하지 못했습니다.",
+          error,
+        );
+      });
+    },
+    onCopyRecent: () => {
+      void copyRecentSessionLines().catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "최근 자막 복사에 실패했습니다.",
           error,
         );
       });
@@ -720,13 +812,34 @@ function bindSettingsChanges(): void {
     startLocalPolling();
     startTopFrameFallback();
 
-    if (!settings.runningAutoSaveEnabled && persistTimer) {
-      window.clearTimeout(persistTimer);
-      persistTimer = null;
+    if (!settings.runningAutoSaveEnabled) {
+      clearRunningPersistTimer();
     }
 
     syncUserInterfaces();
   });
+}
+
+function isObserverBridgeEventMessage(
+  data: Partial<ObserverBridgeEvent>,
+): data is ObserverBridgeEvent {
+  return (
+    typeof data.source === "string" &&
+    data.source === OBSERVER_BRIDGE_SOURCE &&
+    typeof data.kind === "string" &&
+    typeof data.timestamp === "number" &&
+    typeof data.sourceUrl === "string"
+  );
+}
+
+function isForwardedFrameMessage(data: Partial<FrameForwardMessage>): data is FrameForwardMessage {
+  return (
+    typeof data.source === "string" &&
+    data.source === FRAME_FORWARD_SOURCE &&
+    typeof data.nonce === "string" &&
+    typeof data.event === "object" &&
+    data.event !== null
+  );
 }
 
 function bindBridgeMessages(): void {
@@ -736,17 +849,30 @@ function bindBridgeMessages(): void {
       return;
     }
 
-    if (data.source === OBSERVER_BRIDGE_SOURCE && "kind" in data) {
-      const bridgeEvent = data as ObserverBridgeEvent;
-      bridgeEvent.framePath = bridgeEvent.framePath ?? localFramePath;
-      forwardToTop(bridgeEvent);
+    if (event.source === window && isObserverBridgeEventMessage(data)) {
+      data.framePath = data.framePath ?? localFramePath;
+      forwardToTop(data);
       return;
     }
 
-    if (isTopFrame && data.source === FRAME_FORWARD_SOURCE && "event" in data) {
-      handleTopFrameEvent((data as FrameForwardMessage).event);
+    if (
+      isTopFrame &&
+      event.source !== window &&
+      frameForwardNonce &&
+      isForwardedFrameMessage(data) &&
+      data.nonce === frameForwardNonce
+    ) {
+      handleTopFrameEvent(data.event);
     }
   });
+}
+
+async function ensureFrameForwardNonce(): Promise<void> {
+  const response = await sendRuntimeMessage({ type: "GET_FRAME_FORWARD_NONCE" });
+  if (!response.ok || !response.nonce) {
+    throw new Error(response.ok ? "프레임 전달 토큰을 받지 못했습니다." : response.error);
+  }
+  frameForwardNonce = response.nonce;
 }
 
 async function bootstrap(): Promise<void> {
@@ -754,6 +880,12 @@ async function bootstrap(): Promise<void> {
     settings = await getSettings();
   } catch (error) {
     reportRuntimeError("확장 설정을 불러오지 못해 기본값으로 계속 진행합니다.", error);
+  }
+
+  try {
+    await ensureFrameForwardNonce();
+  } catch (error) {
+    reportRuntimeError("프레임 전달 보안 토큰 준비에 실패했습니다.", error);
   }
 
   state.title = document.title;
@@ -773,13 +905,22 @@ async function bootstrap(): Promise<void> {
   startLocalPolling();
   startTopFrameFallback();
   syncUserInterfaces();
-  logDebug("content script bootstrapped", { isTopFrame, localFramePath });
+  logDebug("content script bootstrapped", {
+    isTopFrame,
+    localFramePath,
+    nonceSource: FRAME_FORWARD_NONCE_SOURCE,
+  });
 }
 
-void bootstrap().catch((error: unknown) => {
-  reportRuntimeError("content script 초기화 중 오류가 발생했습니다.", error);
-  mountInPagePanel();
-  updateInPagePanel();
-  startLocalPolling();
-  startTopFrameFallback();
-});
+const bootstrapRoot = document.documentElement;
+
+if (!bootstrapRoot?.hasAttribute(CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE)) {
+  bootstrapRoot?.setAttribute(CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE, "true");
+  void bootstrap().catch((error: unknown) => {
+    reportRuntimeError("content script 초기화 중 오류가 발생했습니다.", error);
+    mountInPagePanel();
+    updateInPagePanel();
+    startLocalPolling();
+    startTopFrameFallback();
+  });
+}

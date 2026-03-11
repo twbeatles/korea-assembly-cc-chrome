@@ -48,10 +48,12 @@ npm run build
 추가 확인 권장:
 - 국회 의사중계 페이지에서 실제 자막 추출
 - 페이지 오른쪽 패널이 자동으로 뜨는지 확인
-- 패널에서 `자막 모으기`, `멈추기`, `지금 저장`, `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
+- 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
+- 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
+- 접이식 `저장 / 내보내기` 메뉴에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정` 이동 확인
-- history 검색 / 전체 내용 복사 / 찾은 내용 복사 확인
-- options 페이지에서 자동 저장 관련 설정 변경 확인
+- history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
+- options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이 설정 변경 확인
 
 ## 4. 로컬 설치
 
@@ -69,7 +71,7 @@ npm run build
 
 1. 확장 popup 이 열리는지
 2. 국회 페이지 오른쪽에 패널이 자동으로 나타나는지
-3. 기존에 열려 있던 국회 탭은 새로고침이 필요한지
+3. 기존에 열려 있던 국회 탭에서 popup 연결 오류 없이 재주입 또는 새로고침 안내로 복구되는지
 4. 확장 아이콘의 popup 에서 현재 상태가 보이는지
 
 ## 5. 내부 공유용 배포
@@ -114,6 +116,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 
 - `storage`
 - `downloads`
+- `offscreen`
 - `activeTab`
 - `scripting`
 - host permission: `https://assembly.webcast.go.kr/*`
@@ -158,12 +161,16 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
 6. 페이지 패널과 popup 에 마지막 자동 저장 시각이 보이는지
+7. 브라우저/확장 재시작 뒤 남아 있던 `running` 세션이 `stopped`로 정리되는지
+8. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
+9. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하는지
 
 ## 9. 자주 발생하는 문제
 
 ### 9.1 확장을 로드했는데 페이지 패널이 보이지 않음
 
 - 국회 페이지가 이미 열려 있었다면 새로고침이 필요할 수 있습니다.
+- 최신 빌드는 기존 탭에 content script 재주입을 먼저 시도합니다.
 - 대상 URL 이 `https://assembly.webcast.go.kr/*` 범위인지 확인합니다.
 
 ### 9.2 zip 업로드가 실패함
@@ -179,12 +186,13 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 ### 9.4 저장이 실패함
 
 - 현재 구현은 `IndexedDB -> chrome.storage.local -> 메모리` fallback 순서로 내려갑니다.
+- `chrome.storage.local` fallback 은 세션별 key 구조를 사용합니다.
 - 브라우저 저장소 정책이나 시크릿 모드 설정에 따라 persistence 동작이 달라질 수 있습니다.
 
 ### 9.5 Chrome Web Store 참고 기능과 차이가 있음
 
 - 현재 범위에는 `영상 캡처`, `중요 표시`, `발언자 편집` 기능이 포함되지 않습니다.
-- 이번 배포는 검색 / 복사 / autosave UX 개선을 중심으로 합니다.
+- 이번 배포는 검색 / 복사 / autosave UX 외에 자막 자동 활성화와 자막 우선 패널 구조 개선도 포함합니다.
 
 ## 10. 권장 운영 방식
 

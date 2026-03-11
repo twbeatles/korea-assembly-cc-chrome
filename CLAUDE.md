@@ -8,7 +8,7 @@
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정` 중심의 보조 화면입니다.
-- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `autosave 상태 표시`가 포함됩니다.
+- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `autosave 상태 표시`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `접이식 내보내기 메뉴`가 포함됩니다.
 - 현재 기준 기본 검증 명령은 아래 3개입니다.
 
 ```bash
@@ -24,7 +24,7 @@ npm run build
 - UI: `React`
 - 테스트: `Vitest`
 - 확장 런타임: `Manifest V3`
-- 세션 저장: `IndexedDB` 우선, 실패 시 `chrome.storage.local`, 최후에는 메모리 fallback
+- 세션 저장: `IndexedDB` 우선, 실패 시 `chrome.storage.local` per-session fallback, 최후에는 메모리 fallback
 
 ## 3. 주요 파일 구조
 
@@ -52,6 +52,7 @@ tests/
 README.md
 CLAUDE.md
 GEMINI.md
+offscreen.html
 ```
 
 ## 4. 자막 추출 구조
@@ -76,6 +77,7 @@ GEMINI.md
 ### 4.3 Observer + Polling
 
 - `injected-observer.ts` 가 page world 에서 `MutationObserver` 를 설치합니다.
+- 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 먼저 시도합니다.
 - observer 는 변경 신호를 받되, 실제 텍스트는 selector 기반으로 다시 읽어 `.smi_word` window 조합을 유지합니다.
 - observer 실패 또는 타겟 미탐색 시 polling fallback 이 동작합니다.
 - `content-script.ts` 는 top frame 에서만 세션 상태와 subtitle pipeline 을 소유합니다.
@@ -95,12 +97,15 @@ GEMINI.md
 
 ## 6. noise filtering 규칙
 
+- `noiseFilterEnabled = true` 일 때만 아래 규칙으로 숫자-only / 기호-only를 차단합니다.
 - 허용:
   - 한글 1~2글자
   - 영문 1~2글자
 - 차단:
   - 숫자-only
   - 기호-only
+- `noiseFilterEnabled = false` 이면 숫자-only / 기호-only도 통과시킵니다.
+- 중복 차단 최소 길이 설정 키는 `recentDuplicateMinLength` 입니다.
 
 ## 7. exporter / persistence 규칙
 
@@ -118,16 +123,21 @@ GEMINI.md
 - `listSessions`
 - `deleteSession`
 - `updateRunningSession`
+- `closeRunningSessionsOnStartup`
 
-위 5개 API 는 항상 유지해야 합니다.
+위 CRUD 흐름과 startup cleanup 의미론은 유지해야 합니다.
 
 ### 7.3 UX 보강 규칙
 
 - top frame 의 content script 가 우측 패널을 자동으로 삽입합니다.
 - 기본 상태는 `펼쳐짐` 이고, 접으면 오른쪽의 `자막 보기` 탭만 남습니다.
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
+- popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
 - history 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
+- 페이지 패널과 history 모두 `recentCopyLineCount` 기반 `최근 N줄 복사`를 지원합니다.
+- `autoScroll` 옵션이 꺼지면 패널은 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
+- 브라우저/확장 cold start 시 남아 있던 persisted `running` 세션은 `stopped` 로 자동 정리됩니다.
 
 ## 8. 작업 시 주의사항
 
@@ -135,6 +145,8 @@ GEMINI.md
 - Selenium / PyQt 구조를 다시 가져오면 안 됩니다.
 - `legacy/` 는 현재 기준 참조용 아카이브이며 Git 추적 대상에서도 제외되어 있습니다.
 - storage 실패, observer 실패, frame 접근 실패, selector 미탐색은 크래시 대신 fallback 으로 내려가야 합니다.
+- export 는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback 을 유지합니다.
+- frame forwarding 은 nonce 검증을 통과한 메시지만 top frame 에서 수용해야 합니다.
 - 코드 수정 후 가능하면 `lint`, `test`, `build` 를 모두 확인합니다.
 
 ## 9. 관련 문서

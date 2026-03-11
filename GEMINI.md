@@ -15,7 +15,8 @@
   - suffix 기반 증분 처리
   - 세션 persistence
   - 우측 패널 + popup/options/history 동작
-  - 쉬운 한국어 UI / 검색 / 복사 / autosave UX
+  - 쉬운 한국어 UI / 검색 / 최근 N줄 복사 / autosave UX
+  - 자막 우선 대형 미리보기 / 접이식 내보내기 UI
 
 ## 3. 필수 명령
 
@@ -38,6 +39,7 @@ npm run build
 - `src/popup/App.tsx`
 - `src/options/App.tsx`
 - `src/history/App.tsx`
+- `src/offscreen/main.ts`
 
 ### 4.2 자막 수집 코어
 
@@ -77,6 +79,7 @@ npm run build
 
 ### background
 
+- `GET_FRAME_FORWARD_NONCE`
 - `DOWNLOAD_REQUEST`
 - `OPEN_HISTORY_PAGE`
 - `OPEN_OPTIONS_PAGE`
@@ -94,6 +97,7 @@ npm run build
   - `#viewSubtit`
 - `.smi_word` 는 목록 전체를 읽고 최근 3개 텍스트를 window 조합합니다.
 - container text fallback 이 항상 있어야 합니다.
+- 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 시도합니다.
 
 ### 6.2 증분 추출
 
@@ -108,9 +112,11 @@ npm run build
 
 - raw text 를 바로 append 하지 않습니다.
 - `normalize -> preview gate -> suffix diff -> noise filter -> merge/add`
-- 숫자-only, 기호-only는 reject 합니다.
+- `noiseFilterEnabled = true` 이면 숫자-only, 기호-only는 reject 합니다.
+- `noiseFilterEnabled = false` 이면 숫자-only, 기호-only도 통과시킵니다.
 - 한글/영문 1~2글자는 허용합니다.
 - recent compact tail 로 과잉 재누적을 막습니다.
+- 중복 차단 최소 길이 설정 키는 `recentDuplicateMinLength` 입니다.
 
 ### 6.4 keepalive / reset / finalize
 
@@ -121,7 +127,7 @@ npm run build
 ## 7. persistence 규칙
 
 - `IndexedDB` 우선
-- 실패 시 `chrome.storage.local` fallback
+- 실패 시 `chrome.storage.local` per-session fallback
 - 둘 다 실패하면 메모리 fallback
 
 다음 API 는 깨지면 안 됩니다.
@@ -131,19 +137,25 @@ npm run build
 - `listSessions`
 - `deleteSession`
 - `updateRunningSession`
+- `closeRunningSessionsOnStartup`
 
 추가 UX 규칙:
 
 - top frame 에 우측 패널이 자동 삽입됨
 - popup 은 페이지 패널 다시 열기용 보조 화면
+- popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려감
 - 복사 포맷은 `[HH:MM:SS] text`
+- 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
+- `autoScroll` 이 꺼지면 패널 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
+- browser/extension cold start 시 남아 있던 `running` 세션은 `stopped` 로 정리
 
 ## 8. exporter 규칙
 
 - `SRT`: `HH:MM:SS,mmm`, 세션 시작 기준 상대 시간
 - `VTT`: `HH:MM:SS.mmm`, 세션 시작 기준 상대 시간
 - `JSON`: 세션 전체 복원 가능한 구조
+- 다운로드는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback
 
 ## 9. known limits
 
@@ -157,4 +169,5 @@ npm run build
 - crash 보다 fallback 이 우선입니다.
 - popup 종료와 수집 중단을 연결하면 안 됩니다.
 - `legacy/` 는 Git ignore 대상이므로, 현재 구현 변경은 루트 확장 코드에만 반영해야 합니다.
+- frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
 - 변경 후에는 가능하면 `lint`, `test`, `build` 를 모두 실행합니다.

@@ -18,7 +18,7 @@
     "type": "module"
   },
   "options_page": "options.html",
-  "permissions": ["storage", "downloads", "activeTab", "scripting"],
+  "permissions": ["storage", "downloads", "activeTab", "scripting", "offscreen"],
   "host_permissions": ["https://assembly.webcast.go.kr/*"],
   "content_scripts": [
     {

@@ -1,5 +1,6 @@
 import type { SessionRecord } from "../src/core/subtitle-models";
 import {
+  closeRunningSessionsOnStartup,
   deleteSession,
   listSessions,
   loadSession,
@@ -61,6 +62,18 @@ describe("session store", () => {
 
     expect(updated?.status).toBe("running");
     expect(updated?.endedAt).toBeNull();
+  });
+
+  it("closes stale running sessions on startup", async () => {
+    await updateRunningSession(buildSession("session_running_1", "running"));
+    await saveSession(buildSession("session_saved_1", "saved"));
+
+    const closedCount = await closeRunningSessionsOnStartup();
+    const updated = await loadSession("session_running_1");
+
+    expect(closedCount).toBe(1);
+    expect(updated?.status).toBe("stopped");
+    expect(updated?.endedAt).toBe(updated?.updatedAt);
   });
 
   it("falls back when IndexedDB is unavailable", async () => {

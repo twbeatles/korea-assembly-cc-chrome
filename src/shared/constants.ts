@@ -7,9 +7,12 @@ export const SESSION_SCHEMA_VERSION = "1";
 
 export const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";
 export const OBSERVER_STOP_EVENT = "assembly-subtitle-observer:stop";
+export const OBSERVER_ACTIVATE_EVENT = "assembly-subtitle-observer:activate";
 export const OBSERVER_BRIDGE_SOURCE = "assembly-subtitle-observer";
 export const FRAME_FORWARD_SOURCE = "assembly-subtitle-frame-forward";
+export const FRAME_FORWARD_NONCE_SOURCE = "assembly-subtitle-frame-forward:nonce";
 export const POPUP_PORT_NAME = "assembly-subtitle-popup";
+export const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 
 export const SUBTITLE_SELECTOR_CANDIDATES = [
   "#viewSubtit .smi_word:last-child",
@@ -28,7 +31,7 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   pollingFallbackIntervalMs: 200,
   maxBufferLength: 50000,
   noiseFilterEnabled: true,
-  noiseMinLength: 3,
+  recentDuplicateMinLength: 8,
   filenamePattern: "{date}_{committee}_{time}",
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
@@ -41,6 +44,7 @@ export const PIPELINE_DEFAULTS = {
   previewResyncThreshold: 10,
   previewAmbiguousResyncThreshold: 6,
   confirmedCompactMaxLength: 50000,
+  recentDuplicateMinLength: 8,
   mergeGapSeconds: 5,
   mergeMaxChars: 300,
   keepaliveIntervalMs: 1000,

@@ -11,33 +11,33 @@ const PANEL_STYLE = `
 
   .host {
     position: fixed;
-    top: 16px;
-    right: 16px;
+    top: 12px;
+    right: 12px;
     z-index: 2147483646;
     font-family: "Noto Sans KR", "Pretendard", "Malgun Gothic", sans-serif;
     color: #142537;
   }
 
   .panel {
-    width: 360px;
-    max-height: calc(100vh - 32px);
+    width: min(468px, calc(100vw - 24px));
+    max-height: calc(100vh - 24px);
     display: grid;
     gap: 12px;
     box-sizing: border-box;
-    padding: 16px;
-    overflow: hidden;
-    border-radius: 22px;
+    padding: 16px 16px 14px;
+    overflow: hidden auto;
+    border-radius: 24px;
     border: 1px solid rgba(20, 54, 90, 0.16);
     background:
-      radial-gradient(circle at top right, rgba(40, 114, 176, 0.14), transparent 34%),
-      linear-gradient(180deg, rgba(252, 253, 255, 0.98), rgba(242, 247, 252, 0.98));
-    box-shadow: 0 24px 56px rgba(17, 44, 82, 0.22);
+      radial-gradient(circle at top right, rgba(24, 119, 182, 0.18), transparent 34%),
+      linear-gradient(180deg, rgba(251, 253, 255, 0.99), rgba(240, 246, 252, 0.99));
+    box-shadow: 0 28px 60px rgba(17, 44, 82, 0.24);
   }
 
   .collapsed-tab {
     writing-mode: vertical-rl;
     text-orientation: mixed;
-    min-height: 140px;
+    min-height: 156px;
     border: 0;
     border-radius: 18px 0 0 18px;
     background: #173f6e;
@@ -62,16 +62,28 @@ const PANEL_STYLE = `
   }
 
   .header,
-  .meta-row,
+  .header-actions,
+  .action-row,
   .footer-actions {
     display: flex;
     align-items: center;
-    justify-content: space-between;
     gap: 8px;
   }
 
+  .header,
+  .footer-actions {
+    justify-content: space-between;
+  }
+
+  .header-actions,
+  .action-row {
+    flex-wrap: wrap;
+  }
+
   .title-group h1,
-  .section-header h2 {
+  .hero-header h2,
+  .section-header h2,
+  .summary-copy strong {
     margin: 0;
   }
 
@@ -85,6 +97,13 @@ const PANEL_STYLE = `
 
   .title-group h1 {
     font-size: 20px;
+  }
+
+  .title-group p:last-child {
+    margin: 6px 0 0;
+    color: #4d6580;
+    font-size: 12px;
+    line-height: 1.45;
   }
 
   .status-badge {
@@ -115,7 +134,13 @@ const PANEL_STYLE = `
     color: #9b211b;
   }
 
-  .meta-card,
+  .header-actions .status-badge {
+    min-width: 88px;
+  }
+
+  .hero-card,
+  .summary-card,
+  .controls-card,
   .section-card {
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.88);
@@ -123,21 +148,99 @@ const PANEL_STYLE = `
     padding: 14px;
   }
 
-  .meta-row + .meta-row {
-    margin-top: 8px;
+  .hero-card {
+    display: grid;
+    gap: 12px;
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.96)),
+      #ffffff;
   }
 
-  .meta-row span:first-child {
+  .hero-header,
+  .section-header,
+  summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .hero-header h2,
+  .section-header h2 {
+    font-size: 15px;
+  }
+
+  .hero-header p,
+  .summary-copy p {
+    margin: 4px 0 0;
+    color: #60768d;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .preview-box {
+    border-radius: 20px;
+    background:
+      linear-gradient(180deg, rgba(238, 245, 255, 0.96), rgba(228, 239, 252, 0.96)),
+      #eff5fc;
+    padding: 20px 18px;
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1.72;
+    letter-spacing: -0.01em;
+    white-space: pre-wrap;
+    min-height: 240px;
+    max-height: min(46vh, 420px);
+    overflow: auto;
+    color: #10263c;
+  }
+
+  .notice {
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: rgba(227, 236, 247, 0.72);
+    font-size: 13px;
+    color: #314b66;
+    line-height: 1.5;
+  }
+
+  .meta-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .meta-item {
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: 14px;
+    background: #f3f7fc;
+  }
+
+  .meta-item span {
+    display: block;
     color: #5a7088;
-    font-size: 13px;
+    font-size: 12px;
+    margin-bottom: 6px;
   }
 
-  .meta-row strong {
+  .meta-item strong {
+    display: block;
     font-size: 13px;
-    text-align: right;
+    color: #173651;
+    line-height: 1.45;
+    word-break: break-word;
   }
 
-  .action-grid,
+  .controls-card {
+    display: grid;
+    gap: 10px;
+  }
+
+  .action-row button {
+    flex: 1;
+    min-width: 0;
+  }
+
   .export-grid {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -156,6 +259,12 @@ const PANEL_STYLE = `
     padding: 10px 12px;
   }
 
+  button.icon {
+    width: auto;
+    min-width: 0;
+    padding: 8px 12px;
+  }
+
   button.secondary {
     background: #dfe8f4;
     color: #18344f;
@@ -171,30 +280,40 @@ const PANEL_STYLE = `
     opacity: 0.45;
   }
 
-  .notice {
-    font-size: 13px;
-    color: #334c66;
-    line-height: 1.45;
+  details {
+    border-radius: 16px;
+    background: #f5f8fc;
+    border: 1px solid rgba(20, 54, 90, 0.08);
+    padding: 0 12px 12px;
   }
 
-  .section-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    margin-bottom: 10px;
+  summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 12px 0 10px;
   }
 
-  .section-header h2 {
-    font-size: 15px;
+  summary::-webkit-details-marker {
+    display: none;
   }
 
-  .section-header span {
+  .summary-copy {
+    display: grid;
+    gap: 2px;
+  }
+
+  .summary-indicator {
+    color: #33506d;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .section-header span,
+  .hero-header span {
     color: #536b83;
     font-size: 12px;
   }
 
-  .preview-box,
   .entry-list {
     border-radius: 14px;
     background: #f2f6fb;
@@ -203,17 +322,10 @@ const PANEL_STYLE = `
     line-height: 1.6;
   }
 
-  .preview-box {
-    white-space: pre-wrap;
-    min-height: 84px;
-    max-height: 160px;
-    overflow: auto;
-  }
-
   .entry-list {
     display: grid;
     gap: 10px;
-    max-height: 220px;
+    max-height: 188px;
     overflow: auto;
   }
 
@@ -246,11 +358,35 @@ const PANEL_STYLE = `
   .footer-actions button {
     flex: 1;
   }
+
+  @media (max-width: 768px) {
+    .host {
+      top: 8px;
+      right: 8px;
+    }
+
+    .panel {
+      width: min(100vw - 16px, 100vw - 16px);
+      max-height: calc(100vh - 16px);
+      padding: 14px;
+    }
+
+    .preview-box {
+      font-size: 21px;
+      min-height: 210px;
+    }
+
+    .meta-grid,
+    .export-grid {
+      grid-template-columns: 1fr;
+    }
+  }
 `;
 
 export interface InPagePanelState {
   visible: boolean;
   collapsed: boolean;
+  autoScroll: boolean;
   status: CaptureStatus;
   statusLabel: string;
   committeeName: string;
@@ -260,6 +396,7 @@ export interface InPagePanelState {
   recentEntries: SubtitleEntry[];
   subtitleCount: number;
   charCount: number;
+  recentCopyLineCount: number;
   notice: string;
 }
 
@@ -269,6 +406,7 @@ export interface InPagePanelActions {
   onClearSession: () => void;
   onSaveSession: () => void;
   onExport: (format: ExportFormat) => void;
+  onCopyRecent: () => void;
   onOpenHistory: () => void;
   onOpenOptions: () => void;
   onExpand: () => void;
@@ -316,13 +454,26 @@ function createButton(
   return button;
 }
 
+function createMetaItem(label: string): { wrapper: HTMLElement; value: HTMLElement } {
+  const wrapper = document.createElement("div");
+  wrapper.className = "meta-item";
+
+  const title = document.createElement("span");
+  title.textContent = label;
+
+  const value = document.createElement("strong");
+  wrapper.append(title, value);
+  return { wrapper, value };
+}
+
 export function buildInPagePanelState(
   snapshot: StatusSnapshot,
-  options: { collapsed: boolean; notice: string },
+  options: { collapsed: boolean; notice: string; autoScroll: boolean; recentCopyLineCount: number },
 ): InPagePanelState {
   return {
     visible: snapshot.connected,
     collapsed: options.collapsed,
+    autoScroll: options.autoScroll,
     status: snapshot.status,
     statusLabel: getCaptureStatusLabel(snapshot.status),
     committeeName: snapshot.committeeName || snapshot.title || UI_TEXT.appName,
@@ -332,6 +483,7 @@ export function buildInPagePanelState(
     recentEntries: snapshot.recentEntries,
     subtitleCount: snapshot.subtitleCount,
     charCount: snapshot.charCount,
+    recentCopyLineCount: options.recentCopyLineCount,
     notice: options.notice,
   };
 }
@@ -365,42 +517,86 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   eyebrow.textContent = "바로 보기";
   const title = document.createElement("h1");
   title.textContent = UI_TEXT.appName;
-  titleGroup.append(eyebrow, title);
+  const subtitle = document.createElement("p");
+  subtitle.textContent = "실시간 자막을 먼저 크게 보고, 저장과 내보내기는 아래에서 관리합니다.";
+  titleGroup.append(eyebrow, title, subtitle);
 
   const statusBadge = document.createElement("span");
   statusBadge.className = "status-badge";
 
-  header.append(titleGroup, statusBadge);
+  const headerActions = document.createElement("div");
+  headerActions.className = "header-actions";
+  const collapseButton = createButton(UI_TEXT.collapse, actions.onCollapse, "secondary icon");
+  headerActions.append(statusBadge, collapseButton);
 
-  const metaCard = document.createElement("section");
-  metaCard.className = "meta-card";
+  header.append(titleGroup, headerActions);
 
-  const committeeValue = document.createElement("strong");
-  const startedAtValue = document.createElement("strong");
-  const lastSavedValue = document.createElement("strong");
-  const countValue = document.createElement("strong");
+  const previewSection = document.createElement("section");
+  previewSection.className = "hero-card";
+  const previewHeader = document.createElement("div");
+  previewHeader.className = "hero-header";
+  const previewCopy = document.createElement("div");
+  const previewTitle = document.createElement("h2");
+  previewTitle.textContent = UI_TEXT.livePreview;
+  const previewHint = document.createElement("p");
+  previewHint.textContent = "가장 최근 문장을 크게 보여줍니다.";
+  previewCopy.append(previewTitle, previewHint);
+  const previewStats = document.createElement("span");
+  previewHeader.append(previewCopy, previewStats);
+  const previewBox = document.createElement("div");
+  previewBox.className = "preview-box";
+  const notice = document.createElement("div");
+  notice.className = "notice";
+  previewSection.append(previewHeader, previewBox, notice);
 
-  [
-    ["회의 이름", committeeValue],
-    ["시작 시각", startedAtValue],
-    ["마지막 저장", lastSavedValue],
-    ["모인 자막", countValue],
-  ].forEach(([label, value]) => {
-    const row = document.createElement("div");
-    row.className = "meta-row";
-    const span = document.createElement("span");
-    span.textContent = label;
-    row.append(span, value as Node);
-    metaCard.append(row);
-  });
+  const summaryCard = document.createElement("section");
+  summaryCard.className = "summary-card";
+  const metaGrid = document.createElement("div");
+  metaGrid.className = "meta-grid";
+  const committeeMeta = createMetaItem("회의 이름");
+  const startedMeta = createMetaItem("시작 시각");
+  const lastSavedMeta = createMetaItem("마지막 저장");
+  const countMeta = createMetaItem("모인 자막");
+  metaGrid.append(
+    committeeMeta.wrapper,
+    startedMeta.wrapper,
+    lastSavedMeta.wrapper,
+    countMeta.wrapper,
+  );
+  summaryCard.append(metaGrid);
 
-  const actionGrid = document.createElement("div");
-  actionGrid.className = "action-grid";
+  const controlsCard = document.createElement("section");
+  controlsCard.className = "controls-card";
+  const primaryActions = document.createElement("div");
+  primaryActions.className = "action-row";
   const startButton = createButton(UI_TEXT.startCapture, actions.onStartCapture);
   const stopButton = createButton(UI_TEXT.stopCapture, actions.onStopCapture);
+  const copyRecentButton = createButton(UI_TEXT.copyRecent, actions.onCopyRecent, "secondary");
+  primaryActions.append(startButton, stopButton, copyRecentButton);
+
+  const secondaryActions = document.createElement("div");
+  secondaryActions.className = "action-row";
   const clearButton = createButton(UI_TEXT.clearSession, actions.onClearSession, "secondary");
   const saveButton = createButton(UI_TEXT.saveSession, actions.onSaveSession, "secondary");
-  actionGrid.append(startButton, stopButton, clearButton, saveButton);
+  secondaryActions.append(clearButton, saveButton);
+
+  const exportDetails = document.createElement("details");
+  exportDetails.open = false;
+  const exportSummary = document.createElement("summary");
+  const exportSummaryCopy = document.createElement("div");
+  exportSummaryCopy.className = "summary-copy";
+  const exportSummaryTitle = document.createElement("strong");
+  exportSummaryTitle.textContent = "저장 / 내보내기";
+  const exportSummaryHint = document.createElement("p");
+  exportSummaryHint.textContent = "TXT, SRT, VTT, JSON 형식으로 내보낼 수 있습니다.";
+  exportSummaryCopy.append(exportSummaryTitle, exportSummaryHint);
+  const exportIndicator = document.createElement("span");
+  exportIndicator.className = "summary-indicator";
+  exportIndicator.textContent = "펼치기";
+  exportSummary.append(exportSummaryCopy, exportIndicator);
+  exportDetails.addEventListener("toggle", () => {
+    exportIndicator.textContent = exportDetails.open ? "접기" : "펼치기";
+  });
 
   const exportGrid = document.createElement("div");
   exportGrid.className = "export-grid";
@@ -409,21 +605,8 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
     exportGrid.append(button);
     return button;
   });
-
-  const notice = document.createElement("div");
-  notice.className = "notice";
-
-  const previewSection = document.createElement("section");
-  previewSection.className = "section-card";
-  const previewHeader = document.createElement("div");
-  previewHeader.className = "section-header";
-  const previewTitle = document.createElement("h2");
-  previewTitle.textContent = UI_TEXT.livePreview;
-  const previewStats = document.createElement("span");
-  previewHeader.append(previewTitle, previewStats);
-  const previewBox = document.createElement("div");
-  previewBox.className = "preview-box";
-  previewSection.append(previewHeader, previewBox);
+  exportDetails.append(exportSummary, exportGrid);
+  controlsCard.append(primaryActions, secondaryActions, exportDetails);
 
   const listSection = document.createElement("section");
   listSection.className = "section-card";
@@ -441,10 +624,16 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   footer.className = "footer-actions";
   const historyButton = createButton(UI_TEXT.openHistory, actions.onOpenHistory, "secondary");
   const optionsButton = createButton(UI_TEXT.openOptions, actions.onOpenOptions, "secondary");
-  const collapseButton = createButton(UI_TEXT.collapse, actions.onCollapse, "secondary");
-  footer.append(historyButton, optionsButton, collapseButton);
+  footer.append(historyButton, optionsButton);
 
-  panel.append(header, metaCard, actionGrid, exportGrid, notice, previewSection, listSection, footer);
+  panel.append(
+    header,
+    previewSection,
+    summaryCard,
+    controlsCard,
+    listSection,
+    footer,
+  );
   wrapper.append(collapsedTab, panel);
   shadowRoot.append(style, wrapper);
   (document.body || document.documentElement).appendChild(host);
@@ -457,11 +646,12 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       statusBadge.textContent = nextState.statusLabel;
       statusBadge.className = `status-badge ${nextState.status}`;
 
-      committeeValue.textContent = nextState.committeeName;
-      startedAtValue.textContent = formatDate(nextState.startedAt);
-      lastSavedValue.textContent = formatDate(nextState.lastPersistedAt);
-      countValue.textContent = `${nextState.subtitleCount}문장 / ${nextState.charCount}자`;
+      committeeMeta.value.textContent = nextState.committeeName;
+      startedMeta.value.textContent = formatDate(nextState.startedAt);
+      lastSavedMeta.value.textContent = formatDate(nextState.lastPersistedAt);
+      countMeta.value.textContent = `${nextState.subtitleCount}문장 / ${nextState.charCount}자`;
       notice.textContent = nextState.notice;
+      copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
 
       previewStats.textContent = `${nextState.subtitleCount}문장`;
       previewBox.textContent =
@@ -479,15 +669,17 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       }
 
       const hasEntries = nextState.subtitleCount > 0;
+      const hasPersistableContent = hasEntries || Boolean(nextState.previewText.trim());
       startButton.disabled = nextState.status === "running";
       stopButton.disabled = nextState.status !== "running";
-      clearButton.disabled = !hasEntries && !nextState.previewText;
-      saveButton.disabled = !hasEntries;
+      clearButton.disabled = !hasPersistableContent;
+      saveButton.disabled = !hasPersistableContent;
+      copyRecentButton.disabled = !hasPersistableContent;
       exportButtons.forEach((button) => {
-        button.disabled = !hasEntries;
+        button.disabled = !hasPersistableContent;
       });
 
-      if (!nextState.collapsed) {
+      if (!nextState.collapsed && nextState.autoScroll) {
         entryList.scrollTop = entryList.scrollHeight;
         previewBox.scrollTop = previewBox.scrollHeight;
       }

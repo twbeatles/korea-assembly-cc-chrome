@@ -57,6 +57,7 @@ backups/
 legacy/
 tmp_extension_unpacked/
 tmp_extension.crx
+korea-assembly-cc-chrome.zip
 *.tmp
 *.orig
 

@@ -1,6 +1,10 @@
 import { PIPELINE_DEFAULTS } from "../shared/constants";
 import type { ExtensionSettings } from "../storage/types";
-import { isMeaningfulSubtitleText, isNoiseOnly } from "./noise-filter";
+import {
+  hasRequiredSubtitleContent,
+  isMeaningfulSubtitleText,
+  isNoiseOnly,
+} from "./noise-filter";
 import {
   cloneState,
   createId,
@@ -306,10 +310,6 @@ function normalizeIncrementalText(
     return "";
   }
 
-  if (settings?.noiseFilterEnabled !== false && isNoiseOnly(newPart)) {
-    return "";
-  }
-
   const lastText = state.entries.at(-1)?.text ?? "";
   if (lastText) {
     const refined = extractIncrement(newPart, lastText, recentTexts(state));
@@ -319,13 +319,20 @@ function normalizeIncrementalText(
     newPart = refined.trim();
   }
 
-  if (!newPart || !isMeaningfulSubtitleText(newPart)) {
+  if (!newPart || !hasRequiredSubtitleContent(newPart)) {
+    return "";
+  }
+
+  if (settings?.noiseFilterEnabled !== false && (!isMeaningfulSubtitleText(newPart) || isNoiseOnly(newPart))) {
     return "";
   }
 
   const recentTail = recentCompactTail(state);
   const newCompact = compactSubtitleText(newPart);
-  const duplicateThreshold = Math.max(8, settings?.noiseMinLength ?? 3);
+  const duplicateThreshold = Math.max(
+    1,
+    settings?.recentDuplicateMinLength ?? PIPELINE_DEFAULTS.recentDuplicateMinLength,
+  );
   if (recentTail && newCompact.length >= duplicateThreshold && recentTail.includes(newCompact)) {
     return "";
   }
@@ -360,7 +367,11 @@ function applyIncrementalAppend(
   };
 }
 
-function drainPendingPreviews(state: SessionState, now: number): SessionState {
+export function flushPendingPreviews(
+  state: SessionState,
+  now: number,
+  settings?: Partial<ExtensionSettings>,
+): SessionState {
   let next = cloneState(state);
   if (!next.pendingPreviews.length) {
     return next;
@@ -370,7 +381,7 @@ function drainPendingPreviews(state: SessionState, now: number): SessionState {
   next.pendingPreviews = [];
 
   for (const pending of pendingItems) {
-    next = applyPreviewInternal(next, pending, now, undefined, undefined, true).state;
+    next = applyPreviewInternal(next, pending, now, settings, undefined, true).state;
   }
 
   return next;
@@ -451,8 +462,12 @@ export function applyKeepalive(state: SessionState, now: number): PipelineResult
   return { state: next, changed: true, appendedEntry: lastEntry, reason: "keepalive" };
 }
 
-export function applyReset(state: SessionState, now: number): PipelineResult {
-  let next = drainPendingPreviews(state, now);
+export function applyReset(
+  state: SessionState,
+  now: number,
+  settings?: Partial<ExtensionSettings>,
+): PipelineResult {
+  let next = flushPendingPreviews(state, now, settings);
   next = updateStateMetadata(next, now);
   next.previewText = "";
   next.pendingPreviews = [];
@@ -465,8 +480,12 @@ export function applyReset(state: SessionState, now: number): PipelineResult {
   return { state: next, changed: true, reason: "reset" };
 }
 
-export function finalizeSession(state: SessionState, now: number): PipelineResult {
-  let next = drainPendingPreviews(state, now);
+export function finalizeSession(
+  state: SessionState,
+  now: number,
+  settings?: Partial<ExtensionSettings>,
+): PipelineResult {
+  let next = flushPendingPreviews(state, now, settings);
   next = updateStateMetadata(next, now);
   next.status = "stopped";
   next.endedAt = toIsoString(now);
@@ -480,4 +499,4 @@ export function finalizeSession(state: SessionState, now: number): PipelineResul
   return { state: next, changed: true, appendedEntry: lastEntry, reason: "finalized" };
 }
 
-export { extractIncrement, isNoiseOnly, normalizeRawText };
+export { extractIncrement, hasRequiredSubtitleContent, isNoiseOnly, normalizeRawText };

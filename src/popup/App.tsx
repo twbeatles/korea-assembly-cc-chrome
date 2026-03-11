@@ -59,6 +59,11 @@ export default function App() {
       }
 
       setRequiresReload(Boolean(ensure.requiresReload));
+      if (!ensure.ready) {
+        setStatusMessage("현재 탭과 아직 연결되지 않았습니다. 탭을 새로고침한 뒤 다시 열어주세요.");
+        return;
+      }
+
       const nextPort = connectToTab(tab.id, 0, POPUP_PORT_NAME);
       setPort(nextPort);
 
@@ -121,13 +126,18 @@ export default function App() {
       };
 
       const onDisconnect = (): void => {
+        const disconnectReason = chrome.runtime.lastError?.message;
         if (!active) {
           return;
         }
         setPort(null);
         setTabReady(false);
         setRequiresReload(true);
-        setStatusMessage("연결이 끊겼습니다. 탭을 새로고침한 뒤 다시 열어주세요.");
+        setStatusMessage(
+          disconnectReason?.includes("Receiving end does not exist")
+            ? "현재 탭과의 연결이 없습니다. 탭을 새로고침한 뒤 다시 열어주세요."
+            : disconnectReason || "연결이 끊겼습니다. 탭을 새로고침한 뒤 다시 열어주세요.",
+        );
       };
 
       nextPort.onMessage.addListener(onMessage);

@@ -4,6 +4,7 @@ import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
 import { deleteSession, exportSessionData, listSessions } from "../storage/session-store";
+import { getSettings } from "../storage/settings-store";
 import { getExportFormatLabel, getPersistedStatusLabel } from "../shared/ui-labels";
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
@@ -20,6 +21,7 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string>("");
   const [message, setMessage] = useState("기록을 불러오는 중입니다.");
   const [searchQuery, setSearchQuery] = useState("");
+  const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedId) ?? sessions[0],
@@ -41,6 +43,16 @@ export default function App() {
     void refresh().catch((error: unknown) => {
       setMessage(error instanceof Error ? error.message : "기록 목록을 읽지 못했습니다.");
     });
+  }, []);
+
+  useEffect(() => {
+    void getSettings()
+      .then((settings) => {
+        setRecentCopyLineCount(settings.recentCopyLineCount);
+      })
+      .catch(() => {
+        // Keep defaults if settings cannot be loaded from a standalone history page.
+      });
   }, []);
 
   const handleDelete = async (): Promise<void> => {
@@ -181,6 +193,17 @@ export default function App() {
               </div>
 
               <div className="copy-row">
+                <button
+                  onClick={() =>
+                    void handleCopy(
+                      buildCopyText(selectedSession.entries, { limit: recentCopyLineCount }),
+                      `최근 ${recentCopyLineCount}줄을 복사했습니다.`,
+                    )
+                  }
+                  disabled={!selectedSession.entries.length}
+                >
+                  최근 {recentCopyLineCount}줄 복사
+                </button>
                 <button
                   onClick={() =>
                     void handleCopy(

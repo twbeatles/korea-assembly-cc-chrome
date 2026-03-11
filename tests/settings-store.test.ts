@@ -7,17 +7,20 @@ describe("settings store", () => {
       runningAutoSaveEnabled: false,
       runningAutoSaveDebounceMs: 1200,
       recentCopyLineCount: 9,
+      recentDuplicateMinLength: 12,
     });
 
     expect(sanitized.runningAutoSaveEnabled).toBe(false);
     expect(sanitized.runningAutoSaveDebounceMs).toBe(1200);
     expect(sanitized.recentCopyLineCount).toBe(9);
+    expect(sanitized.recentDuplicateMinLength).toBe(12);
   });
 
   it("falls back to defaults when autosave settings are invalid", () => {
     const sanitized = sanitizeSettings({
       runningAutoSaveDebounceMs: -10,
       recentCopyLineCount: 0,
+      recentDuplicateMinLength: 0,
     });
 
     expect(sanitized.runningAutoSaveEnabled).toBe(
@@ -29,5 +32,16 @@ describe("settings store", () => {
     expect(sanitized.recentCopyLineCount).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
     );
+    expect(sanitized.recentDuplicateMinLength).toBe(
+      DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
+    );
+  });
+
+  it("migrates legacy noiseMinLength into the new duplicate setting", () => {
+    const sanitized = sanitizeSettings({
+      noiseMinLength: 15,
+    });
+
+    expect(sanitized.recentDuplicateMinLength).toBe(15);
   });
 });
