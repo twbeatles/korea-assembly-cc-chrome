@@ -71,8 +71,9 @@ function mergeOrAppendEntry(
     }
   };
 
-  if (lastEntry) {
+  if (lastEntry && !state.lastCommittedResetAt && !meta?.forceNewEntry) {
     if (sourceNodeKey && lastEntry.sourceNodeKey === sourceNodeKey) {
+      // 같은 nodeKey이면 Update
       if (lastEntry.text !== text) {
         lastEntry.text = text;
         lastEntry.endTime = nowIso;
@@ -81,27 +82,14 @@ function mergeOrAppendEntry(
       return lastEntry;
     }
 
-    const structuredBoundary =
-      Boolean(meta?.forceNewEntry) ||
-      Boolean(state.lastCommittedResetAt) ||
-      Boolean(
-        sourceNodeKey &&
-          lastEntry.sourceNodeKey &&
-          lastEntry.sourceNodeKey !== sourceNodeKey,
-      );
-
-    const canMerge =
-      !structuredBoundary &&
-      lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
-
-    if (canMerge) {
-      lastEntry.text = joinStreamText(lastEntry.text, text);
-      lastEntry.endTime = nowIso;
-      applySourceMeta(lastEntry);
-      return lastEntry;
-    }
+    // 다른 nodeKey이거나 nodeKey가 없으면 기존 자막에 이어서 쓰기 (무한 Merge)
+    lastEntry.text = joinStreamText(lastEntry.text, text);
+    lastEntry.endTime = nowIso;
+    applySourceMeta(lastEntry);
+    return lastEntry;
   }
 
+  // 첫 자막이거나 사용자가 강제로 Reset(수집 초기화 등)을 누른 경우에만 새로 생성
   const entry: SubtitleEntry = {
     id: createId("subtitle"),
     text,
