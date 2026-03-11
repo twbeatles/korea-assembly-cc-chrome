@@ -13,6 +13,7 @@ export interface ExtensionSettings {
   recentCopyLineCount: number;
   debugLogging: boolean;
   autoStartEnabled: boolean;
+  filterUnconfirmedEnabled: boolean;
 }
 
 export interface ExportPayload {

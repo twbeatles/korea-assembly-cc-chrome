@@ -74,14 +74,40 @@ export function readSpeakerColor(node: HTMLElement): string {
   return normalizeSpeakerColor(window.getComputedStyle(speakerNode).color);
 }
 
+function isConfirmedSubtitleNode(node: HTMLElement): boolean {
+  if (typeof window === "undefined" || !window.getComputedStyle) {
+    return true;
+  }
+
+  const bg = window.getComputedStyle(node).backgroundColor;
+  if (bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)") {
+    return false;
+  }
+
+  const children = Array.from(node.querySelectorAll<HTMLElement>("*"));
+  for (const child of children) {
+    const childBg = window.getComputedStyle(child).backgroundColor;
+    if (childBg && childBg !== "transparent" && childBg !== "rgba(0, 0, 0, 0)") {
+      return false;
+    }
+  }
+
+  return true;
+}
+
 export function readObservedSubtitleRows(
   root: ParentNode,
   selector = "#viewSubtit .smi_word",
+  options?: { filterUnconfirmedEnabled?: boolean }
 ): ObservedSubtitleRow[] {
   const rows: ObservedSubtitleRow[] = [];
   const nodes = getSmiWordNodes(root, selector);
 
   nodes.forEach((node, index) => {
+    if (options?.filterUnconfirmedEnabled && !isConfirmedSubtitleNode(node)) {
+      return;
+    }
+
     const text = normalizeSubtitleText(node.innerText || node.textContent || "");
     const compact = compactSubtitleText(text);
     if (!compact) {

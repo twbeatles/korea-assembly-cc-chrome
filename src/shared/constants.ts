@@ -38,6 +38,7 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   recentCopyLineCount: 5,
   debugLogging: false,
   autoStartEnabled: true,
+  filterUnconfirmedEnabled: true,
 };
 
 export const PIPELINE_DEFAULTS = {

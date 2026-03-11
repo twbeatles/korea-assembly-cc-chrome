@@ -78,6 +78,7 @@ let settings: ExtensionSettings = {
   recentCopyLineCount: 5,
   debugLogging: false,
   autoStartEnabled: true,
+  filterUnconfirmedEnabled: true,
 };
 let state: SessionState = createEmptySessionState(window.location.href, document.title);
 const popupPorts = new Set<chrome.runtime.Port>();
@@ -448,8 +449,9 @@ function dispatchObserverConfig(): void {
   window.dispatchEvent(
     new CustomEvent(OBSERVER_CONFIG_EVENT, {
       detail: {
-        selectors: [...SUBTITLE_SELECTOR_CANDIDATES],
+        selectors: SUBTITLE_SELECTOR_CANDIDATES,
         pollingIntervalMs: settings.pollingFallbackIntervalMs,
+        filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
       },
     }),
   );

@@ -47,6 +47,7 @@ type BridgeState = {
   observerSelector: string;
   observerActive: boolean;
   pollingIntervalMs: number;
+  filterUnconfirmedEnabled: boolean;
 };
 
 function normalizeText(text: string): string {
@@ -208,12 +209,16 @@ function resolveSelectors(selectors?: string[]): string[] {
   return uniqueSelectors([...(selectors || []), ...DEFAULT_SELECTORS]);
 }
 
-function readSubtitleText(selectors: string[], preferredSelector = ""): SubtitleReadResult {
+function readSubtitleText(
+  selectors: string[],
+  preferredSelector = "",
+  filterUnconfirmedEnabled = true
+): SubtitleReadResult {
   const orderedSelectors = uniqueSelectors([preferredSelector, ...selectors]);
 
   for (const selector of orderedSelectors) {
     if (selector.includes(".smi_word")) {
-      const rows = readObservedSubtitleRows(document, selector);
+      const rows = readObservedSubtitleRows(document, selector, { filterUnconfirmedEnabled });
       const smiText = buildObservedSubtitlePreview(rows);
       if (smiText) {
         return {
@@ -302,7 +307,11 @@ function teardownBridge(state: BridgeState): void {
 }
 
 function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void {
-  const current = readSubtitleText(state.selectors, state.observerSelector);
+  const current = readSubtitleText(
+    state.selectors,
+    state.observerSelector,
+    state.filterUnconfirmedEnabled
+  );
   if (current.selector) {
     state.observerSelector = current.selector;
   }
@@ -348,7 +357,11 @@ function startPolling(state: BridgeState): void {
   }, state.pollingIntervalMs);
 }
 
-function installBridge(detail?: { selectors?: string[]; pollingIntervalMs?: number }): void {
+function installBridge(detail?: {
+  selectors?: string[];
+  pollingIntervalMs?: number;
+  filterUnconfirmedEnabled?: boolean;
+}): void {
   const state = (window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY];
   if (!state) {
     return;
@@ -357,6 +370,7 @@ function installBridge(detail?: { selectors?: string[]; pollingIntervalMs?: numb
   teardownBridge(state);
   state.selectors = resolveSelectors(detail?.selectors);
   state.pollingIntervalMs = Math.max(100, detail?.pollingIntervalMs ?? 180);
+  state.filterUnconfirmedEnabled = detail?.filterUnconfirmedEnabled ?? true;
 
   const { selector, element } = selectTarget(state.selectors);
   state.target = element;
@@ -421,10 +435,15 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
     observerSelector: "",
     observerActive: false,
     pollingIntervalMs: 180,
+    filterUnconfirmedEnabled: true,
   };
 
   window.addEventListener(OBSERVER_CONFIG_EVENT, (event) => {
-    const customEvent = event as CustomEvent<{ selectors?: string[]; pollingIntervalMs?: number }>;
+    const customEvent = event as CustomEvent<{
+      selectors?: string[];
+      pollingIntervalMs?: number;
+      filterUnconfirmedEnabled?: boolean;
+    }>;
     installBridge(customEvent.detail);
   });
 

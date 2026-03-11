@@ -152,6 +152,18 @@ export default function App() {
           />
         </label>
 
+        <label className="setting-card">
+          <div>
+            <strong>미확정(인식 중) 자막 수집 안 함</strong>
+            <span>하늘색 등 뒷배경이 아직 사라지지 않은 인식 중 자막을 확정 전까지 제외합니다.</span>
+          </div>
+          <input
+            type="checkbox"
+            checked={settings.filterUnconfirmedEnabled}
+            onChange={(event) => updateField("filterUnconfirmedEnabled", event.target.checked)}
+          />
+        </label>
+
         {BASIC_NUMBER_FIELDS.map((field) => (
           <label className="setting-card input-card" key={field}>
             <div>
