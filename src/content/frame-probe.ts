@@ -1,5 +1,5 @@
 import { PIPELINE_DEFAULTS } from "../shared/constants";
-import type { DomProbeResult } from "./dom-probe";
+import type { DomProbeOptions, DomProbeResult } from "./dom-probe";
 import {
   estimateRecentRaw,
   getSubtitleSelectorCandidates,
@@ -77,7 +77,11 @@ function chooseBetterResult(
     : current;
 }
 
-function probeDocumentRoots(rootDocument: Document, selectors: string[]): FrameProbeResult {
+function probeDocumentRoots(
+  rootDocument: Document,
+  selectors: string[],
+  options?: DomProbeOptions,
+): FrameProbeResult {
   const rootCandidates: ParentNode[] = [rootDocument];
   if (rootDocument.body) {
     rootCandidates.push(rootDocument.body);
@@ -88,7 +92,7 @@ function probeDocumentRoots(rootDocument: Document, selectors: string[]): FrameP
 
   let best = emptyFrameProbe();
   for (const root of rootCandidates) {
-    const result = readSubtitleTextBySelectors(root, selectors);
+    const result = readSubtitleTextBySelectors(root, selectors, options);
     if (!result.found) {
       continue;
     }
@@ -107,6 +111,7 @@ function walkDocuments(
   path: number[],
   depth: number,
   results: FrameProbeResult[],
+  options?: DomProbeOptions,
 ): void {
   if (
     depth > PIPELINE_DEFAULTS.frameProbeMaxDepth ||
@@ -115,7 +120,7 @@ function walkDocuments(
     return;
   }
 
-  const current = probeDocumentRoots(rootDocument, selectors);
+  const current = probeDocumentRoots(rootDocument, selectors, options);
   if (current.found) {
     results.push({
       ...current,
@@ -137,23 +142,51 @@ function walkDocuments(
       if (!childDocument) {
         return;
       }
-      walkDocuments(childDocument, selectors, [...path, index], depth + 1, results);
+      walkDocuments(childDocument, selectors, [...path, index], depth + 1, results, options);
     } catch {
       // Cross-origin frame access is intentionally ignored.
     }
   });
 }
 
-export function probeAccessibleFrames(primarySelector = ""): FrameProbeResult[] {
+function getDocumentByFramePath(framePath: number[]): Document | null {
+  let currentDocument: Document = document;
+
+  for (const index of framePath) {
+    const frames = Array.from(
+      currentDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+    );
+    const frame = frames[index];
+    if (!frame) {
+      return null;
+    }
+
+    try {
+      if (!frame.contentDocument) {
+        return null;
+      }
+      currentDocument = frame.contentDocument;
+    } catch {
+      return null;
+    }
+  }
+
+  return currentDocument;
+}
+
+export function probeAccessibleFrames(
+  primarySelector = "",
+  options?: DomProbeOptions,
+): FrameProbeResult[] {
   const selectors = getSubtitleSelectorCandidates(primarySelector);
   const results: FrameProbeResult[] = [];
-  walkDocuments(document, selectors, [], 0, results);
+  walkDocuments(document, selectors, [], 0, results, options);
   return results.sort((left, right) => scoreFrameResult(right, selectors) - scoreFrameResult(left, selectors));
 }
 
-export function probeTopDocument(primarySelector = ""): FrameProbeResult {
+export function probeTopDocument(primarySelector = "", options?: DomProbeOptions): FrameProbeResult {
   const selectors = getSubtitleSelectorCandidates(primarySelector);
-  const direct = estimateRecentRaw(document, primarySelector);
+  const direct = estimateRecentRaw(document, primarySelector, options);
   if (direct.found) {
     return {
       ...direct,
@@ -161,15 +194,44 @@ export function probeTopDocument(primarySelector = ""): FrameProbeResult {
     };
   }
 
-  return probeDocumentRoots(document, selectors);
+  return probeDocumentRoots(document, selectors, options);
 }
 
-export function probeBestAccessibleSubtitle(primarySelector = ""): FrameProbeResult {
-  const topResult = probeTopDocument(primarySelector);
+export function probeFramePath(
+  framePath: number[],
+  primarySelector = "",
+  options?: DomProbeOptions,
+): FrameProbeResult {
+  if (!framePath.length) {
+    return probeTopDocument(primarySelector, options);
+  }
+
+  const targetDocument = getDocumentByFramePath(framePath);
+  if (!targetDocument) {
+    return emptyFrameProbe(framePath);
+  }
+
+  const selectors = getSubtitleSelectorCandidates(primarySelector);
+  const result = probeDocumentRoots(targetDocument, selectors, options);
+  if (!result.found) {
+    return emptyFrameProbe(framePath);
+  }
+
+  return {
+    ...result,
+    framePath: [...framePath],
+  };
+}
+
+export function probeBestAccessibleSubtitle(
+  primarySelector = "",
+  options?: DomProbeOptions,
+): FrameProbeResult {
+  const topResult = probeTopDocument(primarySelector, options);
   if (topResult.found) {
     return topResult;
   }
 
-  const results = probeAccessibleFrames(primarySelector);
+  const results = probeAccessibleFrames(primarySelector, options);
   return results[0] ?? emptyFrameProbe();
 }

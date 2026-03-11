@@ -35,3 +35,30 @@ npm run build
 
 - `npm audit` high findings are currently tied to upstream dependency constraints in `@crxjs/vite-plugin` and are not fully removable from this project side alone.
 - Deferred item remains tracked intentionally and was not modified in this cycle.
+
+## Addendum Closure Integration (2026-03-11)
+
+The following addendum remediation items are implemented and validated:
+
+| Category | Item | Status |
+| --- | --- | --- |
+| Security hardening | Observer bridge token validation | Completed |
+| Security hardening | Frame-forward nonce rotation on tab navigation | Completed |
+| Functional consistency | Unconfirmed filter applied to container fallback | Completed |
+| Runtime stability | Invalidated context shutdown path | Completed |
+| Runtime stability | Offscreen duplicate-create tolerance | Completed |
+| Performance | Adaptive fallback backoff + cached frame-path probing | Completed |
+| Performance | Row style-cost reduction (cache + bounded checks) | Completed |
+| Regression prevention | Added focused runtime tests | Completed |
+
+Validation rerun after integration:
+
+- `npm run verify` passed.
+
+Document consistency set:
+
+- `README.md`
+- `CLAUDE.md`
+- `GEMINI.md`
+- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
+- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`

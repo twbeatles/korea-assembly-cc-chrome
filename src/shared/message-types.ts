@@ -102,6 +102,7 @@ export type BackgroundCommandResponse =
 
 export interface ObserverBridgeEvent {
   source: string;
+  token?: string;
   kind: "subtitle:update" | "subtitle:reset" | "subtitle:health";
   raw?: string;
   rows?: ObservedSubtitleRow[];

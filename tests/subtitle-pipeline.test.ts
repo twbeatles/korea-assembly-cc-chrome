@@ -165,4 +165,22 @@ describe("subtitle pipeline", () => {
     expect(finalized.state.status).toBe("stopped");
     expect(finalized.state.entries[0].endTime).toBeTruthy();
   });
+
+  it("respects maxBufferLength setting when rebuilding confirmed compact history", () => {
+    const now = Date.parse("2026-03-11T08:30:00.000Z");
+    const state = createEmptySessionState("http://test.com", "Test");
+    const longText = "가".repeat(1500);
+
+    const result = applyPreview(
+      state,
+      longText,
+      now,
+      {
+        maxBufferLength: 1000,
+      },
+    );
+
+    expect(result.state.entries).toHaveLength(1);
+    expect(result.state.confirmedCompact.length).toBe(1000);
+  });
 });

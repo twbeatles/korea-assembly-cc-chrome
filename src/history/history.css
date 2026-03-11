@@ -14,7 +14,9 @@ body {
 button {
   border: 0;
   border-radius: 12px;
-  background: #1a6c58;
+  background: linear-gradient(135deg, #1a6c58 0%, #135242 100%);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 12px rgba(26, 108, 88, 0.15);
   color: #fff;
   cursor: pointer;
   padding: 10px 14px;
@@ -77,10 +79,13 @@ button.secondary {
 
 .session-list,
 .session-detail {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.6);
   border-radius: 22px;
   padding: 16px;
-  box-shadow: 0 22px 50px rgba(17, 58, 86, 0.08);
+  box-shadow: 0 22px 50px rgba(17, 58, 86, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 
 .session-list {

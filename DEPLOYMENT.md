@@ -231,3 +231,19 @@ Additional release notes:
 - History export now uses user-defined `filenamePattern`.
 - Popup now attempts automatic reconnection on disconnect.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
+
+## 2026-03-11 Addendum Deployment Notes
+
+Pre-release validation now assumes the addendum closure changes are present:
+
+- Observer bridge token integrity checks
+- Frame-forward nonce rotation on navigation
+- Fallback probing backoff + cached frame path probing
+- Invalidated-context shutdown cleanup
+- Offscreen duplicate-create tolerance
+
+Deployment documentation consistency sources:
+
+- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
+- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
+- `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`

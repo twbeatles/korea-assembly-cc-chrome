@@ -53,6 +53,24 @@ function createNonce(): string {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+function isOffscreenDocumentAlreadyExistsError(error: unknown): boolean {
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : "";
+  if (!message) {
+    return false;
+  }
+
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes("already exists") ||
+    normalized.includes("single offscreen document")
+  );
+}
+
 function getOrCreateFrameForwardNonce(tabId: number): string {
   const current = frameForwardNonceByTabId.get(tabId);
   if (current) {
@@ -138,11 +156,17 @@ async function ensureOffscreenDocument(): Promise<void> {
     }
   }
 
-  await chrome.offscreen.createDocument({
-    url: OFFSCREEN_DOCUMENT_PATH,
-    reasons: ["BLOBS"],
-    justification: OFFSCREEN_JUSTIFICATION,
-  });
+  try {
+    await chrome.offscreen.createDocument({
+      url: OFFSCREEN_DOCUMENT_PATH,
+      reasons: ["BLOBS"],
+      justification: OFFSCREEN_JUSTIFICATION,
+    });
+  } catch (error) {
+    if (!isOffscreenDocumentAlreadyExistsError(error)) {
+      throw error;
+    }
+  }
 }
 
 async function sendOffscreenMessage(
@@ -327,6 +351,12 @@ chrome.downloads.onChanged.addListener((delta) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   frameForwardNonceByTabId.delete(tabId);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  if (changeInfo.status === "loading") {
+    frameForwardNonceByTabId.set(tabId, createNonce());
+  }
 });
 
 chrome.runtime.onStartup.addListener(() => {

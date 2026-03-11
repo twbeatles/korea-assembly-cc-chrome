@@ -14,6 +14,10 @@ export interface DomProbeResult {
   sourceMode?: "smi-window" | "container";
 }
 
+export interface DomProbeOptions {
+  filterUnconfirmedEnabled?: boolean;
+}
+
 const PRIMARY_SELECTOR_PRIORITY = new Map<string, number>([
   ["#viewSubtit .smi_word:last-child", 0],
   ["#viewSubtit .smi_word", 1],
@@ -68,6 +72,14 @@ function queryOneSafe(root: ParentNode, selector: string): HTMLElement | null {
   }
 }
 
+function queryAllSafe(root: ParentNode, selector: string): HTMLElement[] {
+  try {
+    return Array.from(root.querySelectorAll<HTMLElement>(selector));
+  } catch {
+    return [];
+  }
+}
+
 function normalizeContainerText(node: HTMLElement): string {
   const raw = node.innerText || node.textContent || "";
   const text = normalizeSubtitleText(raw);
@@ -83,15 +95,48 @@ function normalizeContainerText(node: HTMLElement): string {
 function readSmiWordWindow(
   root: ParentNode,
   selector: string,
+  options?: DomProbeOptions,
 ): { text: string; rows: ObservedSubtitleRow[] } {
-  const rows = readObservedSubtitleRows(root, selector);
+  const rows = readObservedSubtitleRows(root, selector, {
+    filterUnconfirmedEnabled: options?.filterUnconfirmedEnabled,
+  });
   return {
     text: buildObservedSubtitlePreview(rows),
     rows,
   };
 }
 
-function readContainerFallback(root: ParentNode): DomProbeResult {
+function shouldBlockContainerFallbackForUnconfirmed(
+  root: ParentNode,
+  options?: DomProbeOptions,
+): boolean {
+  if (!options?.filterUnconfirmedEnabled) {
+    return false;
+  }
+
+  const smiNodes = queryAllSafe(root, "#viewSubtit .smi_word");
+  if (!smiNodes.length) {
+    return false;
+  }
+
+  const confirmedRows = readObservedSubtitleRows(root, "#viewSubtit .smi_word", {
+    filterUnconfirmedEnabled: true,
+  });
+  return confirmedRows.length === 0;
+}
+
+function readContainerFallback(
+  root: ParentNode,
+  blockContainerFallback = false,
+): DomProbeResult {
+  if (blockContainerFallback) {
+    return {
+      text: "",
+      matchedSelector: "",
+      found: false,
+    };
+  }
+
   const fallbackSelectors = [
     "#viewSubtit .incont",
     "#viewSubtit",
@@ -127,10 +172,13 @@ function readContainerFallback(root: ParentNode): DomProbeResult {
 export function readSubtitleTextBySelectors(
   root: ParentNode,
   selectors: string[],
+  options?: DomProbeOptions,
 ): DomProbeResult {
+  const blockContainerFallback = shouldBlockContainerFallbackForUnconfirmed(root, options);
+
   for (const selector of selectors) {
     if (selector.includes(".smi_word")) {
-      const smiText = readSmiWordWindow(root, selector);
+      const smiText = readSmiWordWindow(root, selector, options);
       if (smiText.text) {
         return {
           text: smiText.text,
@@ -140,6 +188,14 @@ export function readSubtitleTextBySelectors(
           sourceMode: "smi-window",
         };
       }
+
+      // `.smi_word`는 row 기반 읽기 전용으로 사용한다.
+      // 필터링 결과가 비어 있으면 같은 selector를 container fallback으로 재해석하지 않는다.
+      continue;
+    }
+
+    if (blockContainerFallback) {
+      continue;
     }
 
     const node = queryOneSafe(root, selector);
@@ -160,10 +216,14 @@ export function readSubtitleTextBySelectors(
     };
   }
 
-  return readContainerFallback(root);
+  return readContainerFallback(root, blockContainerFallback);
 }
 
-export function estimateRecentRaw(root: ParentNode, primarySelector = ""): DomProbeResult {
+export function estimateRecentRaw(
+  root: ParentNode,
+  primarySelector = "",
+  options?: DomProbeOptions,
+): DomProbeResult {
   const selectors = getSubtitleSelectorCandidates(primarySelector);
-  return readSubtitleTextBySelectors(root, selectors);
+  return readSubtitleTextBySelectors(root, selectors, options);
 }

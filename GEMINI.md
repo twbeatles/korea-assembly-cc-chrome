@@ -195,3 +195,22 @@ Use this delta as the current operational baseline.
   - `npm run test:coverage`
   - `npm run build`
   - `npm run verify` for full pre-release checks.
+
+## Addendum Closure (2026-03-11)
+
+Keep this file aligned with the implementation closure below:
+
+- Observer bridge message token verification: completed.
+- Nonce rotation per navigation lifecycle: completed.
+- Consistent unconfirmed filtering across container fallback: completed.
+- Adaptive fallback backoff and cached frame-path probing: completed.
+- Graceful shutdown on invalidated extension context: completed.
+- Offscreen duplicate-create resilience: completed.
+- Subtitle row style-computation optimization: completed.
+- Test expansion for `dom-probe`, `frame-probe`, and `injected-observer`: completed.
+
+Reference consistency set:
+
+- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
+- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
+- `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`

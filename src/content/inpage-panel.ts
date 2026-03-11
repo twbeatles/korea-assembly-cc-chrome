@@ -28,7 +28,7 @@ const PANEL_STYLE = `
     padding: 16px 16px 14px;
     overflow: hidden auto;
     border-radius: 24px;
-    border: 1px solid rgba(20, 54, 90, 0.16);
+    border: 1px solid rgba(255, 255, 255, 0.6);
     background:
       radial-gradient(circle at top right, rgba(24, 119, 182, 0.18), transparent 34%),
       linear-gradient(180deg, rgba(251, 253, 255, 0.99), rgba(240, 246, 252, 0.99));
@@ -160,8 +160,8 @@ const PANEL_STYLE = `
   .controls-card,
   .section-card {
     border-radius: 18px;
-    background: rgba(255, 255, 255, 0.88);
-    border: 1px solid rgba(20, 54, 90, 0.08);
+    background: rgba(255, 255, 255, 0.6);
+    border: 1px solid rgba(255, 255, 255, 0.7); box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.5);
     padding: 14px;
   }
 

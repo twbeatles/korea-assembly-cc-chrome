@@ -183,3 +183,22 @@ When editing this repository, align with the current implemented behavior below.
   - `npm run typecheck`
   - `npm run test:coverage`
   - `npm run build` (or `npm run verify`)
+
+## Addendum Closure (2026-03-11)
+
+Cross-document alignment note:
+
+- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md` is the baseline index.
+- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md` tracks addendum findings and closure mapping.
+- `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md` tracks build/runtime validation state.
+
+Current closure status:
+
+- Bridge token verification: completed.
+- Frame-forward nonce rotation: completed.
+- Unconfirmed fallback consistency: completed.
+- Fallback probe backoff + cached frame path: completed.
+- Invalidated context shutdown path: completed.
+- Offscreen duplicate-create tolerance: completed.
+- Subtitle row style-cost tuning: completed.
+- Focused regression tests added for probe/bridge paths.

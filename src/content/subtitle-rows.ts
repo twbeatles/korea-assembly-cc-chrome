@@ -4,6 +4,9 @@ import { compactSubtitleText, normalizeSubtitleText } from "../core/text-normali
 
 export const PRIMARY_SPEAKER_COLOR = "rgb(35, 124, 147)";
 export const SECONDARY_SPEAKER_COLOR = "rgb(30, 30, 30)";
+const SPEAKER_COLOR_CACHE_MAX_SIZE = 128;
+const CONFIRMATION_DESCENDANT_SAMPLE_LIMIT = 48;
+const normalizedSpeakerColorCache = new Map<string, string>();
 
 function queryAllSafe(root: ParentNode, selector: string): HTMLElement[] {
   try {
@@ -26,28 +29,49 @@ function getSmiWordNodes(root: ParentNode, selector: string): HTMLElement[] {
   return nodes.length ? nodes : queryAllSafe(root, "#viewSubtit .smi_word");
 }
 
-function extractStableNodeKey(node: HTMLElement): string {
+function extractClassNodeKey(node: HTMLElement): string {
   const classNames = String(node.className || "")
     .split(/\s+/)
     .map((token) => token.trim())
     .filter(Boolean)
     .filter((token) => token !== "smi_word");
 
-  if (classNames[0]) {
-    return classNames[0];
+  return classNames[0] ?? "";
+}
+
+function extractAttributeNodeKey(node: HTMLElement): string {
+  const candidateKeys = [
+    node.getAttribute("data-id"),
+    node.getAttribute("data-key"),
+    node.id,
+  ];
+
+  for (const candidate of candidateKeys) {
+    const normalized = String(candidate || "").trim();
+    if (normalized) {
+      return normalized;
+    }
   }
 
-  // 클래스로 식별불가 시 data-smi-id 고유 발급 및 캐싱
-  if (!node.dataset.smiId) {
-    node.dataset.smiId = `smi_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
+  return "";
+}
+
+function ensureGeneratedNodeKey(node: HTMLElement): string {
+  if (!node.dataset.assemblyRowKey) {
+    node.dataset.assemblyRowKey = `row_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
   }
-  return node.dataset.smiId;
+  return node.dataset.assemblyRowKey;
 }
 
 export function normalizeSpeakerColor(color: string): string {
   const value = String(color || "").trim();
   if (!value || typeof document === "undefined") {
     return value;
+  }
+
+  const cached = normalizedSpeakerColorCache.get(value);
+  if (cached) {
+    return cached;
   }
 
   const host = document.body || document.documentElement;
@@ -60,6 +84,11 @@ export function normalizeSpeakerColor(color: string): string {
   host.appendChild(probe);
   const normalized = window.getComputedStyle(probe).color;
   probe.remove();
+
+  if (normalizedSpeakerColorCache.size >= SPEAKER_COLOR_CACHE_MAX_SIZE) {
+    normalizedSpeakerColorCache.clear();
+  }
+  normalizedSpeakerColorCache.set(value, normalized);
   return normalized;
 }
 
@@ -82,20 +111,51 @@ export function readSpeakerColor(node: HTMLElement): string {
   return normalizeSpeakerColor(window.getComputedStyle(speakerNode).color);
 }
 
+function hasOpaqueBackground(backgroundColor: string): boolean {
+  const normalized = String(backgroundColor || "")
+    .replace(/\s+/g, "")
+    .toLowerCase();
+  return Boolean(normalized) && normalized !== "transparent" && normalized !== "rgba(0,0,0,0)";
+}
+
+function collectConfirmationCheckTargets(node: HTMLElement): HTMLElement[] {
+  const descendants = Array.from(node.querySelectorAll<HTMLElement>("*"));
+  if (descendants.length <= CONFIRMATION_DESCENDANT_SAMPLE_LIMIT) {
+    return descendants;
+  }
+
+  const sampled: HTMLElement[] = [];
+  const sampledIndices = new Set<number>();
+  const step = descendants.length / CONFIRMATION_DESCENDANT_SAMPLE_LIMIT;
+  for (let index = 0; index < CONFIRMATION_DESCENDANT_SAMPLE_LIMIT; index += 1) {
+    const sampledIndex = Math.min(
+      descendants.length - 1,
+      Math.floor(index * step),
+    );
+    if (sampledIndices.has(sampledIndex)) {
+      continue;
+    }
+    sampledIndices.add(sampledIndex);
+    sampled.push(descendants[sampledIndex]);
+  }
+
+  return sampled;
+}
+
 function isConfirmedSubtitleNode(node: HTMLElement): boolean {
   if (typeof window === "undefined" || !window.getComputedStyle) {
     return true;
   }
 
   const bg = window.getComputedStyle(node).backgroundColor;
-  if (bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)") {
+  if (hasOpaqueBackground(bg)) {
     return false;
   }
 
-  const children = Array.from(node.querySelectorAll<HTMLElement>("*"));
+  const children = collectConfirmationCheckTargets(node);
   for (const child of children) {
     const childBg = window.getComputedStyle(child).backgroundColor;
-    if (childBg && childBg !== "transparent" && childBg !== "rgba(0, 0, 0, 0)") {
+    if (hasOpaqueBackground(childBg)) {
       return false;
     }
   }
@@ -110,8 +170,17 @@ export function readObservedSubtitleRows(
 ): ObservedSubtitleRow[] {
   const rows: ObservedSubtitleRow[] = [];
   const nodes = getSmiWordNodes(root, selector);
+  const classKeyCounts = new Map<string, number>();
 
-  nodes.forEach((node, index) => {
+  nodes.forEach((node) => {
+    const classKey = extractClassNodeKey(node);
+    if (!classKey) {
+      return;
+    }
+    classKeyCounts.set(classKey, (classKeyCounts.get(classKey) ?? 0) + 1);
+  });
+
+  nodes.forEach((node) => {
     if (options?.filterUnconfirmedEnabled && !isConfirmedSubtitleNode(node)) {
       return;
     }
@@ -122,14 +191,22 @@ export function readObservedSubtitleRows(
       return;
     }
 
-    const stableNodeKey = extractStableNodeKey(node);
+    const classNodeKey = extractClassNodeKey(node);
+    const attrNodeKey = extractAttributeNodeKey(node);
+    const hasUniqueClassNodeKey =
+      Boolean(classNodeKey) && classKeyCounts.get(classNodeKey) === 1;
+    const nodeKey = hasUniqueClassNodeKey
+      ? `class:${classNodeKey}`
+      : attrNodeKey
+        ? `attr:${attrNodeKey}`
+        : ensureGeneratedNodeKey(node);
     const speakerColor = readSpeakerColor(node);
     const nextRow: ObservedSubtitleRow = {
-      nodeKey: stableNodeKey || `unstable:${index}:${compact.slice(0, 80)}`,
+      nodeKey,
       text,
       speakerColor,
       speakerChannel: classifySpeakerChannel(speakerColor),
-      unstableKey: !stableNodeKey,
+      unstableKey: !hasUniqueClassNodeKey && !attrNodeKey,
     };
 
     const previousRow = rows.at(-1);

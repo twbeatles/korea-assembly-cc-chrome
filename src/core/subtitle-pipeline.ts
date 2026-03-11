@@ -94,7 +94,7 @@ function applySourceMeta(entry: SubtitleEntry, meta?: PipelineSourceMeta): void 
 
 export function buildConfirmedCompactHistory(
   entries: SubtitleEntry[],
-  maxLength = PIPELINE_DEFAULTS.confirmedCompactMaxLength,
+  maxLength: number = PIPELINE_DEFAULTS.confirmedCompactMaxLength,
 ): string {
   if (!entries.length) {
     return "";
@@ -119,16 +119,35 @@ export function buildConfirmedCompactHistory(
   return parts.join("").slice(-maxLength);
 }
 
-function rebuildConfirmedHistory(state: SessionState): void {
-  state.confirmedCompact = buildConfirmedCompactHistory(state.entries);
+function resolveConfirmedCompactMaxLength(
+  settings?: Partial<ExtensionSettings>,
+): number {
+  const candidate = Number(settings?.maxBufferLength);
+  if (Number.isFinite(candidate) && candidate >= 1000) {
+    return Math.floor(candidate);
+  }
+  return PIPELINE_DEFAULTS.confirmedCompactMaxLength;
+}
+
+function rebuildConfirmedHistory(
+  state: SessionState,
+  settings?: Partial<ExtensionSettings>,
+): void {
+  state.confirmedCompact = buildConfirmedCompactHistory(
+    state.entries,
+    resolveConfirmedCompactMaxLength(settings),
+  );
   state.trailingSuffix = state.confirmedCompact.slice(-PIPELINE_DEFAULTS.suffixLength);
 }
 
-function softResyncHistory(state: SessionState): void {
+function softResyncHistory(
+  state: SessionState,
+  settings?: Partial<ExtensionSettings>,
+): void {
   const recentEntries = state.entries.slice(-PIPELINE_DEFAULTS.recentResyncEntries);
   state.confirmedCompact = buildConfirmedCompactHistory(
     recentEntries,
-    PIPELINE_DEFAULTS.confirmedCompactMaxLength,
+    resolveConfirmedCompactMaxLength(settings),
   );
   state.trailingSuffix = state.confirmedCompact.slice(-PIPELINE_DEFAULTS.suffixLength);
   state.previewDesyncCount = 0;
@@ -416,7 +435,7 @@ export function applyPreview(
     (next.previewDesyncCount >= PIPELINE_DEFAULTS.previewResyncThreshold ||
       next.previewAmbiguousSkipCount >= PIPELINE_DEFAULTS.previewAmbiguousResyncThreshold)
   ) {
-    softResyncHistory(next);
+    softResyncHistory(next, settings);
   }
 
   const retriedExtraction =
@@ -446,7 +465,7 @@ export function applyPreview(
   next.lastCommittedResetAt = null;
   next.previewDesyncCount = 0;
   next.previewAmbiguousSkipCount = 0;
-  rebuildConfirmedHistory(next);
+  rebuildConfirmedHistory(next, settings);
 
   return {
     state: next,
@@ -497,7 +516,7 @@ export function commitLiveRow(
 
     next.lastProcessedRaw = normalizeRawText(rowText);
     next.lastCommittedResetAt = null;
-    rebuildConfirmedHistory(next);
+    rebuildConfirmedHistory(next, settings);
 
     return {
       state: next,
@@ -513,7 +532,7 @@ export function commitLiveRow(
   });
   next.lastProcessedRaw = normalizeRawText(rowText);
   next.lastCommittedResetAt = null;
-  rebuildConfirmedHistory(next);
+  rebuildConfirmedHistory(next, settings);
 
   return {
     state: next,

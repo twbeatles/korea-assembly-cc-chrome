@@ -283,3 +283,28 @@ This section is the current source-of-truth for the latest engineering updates.
   - Potential subtitle-change miss in local polling path.
 - Security note:
   - `npm audit` high findings on `rollup@2.x` remain due upstream pinning in `@crxjs/vite-plugin` dependency chain.
+
+## 2026-03-11 Addendum Closure
+
+The functional-gap addendum items have been implemented and verified.
+
+- Security hardening completed:
+  - page-world observer bridge now requires a runtime token
+  - frame-forward nonce rotates on navigation
+- Functional consistency completed:
+  - `filterUnconfirmedEnabled` now applies consistently to container fallback paths
+- Runtime stability completed:
+  - invalidated extension context now triggers explicit runtime shutdown cleanup
+  - offscreen document create-flow tolerates already-exists conditions
+- Performance stabilization completed:
+  - top-frame fallback uses adaptive backoff
+  - last successful frame-path is reused for targeted probing
+  - subtitle row style normalization uses cache + bounded descendant checks
+- Coverage expansion completed:
+  - added focused tests for `dom-probe`, `frame-probe`, and `injected-observer`
+
+Reference docs:
+
+- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
+- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
+- `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`

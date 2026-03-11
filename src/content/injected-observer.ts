@@ -48,6 +48,7 @@ type BridgeState = {
   observerActive: boolean;
   pollingIntervalMs: number;
   filterUnconfirmedEnabled: boolean;
+  token: string;
 };
 
 function normalizeText(text: string): string {
@@ -72,6 +73,14 @@ function queryOne(selector: string): HTMLElement | null {
     return document.querySelector<HTMLElement>(selector);
   } catch {
     return null;
+  }
+}
+
+function queryAll(selector: string): HTMLElement[] {
+  try {
+    return Array.from(document.querySelectorAll<HTMLElement>(selector));
+  } catch {
+    return [];
   }
 }
 
@@ -176,6 +185,22 @@ function readContainerText(node: HTMLElement | null): string {
   return normalizeText(extractTailLines(raw, 3));
 }
 
+function shouldBlockContainerFallbackForUnconfirmed(filterUnconfirmedEnabled: boolean): boolean {
+  if (!filterUnconfirmedEnabled) {
+    return false;
+  }
+
+  const smiNodes = queryAll("#viewSubtit .smi_word");
+  if (!smiNodes.length) {
+    return false;
+  }
+
+  const confirmedRows = readObservedSubtitleRows(document, "#viewSubtit .smi_word", {
+    filterUnconfirmedEnabled: true,
+  });
+  return confirmedRows.length === 0;
+}
+
 function buildRowSignature(
   rows: {
     nodeKey: string;
@@ -212,9 +237,12 @@ function resolveSelectors(selectors?: string[]): string[] {
 function readSubtitleText(
   selectors: string[],
   preferredSelector = "",
-  filterUnconfirmedEnabled = true
+  filterUnconfirmedEnabled = true,
 ): SubtitleReadResult {
   const orderedSelectors = uniqueSelectors([preferredSelector, ...selectors]);
+  const blockContainerFallback = shouldBlockContainerFallbackForUnconfirmed(
+    filterUnconfirmedEnabled,
+  );
 
   for (const selector of orderedSelectors) {
     if (selector.includes(".smi_word")) {
@@ -227,6 +255,14 @@ function readSubtitleText(
           rows,
         };
       }
+
+      // `.smi_word`는 row 기반 읽기 전용으로 취급한다.
+      // 필터링 결과가 비어 있으면 같은 selector를 container fallback으로 재사용하지 않는다.
+      continue;
+    }
+
+    if (blockContainerFallback) {
+      continue;
     }
 
     const node = queryOne(selector);
@@ -241,6 +277,9 @@ function readSubtitleText(
   }
 
   for (const fallbackSelector of CONTAINER_PRIORITY) {
+    if (blockContainerFallback) {
+      break;
+    }
     const node = queryOne(fallbackSelector);
     const text = readContainerText(node);
     if (text) {
@@ -261,11 +300,13 @@ function readSubtitleText(
 
 function emit(
   kind: "subtitle:update" | "subtitle:reset" | "subtitle:health",
+  token: string,
   payload: Record<string, unknown>,
 ): void {
   window.postMessage(
     {
       source: OBSERVER_BRIDGE_SOURCE,
+      token,
       kind,
       timestamp: Date.now(),
       sourceUrl: window.location.href,
@@ -322,7 +363,7 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
       state.lastText = "";
       state.lastCompact = "";
       state.lastRowSignature = "";
-      emit("subtitle:reset", {
+      emit("subtitle:reset", state.token, {
         selector: state.observerSelector,
         observerActive,
       });
@@ -339,7 +380,7 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
     state.lastText = current.text;
     state.lastCompact = compact;
     state.lastRowSignature = rowSignature;
-    emit("subtitle:update", {
+    emit("subtitle:update", state.token, {
       raw: current.text,
       rows: current.rows,
       selector: state.observerSelector,
@@ -357,7 +398,7 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
   state.lastText = current.text;
   state.lastCompact = compact;
   state.lastRowSignature = rowSignature;
-  emit("subtitle:update", {
+  emit("subtitle:update", state.token, {
     raw: current.text,
     rows: current.rows,
     selector: state.observerSelector,
@@ -380,6 +421,7 @@ function installBridge(detail?: {
   selectors?: string[];
   pollingIntervalMs?: number;
   filterUnconfirmedEnabled?: boolean;
+  token?: string;
 }): void {
   const state = (window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY];
   if (!state) {
@@ -389,7 +431,11 @@ function installBridge(detail?: {
   teardownBridge(state);
   state.selectors = resolveSelectors(detail?.selectors);
   state.pollingIntervalMs = Math.max(100, detail?.pollingIntervalMs ?? 180);
-  state.filterUnconfirmedEnabled = detail?.filterUnconfirmedEnabled ?? true;
+  state.filterUnconfirmedEnabled =
+    detail?.filterUnconfirmedEnabled ?? state.filterUnconfirmedEnabled;
+  if (typeof detail?.token === "string" && detail.token) {
+    state.token = detail.token;
+  }
 
   const { selector, element } = selectTarget(state.selectors);
   state.target = element;
@@ -401,6 +447,8 @@ function installBridge(detail?: {
         installBridge({
           selectors: state.selectors,
           pollingIntervalMs: state.pollingIntervalMs,
+          filterUnconfirmedEnabled: state.filterUnconfirmedEnabled,
+          token: state.token,
         });
         return;
       }
@@ -424,17 +472,19 @@ function installBridge(detail?: {
       installBridge({
         selectors: state.selectors,
         pollingIntervalMs: state.pollingIntervalMs,
+        filterUnconfirmedEnabled: state.filterUnconfirmedEnabled,
+        token: state.token,
       });
       return;
     }
 
-    emit("subtitle:health", {
+    emit("subtitle:health", state.token, {
       selector: state.observerSelector,
       observerActive: state.observerActive,
     });
   }, 2000);
 
-  emit("subtitle:health", {
+  emit("subtitle:health", state.token, {
     selector: state.observerSelector,
     observerActive: state.observerActive,
   });
@@ -455,6 +505,7 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
     observerActive: false,
     pollingIntervalMs: 180,
     filterUnconfirmedEnabled: true,
+    token: "",
   };
 
   window.addEventListener(OBSERVER_CONFIG_EVENT, (event) => {
@@ -462,6 +513,7 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
       selectors?: string[];
       pollingIntervalMs?: number;
       filterUnconfirmedEnabled?: boolean;
+      token?: string;
     }>;
     installBridge(customEvent.detail);
   });
@@ -480,6 +532,8 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
       installBridge({
         selectors: state.selectors,
         pollingIntervalMs: state.pollingIntervalMs,
+        filterUnconfirmedEnabled: state.filterUnconfirmedEnabled,
+        token: state.token,
       });
     }
   });
