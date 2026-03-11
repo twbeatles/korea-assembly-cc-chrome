@@ -2,10 +2,21 @@ import {
   applyKeepalive,
   applyPreview,
   applyReset,
-  applyStructuredEntry,
+  commitLiveRow,
   finalizeSession,
   flushPendingPreviews,
 } from "../core/subtitle-pipeline";
+import {
+  clearLiveCaptureLedger,
+  createEmptyLiveCaptureLedger,
+  getLiveRow,
+  markLiveRowCommitted,
+  normalizeCaptureEvent,
+  reconcileLiveCapture,
+  setLiveRowBaseline,
+  type CaptureMode,
+  type LivePanelRow,
+} from "../core/live-capture";
 import {
   createEmptySessionState,
   getSessionCharCount,
@@ -13,7 +24,7 @@ import {
   type SessionRecord,
   type SessionState,
 } from "../core/subtitle-models";
-import { compactSubtitleText, normalizeRawText } from "../core/text-normalizer";
+import { compactSubtitleText } from "../core/text-normalizer";
 import {
   EXTENSION_STORAGE_KEY,
   FRAME_FORWARD_NONCE_SOURCE,
@@ -55,7 +66,6 @@ import { estimateRecentRaw } from "./dom-probe";
 import { exportSessionData, saveSession, updateRunningSession } from "../storage/session-store";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
-import { buildObservedSubtitlePreview } from "./subtitle-rows";
 import { tryDomSubtitleActivation, waitForSubtitleLayer } from "./subtitle-layer";
 
 const isTopFrame = window.top === window;
@@ -94,7 +104,7 @@ let inPagePanel: InPagePanelController | null = null;
 let frameForwardNonce = "";
 let lastSubtitleActivationAttemptAt = 0;
 let lastNavigationSnapshotAt = 0;
-let lastObservedStableRow: ObservedSubtitleRow | null = null;
+let liveCaptureLedger = createEmptyLiveCaptureLedger();
 
 function setPanelNotice(message: string): void {
   panelNotice = message;
@@ -131,6 +141,28 @@ function logDebug(message: string, payload?: unknown): void {
   console.debug("[assembly-subtitle]", message, payload);
 }
 
+function getPanelLiveRows(): LivePanelRow[] {
+  return liveCaptureLedger.activeRowKeys
+    .map((key) => getLiveRow(liveCaptureLedger, key))
+    .filter((row): row is NonNullable<ReturnType<typeof getLiveRow>> => Boolean(row))
+    .map((row) => ({
+      key: row.key,
+      text: row.text,
+      nodeKey: row.nodeKey,
+      speakerColor: row.speakerColor,
+      speakerChannel: row.speakerChannel,
+      updatedAt: row.updatedAt,
+    }));
+}
+
+function getLivePreviewText(): string {
+  return liveCaptureLedger.previewText || state.previewText;
+}
+
+function getCaptureMode(): CaptureMode {
+  return liveCaptureLedger.captureMode;
+}
+
 function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   return {
     connected: window.location.hostname === "assembly.webcast.go.kr",
@@ -142,7 +174,7 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
     sourceUrl: state.sourceUrl,
     subtitleCount: state.entries.length,
     charCount: getSessionCharCount(state.entries),
-    previewText: state.previewText,
+    previewText: getLivePreviewText(),
     recentEntries: state.entries.slice(-20),
     startedAt: state.startedAt,
     endedAt: state.endedAt,
@@ -252,6 +284,9 @@ function updateInPagePanel(): void {
       notice: panelNotice,
       autoScroll: settings.autoScroll,
       recentCopyLineCount: settings.recentCopyLineCount,
+      livePreviewText: getLivePreviewText(),
+      liveRows: getPanelLiveRows(),
+      captureMode: getCaptureMode(),
     }),
   );
 }
@@ -270,7 +305,7 @@ function clearPendingReset(): void {
 
 function clearStructuredRuntimeState(): void {
   clearPendingReset();
-  lastObservedStableRow = null;
+  liveCaptureLedger = clearLiveCaptureLedger();
   localLastProbeSignature = "";
   localHadProbeText = false;
 }
@@ -306,6 +341,18 @@ function scheduleDeferredSubtitleReset(): void {
   }, SUBTITLE_RESET_GRACE_MS);
 }
 
+function applyPreviewStateOnly(previewText: string, now: number): boolean {
+  if (previewText === state.previewText) {
+    return false;
+  }
+
+  state.previewText = previewText;
+  state.lastObservedRaw = previewText;
+  state.updatedAt = new Date(now).toISOString();
+  state.lastObserverEventAt = now;
+  return true;
+}
+
 function applyStructuredRowsEvent(
   rows: ObservedSubtitleRow[],
   previewText: string,
@@ -313,54 +360,59 @@ function applyStructuredRowsEvent(
   selector?: string,
   framePath?: number[],
 ): boolean {
-  const activeRow = rows.at(-1) ?? null;
-  const lastEntry = state.entries.at(-1);
-
-  // nodeKey가 동일하면 텍스트가 바뀐 경우에만 업데이트(참조 확장프로그램 방식)
-  if (activeRow && lastEntry?.sourceNodeKey === activeRow.nodeKey) {
-    if (lastEntry.text !== activeRow.text) {
-      // 같은 nodeKey인데 텍스트가 바뀐 경우 → 마지막 entry를 제자리 업데이트
-      state = applyStructuredEntry(state, activeRow.text, previewText, now, settings, {
-        selector,
-        framePath,
-        sourceNodeKey: activeRow.nodeKey,
-        forceNewEntry: false,
-      }).state;
-      lastObservedStableRow = activeRow;
-      return true;
-    }
-    // 텍스트도 동일 → 아무것도 안 함
-    lastObservedStableRow = activeRow;
-    return false;
-  }
-
-  // 새로운 nodeKey → 신규 entry 추가
-  const rowChanged =
-    Boolean(activeRow) &&
-    (!lastObservedStableRow ||
-      lastObservedStableRow.nodeKey !== activeRow?.nodeKey ||
-      lastObservedStableRow.text !== activeRow?.text);
-  lastObservedStableRow = activeRow;
-
-  if (!rowChanged || !activeRow) {
-    if (previewText !== state.previewText) {
-      state.previewText = previewText;
-      state.lastObservedRaw = previewText;
-      state.updatedAt = new Date(now).toISOString();
-      state.lastObserverEventAt = now;
-      return true;
-    }
-    return false;
-  }
-
-  state = applyStructuredEntry(state, activeRow.text, previewText, now, settings, {
+  const captureEvent = normalizeCaptureEvent({
+    raw: previewText,
+    rows,
     selector,
     framePath,
-    sourceNodeKey: activeRow.nodeKey,
-    forceNewEntry: true,
-  }).state;
+    timestamp: now,
+  });
+  const reconciliation = reconcileLiveCapture(liveCaptureLedger, captureEvent);
+  liveCaptureLedger = reconciliation.ledger;
 
-  return true;
+  let changed = reconciliation.changed || applyPreviewStateOnly(captureEvent.previewText, now);
+
+  reconciliation.rowChanges.forEach((rowChange) => {
+    let liveRow = getLiveRow(liveCaptureLedger, rowChange.key);
+    if (!liveRow) {
+      return;
+    }
+
+    if (liveRow.baselineCompact === null) {
+      liveCaptureLedger = setLiveRowBaseline(
+        liveCaptureLedger,
+        rowChange.key,
+        state.confirmedCompact,
+      );
+      liveRow = getLiveRow(liveCaptureLedger, rowChange.key);
+      if (!liveRow) {
+        return;
+      }
+    }
+
+    const result = commitLiveRow(state, liveRow.text, captureEvent.previewText, now, settings, {
+      selector,
+      framePath,
+      sourceNodeKey: liveRow.key,
+      entryId: liveRow.committedEntryId ?? undefined,
+      baselineCompact: liveRow.baselineCompact ?? state.confirmedCompact,
+    });
+
+    if (result.changed) {
+      state = result.state;
+      changed = true;
+    }
+
+    if (!liveRow.committedEntryId && result.appendedEntry) {
+      liveCaptureLedger = markLiveRowCommitted(
+        liveCaptureLedger,
+        rowChange.key,
+        result.appendedEntry.id,
+      );
+    }
+  });
+
+  return changed;
 }
 
 function scheduleRunningPersist(): void {
@@ -577,22 +629,28 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     }
 
     clearPendingReset();
-    const previewText = normalizeRawText(event.raw ?? "") || buildObservedSubtitlePreview(event.rows ?? []);
-    if (!previewText) {
+    const captureEvent = normalizeCaptureEvent({
+      raw: event.raw,
+      rows: event.rows,
+      selector: event.selector,
+      framePath: event.framePath,
+      timestamp: now,
+    });
+    if (!captureEvent.previewText) {
       return;
     }
 
-    if (hasOnlyStableRows(event.rows ?? [])) {
+    if (captureEvent.captureMode === "structured" && hasOnlyStableRows(captureEvent.rows)) {
       const changed = applyStructuredRowsEvent(
-        event.rows ?? [],
-        previewText,
+        captureEvent.rows,
+        captureEvent.previewText,
         now,
         event.selector,
         event.framePath,
       );
       if (
         !changed &&
-        previewText === state.lastObservedRaw &&
+        captureEvent.previewText === state.lastObservedRaw &&
         (!state.lastKeepaliveAt || now - state.lastKeepaliveAt >= settings.keepaliveIntervalMs)
       ) {
         state = applyKeepalive(state, now).state;
@@ -607,8 +665,13 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       return;
     }
 
-    lastObservedStableRow = null;
-    const normalized = previewText;
+    const fallbackReconciliation = reconcileLiveCapture(liveCaptureLedger, {
+      ...captureEvent,
+      rows: [],
+      captureMode: "fallback",
+    });
+    liveCaptureLedger = fallbackReconciliation.ledger;
+    const normalized = captureEvent.previewText;
     if (!normalized) {
       return;
     }
@@ -630,6 +693,8 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     state = result.state;
     if (result.changed) {
       scheduleRunningPersist();
+    }
+    if (fallbackReconciliation.changed || result.changed) {
       syncUserInterfaces();
     }
   } catch (error) {
@@ -724,6 +789,7 @@ function startTopFrameFallback(): void {
         source: OBSERVER_BRIDGE_SOURCE,
         kind: "subtitle:update",
         raw: probe.text,
+        rows: probe.rows,
         selector: probe.matchedSelector,
         framePath: probe.framePath,
         timestamp: now,

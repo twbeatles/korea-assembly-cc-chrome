@@ -8,7 +8,7 @@
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정` 중심의 보조 화면입니다.
-- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `autosave 상태 표시`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `접이식 내보내기 메뉴`가 포함됩니다.
+- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `autosave 상태 표시`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 현재 감지된 줄 / 방금 나온 자막 분리`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
 - 현재 기준 기본 검증 명령은 아래 3개입니다.
 
 ```bash
@@ -38,8 +38,8 @@ src/
     dom-probe.ts
     frame-probe.ts
   core/
+    live-capture.ts
     subtitle-pipeline.ts
-    suffix-diff.ts
     noise-filter.ts
     exporters/
   storage/
@@ -66,8 +66,9 @@ offscreen.html
   - `#viewSubtit`
 - 단일 노드 의존 금지입니다.
 - `.smi_word` 는 목록 전체를 읽고 stable class token 을 `nodeKey` 로 추출합니다.
-- stable `nodeKey` 가 잡히면 마지막 활성 row 기준으로 같은 자막의 보정/완성은 마지막 엔트리 갱신으로 처리합니다.
-- stable key 가 없으면 `unstable` 로 간주하고 기존 raw suffix-diff fallback 으로 내려갑니다.
+- top frame 에서는 `framePath + nodeKey` 기준 live row ledger 를 유지합니다.
+- stable `nodeKey` 가 잡히면 같은 row 의 보정/완성은 live row 와 마지막 엔트리를 제자리 갱신하고, 새 row 만 commit 후보로 봅니다.
+- stable key 가 없으면 `unstable` 로 간주하고 기존 raw/container fallback 으로 내려갑니다.
 - 실패 시 container text fallback 을 사용합니다.
 
 ### 4.2 프레임 탐색
@@ -81,15 +82,16 @@ offscreen.html
 - `injected-observer.ts` 가 page world 에서 `MutationObserver` 를 설치합니다.
 - 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 먼저 시도합니다.
 - observer 는 변경 신호를 받되, 실제 텍스트는 selector 기반으로 다시 읽고 `rows + raw preview` 를 함께 브리지합니다.
-- observer / polling 에서 여러 row 가 보여도 top frame 에서는 마지막 활성 row 위주로 처리합니다.
+- 같은 row 의 텍스트가 수정되면 새 key 만 보내지 않고 현재 row 스냅샷을 다시 보내 제자리 갱신을 가능하게 합니다.
+- observer, local polling, top-frame fallback 은 모두 같은 `NormalizedCaptureEvent` 형태로 합류합니다.
 - top frame 에서는 자막 공백을 즉시 reset 하지 않고 약 1초 grace 뒤에만 실제 reset 을 commit 합니다.
 - observer 실패 또는 타겟 미탐색 시 polling fallback 이 동작합니다.
 - `content-script.ts` 는 top frame 에서만 세션 상태와 subtitle pipeline 을 소유합니다.
 
 ## 5. subtitle pipeline 고정 의미론
 
-- `normalize -> preview gate -> suffix diff -> noise filter -> merge/add`
-- structured row 가 안정적으로 잡히면 마지막 활성 `sourceNodeKey` 우선 경로를 사용합니다.
+- `normalized capture event -> live reconcile -> normalize -> preview gate -> history/rfind suffix -> noise filter -> merge/add`
+- structured row 가 안정적으로 잡히면 row baseline 과 글로벌 history 를 함께 사용해 commit/update 를 분리합니다.
 - `_confirmed_compact` / `trailingSuffix` 의미를 유지합니다.
 - suffix 매칭은 `rfind` 기반입니다.
 - 과거 세션에 남아 있는 `speakerColor`, `speakerChannel`, `speakerChanged` 는 로드 가능해야 하지만, 현재 UI/내보내기에서는 이 메타를 전면에 드러내지 않습니다.
@@ -98,8 +100,8 @@ offscreen.html
   - history anchor 기반 incremental fallback
   - 반복 실패 시 soft resync
 - 동일 raw 유지 시 keepalive 로 마지막 entry 의 `endTime` 만 갱신합니다.
-- `subtitle_reset` 이 오면 pending preview drain 후 완전 리셋합니다.
-- `finalizeSession` 은 stop 시 pending preview 를 먼저 소진합니다.
+- `subtitle_reset` 이 오면 grace 이후 live ledger 와 pipeline state 를 함께 완전 리셋합니다.
+- `finalizeSession` 은 현재 state 기준으로 종료 처리하며, queued preview drain 을 전제하지 않습니다.
 
 ## 6. noise filtering 규칙
 
@@ -140,9 +142,11 @@ offscreen.html
 - 기본 상태는 `펼쳐짐` 이고, 접으면 오른쪽의 `자막 보기` 탭만 남습니다.
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
+- 패널 상단은 `실시간 내용`, 중단은 `현재 감지된 줄`, 하단은 `방금 나온 자막`으로 분리됩니다.
+- 같은 row key 의 갱신은 라이브 목록 DOM 노드를 재사용해 제자리 수정합니다.
 - history 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 `최근 N줄 복사`를 지원합니다.
-- `autoScroll` 옵션이 꺼지면 패널은 강제 스크롤하지 않습니다.
+- `autoScroll` 옵션이 꺼지면 live row / committed list 모두 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - 브라우저/확장 cold start 시 남아 있던 persisted `running` 세션은 `stopped` 로 자동 정리됩니다.
 

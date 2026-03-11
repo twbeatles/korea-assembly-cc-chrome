@@ -1,4 +1,5 @@
 import type { CaptureStatus, ExportFormat, SubtitleEntry } from "../core/subtitle-models";
+import type { CaptureMode, LivePanelRow } from "../core/live-capture";
 import type { StatusSnapshot } from "../shared/message-types";
 import { getCaptureStatusLabel, getExportFormatLabel, UI_TEXT } from "../shared/ui-labels";
 
@@ -64,27 +65,24 @@ const PANEL_STYLE = `
   .header,
   .header-actions,
   .action-row,
-  .footer-actions {
+  .footer-actions,
+  .hero-header,
+  .section-header {
     display: flex;
     align-items: center;
     gap: 8px;
   }
 
   .header,
-  .footer-actions {
+  .footer-actions,
+  .hero-header,
+  .section-header {
     justify-content: space-between;
   }
 
   .header-actions,
   .action-row {
     flex-wrap: wrap;
-  }
-
-  .title-group h1,
-  .hero-header h2,
-  .section-header h2,
-  .summary-copy strong {
-    margin: 0;
   }
 
   .eyebrow {
@@ -95,26 +93,38 @@ const PANEL_STYLE = `
     text-transform: uppercase;
   }
 
+  .title-group h1,
+  .hero-copy h2,
+  .section-header h2 {
+    margin: 0;
+  }
+
   .title-group h1 {
     font-size: 20px;
   }
 
-  .title-group p:last-child {
+  .title-group p:last-child,
+  .hero-copy p {
     margin: 6px 0 0;
     color: #4d6580;
     font-size: 12px;
     line-height: 1.45;
   }
 
-  .status-badge {
+  .status-badge,
+  .header-count,
+  .mode-badge {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-width: 72px;
-    padding: 6px 10px;
     border-radius: 999px;
     font-size: 12px;
     font-weight: 700;
+  }
+
+  .status-badge {
+    min-width: 72px;
+    padding: 6px 10px;
     background: #dce7f5;
     color: #214568;
   }
@@ -134,12 +144,19 @@ const PANEL_STYLE = `
     color: #9b211b;
   }
 
-  .header-actions .status-badge {
-    min-width: 88px;
+  .header-count {
+    padding: 6px 10px;
+    background: #eef3f9;
+    color: #536b83;
+  }
+
+  .mode-badge {
+    padding: 6px 10px;
+    background: #eff4fb;
+    color: #34516d;
   }
 
   .hero-card,
-  .summary-card,
   .controls-card,
   .section-card {
     border-radius: 18px;
@@ -148,52 +165,72 @@ const PANEL_STYLE = `
     padding: 14px;
   }
 
-  .hero-card {
+  .hero-card,
+  .controls-card {
     display: grid;
-    gap: 12px;
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(244, 249, 255, 0.96)),
-      #ffffff;
+    gap: 10px;
   }
 
-  .hero-header,
-  .section-header,
-  summary {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-  }
-
-  .hero-header h2,
-  .section-header h2 {
-    font-size: 15px;
-  }
-
-  .hero-header p,
-  .summary-copy p {
-    margin: 4px 0 0;
-    color: #60768d;
-    font-size: 12px;
-    line-height: 1.45;
+  .preview-box,
+  .live-row-list,
+  .entry-list {
+    border-radius: 16px;
+    background: #f2f6fb;
+    border: 1px solid rgba(20, 54, 90, 0.06);
+    overflow: auto;
   }
 
   .preview-box {
-    border-radius: 16px;
-    border: 1px solid rgba(20, 54, 90, 0.08);
-    background:
-      linear-gradient(180deg, rgba(238, 245, 255, 0.96), rgba(228, 239, 252, 0.96)),
-      #eff5fc;
     padding: 16px 18px;
     font-size: 14px;
     font-weight: 500;
     line-height: 1.6;
-    letter-spacing: -0.01em;
-    white-space: pre-wrap;
     min-height: 60px;
     max-height: 140px;
-    overflow: auto;
-    color: #4d6580;
+    white-space: pre-wrap;
+    color: #18344f;
+  }
+
+  .live-row-list,
+  .entry-list {
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+    max-height: min(36vh, 320px);
+  }
+
+  .live-row {
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: #ffffff;
+    border: 1px solid rgba(20, 54, 90, 0.08);
+  }
+
+  .live-row time,
+  .entry-card time {
+    display: block;
+    margin-bottom: 4px;
+    color: #5a7088;
+    font-size: 11px;
+  }
+
+  .live-row p,
+  .entry-card p,
+  .empty-text {
+    margin: 0;
+    color: #10263c;
+    font-weight: 500;
+    line-height: 1.6;
+  }
+
+  .entry-card {
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(20, 54, 90, 0.08);
+  }
+
+  .entry-card:last-child {
+    padding-bottom: 0;
+    border-bottom: 0;
   }
 
   .notice {
@@ -205,23 +242,8 @@ const PANEL_STYLE = `
     line-height: 1.5;
   }
 
-  .header-count {
-    font-size: 13px;
-    font-weight: 700;
-    color: #536b83;
-    background: #eef3f9;
-    padding: 6px 10px;
-    border-radius: 999px;
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .controls-card {
-    display: grid;
-    gap: 10px;
-  }
-
-  .action-row button {
+  .action-row button,
+  .footer-actions button {
     flex: 1;
     min-width: 0;
   }
@@ -267,67 +289,9 @@ const PANEL_STYLE = `
     color: #18344f;
   }
 
-  button.ghost {
-    background: #eef3f9;
-    color: #244666;
-  }
-
   button:disabled {
     cursor: not-allowed;
     opacity: 0.45;
-  }
-
-  /* Removed details/summary styles */
-
-  .section-header span,
-  .hero-header span {
-    color: #536b83;
-    font-size: 12px;
-  }
-
-  .entry-list {
-    border-radius: 16px;
-    background: #f2f6fb;
-    padding: 14px;
-    font-size: 15px;
-    line-height: 1.65;
-    display: grid;
-    gap: 12px;
-    max-height: min(46vh, 420px);
-    overflow: auto;
-  }
-
-  .entry-card {
-    padding-left: 2px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(20, 54, 90, 0.08);
-  }
-
-  .entry-card:last-child {
-    padding-bottom: 0;
-    border-bottom: 0;
-  }
-
-  .entry-card time {
-    display: block;
-    color: #5a7088;
-    font-size: 11px;
-    margin-bottom: 4px;
-  }
-
-  .entry-card p,
-  .empty-text {
-    margin: 0;
-    color: #10263c;
-    font-weight: 500;
-  }
-
-  .footer-actions {
-    gap: 8px;
-  }
-
-  .footer-actions button {
-    flex: 1;
   }
 
   @media (max-width: 768px) {
@@ -346,15 +310,6 @@ const PANEL_STYLE = `
       font-size: 13px;
       min-height: 50px;
     }
-
-    .entry-list {
-      font-size: 14px;
-    }
-
-    .meta-grid,
-    .export-grid {
-      grid-template-columns: 1fr;
-    }
   }
 `;
 
@@ -368,6 +323,9 @@ export interface InPagePanelState {
   startedAt: string | null;
   lastPersistedAt: string | null;
   previewText: string;
+  livePreviewText: string;
+  liveRows: LivePanelRow[];
+  captureMode: CaptureMode;
   recentEntries: SubtitleEntry[];
   subtitleCount: number;
   charCount: number;
@@ -393,11 +351,22 @@ export interface InPagePanelController {
   destroy: () => void;
 }
 
-function formatDate(value: string | null): string {
+function formatDate(value: string | null | number): string {
   if (!value) {
     return "-";
   }
   return new Date(value).toLocaleString("ko-KR");
+}
+
+function formatCaptureMode(mode: CaptureMode): string {
+  switch (mode) {
+    case "structured":
+      return "구조화 감지";
+    case "fallback":
+      return "원문 fallback";
+    default:
+      return "대기 중";
+  }
 }
 
 function createEntryCard(entry: SubtitleEntry): HTMLElement {
@@ -409,6 +378,21 @@ function createEntryCard(entry: SubtitleEntry): HTMLElement {
 
   const text = document.createElement("p");
   text.textContent = entry.text;
+
+  article.append(time, text);
+  return article;
+}
+
+function createLiveRowCard(row: LivePanelRow): HTMLElement {
+  const article = document.createElement("article");
+  article.className = "live-row";
+  article.dataset.rowKey = row.key;
+
+  const time = document.createElement("time");
+  time.textContent = formatDate(row.updatedAt);
+
+  const text = document.createElement("p");
+  text.textContent = row.text;
 
   article.append(time, text);
   return article;
@@ -431,16 +415,29 @@ function createButton(
 
 function buildEntrySignature(entries: SubtitleEntry[]): string {
   return entries
-    .map(
-      (entry) =>
-        `${entry.id}|${entry.text}|${entry.startTime}|${entry.endTime}`,
-    )
+    .map((entry) => `${entry.id}|${entry.text}|${entry.startTime}|${entry.endTime}`)
     .join("||");
+}
+
+function buildLiveSignature(rows: LivePanelRow[], previewText: string, captureMode: CaptureMode): string {
+  return [
+    captureMode,
+    previewText,
+    ...rows.map((row) => `${row.key}|${row.text}|${row.updatedAt}`),
+  ].join("||");
 }
 
 export function buildInPagePanelState(
   snapshot: StatusSnapshot,
-  options: { collapsed: boolean; notice: string; autoScroll: boolean; recentCopyLineCount: number },
+  options: {
+    collapsed: boolean;
+    notice: string;
+    autoScroll: boolean;
+    recentCopyLineCount: number;
+    livePreviewText: string;
+    liveRows: LivePanelRow[];
+    captureMode: CaptureMode;
+  },
 ): InPagePanelState {
   return {
     visible: snapshot.connected,
@@ -452,6 +449,9 @@ export function buildInPagePanelState(
     startedAt: snapshot.startedAt,
     lastPersistedAt: snapshot.lastPersistedAt,
     previewText: snapshot.previewText,
+    livePreviewText: options.livePreviewText || snapshot.previewText,
+    liveRows: options.liveRows,
+    captureMode: options.captureMode,
     recentEntries: snapshot.recentEntries,
     subtitleCount: snapshot.subtitleCount,
     charCount: snapshot.charCount,
@@ -475,13 +475,11 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   wrapper.className = "host";
 
   const collapsedTab = createButton(UI_TEXT.expand, actions.onExpand, "collapsed-tab");
-
   const panel = document.createElement("section");
   panel.className = "panel";
 
   const header = document.createElement("div");
   header.className = "header";
-
   const titleGroup = document.createElement("div");
   titleGroup.className = "title-group";
   const eyebrow = document.createElement("p");
@@ -490,21 +488,52 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const title = document.createElement("h1");
   title.textContent = UI_TEXT.appName;
   const subtitle = document.createElement("p");
-  subtitle.textContent = "실시간 자막을 먼저 크게 보고, 저장과 내보내기는 아래에서 관리합니다.";
+  subtitle.textContent = "실시간 감지 내용과 확정된 자막을 분리해 보여줍니다.";
   titleGroup.append(eyebrow, title, subtitle);
 
   const headerCount = document.createElement("span");
   headerCount.className = "header-count";
-
   const statusBadge = document.createElement("span");
   statusBadge.className = "status-badge";
-
   const headerActions = document.createElement("div");
   headerActions.className = "header-actions";
   const collapseButton = createButton(UI_TEXT.collapse, actions.onCollapse, "secondary icon");
   headerActions.append(headerCount, statusBadge, collapseButton);
-
   header.append(titleGroup, headerActions);
+
+  const heroCard = document.createElement("section");
+  heroCard.className = "hero-card";
+  const heroHeader = document.createElement("div");
+  heroHeader.className = "hero-header";
+  const heroCopy = document.createElement("div");
+  heroCopy.className = "hero-copy";
+  const heroTitle = document.createElement("h2");
+  heroTitle.textContent = UI_TEXT.livePreview;
+  const heroHint = document.createElement("p");
+  heroHint.textContent = "현재 화면에서 감지한 live row를 먼저 갱신합니다.";
+  heroCopy.append(heroTitle, heroHint);
+  const modeBadge = document.createElement("span");
+  modeBadge.className = "mode-badge";
+  heroHeader.append(heroCopy, modeBadge);
+
+  const previewBox = document.createElement("div");
+  previewBox.className = "preview-box";
+
+  const liveRowHeader = document.createElement("div");
+  liveRowHeader.className = "section-header";
+  const liveRowTitle = document.createElement("h2");
+  liveRowTitle.textContent = "현재 감지된 줄";
+  const liveRowCount = document.createElement("span");
+  liveRowHeader.append(liveRowTitle, liveRowCount);
+
+  const liveRowList = document.createElement("div");
+  liveRowList.className = "live-row-list";
+  const liveRowEmpty = document.createElement("p");
+  liveRowEmpty.className = "empty-text";
+  liveRowEmpty.textContent = "구조화 row가 잡히면 이곳에 표시됩니다.";
+  liveRowList.append(liveRowEmpty);
+
+  heroCard.append(heroHeader, previewBox, liveRowHeader, liveRowList);
 
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
@@ -528,7 +557,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const clearButton = createButton(UI_TEXT.clearSession, actions.onClearSession, "secondary");
   const saveButton = createButton(UI_TEXT.saveSession, actions.onSaveSession, "secondary");
   secondaryActions.append(clearButton, saveButton);
-
   controlsCard.append(primaryActions, exportRow, secondaryActions);
 
   const listSection = document.createElement("section");
@@ -552,26 +580,22 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const optionsButton = createButton(UI_TEXT.openOptions, actions.onOpenOptions, "secondary");
   footer.append(historyButton, optionsButton);
 
-  panel.append(
-    header,
-    listSection,
-    notice,
-    controlsCard,
-    footer,
-  );
-
+  panel.append(header, heroCard, listSection, notice, controlsCard, footer);
   wrapper.append(collapsedTab, panel);
   shadowRoot.append(style, wrapper);
   (document.body || document.documentElement).appendChild(host);
 
-  const emptyPreviewText = "자막이 잡히면 이곳에 실시간으로 쌓입니다.";
+  const emptyPreviewText = "자막이 잡히면 이곳에 실시간으로 표시됩니다.";
+  const liveRowNodes = new Map<string, HTMLElement>();
   let renderedNotice = "";
-  let renderedListSignature = "";
   let renderedCollapsed = false;
+  let renderedListSignature = "";
+  let renderedLiveSignature = "";
 
   return {
     update(nextState) {
       host.style.display = nextState.visible ? "block" : "none";
+
       if (renderedCollapsed !== nextState.collapsed) {
         wrapper.classList.toggle("collapsed", nextState.collapsed);
         renderedCollapsed = nextState.collapsed;
@@ -579,10 +603,63 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
       statusBadge.textContent = nextState.statusLabel;
       statusBadge.className = `status-badge ${nextState.status}`;
-
       headerCount.textContent = `${nextState.subtitleCount}문장`;
-
+      modeBadge.textContent = formatCaptureMode(nextState.captureMode);
+      liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
+
+      const nextPreviewText =
+        nextState.livePreviewText.trim() || nextState.previewText.trim() || emptyPreviewText;
+      const nextLiveSignature = buildLiveSignature(
+        nextState.liveRows,
+        nextPreviewText,
+        nextState.captureMode,
+      );
+      const liveChanged = renderedLiveSignature !== nextLiveSignature;
+      if (liveChanged) {
+        previewBox.textContent = nextPreviewText;
+
+        if (!nextState.liveRows.length) {
+          liveRowNodes.forEach((node) => node.remove());
+          liveRowNodes.clear();
+          liveRowList.replaceChildren(liveRowEmpty);
+        } else {
+          if (liveRowEmpty.parentElement === liveRowList) {
+            liveRowEmpty.remove();
+          }
+
+          nextState.liveRows.forEach((row) => {
+            let node = liveRowNodes.get(row.key);
+            if (!node) {
+              node = createLiveRowCard(row);
+              liveRowNodes.set(row.key, node);
+            }
+
+            const timeNode = node.querySelector("time");
+            const textNode = node.querySelector("p");
+            const nextTime = formatDate(row.updatedAt);
+            if (timeNode && timeNode.textContent !== nextTime) {
+              timeNode.textContent = nextTime;
+            }
+            if (textNode && textNode.textContent !== row.text) {
+              textNode.textContent = row.text;
+            }
+
+            liveRowList.appendChild(node);
+          });
+
+          [...liveRowNodes.keys()].forEach((key) => {
+            if (nextState.liveRows.some((row) => row.key === key)) {
+              return;
+            }
+            const node = liveRowNodes.get(key);
+            node?.remove();
+            liveRowNodes.delete(key);
+          });
+        }
+
+        renderedLiveSignature = nextLiveSignature;
+      }
 
       if (renderedNotice !== nextState.notice) {
         notice.textContent = nextState.notice;
@@ -600,14 +677,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
           empty.textContent = "아직 모인 자막이 없습니다.";
           entryList.append(empty);
         } else {
-          while (entryList.firstChild) {
-            if ((entryList.firstChild as HTMLElement).className === "empty-text") {
-              entryList.removeChild(entryList.firstChild);
-            } else {
-              break;
-            }
-          }
-
           const currentNodes = Array.from(entryList.querySelectorAll(".entry-card"));
 
           nextState.recentEntries.forEach((entry, index) => {
@@ -616,7 +685,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
               const timeNode = existingNode.querySelector("time");
               const textNode = existingNode.querySelector("p");
               const nextTime = formatDate(entry.startTime);
-              
               if (timeNode && timeNode.textContent !== nextTime) {
                 timeNode.textContent = nextTime;
               }
@@ -628,8 +696,8 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
             }
           });
 
-          for (let i = nextState.recentEntries.length; i < currentNodes.length; i++) {
-            entryList.removeChild(currentNodes[i]);
+          for (let index = nextState.recentEntries.length; index < currentNodes.length; index += 1) {
+            entryList.removeChild(currentNodes[index]);
           }
         }
         renderedListSignature = nextListSignature;
@@ -646,8 +714,13 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
         button.disabled = !hasPersistableContent;
       });
 
-      if (!nextState.collapsed && nextState.autoScroll && listChanged) {
-        entryList.scrollTop = entryList.scrollHeight;
+      if (!nextState.collapsed && nextState.autoScroll) {
+        if (liveChanged) {
+          liveRowList.scrollTop = liveRowList.scrollHeight;
+        }
+        if (listChanged) {
+          entryList.scrollTop = entryList.scrollHeight;
+        }
       }
     },
     destroy() {

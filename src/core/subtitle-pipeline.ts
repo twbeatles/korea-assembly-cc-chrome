@@ -12,10 +12,15 @@ import {
   type SubtitleEntry,
 } from "./subtitle-models";
 import {
+  compactSubtitleText,
   joinStreamText,
   normalizeRawText,
+  stripZeroWidth,
 } from "./text-normalizer";
 import { toIsoString } from "./timeline";
+
+const MIN_COMPACT_ANCHOR = 10;
+const LARGE_APPEND_MIN = 200;
 
 export interface PipelineSourceMeta {
   selector?: string;
@@ -24,11 +29,35 @@ export interface PipelineSourceMeta {
   forceNewEntry?: boolean;
 }
 
+export interface LiveRowCommitMeta extends PipelineSourceMeta {
+  entryId?: string;
+  baselineCompact?: string | null;
+}
+
 export interface PipelineResult {
   state: SessionState;
   changed: boolean;
   appendedEntry?: SubtitleEntry;
   reason?: string;
+}
+
+export interface IncrementalExtractResult {
+  text: string;
+  matched: boolean;
+  duplicate: boolean;
+  ambiguous: boolean;
+  reason:
+    | "empty"
+    | "no_history"
+    | "identical_history"
+    | "contained_in_history"
+    | "suffix"
+    | "suffix_duplicate"
+    | "history"
+    | "history_duplicate"
+    | "overlap"
+    | "overlap_duplicate"
+    | "full";
 }
 
 function updateStateMetadata(
@@ -48,44 +77,276 @@ function updateStateMetadata(
   return next;
 }
 
-function mergeOrAppendEntry(
+function applySourceMeta(entry: SubtitleEntry, meta?: PipelineSourceMeta): void {
+  if (!meta) {
+    return;
+  }
+  if (meta.selector) {
+    entry.sourceSelector = meta.selector;
+  }
+  if (meta.framePath) {
+    entry.sourceFramePath = [...meta.framePath];
+  }
+  if (meta.sourceNodeKey) {
+    entry.sourceNodeKey = meta.sourceNodeKey;
+  }
+}
+
+export function buildConfirmedCompactHistory(
+  entries: SubtitleEntry[],
+  maxLength = PIPELINE_DEFAULTS.confirmedCompactMaxLength,
+): string {
+  if (!entries.length) {
+    return "";
+  }
+
+  const parts: string[] = [];
+  let currentLength = 0;
+
+  for (let index = entries.length - 1; index >= 0; index -= 1) {
+    const compact = compactSubtitleText(entries[index].text);
+    if (!compact) {
+      continue;
+    }
+
+    parts.unshift(compact);
+    currentLength += compact.length;
+    if (currentLength >= maxLength) {
+      break;
+    }
+  }
+
+  return parts.join("").slice(-maxLength);
+}
+
+function rebuildConfirmedHistory(state: SessionState): void {
+  state.confirmedCompact = buildConfirmedCompactHistory(state.entries);
+  state.trailingSuffix = state.confirmedCompact.slice(-PIPELINE_DEFAULTS.suffixLength);
+}
+
+function softResyncHistory(state: SessionState): void {
+  const recentEntries = state.entries.slice(-PIPELINE_DEFAULTS.recentResyncEntries);
+  state.confirmedCompact = buildConfirmedCompactHistory(
+    recentEntries,
+    PIPELINE_DEFAULTS.confirmedCompactMaxLength,
+  );
+  state.trailingSuffix = state.confirmedCompact.slice(-PIPELINE_DEFAULTS.suffixLength);
+  state.previewDesyncCount = 0;
+  state.previewAmbiguousSkipCount = 0;
+}
+
+function sliceFromCompactIndex(text: string, compactIndex: number): string {
+  const raw = stripZeroWidth(String(text || ""));
+  if (compactIndex <= 0) {
+    return normalizeRawText(raw);
+  }
+
+  let seenCompactChars = 0;
+  let index = 0;
+
+  while (index < raw.length) {
+    const char = raw[index];
+    if (!/\s/.test(char)) {
+      seenCompactChars += 1;
+      if (seenCompactChars >= compactIndex) {
+        index += 1;
+        break;
+      }
+    }
+    index += 1;
+  }
+
+  return normalizeRawText(raw.slice(index));
+}
+
+function findCompactSuffixPrefixOverlap(
+  historyCompact: string,
+  rawCompact: string,
+  minOverlap = MIN_COMPACT_ANCHOR,
+): number {
+  const maxOverlap = Math.min(historyCompact.length, rawCompact.length);
+  for (let length = maxOverlap; length >= minOverlap; length -= 1) {
+    if (historyCompact.slice(-length) === rawCompact.slice(0, length)) {
+      return length;
+    }
+  }
+  return 0;
+}
+
+export function extractIncrementalTextFromHistory(
+  rawText: string,
+  historyCompact: string,
+): IncrementalExtractResult {
+  const normalizedRaw = normalizeRawText(rawText);
+  const rawCompact = compactSubtitleText(normalizedRaw);
+  const compactHistory = compactSubtitleText(historyCompact);
+
+  if (!rawCompact) {
+    return {
+      text: "",
+      matched: false,
+      duplicate: true,
+      ambiguous: false,
+      reason: "empty",
+    };
+  }
+
+  if (!compactHistory) {
+    return {
+      text: normalizedRaw,
+      matched: false,
+      duplicate: false,
+      ambiguous: false,
+      reason: "no_history",
+    };
+  }
+
+  if (rawCompact === compactHistory) {
+    return {
+      text: "",
+      matched: true,
+      duplicate: true,
+      ambiguous: false,
+      reason: "identical_history",
+    };
+  }
+
+  if (
+    rawCompact.length >= PIPELINE_DEFAULTS.recentDuplicateMinLength &&
+    compactHistory.includes(rawCompact)
+  ) {
+    return {
+      text: "",
+      matched: false,
+      duplicate: true,
+      ambiguous: false,
+      reason: "contained_in_history",
+    };
+  }
+
+  const suffix = compactHistory.slice(-PIPELINE_DEFAULTS.suffixLength);
+  if (suffix) {
+    const firstPos = rawCompact.indexOf(suffix);
+    const lastPos = rawCompact.lastIndexOf(suffix);
+    if (lastPos >= 0) {
+      const compactStart = lastPos + suffix.length;
+      const text = sliceFromCompactIndex(normalizedRaw, compactStart);
+      const predictedAppend = Math.max(0, rawCompact.length - compactStart);
+      return {
+        text,
+        matched: true,
+        duplicate: !text,
+        ambiguous:
+          firstPos !== lastPos &&
+          predictedAppend > Math.max(LARGE_APPEND_MIN, Math.floor(rawCompact.length / 3)),
+        reason: text ? "suffix" : "suffix_duplicate",
+      };
+    }
+  }
+
+  if (compactHistory.length >= MIN_COMPACT_ANCHOR) {
+    const historyPos = rawCompact.lastIndexOf(compactHistory);
+    if (historyPos >= 0) {
+      const compactStart = historyPos + compactHistory.length;
+      const text = sliceFromCompactIndex(normalizedRaw, compactStart);
+      return {
+        text,
+        matched: true,
+        duplicate: !text,
+        ambiguous: false,
+        reason: text ? "history" : "history_duplicate",
+      };
+    }
+  }
+
+  const overlap = findCompactSuffixPrefixOverlap(compactHistory, rawCompact);
+  if (overlap > 0) {
+    const text = sliceFromCompactIndex(normalizedRaw, overlap);
+    return {
+      text,
+      matched: true,
+      duplicate: !text,
+      ambiguous: false,
+      reason: text ? "overlap" : "overlap_duplicate",
+    };
+  }
+
+  return {
+    text: normalizedRaw,
+    matched: false,
+    duplicate: false,
+    ambiguous: false,
+    reason: "full",
+  };
+}
+
+function sanitizeCommittedText(
+  text: string,
+  settings?: Partial<ExtensionSettings>,
+): string {
+  const normalizedText = normalizeRawText(text);
+
+  if (!normalizedText || !hasRequiredSubtitleContent(normalizedText)) {
+    return "";
+  }
+
+  if (
+    settings?.noiseFilterEnabled !== false &&
+    (!isMeaningfulSubtitleText(normalizedText) || isNoiseOnly(normalizedText))
+  ) {
+    return "";
+  }
+
+  return normalizedText;
+}
+
+function updateEntryById(
+  state: SessionState,
+  entryId: string,
+  text: string,
+  nowIso: string,
+  meta?: PipelineSourceMeta,
+): { entry: SubtitleEntry | undefined; changed: boolean } {
+  const entry = state.entries.find((candidate) => candidate.id === entryId);
+  if (!entry) {
+    return {
+      entry: undefined,
+      changed: false,
+    };
+  }
+
+  const beforeText = entry.text;
+  const beforeSelector = entry.sourceSelector ?? "";
+  const beforeSourceNodeKey = entry.sourceNodeKey ?? "";
+  const beforeFramePath = JSON.stringify(entry.sourceFramePath ?? []);
+
+  entry.text = text;
+  entry.endTime = nowIso;
+  applySourceMeta(entry, meta);
+
+  return {
+    entry,
+    changed:
+      beforeText !== entry.text ||
+      beforeSelector !== (entry.sourceSelector ?? "") ||
+      beforeSourceNodeKey !== (entry.sourceNodeKey ?? "") ||
+      beforeFramePath !== JSON.stringify(entry.sourceFramePath ?? []),
+  };
+}
+
+function appendOrMergeEntry(
   state: SessionState,
   text: string,
   nowIso: string,
   meta?: PipelineSourceMeta,
 ): SubtitleEntry {
-  const selector = meta?.selector;
-  const framePath = meta?.framePath ? [...meta.framePath] : undefined;
-  const sourceNodeKey = meta?.sourceNodeKey;
   const lastEntry = state.entries.at(-1);
 
-  const applySourceMeta = (entry: SubtitleEntry): void => {
-    if (selector) {
-      entry.sourceSelector = selector;
-    }
-    if (framePath) {
-      entry.sourceFramePath = framePath;
-    }
-    if (sourceNodeKey) {
-      entry.sourceNodeKey = sourceNodeKey;
-    }
-  };
-
   if (lastEntry && !state.lastCommittedResetAt && !meta?.forceNewEntry) {
-    if (sourceNodeKey && lastEntry.sourceNodeKey === sourceNodeKey) {
-      // 같은 nodeKey이면 Update
-      if (lastEntry.text !== text) {
-        lastEntry.text = text;
-        lastEntry.endTime = nowIso;
-        applySourceMeta(lastEntry);
-      }
-      return lastEntry;
-    }
-
     const structuredBoundary = Boolean(
-      sourceNodeKey &&
+      meta?.sourceNodeKey &&
         lastEntry.sourceNodeKey &&
-        lastEntry.sourceNodeKey !== sourceNodeKey,
+        lastEntry.sourceNodeKey !== meta.sourceNodeKey,
     );
 
     const canMerge =
@@ -93,54 +354,32 @@ function mergeOrAppendEntry(
       lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
 
     if (canMerge) {
-      // 다른 nodeKey거나 nodeKey가 없으면서 길이/시간 제약을 충족하면 병합
       lastEntry.text = joinStreamText(lastEntry.text, text);
       lastEntry.endTime = nowIso;
-      applySourceMeta(lastEntry);
-      return lastEntry;
-    }
-  }
-
-  // 첫 자막이거나, 사용자가 강제로 Reset 했거나, canMerge 제약을 넘어 새 엔트리를 파야 하는 경우
-  let appendText = text;
-
-  // 오버랩(중복) 컷팅: 새로 들어온 텍스트가 이전 엔트리의 텍스트 앞부분을 통째로 품고 있다면 잘라냅니다.
-  if (lastEntry && appendText.startsWith(lastEntry.text)) {
-    appendText = appendText.slice(lastEntry.text.length).trim();
-  }
-
-  if (!appendText) {
-    // 잘라내고 남은게 없으면 이전 엔트리와 완전히 중복되는 내용이므로 추가 거부 후 기존 엔트리 반환
-    if (lastEntry) {
-      lastEntry.endTime = nowIso;
+      applySourceMeta(lastEntry, meta);
       return lastEntry;
     }
   }
 
   const entry: SubtitleEntry = {
     id: createId("subtitle"),
-    text: appendText,
+    text,
     timestamp: nowIso,
     startTime: nowIso,
     endTime: nowIso,
-    sourceSelector: selector,
-    sourceFramePath: framePath,
-    sourceNodeKey,
   };
+  applySourceMeta(entry, meta);
   state.entries.push(entry);
   return entry;
 }
-
-// ----------------------------------------------------------------------
-// Simplified Pipeline APIs
-// ----------------------------------------------------------------------
 
 export function flushPendingPreviews(
   state: SessionState,
   now: number,
   settings?: Partial<ExtensionSettings>,
 ): SessionState {
-  // Previews are no longer queued. Just return state.
+  void now;
+  void settings;
   return state;
 }
 
@@ -151,8 +390,137 @@ export function applyPreview(
   settings?: Partial<ExtensionSettings>,
   meta?: PipelineSourceMeta,
 ): PipelineResult {
-  // Preview logic is now just synonymous to appending structured text directly.
-  return applyStructuredEntry(state, raw, raw, now, settings, meta);
+  const next = updateStateMetadata(state, now, meta);
+  const normalizedRaw = normalizeRawText(raw);
+  const previewChanged = next.previewText !== normalizedRaw;
+
+  next.previewText = normalizedRaw;
+  next.lastObservedRaw = normalizedRaw;
+
+  const extraction = extractIncrementalTextFromHistory(normalizedRaw, next.confirmedCompact);
+
+  if (!extraction.matched && next.confirmedCompact) {
+    next.previewDesyncCount += 1;
+  } else {
+    next.previewDesyncCount = 0;
+  }
+
+  if (extraction.ambiguous) {
+    next.previewAmbiguousSkipCount += 1;
+  } else {
+    next.previewAmbiguousSkipCount = 0;
+  }
+
+  if (
+    next.entries.length > 0 &&
+    (next.previewDesyncCount >= PIPELINE_DEFAULTS.previewResyncThreshold ||
+      next.previewAmbiguousSkipCount >= PIPELINE_DEFAULTS.previewAmbiguousResyncThreshold)
+  ) {
+    softResyncHistory(next);
+  }
+
+  const retriedExtraction =
+    next.previewDesyncCount === 0 && next.previewAmbiguousSkipCount === 0
+      ? extractIncrementalTextFromHistory(normalizedRaw, next.confirmedCompact)
+      : extraction;
+
+  if (retriedExtraction.duplicate || !retriedExtraction.text) {
+    return {
+      state: next,
+      changed: previewChanged,
+      reason: `preview_${retriedExtraction.reason}`,
+    };
+  }
+
+  const candidateText = sanitizeCommittedText(retriedExtraction.text, settings);
+  if (!candidateText) {
+    return {
+      state: next,
+      changed: previewChanged,
+      reason: "preview_filtered",
+    };
+  }
+
+  const appendedEntry = appendOrMergeEntry(next, candidateText, toIsoString(now), meta);
+  next.lastProcessedRaw = normalizedRaw;
+  next.lastCommittedResetAt = null;
+  next.previewDesyncCount = 0;
+  next.previewAmbiguousSkipCount = 0;
+  rebuildConfirmedHistory(next);
+
+  return {
+    state: next,
+    changed: true,
+    appendedEntry,
+    reason: `preview_${retriedExtraction.reason}`,
+  };
+}
+
+export function commitLiveRow(
+  state: SessionState,
+  rowText: string,
+  previewText: string,
+  now: number,
+  settings?: Partial<ExtensionSettings>,
+  meta?: LiveRowCommitMeta,
+): PipelineResult {
+  const next = updateStateMetadata(state, now, meta);
+  const normalizedPreview = normalizeRawText(previewText) || normalizeRawText(rowText);
+  const previewChanged = next.previewText !== normalizedPreview;
+  const baselineCompact = meta?.baselineCompact ?? next.confirmedCompact;
+
+  next.previewText = normalizedPreview;
+  next.lastObservedRaw = normalizedPreview;
+
+  const extraction = extractIncrementalTextFromHistory(rowText, baselineCompact);
+  const candidateText = sanitizeCommittedText(extraction.text, settings);
+
+  if (!candidateText) {
+    return {
+      state: next,
+      changed: previewChanged,
+      reason: extraction.duplicate ? "row_duplicate" : "row_filtered",
+    };
+  }
+
+  const nowIso = toIsoString(now);
+
+  if (meta?.entryId) {
+    const updated = updateEntryById(next, meta.entryId, candidateText, nowIso, meta);
+    if (!updated.entry) {
+      return {
+        state: next,
+        changed: previewChanged,
+        reason: "row_entry_missing",
+      };
+    }
+
+    next.lastProcessedRaw = normalizeRawText(rowText);
+    next.lastCommittedResetAt = null;
+    rebuildConfirmedHistory(next);
+
+    return {
+      state: next,
+      changed: previewChanged || updated.changed,
+      appendedEntry: updated.entry,
+      reason: "row_update",
+    };
+  }
+
+  const appendedEntry = appendOrMergeEntry(next, candidateText, nowIso, {
+    ...meta,
+    forceNewEntry: true,
+  });
+  next.lastProcessedRaw = normalizeRawText(rowText);
+  next.lastCommittedResetAt = null;
+  rebuildConfirmedHistory(next);
+
+  return {
+    state: next,
+    changed: true,
+    appendedEntry,
+    reason: "row_append",
+  };
 }
 
 export function applyStructuredEntry(
@@ -163,49 +531,25 @@ export function applyStructuredEntry(
   settings?: Partial<ExtensionSettings>,
   meta?: PipelineSourceMeta,
 ): PipelineResult {
-  const next = updateStateMetadata(state, now, meta);
-  const normalizedText = normalizeRawText(text);
-
-  if (!normalizedText || !hasRequiredSubtitleContent(normalizedText)) {
-    return {
-      state: next,
-      changed: next.updatedAt !== state.updatedAt,
-      reason: "structured_empty",
-    };
-  }
+  const lastEntry = state.entries.at(-1);
 
   if (
-    settings?.noiseFilterEnabled !== false &&
-    (!isMeaningfulSubtitleText(normalizedText) || isNoiseOnly(normalizedText))
+    meta?.sourceNodeKey &&
+    lastEntry?.sourceNodeKey === meta.sourceNodeKey &&
+    !meta.forceNewEntry
   ) {
-    return {
-      state: next,
-      changed: next.updatedAt !== state.updatedAt,
-      reason: "structured_filtered",
-    };
+    const baselineCompact = buildConfirmedCompactHistory(state.entries.slice(0, -1));
+    return commitLiveRow(state, text, previewText, now, settings, {
+      ...meta,
+      entryId: lastEntry.id,
+      baselineCompact,
+    });
   }
 
-  const lastEntry = next.entries.at(-1);
-  if (lastEntry && lastEntry.text === normalizedText && (!meta?.sourceNodeKey || lastEntry.sourceNodeKey === meta.sourceNodeKey)) {
-    return {
-      state: next,
-      changed: false,
-      reason: "structured_duplicate",
-    };
-  }
-
-  const appendedEntry = mergeOrAppendEntry(next, normalizedText, toIsoString(now), meta);
-  next.lastObservedRaw = normalizedText;
-  next.previewText = normalizedText;
-  next.lastProcessedRaw = normalizedText;
-  next.lastCommittedResetAt = null;
-
-  return {
-    state: next,
-    changed: true,
-    appendedEntry,
-    reason: "structured",
-  };
+  return commitLiveRow(state, text, previewText, now, settings, {
+    ...meta,
+    baselineCompact: state.confirmedCompact,
+  });
 }
 
 export function applyKeepalive(state: SessionState, now: number): PipelineResult {
@@ -225,7 +569,8 @@ export function applyReset(
   now: number,
   settings?: Partial<ExtensionSettings>,
 ): PipelineResult {
-  let next = updateStateMetadata(state, now);
+  void settings;
+  const next = updateStateMetadata(state, now);
   next.previewText = "";
   next.pendingPreviews = [];
   next.confirmedCompact = "";
@@ -243,7 +588,8 @@ export function finalizeSession(
   now: number,
   settings?: Partial<ExtensionSettings>,
 ): PipelineResult {
-  let next = updateStateMetadata(state, now);
+  void settings;
+  const next = updateStateMetadata(state, now);
   next.status = "stopped";
   next.endedAt = toIsoString(now);
   next.previewText = "";

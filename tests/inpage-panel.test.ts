@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { createId } from "../src/core/subtitle-models";
+import type { LivePanelRow } from "../src/core/live-capture";
 import {
   buildInPagePanelState,
   createInPagePanel,
@@ -47,14 +48,35 @@ function createSnapshot(): StatusSnapshot {
   };
 }
 
+function createLiveRows(): LivePanelRow[] {
+  return [
+    {
+      key: "top::row_1",
+      text: "안녕하세요",
+      nodeKey: "row_1",
+      speakerColor: "rgb(35, 124, 147)",
+      speakerChannel: "primary",
+      updatedAt: Date.parse("2026-03-10T09:00:00.000Z"),
+    },
+  ];
+}
+
+function buildPanelState(overrides?: Partial<Parameters<typeof buildInPagePanelState>[1]>) {
+  return buildInPagePanelState(createSnapshot(), {
+    collapsed: false,
+    notice: "자막을 모으는 중입니다.",
+    autoScroll: true,
+    recentCopyLineCount: 5,
+    livePreviewText: "안녕하세요",
+    liveRows: createLiveRows(),
+    captureMode: "structured",
+    ...overrides,
+  });
+}
+
 describe("in-page panel", () => {
   it("builds a user-facing panel state from snapshot", () => {
-    const view = buildInPagePanelState(createSnapshot(), {
-      collapsed: false,
-      notice: "자막을 모으는 중입니다.",
-      autoScroll: true,
-      recentCopyLineCount: 5,
-    });
+    const view = buildPanelState();
 
     expect(view.visible).toBe(true);
     expect(view.collapsed).toBe(false);
@@ -62,9 +84,11 @@ describe("in-page panel", () => {
     expect(view.statusLabel).toBe("수집 중");
     expect(view.committeeName).toBe("정무위원회");
     expect(view.notice).toBe("자막을 모으는 중입니다.");
+    expect(view.liveRows).toHaveLength(1);
+    expect(view.captureMode).toBe("structured");
   });
 
-  it("mounts once and updates content", () => {
+  it("mounts once and renders both live and committed sections", () => {
     const controller = createInPagePanel({
       onStartCapture: vi.fn(),
       onStopCapture: vi.fn(),
@@ -78,14 +102,7 @@ describe("in-page panel", () => {
       onCollapse: vi.fn(),
     });
 
-    controller.update(
-      buildInPagePanelState(createSnapshot(), {
-        collapsed: false,
-        notice: "자막을 모으는 중입니다.",
-        autoScroll: true,
-        recentCopyLineCount: 5,
-      }),
-    );
+    controller.update(buildPanelState());
 
     const host = document.getElementById(IN_PAGE_PANEL_HOST_ID);
     expect(host).not.toBeNull();
@@ -93,6 +110,7 @@ describe("in-page panel", () => {
 
     const shadowRoot = host?.shadowRoot;
     expect(shadowRoot?.textContent).toContain("국회 자막 도우미");
+    expect(shadowRoot?.textContent).toContain("실시간 내용");
     expect(shadowRoot?.textContent).toContain("방금 나온 자막");
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
 
@@ -115,24 +133,15 @@ describe("in-page panel", () => {
       onCollapse: () => {
         collapsed = true;
         controller.update(
-          buildInPagePanelState(createSnapshot(), {
+          buildPanelState({
             collapsed: true,
             notice: "패널을 접었습니다.",
-            autoScroll: true,
-            recentCopyLineCount: 5,
           }),
         );
       },
     });
 
-    controller.update(
-      buildInPagePanelState(createSnapshot(), {
-        collapsed: false,
-        notice: "자막을 모으는 중입니다.",
-        autoScroll: true,
-        recentCopyLineCount: 5,
-      }),
-    );
+    controller.update(buildPanelState());
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
     const collapseButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
@@ -162,9 +171,7 @@ describe("in-page panel", () => {
     });
 
     controller.update(
-      buildInPagePanelState(createSnapshot(), {
-        collapsed: false,
-        notice: "자동 스크롤을 끈 상태입니다.",
+      buildPanelState({
         autoScroll: false,
         recentCopyLineCount: 3,
       }),
@@ -172,13 +179,15 @@ describe("in-page panel", () => {
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
     const entryList = shadowRoot?.querySelector(".entry-list") as HTMLDivElement | null;
+    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
 
     expect(entryList?.scrollTop ?? 0).toBe(0);
+    expect(liveRowList?.scrollTop ?? 0).toBe(0);
 
     controller.destroy();
   });
 
-  it("keeps the rendered list when the same state is applied twice", () => {
+  it("reuses the live row DOM node when the same row key is updated", () => {
     const controller = createInPagePanel({
       onStartCapture: vi.fn(),
       onStopCapture: vi.fn(),
@@ -192,22 +201,28 @@ describe("in-page panel", () => {
       onCollapse: vi.fn(),
     });
 
-    const nextState = buildInPagePanelState(createSnapshot(), {
-      collapsed: false,
-      notice: "자막을 추적하고 있습니다.",
-      autoScroll: true,
-      recentCopyLineCount: 5,
-    });
-
-    controller.update(nextState);
+    controller.update(buildPanelState());
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const entryList = shadowRoot?.querySelector(".entry-list") as HTMLDivElement | null;
-    const firstEntry = entryList?.firstElementChild;
+    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const firstLiveRow = liveRowList?.querySelector(".live-row");
 
-    controller.update(nextState);
+    controller.update(
+      buildPanelState({
+        livePreviewText: "안녕하세요 수정",
+        liveRows: [
+          {
+            ...createLiveRows()[0],
+            text: "안녕하세요 수정",
+            updatedAt: Date.parse("2026-03-10T09:00:01.000Z"),
+          },
+        ],
+      }),
+    );
 
-    expect(entryList?.firstElementChild).toBe(firstEntry);
+    const updatedLiveRow = liveRowList?.querySelector(".live-row");
+    expect(updatedLiveRow).toBe(firstLiveRow);
+    expect(updatedLiveRow?.textContent).toContain("안녕하세요 수정");
 
     controller.destroy();
   });

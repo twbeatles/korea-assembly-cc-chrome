@@ -12,11 +12,11 @@
 - 비활성 아카이브: `legacy/` 아래 Python 데스크톱 앱
 - 주요 목표:
   - 국회 AI 자막 추출
-  - suffix 기반 증분 처리
+  - live row ledger + history 기반 증분 처리
   - 세션 persistence
   - 우측 패널 + popup/options/history 동작
   - 쉬운 한국어 UI / 검색 / 최근 N줄 복사 / autosave UX
-  - 자막 우선 대형 미리보기 / 접이식 내보내기 UI
+  - 자막 우선 대형 미리보기 / 현재 감지된 줄 / 확정 자막 분리 UI
 
 ## 3. 필수 명령
 
@@ -46,8 +46,8 @@ npm run build
 - `src/content/dom-probe.ts`
 - `src/content/frame-probe.ts`
 - `src/content/injected-observer.ts`
+- `src/core/live-capture.ts`
 - `src/core/subtitle-pipeline.ts`
-- `src/core/suffix-diff.ts`
 - `src/core/noise-filter.ts`
 
 ### 4.3 저장 / 내보내기
@@ -96,16 +96,17 @@ npm run build
   - `#viewSubtit .incont`
   - `#viewSubtit`
 - `.smi_word` 는 목록 전체를 읽고 stable class token 을 `nodeKey` 로 추적합니다.
-- stable key 가 있으면 같은 노드의 텍스트 보정은 기존 엔트리 갱신으로 처리합니다.
-- top frame 에서는 여러 row 가 보이더라도 마지막 활성 row 를 우선 처리합니다.
-- stable key 가 없으면 `unstable` 로 표시하고 raw suffix-diff fallback 을 사용합니다.
+- top frame 에서는 `framePath + nodeKey` 기준 live row ledger 를 유지합니다.
+- stable key 가 있으면 같은 노드의 텍스트 보정은 기존 live row 와 기존 엔트리 갱신으로 처리합니다.
+- 새 row 는 carry-over trim 과 글로벌 history 비교를 거친 뒤 실제 신규 delta 만 commit 합니다.
+- stable key 가 없으면 `unstable` 로 표시하고 raw/container fallback 을 사용합니다.
 - container text fallback 이 항상 있어야 합니다.
 - 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 시도합니다.
 
 ### 6.2 증분 추출
 
 - suffix 매칭은 `rfind` 기반입니다.
-- structured row 가 안정적으로 잡히면 마지막 활성 `sourceNodeKey` 우선 경로를 사용합니다.
+- structured row 가 안정적으로 잡히면 row baseline 과 global history 를 함께 사용합니다.
 - 자막 영역 공백은 top frame 에서 약 1초 grace 뒤에만 reset commit 합니다.
 - 과거 세션의 `speakerColor`, `speakerChannel`, `speakerChanged` 메타는 호환성을 위해 읽을 수 있어야 하지만, 현재 UI/내보내기에서는 이 메타를 전면에 쓰지 않습니다.
 - 대표 edge case:
@@ -117,7 +118,7 @@ npm run build
 ### 6.3 게이트와 후단 정제
 
 - raw text 를 바로 append 하지 않습니다.
-- `normalize -> preview gate -> suffix diff -> noise filter -> merge/add`
+- `normalized capture event -> live reconcile -> normalize -> preview gate -> history/rfind suffix -> noise filter -> merge/add`
 - `noiseFilterEnabled = true` 이면 숫자-only, 기호-only는 reject 합니다.
 - `noiseFilterEnabled = false` 이면 숫자-only, 기호-only도 통과시킵니다.
 - 한글/영문 1~2글자는 허용합니다.
@@ -127,8 +128,8 @@ npm run build
 ### 6.4 keepalive / reset / finalize
 
 - 동일 raw 유지 시 마지막 entry `endTime` 갱신
-- `subtitle_reset` 시 완전 리셋
-- stop 시 pending preview drain 후 finalize
+- `subtitle_reset` 시 live ledger 와 pipeline state 를 함께 완전 리셋
+- stop 시 현재 state 기준으로 finalize
 
 ## 7. persistence 규칙
 
@@ -150,9 +151,10 @@ npm run build
 - top frame 에 우측 패널이 자동 삽입됨
 - popup 은 페이지 패널 다시 열기용 보조 화면
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려감
+- 패널은 `실시간 내용`, `현재 감지된 줄`, `방금 나온 자막`을 분리해 표시
 - 복사 포맷은 `[HH:MM:SS] text`
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
-- `autoScroll` 이 꺼지면 패널 강제 스크롤 금지
+- `autoScroll` 이 꺼지면 live row / committed list 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
 - browser/extension cold start 시 남아 있던 `running` 세션은 `stopped` 로 정리
 

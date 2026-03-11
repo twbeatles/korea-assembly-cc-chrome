@@ -24,10 +24,10 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 ## 주요 기능
 
 - 국회 의사중계 페이지의 AI 자막 실시간 추출
-- 실시간 자막 누적 표시
+- `실시간 내용 / 현재 감지된 줄 / 방금 나온 자막` 분리 표시
 - `MutationObserver` 우선 + polling fallback
-- `.smi_word` nodeKey 추적, 활성 행 우선 처리, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
-- `preview / normalize / gate`
+- `.smi_word` nodeKey + framePath 기반 live row ledger 추적, 같은 row 제자리 보정, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
+- `normalized capture event -> live ledger -> preview / normalize / gate`
 - 글로벌 히스토리 + `rfind` suffix 기반 증분 추출
 - keepalive 기반 마지막 자막 `endTime` 갱신
 - `subtitle_reset` 처리
@@ -49,7 +49,7 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - SRT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS,mmm` 형식으로 출력합니다
 - VTT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS.mmm` 형식으로 출력합니다
 - JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
-- 저장/내보내기 전에는 export 정규화가 한 번 더 적용되어 carry-over 중복 문장을 제거합니다
+- 중복 문장은 실시간 수집 단계에서 먼저 차단하고, export 정규화는 마지막 안전망으로만 한 번 더 적용합니다
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
 
 ## 1차 범위
@@ -152,8 +152,8 @@ npm run build
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
 3. `자막 모으기`를 눌러 수집을 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 실패하면 패널 notice 로 수동 클릭 안내를 표시한다
-5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인한다
-6. 필요하면 접이식 `저장 / 내보내기` 메뉴를 열어 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다
+5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `현재 감지된 줄`에서 row별 보정을 본다
+6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 브라우저/확장을 다시 시작하면 남아 있던 `running` 세션은 자동으로 `stopped`로 정리된다
@@ -180,8 +180,9 @@ npm run build
 - 현재 탭에서 세션 상태를 보유합니다
 - popup이 닫혀도 수집은 계속됩니다
 - top frame에 우측 패널을 삽입해 현재 상태를 바로 보여 줍니다
-- page-world `MutationObserver` 이벤트와 polling fallback을 파이프라인에 전달합니다
-- stable `.smi_word` row 가 잡히면 마지막 활성 row 기준으로 같은 자막 수정/새 자막 분리를 처리합니다
+- page-world `MutationObserver`, local polling, top-frame fallback을 모두 같은 `normalized capture event` 형태로 파이프라인에 전달합니다
+- top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
+- 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도합니다
 
 ### injected observer
@@ -189,14 +190,15 @@ npm run build
 - page context에서 DOM 변화를 감시합니다
 - `window.postMessage`로 `subtitle:update`, `subtitle:reset`, `subtitle:health`를 브리지합니다
 - `subtitle:update`에는 raw preview 외에 `.smi_word` row 메타도 함께 실립니다
+- 같은 `nodeKey`의 텍스트가 보정되면 새 key만 보내는 대신 현재 row 스냅샷 전체를 다시 보내 제자리 갱신을 가능하게 합니다
 
 ### pipeline
 
-- `normalize -> preview gate -> suffix diff -> noise filter -> merge/add`
-- structured row 가 안정적으로 잡히면 마지막 활성 `sourceNodeKey` 우선 경로를 사용하고, 아니면 기존 raw suffix-diff fallback으로 내려갑니다
-- `rfind` 기반 suffix 추적
+- `normalized capture event -> live reconcile -> normalize -> preview gate -> history/rfind suffix -> noise filter -> merge/add`
+- structured row 가 안정적으로 잡히면 row별 baseline과 글로벌 history를 함께 써서 commit/update를 분리하고, 아니면 raw/container fallback으로 내려갑니다
+- `confirmedCompact`, `trailingSuffix`, history anchor, overlap fallback, soft resync 의미론을 유지합니다
 - recent compact tail 기반 중복 차단
-- export 직전 exact carry-over duplicate 를 한 번 더 정리합니다
+- export 정규화는 마지막 안전망으로만 exact carry-over duplicate 를 한 번 더 정리합니다
 - keepalive / reset / finalize 처리
 
 ### storage
