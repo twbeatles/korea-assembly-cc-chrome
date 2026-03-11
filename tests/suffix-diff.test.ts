@@ -44,4 +44,11 @@ describe("suffix diff", () => {
 
     expect(increment).toBe("새로운 결론입니다");
   });
+
+  it("filters out short duplicate sentences matching minOverlap=4", () => {
+    const previous = "주요 작물의 생육 상황은 전반적으로 양호합니다 다만 사과";
+    const next = "다만 사과에 꽂는 분화율이 다소 낮았으나";
+    // "다만사과" = 4 characters. Overlap should be found and "에 꽂는..." returned.
+    expect(extractIncrement(next, previous)).toBe("에 꽂는 분화율이 다소 낮았으나");
+  });
 });

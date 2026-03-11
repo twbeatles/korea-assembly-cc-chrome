@@ -175,4 +175,28 @@ describe("subtitle pipeline", () => {
     expect(state.entries).toHaveLength(2);
     expect(state.entries[1].text).toBe("리셋 후 새 발언입니다");
   });
+
+  it("removes overlap string from previous structured entry when next entry comes with a different sourceNodeKey", () => {
+    let state = buildRunningState();
+    state = applyStructuredEntry(
+      state,
+      "전반적으로 양호합니다 다만 사과",
+      "전반적으로 양호합니다 다만 사과",
+      Date.parse("2026-03-10T09:00:01.000Z"),
+      undefined,
+      { sourceNodeKey: "node_1" }
+    ).state;
+
+    state = applyStructuredEntry(
+      state,
+      "다만 사과에 꽂는 분화율이 다소 낮았으나",
+      "전반적으로 양호합니다 다만 사과에 꽂는 분화율이 다소 낮았으나",
+      Date.parse("2026-03-10T09:00:02.000Z"),
+      undefined,
+      { sourceNodeKey: "node_2" }
+    ).state;
+
+    expect(state.entries).toHaveLength(2);
+    expect(state.entries[1].text).toBe("에 꽂는 분화율이 다소 낮았으나");
+  });
 });

@@ -56,7 +56,7 @@ export function findSuffixPositions(rawCompact: string, suffix: string): SuffixP
 export function findCompactSuffixPrefixOverlap(
   previousCompact: string,
   nextCompact: string,
-  minOverlap = 10,
+  minOverlap = 4,
   maxOverlap = PIPELINE_DEFAULTS.recentHistoryCompactLength,
 ): number {
   if (!previousCompact || !nextCompact) {
@@ -176,7 +176,7 @@ export function extractStreamDelta(raw: string, lastRaw: string): string | null 
     return suffixDelta;
   }
 
-  const overlapLength = findCompactSuffixPrefixOverlap(previousCompact, rawCompact, 10);
+  const overlapLength = findCompactSuffixPrefixOverlap(previousCompact, rawCompact, 4);
   if (overlapLength > 0) {
     return sliceFromCompactIndex(normalizedRaw, overlapLength).trim();
   }
@@ -260,7 +260,7 @@ export function extractIncrement(text: string, previous: string, history: string
     }
   }
 
-  const overlapLength = findCompactSuffixPrefixOverlap(previousCompact, nextCompact, 10);
+  const overlapLength = findCompactSuffixPrefixOverlap(previousCompact, nextCompact, 4);
   if (overlapLength > 0) {
     return sliceFromCompactIndex(normalizedText, overlapLength).trim();
   }

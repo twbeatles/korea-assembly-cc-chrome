@@ -229,8 +229,8 @@ function preparePreviewCandidate(
     }
 
     const historyAnchor = compactHistoryTail(
-      recentTexts(state, 8),
-      8,
+      recentTexts(state, 12),
+      12,
       PIPELINE_DEFAULTS.recentHistoryCompactLength,
     );
     const incremental = sliceIncrementalPart(
@@ -519,8 +519,23 @@ export function applyStructuredEntry(
     };
   }
 
+  const lastEntry = next.entries.at(-1);
+  let processedText = normalizedText;
+
+  if (lastEntry && (!meta?.sourceNodeKey || lastEntry.sourceNodeKey !== meta.sourceNodeKey)) {
+    const refined = extractIncrement(processedText, lastEntry.text, recentTexts(next));
+    if (!refined) {
+      return {
+        state: next,
+        changed: next.previewText !== state.previewText || next.updatedAt !== state.updatedAt,
+        reason: "structured_duplicate",
+      };
+    }
+    processedText = refined.trim();
+  }
+
   next.pendingPreviews = [];
-  const appendedEntry = mergeOrAppendEntry(next, normalizedText, toIsoString(now), meta);
+  const appendedEntry = mergeOrAppendEntry(next, processedText, toIsoString(now), meta);
   const resynced = softResync(next);
   resynced.previewText = next.previewText;
   resynced.lastObservedRaw = next.lastObservedRaw;

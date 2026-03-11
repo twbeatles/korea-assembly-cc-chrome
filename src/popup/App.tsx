@@ -9,13 +9,6 @@ import type {
 } from "../shared/message-types";
 import { getCaptureStatusLabel, UI_TEXT } from "../shared/ui-labels";
 
-function formatDate(value: string | null): string {
-  if (!value) {
-    return "-";
-  }
-  return new Date(value).toLocaleString("ko-KR");
-}
-
 export default function App() {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
   const [statusMessage, setStatusMessage] = useState("현재 페이지를 확인하고 있습니다.");
