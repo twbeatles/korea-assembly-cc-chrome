@@ -51,4 +51,25 @@ describe("suffix diff", () => {
     // "다만사과" = 4 characters. Overlap should be found and "에 꽂는..." returned.
     expect(extractIncrement(next, previous)).toBe("에 꽂는 분화율이 다소 낮았으나");
   });
+
+  it("safely catches 1-character isolated overlaps (previous ends with space)", () => {
+    const previous = "최적의 해법인 온";
+    const next = "온라인 도매시장과 직거래장터를 개설하여 큰 성과";
+    // "온" is an isolated word at the end of previous. It overlaps with "온라인" (1 char).
+    expect(extractIncrement(next, previous)).toBe("라인 도매시장과 직거래장터를 개설하여 큰 성과");
+  });
+
+  it("safely catches 1-character isolated overlaps (next starts with space)", () => {
+    const previous = "도매시장과 직거래장터를 개설해";
+    const next = "해 성과를 내고 있습니다";
+    // "해 " is an isolated word at the start of next. It overlaps with "개설해" (1 char).
+    expect(extractIncrement(next, previous)).toBe("성과를 내고 있습니다");
+  });
+
+  it("ignores 1-character overlap if it is NOT an isolated word", () => {
+    const previous = "저는 학생입니다";
+    const next = "다시 한번 말씀드립니다";
+    // "다" matches, but it's not isolated. Should not overlap.
+    expect(extractIncrement(next, previous)).toBe("다시 한번 말씀드립니다");
+  });
 });

@@ -56,7 +56,7 @@ export function findSuffixPositions(rawCompact: string, suffix: string): SuffixP
 export function findCompactSuffixPrefixOverlap(
   previousCompact: string,
   nextCompact: string,
-  minOverlap = 4,
+  minOverlap = 2,
   maxOverlap = PIPELINE_DEFAULTS.recentHistoryCompactLength,
 ): number {
   if (!previousCompact || !nextCompact) {
@@ -176,7 +176,20 @@ export function extractStreamDelta(raw: string, lastRaw: string): string | null 
     return suffixDelta;
   }
 
-  const overlapLength = findCompactSuffixPrefixOverlap(previousCompact, rawCompact, 4);
+  let overlapLength = findCompactSuffixPrefixOverlap(previousCompact, rawCompact, 2);
+  if (overlapLength === 0 && rawCompact.length > 0 && previousCompact.length > 0) {
+    const firstCharOfNext = rawCompact[0];
+    const lastCharOfPrev = previousCompact[previousCompact.length - 1];
+    
+    if (firstCharOfNext === lastCharOfPrev) {
+      if (normalizedPrevious.endsWith(" " + lastCharOfPrev) || normalizedPrevious === lastCharOfPrev) {
+        overlapLength = 1;
+      } else if (normalizedRaw.startsWith(firstCharOfNext + " ") || normalizedRaw === firstCharOfNext) {
+        overlapLength = 1;
+      }
+    }
+  }
+
   if (overlapLength > 0) {
     return sliceFromCompactIndex(normalizedRaw, overlapLength).trim();
   }
@@ -260,7 +273,20 @@ export function extractIncrement(text: string, previous: string, history: string
     }
   }
 
-  const overlapLength = findCompactSuffixPrefixOverlap(previousCompact, nextCompact, 4);
+  let overlapLength = findCompactSuffixPrefixOverlap(previousCompact, nextCompact, 2);
+  if (overlapLength === 0 && nextCompact.length > 0 && previousCompact.length > 0) {
+    const firstCharOfNext = nextCompact[0];
+    const lastCharOfPrev = previousCompact[previousCompact.length - 1];
+    
+    if (firstCharOfNext === lastCharOfPrev) {
+      if (normalizedPrevious.endsWith(" " + lastCharOfPrev) || normalizedPrevious === lastCharOfPrev) {
+        overlapLength = 1;
+      } else if (normalizedText.startsWith(firstCharOfNext + " ") || normalizedText === firstCharOfNext) {
+        overlapLength = 1;
+      }
+    }
+  }
+
   if (overlapLength > 0) {
     return sliceFromCompactIndex(normalizedText, overlapLength).trim();
   }
