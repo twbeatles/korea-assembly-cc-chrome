@@ -8,7 +8,6 @@ import {
 import {
   cloneState,
   createId,
-  type SpeakerChannel,
   type SessionState,
   type SubtitleEntry,
 } from "./subtitle-models";
@@ -31,9 +30,6 @@ export interface PipelineSourceMeta {
   selector?: string;
   framePath?: number[];
   sourceNodeKey?: string;
-  speakerColor?: string;
-  speakerChannel?: SpeakerChannel;
-  speakerChanged?: boolean;
   forceNewEntry?: boolean;
 }
 
@@ -98,9 +94,6 @@ function mergeOrAppendEntry(
   const selector = meta?.selector;
   const framePath = meta?.framePath ? [...meta.framePath] : undefined;
   const sourceNodeKey = meta?.sourceNodeKey;
-  const speakerColor = meta?.speakerColor;
-  const speakerChannel = meta?.speakerChannel;
-  const speakerChanged = Boolean(meta?.speakerChanged);
   const lastEntry = state.entries.at(-1);
 
   const applySourceMeta = (entry: SubtitleEntry): void => {
@@ -113,15 +106,6 @@ function mergeOrAppendEntry(
     if (sourceNodeKey) {
       entry.sourceNodeKey = sourceNodeKey;
     }
-    if (speakerColor) {
-      entry.speakerColor = speakerColor;
-    }
-    if (speakerChannel) {
-      entry.speakerChannel = speakerChannel;
-    }
-    if (speakerChanged) {
-      entry.speakerChanged = true;
-    }
   };
 
   if (lastEntry) {
@@ -132,31 +116,18 @@ function mergeOrAppendEntry(
       return lastEntry;
     }
 
-    const speakerBoundary =
+    const structuredBoundary =
       Boolean(meta?.forceNewEntry) ||
       Boolean(state.lastCommittedResetAt) ||
-      speakerChanged ||
       Boolean(
         sourceNodeKey &&
           lastEntry.sourceNodeKey &&
           lastEntry.sourceNodeKey !== sourceNodeKey,
-      ) ||
-      Boolean(
-        speakerChannel &&
-          lastEntry.speakerChannel &&
-          speakerChannel !== "unknown" &&
-          lastEntry.speakerChannel !== "unknown" &&
-          lastEntry.speakerChannel !== speakerChannel,
-      ) ||
-      Boolean(
-        speakerColor &&
-          lastEntry.speakerColor &&
-          speakerColor !== lastEntry.speakerColor,
       );
 
     const gapSeconds = differenceSeconds(lastEntry.endTime || lastEntry.timestamp, nowIso);
     const canMerge =
-      !speakerBoundary &&
+      !structuredBoundary &&
       gapSeconds <= PIPELINE_DEFAULTS.mergeGapSeconds &&
       lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
 
@@ -177,9 +148,6 @@ function mergeOrAppendEntry(
     sourceSelector: selector,
     sourceFramePath: framePath,
     sourceNodeKey,
-    speakerColor,
-    speakerChannel,
-    speakerChanged: speakerChanged || undefined,
   };
   state.entries.push(entry);
   return entry;

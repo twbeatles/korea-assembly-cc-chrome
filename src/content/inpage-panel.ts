@@ -180,7 +180,7 @@ const PANEL_STYLE = `
 
   .preview-box {
     border-radius: 20px;
-    border-left: 4px solid transparent;
+    border: 1px solid rgba(20, 54, 90, 0.08);
     background:
       linear-gradient(180deg, rgba(238, 245, 255, 0.96), rgba(228, 239, 252, 0.96)),
       #eff5fc;
@@ -331,8 +331,7 @@ const PANEL_STYLE = `
   }
 
   .entry-card {
-    border-left: 4px solid transparent;
-    padding-left: 10px;
+    padding-left: 2px;
     padding-bottom: 10px;
     border-bottom: 1px solid rgba(20, 54, 90, 0.08);
   }
@@ -352,22 +351,6 @@ const PANEL_STYLE = `
   .entry-card p,
   .empty-text {
     margin: 0;
-  }
-
-  .speaker-badge {
-    display: none;
-    align-items: center;
-    justify-content: center;
-    min-width: 76px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    color: #ffffff;
-    font-size: 12px;
-    font-weight: 700;
-  }
-
-  .speaker-badge.visible {
-    display: inline-flex;
   }
 
   .footer-actions {
@@ -417,7 +400,6 @@ export interface InPagePanelState {
   charCount: number;
   recentCopyLineCount: number;
   notice: string;
-  previewSpeakerColor: string;
 }
 
 export interface InPagePanelActions {
@@ -448,7 +430,6 @@ function formatDate(value: string | null): string {
 function createEntryCard(entry: SubtitleEntry): HTMLElement {
   const article = document.createElement("article");
   article.className = "entry-card";
-  article.style.borderLeftColor = entry.speakerColor || "transparent";
 
   const time = document.createElement("time");
   time.textContent = formatDate(entry.startTime);
@@ -491,7 +472,7 @@ function buildEntrySignature(entries: SubtitleEntry[]): string {
   return entries
     .map(
       (entry) =>
-        `${entry.id}|${entry.text}|${entry.startTime}|${entry.endTime}|${entry.speakerColor || ""}|${entry.speakerChannel || ""}|${entry.speakerChanged ? "1" : "0"}`,
+        `${entry.id}|${entry.text}|${entry.startTime}|${entry.endTime}`,
     )
     .join("||");
 }
@@ -515,7 +496,6 @@ export function buildInPagePanelState(
     charCount: snapshot.charCount,
     recentCopyLineCount: options.recentCopyLineCount,
     notice: options.notice,
-    previewSpeakerColor: snapshot.recentEntries.at(-1)?.speakerColor || "",
   };
 }
 
@@ -573,13 +553,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   previewHint.textContent = "가장 최근 문장을 크게 보여줍니다.";
   previewCopy.append(previewTitle, previewHint);
   const previewStats = document.createElement("span");
-  const previewMeta = document.createElement("div");
-  previewMeta.className = "header-actions";
-  const previewSpeakerBadge = document.createElement("span");
-  previewSpeakerBadge.className = "speaker-badge";
-  previewSpeakerBadge.textContent = "발언 구분";
-  previewMeta.append(previewSpeakerBadge, previewStats);
-  previewHeader.append(previewCopy, previewMeta);
+  previewHeader.append(previewCopy, previewStats);
   const previewBox = document.createElement("div");
   previewBox.className = "preview-box";
   const notice = document.createElement("div");
@@ -679,7 +653,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   let renderedPreview = "";
   let renderedNotice = "";
   let renderedListSignature = "";
-  let renderedSpeakerColor = "";
   let renderedCollapsed = false;
 
   return {
@@ -710,13 +683,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       if (renderedNotice !== nextState.notice) {
         notice.textContent = nextState.notice;
         renderedNotice = nextState.notice;
-      }
-
-      if (renderedSpeakerColor !== nextState.previewSpeakerColor) {
-        previewBox.style.borderLeftColor = nextState.previewSpeakerColor || "transparent";
-        previewSpeakerBadge.style.backgroundColor = nextState.previewSpeakerColor || "";
-        previewSpeakerBadge.classList.toggle("visible", Boolean(nextState.previewSpeakerColor));
-        renderedSpeakerColor = nextState.previewSpeakerColor;
       }
 
       const nextListSignature = buildEntrySignature(nextState.recentEntries);

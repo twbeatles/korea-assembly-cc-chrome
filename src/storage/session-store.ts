@@ -1,4 +1,5 @@
 import { exportJson } from "../core/exporters/json";
+import { normalizeSessionForExport } from "../core/exporters/normalize-session";
 import { exportSrt } from "../core/exporters/srt";
 import { exportTxt } from "../core/exporters/txt";
 import { exportVtt } from "../core/exporters/vtt";
@@ -378,7 +379,7 @@ function toExportPayload(
   format: ExportFormat,
   filenamePattern?: string,
 ): ExportPayload {
-  const normalized = normalizeSessionRecord(session);
+  const normalized = normalizeSessionForExport(normalizeSessionRecord(session));
 
   switch (format) {
     case "txt":

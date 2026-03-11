@@ -103,8 +103,6 @@ describe("subtitle pipeline", () => {
       undefined,
       {
         sourceNodeKey: "node_1",
-        speakerColor: "rgb(35, 124, 147)",
-        speakerChannel: "primary",
       },
     ).state;
     state = applyStructuredEntry(
@@ -115,18 +113,15 @@ describe("subtitle pipeline", () => {
       undefined,
       {
         sourceNodeKey: "node_1",
-        speakerColor: "rgb(35, 124, 147)",
-        speakerChannel: "primary",
       },
     ).state;
 
     expect(state.entries).toHaveLength(1);
     expect(state.entries[0].text).toBe("첫 문장입니다 보완되었습니다");
     expect(state.entries[0].sourceNodeKey).toBe("node_1");
-    expect(state.entries[0].speakerChannel).toBe("primary");
   });
 
-  it("creates a new entry when speaker metadata indicates a boundary", () => {
+  it("creates a new entry when the active subtitle node changes", () => {
     let state = buildRunningState();
     state = applyStructuredEntry(
       state,
@@ -136,8 +131,6 @@ describe("subtitle pipeline", () => {
       undefined,
       {
         sourceNodeKey: "node_1",
-        speakerColor: "rgb(35, 124, 147)",
-        speakerChannel: "primary",
       },
     ).state;
     state = applyStructuredEntry(
@@ -148,15 +141,11 @@ describe("subtitle pipeline", () => {
       undefined,
       {
         sourceNodeKey: "node_2",
-        speakerColor: "rgb(30, 30, 30)",
-        speakerChannel: "secondary",
-        speakerChanged: true,
       },
     ).state;
 
     expect(state.entries).toHaveLength(2);
-    expect(state.entries[1].speakerChanged).toBe(true);
-    expect(state.entries[1].speakerChannel).toBe("secondary");
+    expect(state.entries[1].sourceNodeKey).toBe("node_2");
   });
 
   it("does not merge the first subtitle after a reset", () => {
@@ -169,8 +158,6 @@ describe("subtitle pipeline", () => {
       undefined,
       {
         sourceNodeKey: "node_1",
-        speakerColor: "rgb(35, 124, 147)",
-        speakerChannel: "primary",
       },
     ).state;
     state = applyReset(state, Date.parse("2026-03-10T09:00:02.000Z")).state;
@@ -182,8 +169,6 @@ describe("subtitle pipeline", () => {
       undefined,
       {
         sourceNodeKey: "node_2",
-        speakerColor: "rgb(35, 124, 147)",
-        speakerChannel: "primary",
       },
     ).state;
 

@@ -66,7 +66,7 @@ offscreen.html
   - `#viewSubtit`
 - 단일 노드 의존 금지입니다.
 - `.smi_word` 는 목록 전체를 읽고 stable class token 을 `nodeKey` 로 추출합니다.
-- stable `nodeKey` 가 잡히면 같은 자막의 보정/완성은 마지막 엔트리 갱신으로 처리합니다.
+- stable `nodeKey` 가 잡히면 마지막 활성 row 기준으로 같은 자막의 보정/완성은 마지막 엔트리 갱신으로 처리합니다.
 - stable key 가 없으면 `unstable` 로 간주하고 기존 raw suffix-diff fallback 으로 내려갑니다.
 - 실패 시 container text fallback 을 사용합니다.
 
@@ -81,6 +81,7 @@ offscreen.html
 - `injected-observer.ts` 가 page world 에서 `MutationObserver` 를 설치합니다.
 - 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 먼저 시도합니다.
 - observer 는 변경 신호를 받되, 실제 텍스트는 selector 기반으로 다시 읽고 `rows + raw preview` 를 함께 브리지합니다.
+- observer / polling 에서 여러 row 가 보여도 top frame 에서는 마지막 활성 row 위주로 처리합니다.
 - top frame 에서는 자막 공백을 즉시 reset 하지 않고 약 1초 grace 뒤에만 실제 reset 을 commit 합니다.
 - observer 실패 또는 타겟 미탐색 시 polling fallback 이 동작합니다.
 - `content-script.ts` 는 top frame 에서만 세션 상태와 subtitle pipeline 을 소유합니다.
@@ -88,10 +89,10 @@ offscreen.html
 ## 5. subtitle pipeline 고정 의미론
 
 - `normalize -> preview gate -> suffix diff -> noise filter -> merge/add`
-- structured row 가 안정적으로 잡히면 `sourceNodeKey + speaker boundary` 우선 경로를 사용합니다.
+- structured row 가 안정적으로 잡히면 마지막 활성 `sourceNodeKey` 우선 경로를 사용합니다.
 - `_confirmed_compact` / `trailingSuffix` 의미를 유지합니다.
 - suffix 매칭은 `rfind` 기반입니다.
-- `speakerColor`, `speakerChannel`, `speakerChanged` 는 entry 메타로 저장되며, `SESSION_SCHEMA_VERSION` 은 현재 `2` 입니다.
+- 과거 세션에 남아 있는 `speakerColor`, `speakerChannel`, `speakerChanged` 는 로드 가능해야 하지만, 현재 UI/내보내기에서는 이 메타를 전면에 드러내지 않습니다.
 - desync 시 순서는 다음과 같습니다.
   - 직전 raw 대비 delta fallback
   - history anchor 기반 incremental fallback
@@ -120,6 +121,7 @@ offscreen.html
 - `SRT`: 세션 시작 기준 상대 시간, `HH:MM:SS,mmm`
 - `VTT`: 세션 시작 기준 상대 시간, `HH:MM:SS.mmm`
 - `JSON`: 세션 전체 복원 가능한 구조
+- export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 
 ### 7.2 Session Store
 

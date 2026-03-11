@@ -2,6 +2,7 @@ import type { SessionRecord } from "../src/core/subtitle-models";
 import {
   closeRunningSessionsOnStartup,
   deleteSession,
+  exportSessionData,
   listSessions,
   loadSession,
   resetSessionStoreForTests,
@@ -107,5 +108,66 @@ describe("session store", () => {
       });
       await resetSessionStoreForTests();
     }
+  });
+
+  it("deduplicates carry-over entries and strips speaker metadata during export", async () => {
+    const session: SessionRecord = {
+      ...buildSession("session_export_cleanup", "saved"),
+      subtitleCount: 4,
+      charCount: 0,
+      entries: [
+        {
+          id: "entry_1",
+          text: "늘 그 과정에서 문제를 제기하는 분들이 계십니다 그래서 제기되는 문제가 몇 가지가 있습니다",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+          sourceNodeKey: "row_1",
+          speakerColor: "rgb(35, 124, 147)",
+          speakerChannel: "primary",
+        },
+        {
+          id: "entry_2",
+          text: "알고 있습니다 그러면",
+          timestamp: "2026-03-10T09:00:02.000Z",
+          startTime: "2026-03-10T09:00:02.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+          sourceNodeKey: "row_2",
+        },
+        {
+          id: "entry_3",
+          text: "늘 그 과정에서 문제를 제기하는 분들이 계십니다 그래서 제기되는 문제가 몇 가지가 있습니다",
+          timestamp: "2026-03-10T09:00:03.000Z",
+          startTime: "2026-03-10T09:00:03.000Z",
+          endTime: "2026-03-10T09:00:03.000Z",
+          sourceNodeKey: "row_3",
+          speakerColor: "rgb(35, 124, 147)",
+          speakerChannel: "primary",
+          speakerChanged: true,
+        },
+        {
+          id: "entry_4",
+          text: "예 알고 있습니다 그러면 이것에 대해서 답을 해야 되는 것 같습니다",
+          timestamp: "2026-03-10T09:00:04.000Z",
+          startTime: "2026-03-10T09:00:04.000Z",
+          endTime: "2026-03-10T09:00:04.000Z",
+          sourceNodeKey: "row_2",
+          speakerColor: "rgb(30, 30, 30)",
+          speakerChannel: "secondary",
+        },
+      ],
+    };
+
+    const payload = await exportSessionData(session, "json");
+    const parsed = JSON.parse(payload.content) as SessionRecord;
+
+    expect(parsed.entries).toHaveLength(3);
+    expect(parsed.entries.map((entry) => entry.text)).toEqual([
+      "늘 그 과정에서 문제를 제기하는 분들이 계십니다 그래서 제기되는 문제가 몇 가지가 있습니다",
+      "알고 있습니다 그러면",
+      "예 알고 있습니다 그러면 이것에 대해서 답을 해야 되는 것 같습니다",
+    ]);
+    expect(parsed.entries[0].speakerColor).toBeUndefined();
+    expect(parsed.entries[2].speakerChannel).toBeUndefined();
   });
 });

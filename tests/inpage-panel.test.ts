@@ -28,8 +28,6 @@ function createSnapshot(): StatusSnapshot {
         timestamp: now,
         startTime: now,
         endTime: now,
-        speakerColor: "rgb(35, 124, 147)",
-        speakerChannel: "primary",
       },
       {
         id: createId("entry"),
@@ -37,9 +35,6 @@ function createSnapshot(): StatusSnapshot {
         timestamp: now,
         startTime: now,
         endTime: now,
-        speakerColor: "rgb(30, 30, 30)",
-        speakerChannel: "secondary",
-        speakerChanged: true,
       },
     ],
     startedAt: now,
@@ -67,7 +62,6 @@ describe("in-page panel", () => {
     expect(view.statusLabel).toBe("수집 중");
     expect(view.committeeName).toBe("정무위원회");
     expect(view.notice).toBe("자막을 모으는 중입니다.");
-    expect(view.previewSpeakerColor).toBe("rgb(30, 30, 30)");
   });
 
   it("mounts once and updates content", () => {
@@ -123,13 +117,13 @@ describe("in-page panel", () => {
       onCollapse: () => {
         collapsed = true;
         controller.update(
-        buildInPagePanelState(createSnapshot(), {
-          collapsed: true,
-          notice: "패널을 접었습니다.",
-          autoScroll: true,
-          recentCopyLineCount: 5,
-        }),
-      );
+          buildInPagePanelState(createSnapshot(), {
+            collapsed: true,
+            notice: "패널을 접었습니다.",
+            autoScroll: true,
+            recentCopyLineCount: 5,
+          }),
+        );
       },
     });
 
@@ -188,7 +182,7 @@ describe("in-page panel", () => {
     controller.destroy();
   });
 
-  it("renders speaker accents and skips rebuilding the list for identical state", () => {
+  it("keeps the rendered list when the same state is applied twice", () => {
     const controller = createInPagePanel({
       onStartCapture: vi.fn(),
       onStopCapture: vi.fn(),
@@ -204,7 +198,7 @@ describe("in-page panel", () => {
 
     const nextState = buildInPagePanelState(createSnapshot(), {
       collapsed: false,
-      notice: "발언자를 추적하고 있습니다.",
+      notice: "자막을 추적하고 있습니다.",
       autoScroll: true,
       recentCopyLineCount: 5,
     });
@@ -212,13 +206,8 @@ describe("in-page panel", () => {
     controller.update(nextState);
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const previewBox = shadowRoot?.querySelector(".preview-box") as HTMLDivElement | null;
-    const previewBadge = shadowRoot?.querySelector(".speaker-badge") as HTMLSpanElement | null;
     const entryList = shadowRoot?.querySelector(".entry-list") as HTMLDivElement | null;
     const firstEntry = entryList?.firstElementChild;
-
-    expect(previewBox?.style.borderLeftColor).toBe("rgb(30, 30, 30)");
-    expect(previewBadge?.classList.contains("visible")).toBe(true);
 
     controller.update(nextState);
 

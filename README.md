@@ -22,8 +22,7 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - 국회 의사중계 페이지의 AI 자막 실시간 추출
 - 실시간 자막 누적 표시
 - `MutationObserver` 우선 + polling fallback
-- `.smi_word` nodeKey 추적, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
-- 발언자 색상(`primary` / `secondary` / `unknown`) 기반 경계 감지
+- `.smi_word` nodeKey 추적, 활성 행 우선 처리, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
 - `preview / normalize / gate`
 - 글로벌 히스토리 + `rfind` suffix 기반 증분 추출
 - keepalive 기반 마지막 자막 `endTime` 갱신
@@ -45,7 +44,7 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - SRT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS,mmm` 형식으로 출력합니다
 - VTT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS.mmm` 형식으로 출력합니다
 - JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
-- 새로 생성되는 `version: "2"` 세션의 entry 는 `sourceNodeKey`, `speakerColor`, `speakerChannel`, `speakerChanged` 메타데이터를 함께 가질 수 있습니다
+- 저장/내보내기 전에는 export 정규화가 한 번 더 적용되어 carry-over 중복 문장을 제거합니다
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
 
 ## 1차 범위
@@ -175,21 +174,22 @@ npm run build
 - popup이 닫혀도 수집은 계속됩니다
 - top frame에 우측 패널을 삽입해 현재 상태를 바로 보여 줍니다
 - page-world `MutationObserver` 이벤트와 polling fallback을 파이프라인에 전달합니다
-- stable `.smi_word` row 가 잡히면 nodeKey 기반으로 같은 자막 수정/새 자막 분리를 처리합니다
+- stable `.smi_word` row 가 잡히면 마지막 활성 row 기준으로 같은 자막 수정/새 자막 분리를 처리합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도합니다
 
 ### injected observer
 
 - page context에서 DOM 변화를 감시합니다
 - `window.postMessage`로 `subtitle:update`, `subtitle:reset`, `subtitle:health`를 브리지합니다
-- `subtitle:update`에는 raw preview 외에 `.smi_word` row / speaker color 메타도 함께 실립니다
+- `subtitle:update`에는 raw preview 외에 `.smi_word` row 메타도 함께 실립니다
 
 ### pipeline
 
 - `normalize -> preview gate -> suffix diff -> noise filter -> merge/add`
-- structured row 가 안정적으로 잡히면 `sourceNodeKey + speaker boundary` 우선 경로를 사용하고, 아니면 기존 raw suffix-diff fallback으로 내려갑니다
+- structured row 가 안정적으로 잡히면 마지막 활성 `sourceNodeKey` 우선 경로를 사용하고, 아니면 기존 raw suffix-diff fallback으로 내려갑니다
 - `rfind` 기반 suffix 추적
 - recent compact tail 기반 중복 차단
+- export 직전 exact carry-over duplicate 를 한 번 더 정리합니다
 - keepalive / reset / finalize 처리
 
 ### storage

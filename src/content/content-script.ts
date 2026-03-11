@@ -92,7 +92,7 @@ let inPagePanel: InPagePanelController | null = null;
 let frameForwardNonce = "";
 let lastSubtitleActivationAttemptAt = 0;
 let lastNavigationSnapshotAt = 0;
-let lastObservedStableRows = new Map<string, ObservedSubtitleRow>();
+let lastObservedStableRow: ObservedSubtitleRow | null = null;
 
 function setPanelNotice(message: string): void {
   panelNotice = message;
@@ -260,56 +260,21 @@ function clearPendingReset(): void {
 
 function clearStructuredRuntimeState(): void {
   clearPendingReset();
-  lastObservedStableRows = new Map<string, ObservedSubtitleRow>();
+  lastObservedStableRow = null;
   localLastProbeSignature = "";
   localHadProbeText = false;
 }
 
 function buildObservedRowsSignature(rows: ObservedSubtitleRow[]): string {
-  return rows
-    .map(
-      (row) =>
-        `${row.nodeKey}|${compactSubtitleText(row.text)}|${row.speakerColor}|${row.speakerChannel}|${row.unstableKey}`,
-    )
-    .join("||");
+  const activeRow = rows.at(-1);
+  if (!activeRow) {
+    return "";
+  }
+  return `${activeRow.nodeKey}|${compactSubtitleText(activeRow.text)}|${activeRow.unstableKey ? "1" : "0"}`;
 }
 
 function hasOnlyStableRows(rows: ObservedSubtitleRow[]): boolean {
   return rows.length > 0 && rows.every((row) => !row.unstableKey);
-}
-
-function replaceObservedStableRows(rows: ObservedSubtitleRow[]): void {
-  lastObservedStableRows = new Map(rows.map((row) => [row.nodeKey, row]));
-}
-
-function getChangedStableRows(rows: ObservedSubtitleRow[]): ObservedSubtitleRow[] {
-  return rows.filter((row) => {
-    const previous = lastObservedStableRows.get(row.nodeKey);
-    return (
-      !previous ||
-      previous.text !== row.text ||
-      previous.speakerColor !== row.speakerColor ||
-      previous.speakerChannel !== row.speakerChannel
-    );
-  });
-}
-
-function hasSpeakerBoundary(row: ObservedSubtitleRow): boolean {
-  const lastEntry = state.entries.at(-1);
-  if (!lastEntry || lastEntry.sourceNodeKey === row.nodeKey) {
-    return false;
-  }
-
-  if (
-    lastEntry.speakerChannel &&
-    lastEntry.speakerChannel !== "unknown" &&
-    row.speakerChannel !== "unknown" &&
-    lastEntry.speakerChannel !== row.speakerChannel
-  ) {
-    return true;
-  }
-
-  return Boolean(lastEntry.speakerColor && lastEntry.speakerColor !== row.speakerColor);
 }
 
 function scheduleDeferredSubtitleReset(): void {
@@ -338,10 +303,15 @@ function applyStructuredRowsEvent(
   selector?: string,
   framePath?: number[],
 ): boolean {
-  const changedRows = getChangedStableRows(rows);
-  replaceObservedStableRows(rows);
+  const activeRow = rows.at(-1) ?? null;
+  const rowChanged =
+    Boolean(activeRow) &&
+    (!lastObservedStableRow ||
+      lastObservedStableRow.nodeKey !== activeRow.nodeKey ||
+      lastObservedStableRow.text !== activeRow.text);
+  lastObservedStableRow = activeRow;
 
-  if (!changedRows.length) {
+  if (!rowChanged || !activeRow) {
     if (previewText !== state.previewText) {
       state.previewText = previewText;
       state.lastObservedRaw = previewText;
@@ -352,16 +322,12 @@ function applyStructuredRowsEvent(
     return false;
   }
 
-  changedRows.forEach((row) => {
-    state = applyStructuredEntry(state, row.text, previewText, now, settings, {
-      selector,
-      framePath,
-      sourceNodeKey: row.nodeKey,
-      speakerColor: row.speakerColor,
-      speakerChannel: row.speakerChannel,
-      speakerChanged: hasSpeakerBoundary(row),
-    }).state;
-  });
+  state = applyStructuredEntry(state, activeRow.text, previewText, now, settings, {
+    selector,
+    framePath,
+    sourceNodeKey: activeRow.nodeKey,
+    forceNewEntry: state.entries.at(-1)?.sourceNodeKey !== activeRow.nodeKey,
+  }).state;
 
   return true;
 }
@@ -601,7 +567,7 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       return;
     }
 
-    replaceObservedStableRows([]);
+    lastObservedStableRow = null;
     const normalized = previewText;
     if (!normalized) {
       return;

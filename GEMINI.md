@@ -97,6 +97,7 @@ npm run build
   - `#viewSubtit`
 - `.smi_word` 는 목록 전체를 읽고 stable class token 을 `nodeKey` 로 추적합니다.
 - stable key 가 있으면 같은 노드의 텍스트 보정은 기존 엔트리 갱신으로 처리합니다.
+- top frame 에서는 여러 row 가 보이더라도 마지막 활성 row 를 우선 처리합니다.
 - stable key 가 없으면 `unstable` 로 표시하고 raw suffix-diff fallback 을 사용합니다.
 - container text fallback 이 항상 있어야 합니다.
 - 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 시도합니다.
@@ -104,9 +105,9 @@ npm run build
 ### 6.2 증분 추출
 
 - suffix 매칭은 `rfind` 기반입니다.
-- structured row 가 안정적으로 잡히면 `sourceNodeKey + speakerColor/speakerChannel` 우선 경로를 사용합니다.
+- structured row 가 안정적으로 잡히면 마지막 활성 `sourceNodeKey` 우선 경로를 사용합니다.
 - 자막 영역 공백은 top frame 에서 약 1초 grace 뒤에만 reset commit 합니다.
-- entry 메타에는 `sourceNodeKey`, `speakerColor`, `speakerChannel`, `speakerChanged` 가 저장될 수 있고 현재 session schema version 은 `2` 입니다.
+- 과거 세션의 `speakerColor`, `speakerChannel`, `speakerChanged` 메타는 호환성을 위해 읽을 수 있어야 하지만, 현재 UI/내보내기에서는 이 메타를 전면에 쓰지 않습니다.
 - 대표 edge case:
   - 이전: `이 문장은 테스트입니다`
   - 현재: `이 문장은 테스트입니다 감사합니다`
@@ -160,6 +161,7 @@ npm run build
 - `SRT`: `HH:MM:SS,mmm`, 세션 시작 기준 상대 시간
 - `VTT`: `HH:MM:SS.mmm`, 세션 시작 기준 상대 시간
 - `JSON`: 세션 전체 복원 가능한 구조
+- export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 - 다운로드는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback
 
 ## 9. known limits
