@@ -111,7 +111,8 @@ describe("in-page panel", () => {
     const shadowRoot = host?.shadowRoot;
     expect(shadowRoot?.textContent).toContain("국회 자막 도우미");
     expect(shadowRoot?.textContent).toContain("실시간 내용");
-    expect(shadowRoot?.textContent).toContain("방금 나온 자막");
+    expect(shadowRoot?.textContent).toContain("화면 자막");
+    expect(shadowRoot?.textContent).not.toContain("방금 나온 자막");
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
 
     controller.destroy();
@@ -178,11 +179,10 @@ describe("in-page panel", () => {
     );
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const entryList = shadowRoot?.querySelector(".entry-list") as HTMLDivElement | null;
     const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
 
-    expect(entryList?.scrollTop ?? 0).toBe(0);
     expect(liveRowList?.scrollTop ?? 0).toBe(0);
+    expect(shadowRoot?.querySelector(".entry-list")).toBeNull();
 
     controller.destroy();
   });

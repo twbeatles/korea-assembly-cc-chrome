@@ -119,7 +119,7 @@ export default function App() {
         <label className="setting-card">
           <div>
             <strong>자동으로 따라가기</strong>
-            <span>페이지 패널의 실시간 내용과 최근 자막 목록을 자동으로 맨 아래로 맞춥니다.</span>
+            <span>페이지 패널의 실시간 내용과 화면 자막을 자동으로 맨 아래로 맞춥니다.</span>
           </div>
           <input
             type="checkbox"

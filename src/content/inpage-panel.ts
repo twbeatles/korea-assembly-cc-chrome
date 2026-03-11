@@ -1,4 +1,4 @@
-import type { CaptureStatus, ExportFormat, SubtitleEntry } from "../core/subtitle-models";
+import type { CaptureStatus, ExportFormat } from "../core/subtitle-models";
 import type { CaptureMode, LivePanelRow } from "../core/live-capture";
 import type { StatusSnapshot } from "../shared/message-types";
 import { getCaptureStatusLabel, getExportFormatLabel, UI_TEXT } from "../shared/ui-labels";
@@ -172,8 +172,7 @@ const PANEL_STYLE = `
   }
 
   .preview-box,
-  .live-row-list,
-  .entry-list {
+  .live-row-list {
     border-radius: 16px;
     background: #f2f6fb;
     border: 1px solid rgba(20, 54, 90, 0.06);
@@ -191,8 +190,7 @@ const PANEL_STYLE = `
     color: #18344f;
   }
 
-  .live-row-list,
-  .entry-list {
+  .live-row-list {
     display: grid;
     gap: 10px;
     padding: 12px;
@@ -207,7 +205,7 @@ const PANEL_STYLE = `
   }
 
   .live-row time,
-  .entry-card time {
+  .live-row time {
     display: block;
     margin-bottom: 4px;
     color: #5a7088;
@@ -215,22 +213,11 @@ const PANEL_STYLE = `
   }
 
   .live-row p,
-  .entry-card p,
   .empty-text {
     margin: 0;
     color: #10263c;
     font-weight: 500;
     line-height: 1.6;
-  }
-
-  .entry-card {
-    padding-bottom: 10px;
-    border-bottom: 1px solid rgba(20, 54, 90, 0.08);
-  }
-
-  .entry-card:last-child {
-    padding-bottom: 0;
-    border-bottom: 0;
   }
 
   .notice {
@@ -326,7 +313,6 @@ export interface InPagePanelState {
   livePreviewText: string;
   liveRows: LivePanelRow[];
   captureMode: CaptureMode;
-  recentEntries: SubtitleEntry[];
   subtitleCount: number;
   charCount: number;
   recentCopyLineCount: number;
@@ -361,26 +347,12 @@ function formatDate(value: string | null | number): string {
 function formatCaptureMode(mode: CaptureMode): string {
   switch (mode) {
     case "structured":
-      return "구조화 감지";
+      return "화면 자막";
     case "fallback":
-      return "원문 fallback";
+      return "자막 찾는 중";
     default:
-      return "대기 중";
+      return "준비 중";
   }
-}
-
-function createEntryCard(entry: SubtitleEntry): HTMLElement {
-  const article = document.createElement("article");
-  article.className = "entry-card";
-
-  const time = document.createElement("time");
-  time.textContent = formatDate(entry.startTime);
-
-  const text = document.createElement("p");
-  text.textContent = entry.text;
-
-  article.append(time, text);
-  return article;
 }
 
 function createLiveRowCard(row: LivePanelRow): HTMLElement {
@@ -411,12 +383,6 @@ function createButton(
   }
   button.addEventListener("click", handler);
   return button;
-}
-
-function buildEntrySignature(entries: SubtitleEntry[]): string {
-  return entries
-    .map((entry) => `${entry.id}|${entry.text}|${entry.startTime}|${entry.endTime}`)
-    .join("||");
 }
 
 function buildLiveSignature(rows: LivePanelRow[], previewText: string, captureMode: CaptureMode): string {
@@ -452,7 +418,6 @@ export function buildInPagePanelState(
     livePreviewText: options.livePreviewText || snapshot.previewText,
     liveRows: options.liveRows,
     captureMode: options.captureMode,
-    recentEntries: snapshot.recentEntries,
     subtitleCount: snapshot.subtitleCount,
     charCount: snapshot.charCount,
     recentCopyLineCount: options.recentCopyLineCount,
@@ -488,7 +453,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const title = document.createElement("h1");
   title.textContent = UI_TEXT.appName;
   const subtitle = document.createElement("p");
-  subtitle.textContent = "실시간 감지 내용과 확정된 자막을 분리해 보여줍니다.";
+  subtitle.textContent = "지금 보이는 자막을 바로 보여줍니다.";
   titleGroup.append(eyebrow, title, subtitle);
 
   const headerCount = document.createElement("span");
@@ -510,7 +475,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const heroTitle = document.createElement("h2");
   heroTitle.textContent = UI_TEXT.livePreview;
   const heroHint = document.createElement("p");
-  heroHint.textContent = "현재 화면에서 감지한 live row를 먼저 갱신합니다.";
+  heroHint.textContent = "지금 화면에 보이는 자막을 먼저 보여줍니다.";
   heroCopy.append(heroTitle, heroHint);
   const modeBadge = document.createElement("span");
   modeBadge.className = "mode-badge";
@@ -522,7 +487,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const liveRowHeader = document.createElement("div");
   liveRowHeader.className = "section-header";
   const liveRowTitle = document.createElement("h2");
-  liveRowTitle.textContent = "현재 감지된 줄";
+  liveRowTitle.textContent = UI_TEXT.screenSubtitles;
   const liveRowCount = document.createElement("span");
   liveRowHeader.append(liveRowTitle, liveRowCount);
 
@@ -530,7 +495,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   liveRowList.className = "live-row-list";
   const liveRowEmpty = document.createElement("p");
   liveRowEmpty.className = "empty-text";
-  liveRowEmpty.textContent = "구조화 row가 잡히면 이곳에 표시됩니다.";
+  liveRowEmpty.textContent = "화면에서 자막을 찾으면 이곳에 표시됩니다.";
   liveRowList.append(liveRowEmpty);
 
   heroCard.append(heroHeader, previewBox, liveRowHeader, liveRowList);
@@ -559,18 +524,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   secondaryActions.append(clearButton, saveButton);
   controlsCard.append(primaryActions, exportRow, secondaryActions);
 
-  const listSection = document.createElement("section");
-  listSection.className = "section-card";
-  const listHeader = document.createElement("div");
-  listHeader.className = "section-header";
-  const listTitle = document.createElement("h2");
-  listTitle.textContent = UI_TEXT.recentEntries;
-  const listCount = document.createElement("span");
-  listHeader.append(listTitle, listCount);
-  const entryList = document.createElement("div");
-  entryList.className = "entry-list";
-  listSection.append(listHeader, entryList);
-
   const notice = document.createElement("div");
   notice.className = "notice";
 
@@ -580,7 +533,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const optionsButton = createButton(UI_TEXT.openOptions, actions.onOpenOptions, "secondary");
   footer.append(historyButton, optionsButton);
 
-  panel.append(header, heroCard, listSection, notice, controlsCard, footer);
+  panel.append(header, heroCard, notice, controlsCard, footer);
   wrapper.append(collapsedTab, panel);
   shadowRoot.append(style, wrapper);
   (document.body || document.documentElement).appendChild(host);
@@ -589,7 +542,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const liveRowNodes = new Map<string, HTMLElement>();
   let renderedNotice = "";
   let renderedCollapsed = false;
-  let renderedListSignature = "";
   let renderedLiveSignature = "";
 
   return {
@@ -603,7 +555,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
       statusBadge.textContent = nextState.statusLabel;
       statusBadge.className = `status-badge ${nextState.status}`;
-      headerCount.textContent = `${nextState.subtitleCount}문장`;
+      headerCount.textContent = `모은 자막 ${nextState.subtitleCount}줄`;
       modeBadge.textContent = formatCaptureMode(nextState.captureMode);
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
@@ -666,45 +618,12 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
         renderedNotice = nextState.notice;
       }
 
-      const nextListSignature = buildEntrySignature(nextState.recentEntries);
-      const listChanged = renderedListSignature !== nextListSignature;
-      listCount.textContent = `${nextState.recentEntries.length}개`;
-      if (listChanged) {
-        if (!nextState.recentEntries.length) {
-          entryList.replaceChildren();
-          const empty = document.createElement("p");
-          empty.className = "empty-text";
-          empty.textContent = "아직 모인 자막이 없습니다.";
-          entryList.append(empty);
-        } else {
-          const currentNodes = Array.from(entryList.querySelectorAll(".entry-card"));
-
-          nextState.recentEntries.forEach((entry, index) => {
-            const existingNode = currentNodes[index];
-            if (existingNode) {
-              const timeNode = existingNode.querySelector("time");
-              const textNode = existingNode.querySelector("p");
-              const nextTime = formatDate(entry.startTime);
-              if (timeNode && timeNode.textContent !== nextTime) {
-                timeNode.textContent = nextTime;
-              }
-              if (textNode && textNode.textContent !== entry.text) {
-                textNode.textContent = entry.text;
-              }
-            } else {
-              entryList.appendChild(createEntryCard(entry));
-            }
-          });
-
-          for (let index = nextState.recentEntries.length; index < currentNodes.length; index += 1) {
-            entryList.removeChild(currentNodes[index]);
-          }
-        }
-        renderedListSignature = nextListSignature;
-      }
-
       const hasEntries = nextState.subtitleCount > 0;
-      const hasPersistableContent = hasEntries || Boolean(nextState.previewText.trim());
+      const hasPersistableContent =
+        hasEntries ||
+        nextState.liveRows.length > 0 ||
+        Boolean(nextState.livePreviewText.trim()) ||
+        Boolean(nextState.previewText.trim());
       startButton.style.display = nextState.status === "running" ? "none" : "";
       stopButton.style.display = nextState.status === "running" ? "" : "none";
       clearButton.disabled = !hasPersistableContent;
@@ -717,9 +636,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       if (!nextState.collapsed && nextState.autoScroll) {
         if (liveChanged) {
           liveRowList.scrollTop = liveRowList.scrollHeight;
-        }
-        if (listChanged) {
-          entryList.scrollTop = entryList.scrollHeight;
         }
       }
     },

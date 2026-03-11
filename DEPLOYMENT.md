@@ -50,8 +50,7 @@ npm run build
 - 페이지 오른쪽 패널이 자동으로 뜨는지 확인
 - 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
 - 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
-- `현재 감지된 줄` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
-- 같은 `.smi_word`가 보정될 때 `방금 나온 자막` 목록이 불필요하게 늘어나지 않는지 확인
+- `화면 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
 - 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
 - 패널의 `저장 / 내보내기` 버튼에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
@@ -171,7 +170,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 8. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
 9. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하는지
 10. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
-11. live row 보정 중에는 패널 상단 live preview 와 `현재 감지된 줄`이 먼저 갱신되고, 확정 목록은 실제 신규 delta 때만 증가하는지
+11. 자막 보정 중에는 패널의 `실시간 내용`과 `화면 자막`이 바로 갱신되는지
 
 ## 9. 자주 발생하는 문제
 

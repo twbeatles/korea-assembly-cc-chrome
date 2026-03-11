@@ -19,7 +19,7 @@ export const UI_TEXT = {
   openOptions: "환경 설정",
   openPanel: "페이지 패널 열기",
   livePreview: "실시간 내용",
-  recentEntries: "방금 나온 자막",
+  screenSubtitles: "화면 자막",
   copyRecent: "최근 N줄 복사",
   search: "내용 찾기",
   copy: "복사",

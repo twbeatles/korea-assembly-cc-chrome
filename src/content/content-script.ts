@@ -882,8 +882,20 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
 }
 
 async function copyRecentSessionLines(): Promise<void> {
+  const liveRows = getPanelLiveRows();
+  const visibleEntries = liveRows.map((row) => {
+    const timestamp = new Date(row.updatedAt).toISOString();
+    return {
+      id: row.key,
+      text: row.text,
+      timestamp,
+      startTime: timestamp,
+      endTime: timestamp,
+    };
+  });
   const prepared = buildPreparedSessionState();
-  const copyText = buildCopyText(prepared.entries, {
+  const sourceEntries = visibleEntries.length ? visibleEntries : prepared.entries;
+  const copyText = buildCopyText(sourceEntries, {
     limit: settings.recentCopyLineCount,
   });
 
@@ -894,7 +906,11 @@ async function copyRecentSessionLines(): Promise<void> {
   }
 
   await copyTextToClipboard(copyText);
-  setPanelNotice(`최근 ${settings.recentCopyLineCount}줄을 복사했습니다.`);
+  setPanelNotice(
+    visibleEntries.length
+      ? `화면 자막 ${Math.min(visibleEntries.length, settings.recentCopyLineCount)}줄을 복사했습니다.`
+      : `최근 ${settings.recentCopyLineCount}줄을 복사했습니다.`,
+  );
   syncUserInterfaces();
 }
 

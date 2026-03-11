@@ -16,7 +16,7 @@
   - 세션 persistence
   - 우측 패널 + popup/options/history 동작
   - 쉬운 한국어 UI / 검색 / 최근 N줄 복사 / autosave UX
-  - 자막 우선 대형 미리보기 / 현재 감지된 줄 / 확정 자막 분리 UI
+  - 자막 우선 대형 미리보기 / 화면 자막 2단 UI
 
 ## 3. 필수 명령
 
@@ -151,10 +151,10 @@ npm run build
 - top frame 에 우측 패널이 자동 삽입됨
 - popup 은 페이지 패널 다시 열기용 보조 화면
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려감
-- 패널은 `실시간 내용`, `현재 감지된 줄`, `방금 나온 자막`을 분리해 표시
+- 패널은 `실시간 내용`과 `화면 자막` 2단으로 표시
 - 복사 포맷은 `[HH:MM:SS] text`
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
-- `autoScroll` 이 꺼지면 live row / committed list 강제 스크롤 금지
+- `autoScroll` 이 꺼지면 `실시간 내용` / `화면 자막` 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
 - browser/extension cold start 시 남아 있던 `running` 세션은 `stopped` 로 정리
 
