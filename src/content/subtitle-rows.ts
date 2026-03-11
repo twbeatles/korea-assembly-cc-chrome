@@ -33,7 +33,15 @@ function extractStableNodeKey(node: HTMLElement): string {
     .filter(Boolean)
     .filter((token) => token !== "smi_word");
 
-  return classNames[0] || "";
+  if (classNames[0]) {
+    return classNames[0];
+  }
+
+  // 클래스로 식별불가 시 data-smi-id 고유 발급 및 캐싱
+  if (!node.dataset.smiId) {
+    node.dataset.smiId = `smi_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
+  }
+  return node.dataset.smiId;
 }
 
 export function normalizeSpeakerColor(color: string): string {

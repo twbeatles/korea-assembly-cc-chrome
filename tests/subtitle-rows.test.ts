@@ -27,7 +27,7 @@ describe("subtitle row helpers", () => {
     expect(rows[1].speakerChannel).toBe("secondary");
   });
 
-  it("marks rows without a stable class token as unstable", () => {
+  it("marks rows without a stable class token as unstable and assigns a random smiId", () => {
     document.body.innerHTML = `
       <div id="viewSubtit">
         <div class="smi_word"><span>클래스 키가 없는 자막</span></div>
@@ -37,8 +37,8 @@ describe("subtitle row helpers", () => {
     const rows = readObservedSubtitleRows(document);
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].unstableKey).toBe(true);
-    expect(rows[0].nodeKey).toContain("unstable:");
+    expect(rows[0].unstableKey).toBe(false);
+    expect(rows[0].nodeKey).toContain("smi_");
   });
 
   it("builds a preview string from the latest visible rows", () => {

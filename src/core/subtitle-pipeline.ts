@@ -82,17 +82,44 @@ function mergeOrAppendEntry(
       return lastEntry;
     }
 
-    // 다른 nodeKey이거나 nodeKey가 없으면 기존 자막에 이어서 쓰기 (무한 Merge)
-    lastEntry.text = joinStreamText(lastEntry.text, text);
-    lastEntry.endTime = nowIso;
-    applySourceMeta(lastEntry);
-    return lastEntry;
+    const structuredBoundary = Boolean(
+      sourceNodeKey &&
+        lastEntry.sourceNodeKey &&
+        lastEntry.sourceNodeKey !== sourceNodeKey,
+    );
+
+    const canMerge =
+      !structuredBoundary &&
+      lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
+
+    if (canMerge) {
+      // 다른 nodeKey거나 nodeKey가 없으면서 길이/시간 제약을 충족하면 병합
+      lastEntry.text = joinStreamText(lastEntry.text, text);
+      lastEntry.endTime = nowIso;
+      applySourceMeta(lastEntry);
+      return lastEntry;
+    }
   }
 
-  // 첫 자막이거나 사용자가 강제로 Reset(수집 초기화 등)을 누른 경우에만 새로 생성
+  // 첫 자막이거나, 사용자가 강제로 Reset 했거나, canMerge 제약을 넘어 새 엔트리를 파야 하는 경우
+  let appendText = text;
+
+  // 오버랩(중복) 컷팅: 새로 들어온 텍스트가 이전 엔트리의 텍스트 앞부분을 통째로 품고 있다면 잘라냅니다.
+  if (lastEntry && appendText.startsWith(lastEntry.text)) {
+    appendText = appendText.slice(lastEntry.text.length).trim();
+  }
+
+  if (!appendText) {
+    // 잘라내고 남은게 없으면 이전 엔트리와 완전히 중복되는 내용이므로 추가 거부 후 기존 엔트리 반환
+    if (lastEntry) {
+      lastEntry.endTime = nowIso;
+      return lastEntry;
+    }
+  }
+
   const entry: SubtitleEntry = {
     id: createId("subtitle"),
-    text,
+    text: appendText,
     timestamp: nowIso,
     startTime: nowIso,
     endTime: nowIso,
