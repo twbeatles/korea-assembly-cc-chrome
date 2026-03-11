@@ -48,6 +48,7 @@ type BridgeState = {
   observerActive: boolean;
   pollingIntervalMs: number;
   filterUnconfirmedEnabled: boolean;
+  confirmedNodeKeys: Set<string>;
 };
 
 function normalizeText(text: string): string {
@@ -317,12 +318,12 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
   }
 
   const compact = compactText(current.text);
-  const rowSignature = buildRowSignature(current.rows);
   if (!compact) {
     if (state.lastCompact) {
       state.lastText = "";
       state.lastCompact = "";
       state.lastRowSignature = "";
+      state.confirmedNodeKeys.clear();
       emit("subtitle:reset", {
         selector: state.observerSelector,
         observerActive,
@@ -331,6 +332,35 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
     return;
   }
 
+  // 신규 확정 row만 emit (참조 확장프로그램 currentSubtitles Set 방식)
+  if (current.rows.length > 0) {
+    const newRows = current.rows.filter((row) => !state.confirmedNodeKeys.has(row.nodeKey));
+    if (newRows.length === 0) {
+      return; // 이미 emit한 자막만 있으면 건너뜀
+    }
+
+    // 신규 nodeKey 등록
+    newRows.forEach((row) => state.confirmedNodeKeys.add(row.nodeKey));
+
+    // 신규 row만으로 텍스트 구성
+    const newText = newRows.map((r) => r.text).join(" ");
+    const newRowSignature = buildRowSignature(newRows);
+
+    state.lastText = newText;
+    state.lastCompact = compactText(newText);
+    state.lastRowSignature = newRowSignature;
+
+    emit("subtitle:update", {
+      raw: newText,
+      rows: newRows,
+      selector: state.observerSelector,
+      observerActive,
+    });
+    return;
+  }
+
+  // fallback: rows가 없는 경우 (container text) - 기존 방식 유지
+  const rowSignature = buildRowSignature(current.rows);
   if (compact === state.lastCompact && rowSignature === state.lastRowSignature) {
     return;
   }
@@ -436,6 +466,7 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
     observerActive: false,
     pollingIntervalMs: 180,
     filterUnconfirmedEnabled: true,
+    confirmedNodeKeys: new Set<string>(),
   };
 
   window.addEventListener(OBSERVER_CONFIG_EVENT, (event) => {
