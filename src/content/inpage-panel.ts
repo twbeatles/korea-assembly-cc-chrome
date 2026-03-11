@@ -506,23 +506,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   header.append(titleGroup, headerActions);
 
-  const previewSection = document.createElement("section");
-  previewSection.className = "hero-card";
-  const previewHeader = document.createElement("div");
-  previewHeader.className = "hero-header";
-  const previewCopy = document.createElement("div");
-  const previewTitle = document.createElement("h2");
-  previewTitle.textContent = "실시간 감지 스트림";
-  const previewHint = document.createElement("p");
-  previewHint.textContent = "현재 변환 중인 자막의 흐름입니다.";
-  previewCopy.append(previewTitle, previewHint);
-  previewHeader.append(previewCopy);
-  const previewBox = document.createElement("div");
-  previewBox.className = "preview-box";
-  const notice = document.createElement("div");
-  notice.className = "notice";
-  previewSection.append(previewHeader, previewBox, notice);
-
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
   const primaryActions = document.createElement("div");
@@ -560,6 +543,9 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   entryList.className = "entry-list";
   listSection.append(listHeader, entryList);
 
+  const notice = document.createElement("div");
+  notice.className = "notice";
+
   const footer = document.createElement("div");
   footer.className = "footer-actions";
   const historyButton = createButton(UI_TEXT.openHistory, actions.onOpenHistory, "secondary");
@@ -569,16 +555,16 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   panel.append(
     header,
     listSection,
-    previewSection,
+    notice,
     controlsCard,
     footer,
   );
+
   wrapper.append(collapsedTab, panel);
   shadowRoot.append(style, wrapper);
   (document.body || document.documentElement).appendChild(host);
 
   const emptyPreviewText = "자막이 잡히면 이곳에 실시간으로 쌓입니다.";
-  let renderedPreview = "";
   let renderedNotice = "";
   let renderedListSignature = "";
   let renderedCollapsed = false;
@@ -597,13 +583,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       headerCount.textContent = `${nextState.subtitleCount}문장`;
 
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
-
-      const nextPreview = nextState.previewText || emptyPreviewText;
-      const previewChanged = renderedPreview !== nextPreview;
-      if (previewChanged) {
-        previewBox.textContent = nextPreview;
-        renderedPreview = nextPreview;
-      }
 
       if (renderedNotice !== nextState.notice) {
         notice.textContent = nextState.notice;
@@ -669,9 +648,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
       if (!nextState.collapsed && nextState.autoScroll && listChanged) {
         entryList.scrollTop = entryList.scrollHeight;
-      }
-      if (!nextState.collapsed && nextState.autoScroll && previewChanged) {
-        previewBox.scrollTop = previewBox.scrollHeight;
       }
     },
     destroy() {

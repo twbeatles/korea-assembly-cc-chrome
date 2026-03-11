@@ -171,10 +171,8 @@ describe("in-page panel", () => {
     );
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const previewBox = shadowRoot?.querySelector(".preview-box") as HTMLDivElement | null;
     const entryList = shadowRoot?.querySelector(".entry-list") as HTMLDivElement | null;
 
-    expect(previewBox?.scrollTop ?? 0).toBe(0);
     expect(entryList?.scrollTop ?? 0).toBe(0);
 
     controller.destroy();
