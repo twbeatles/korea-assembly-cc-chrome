@@ -17,6 +17,5 @@
     "jsx": "react-jsx",
     "types": ["chrome", "vitest/globals"]
   },
-  "include": ["src", "tests", "vite.config.ts", "vitest.config.ts", "manifest.json"],
-  "references": [{ "path": "./tsconfig.node.json" }]
+  "include": ["src", "tests", "manifest.json"]
 }

@@ -8,12 +8,14 @@ describe("settings store", () => {
       runningAutoSaveDebounceMs: 1200,
       recentCopyLineCount: 9,
       recentDuplicateMinLength: 12,
+      filterUnconfirmedEnabled: false,
     });
 
     expect(sanitized.runningAutoSaveEnabled).toBe(false);
     expect(sanitized.runningAutoSaveDebounceMs).toBe(1200);
     expect(sanitized.recentCopyLineCount).toBe(9);
     expect(sanitized.recentDuplicateMinLength).toBe(12);
+    expect(sanitized.filterUnconfirmedEnabled).toBe(false);
   });
 
   it("falls back to defaults when autosave settings are invalid", () => {
@@ -34,6 +36,9 @@ describe("settings store", () => {
     );
     expect(sanitized.recentDuplicateMinLength).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
+    );
+    expect(sanitized.filterUnconfirmedEnabled).toBe(
+      DEFAULT_EXTENSION_SETTINGS.filterUnconfirmedEnabled,
     );
   });
 

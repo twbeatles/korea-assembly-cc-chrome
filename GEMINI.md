@@ -180,3 +180,18 @@ npm run build
 - `legacy/` 는 Git ignore 대상이므로, 현재 구현 변경은 루트 확장 코드에만 반영해야 합니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
 - 변경 후에는 가능하면 `lint`, `test`, `build` 를 모두 실행합니다.
+
+## Sync Delta (2026-03-11)
+
+Use this delta as the current operational baseline.
+
+- Confirm-before-destructive action policy is active.
+- History export and in-page export are expected to both honor `filenamePattern`.
+- Popup should recover transient disconnections automatically.
+- Dynamic panel updates should remain screen-reader friendly (`aria-live`/status/log roles).
+- Preferred verification pipeline:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test:coverage`
+  - `npm run build`
+  - `npm run verify` for full pre-release checks.

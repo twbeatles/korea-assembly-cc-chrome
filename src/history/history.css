@@ -184,3 +184,49 @@ button.secondary {
 .empty-card {
   padding: 20px;
 }
+
+@media (max-width: 1120px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+
+  .session-list {
+    max-height: 40vh;
+    overflow: auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .history-shell {
+    padding: 18px;
+  }
+
+  .hero,
+  .hero-actions,
+  .detail-header,
+  .detail-actions,
+  .export-row,
+  .copy-row,
+  .search-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .search-input {
+    width: 100%;
+  }
+
+  .entries {
+    max-height: 52vh;
+  }
+}
+
+@media (max-width: 520px) {
+  .stats-grid {
+    grid-template-columns: 1fr;
+  }
+}

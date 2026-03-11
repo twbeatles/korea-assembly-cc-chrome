@@ -55,6 +55,10 @@ function getFieldDescription(field: keyof ExtensionSettings): string {
 
 function getFieldMin(field: keyof ExtensionSettings): number {
   switch (field) {
+    case "keepaliveIntervalMs":
+      return 250;
+    case "pollingFallbackIntervalMs":
+      return 100;
     case "maxBufferLength":
       return 1000;
     case "runningAutoSaveDebounceMs":
@@ -90,15 +94,24 @@ export default function App() {
     if (!settings) {
       return;
     }
-    const next = await saveSettings(settings);
-    setSettings(next);
-    setMessage("설정을 저장했습니다.");
+
+    try {
+      const next = await saveSettings(settings);
+      setSettings(next);
+      setMessage("설정을 저장했습니다.");
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "설정을 저장하지 못했습니다.");
+    }
   };
 
   const handleReset = async (): Promise<void> => {
-    const next = await resetSettings();
-    setSettings(next);
-    setMessage("기본값으로 되돌렸습니다.");
+    try {
+      const next = await resetSettings();
+      setSettings(next);
+      setMessage("기본값으로 되돌렸습니다.");
+    } catch (error: unknown) {
+      setMessage(error instanceof Error ? error.message : "기본값으로 되돌리지 못했습니다.");
+    }
   };
 
   if (!settings) {

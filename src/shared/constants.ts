@@ -56,6 +56,7 @@ export const PIPELINE_DEFAULTS = {
   frameProbeMaxDepth: 3,
   frameProbeMaxFrames: 60,
   observerPollIntervalMs: 180,
+  liveLedgerMaxRows: 300,
 } as const;
 
 export const ASSEMBLY_HOST = "https://assembly.webcast.go.kr/";

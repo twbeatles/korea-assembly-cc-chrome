@@ -110,6 +110,14 @@ function setPanelNotice(message: string): void {
   panelNotice = message;
 }
 
+function confirmSessionClear(): boolean {
+  if (typeof window === "undefined" || typeof window.confirm !== "function") {
+    return true;
+  }
+
+  return window.confirm("현재 세션 기록을 비우고 다시 시작할까요?");
+}
+
 function reportRuntimeError(message: string, error?: unknown): void {
   console.warn(`[assembly-subtitle] ${message}`, error);
   setPanelNotice(message);
@@ -967,6 +975,11 @@ function mountInPagePanel(): void {
       });
     },
     onClearSession: () => {
+      if (!confirmSessionClear()) {
+        setPanelNotice("세션 비우기를 취소했습니다.");
+        syncUserInterfaces();
+        return;
+      }
       resetRuntimeState();
       setPanelNotice("화면을 비우고 새로 시작할 준비를 마쳤습니다.");
       syncUserInterfaces();
@@ -1044,6 +1057,12 @@ async function handleCommand(
       syncPortState(port);
       return;
     case "CLEAR_SESSION":
+      if (!confirmSessionClear()) {
+        setPanelNotice("세션 비우기를 취소했습니다.");
+        syncUserInterfaces();
+        syncPortState(port);
+        return;
+      }
       resetRuntimeState();
       setPanelNotice("화면을 비우고 새로 시작할 준비를 마쳤습니다.");
       syncUserInterfaces();

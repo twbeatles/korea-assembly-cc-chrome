@@ -258,3 +258,28 @@ npm run lint
 npm run test
 npm run build
 ```
+
+## 2026-03-11 Sync Update
+
+This section is the current source-of-truth for the latest engineering updates.
+
+- UI/UX hardening completed:
+  - Added confirmation guard for destructive actions (history delete, clear session).
+  - Added responsive breakpoints in history layout for narrow viewports.
+  - Added `aria-live`/status semantics for live preview, live list, and notices.
+  - Added popup auto-reconnect with exponential backoff.
+- Settings UX consistency completed:
+  - Option input minimum values now match sanitization constraints.
+  - Save/reset in options now include explicit error handling.
+- Export consistency completed:
+  - History export now respects `filenamePattern` settings.
+- Build pipeline baseline:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test:coverage`
+  - `npm run build`
+  - `npm run verify` (full pipeline)
+- Known deferred item (intentionally not changed in this cycle):
+  - Potential subtitle-change miss in local polling path.
+- Security note:
+  - `npm audit` high findings on `rollup@2.x` remain due upstream pinning in `@crxjs/vite-plugin` dependency chain.

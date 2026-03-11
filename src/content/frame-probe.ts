@@ -25,14 +25,14 @@ export function computeCurrentFramePath(win: Window = window): number[] {
 
   while (currentWindow && currentWindow !== currentWindow.top) {
     try {
-      const parentWindow = currentWindow.parent;
+      const parentWin: Window = currentWindow.parent;
       const frameElement = currentWindow.frameElement as HTMLIFrameElement | HTMLFrameElement | null;
       if (!frameElement) {
         break;
       }
 
       const siblings = Array.from(
-        parentWindow.document.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
+        parentWin.document.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
           "iframe, frame",
         ),
       );
@@ -42,7 +42,7 @@ export function computeCurrentFramePath(win: Window = window): number[] {
       }
 
       path.unshift(index);
-      currentWindow = parentWindow;
+      currentWindow = parentWin;
     } catch {
       break;
     }

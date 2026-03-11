@@ -19,138 +19,185 @@ export default function App() {
 
   useEffect(() => {
     let active = true;
+    let reconnectTimer: number | null = null;
+    let reconnectAttempt = 0;
+    let connecting = false;
+    let currentPort: chrome.runtime.Port | null = null;
 
-    const connect = async (): Promise<void> => {
-      const tab = await queryActiveTab();
-      if (!active) {
-        return;
+    const clearReconnectTimer = (): void => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
       }
-
-      if (!tab?.id || !tab.url) {
-        setStatusMessage("현재 탭 정보를 읽지 못했습니다.");
-        return;
-      }
-
-      if (!tab.url.startsWith(ASSEMBLY_HOST)) {
-        setUnsupported(true);
-        setStatusMessage("국회 의사중계 페이지에서만 사용할 수 있습니다.");
-        return;
-      }
-
-      const ensure = await sendRuntimeMessage({
-        type: "ENSURE_CONTENT_SCRIPT",
-        tabId: tab.id,
-        url: tab.url,
-      });
-      if (!active) {
-        return;
-      }
-
-      if (!ensure.ok) {
-        setStatusMessage(ensure.error);
-        return;
-      }
-
-      setRequiresReload(Boolean(ensure.requiresReload));
-      if (!ensure.ready) {
-        setStatusMessage("현재 탭과 아직 연결되지 않았습니다. 탭을 새로고침한 뒤 다시 열어주세요.");
-        return;
-      }
-
-      const nextPort = connectToTab(tab.id, 0, POPUP_PORT_NAME);
-      setPort(nextPort);
-
-      const onMessage = (message: ContentToPopupMessage): void => {
-        if (!active) {
-          return;
-        }
-
-        switch (message.type) {
-          case "CAPTURE_STATUS":
-            setSnapshot((current) => ({
-              connected: message.payload.connected,
-              requiresReload: message.payload.requiresReload,
-              status: message.payload.status,
-              sessionId: message.payload.sessionId,
-              title: message.payload.title,
-              committeeName: message.payload.committeeName,
-              sourceUrl: message.payload.sourceUrl,
-              subtitleCount: current?.subtitleCount ?? 0,
-              charCount: current?.charCount ?? 0,
-              previewText: current?.previewText ?? "",
-              recentEntries: current?.recentEntries ?? [],
-              startedAt: message.payload.startedAt,
-              endedAt: message.payload.endedAt,
-              updatedAt: message.payload.updatedAt,
-              lastPersistedAt: message.payload.lastPersistedAt,
-              observerActive: message.payload.observerActive,
-              currentSelector: message.payload.currentSelector,
-              currentFramePath: message.payload.currentFramePath,
-            }));
-            setTabReady(true);
-            setStatusMessage("페이지 안 패널과 연결되었습니다.");
-            return;
-          case "PREVIEW_UPDATE":
-            setSnapshot((current) =>
-              current
-                ? {
-                    ...current,
-                    previewText: message.payload.previewText,
-                    recentEntries: message.payload.recentEntries,
-                  }
-                : current,
-            );
-            return;
-          case "SESSION_STATS":
-            setSnapshot((current) =>
-              current
-                ? {
-                    ...current,
-                    subtitleCount: message.payload.subtitleCount,
-                    charCount: message.payload.charCount,
-                  }
-                : current,
-            );
-            return;
-          case "ERROR":
-            setStatusMessage(message.message);
-            return;
-        }
-      };
-
-      const onDisconnect = (): void => {
-        const disconnectReason = chrome.runtime.lastError?.message;
-        if (!active) {
-          return;
-        }
-        setPort(null);
-        setTabReady(false);
-        setRequiresReload(true);
-        setStatusMessage(
-          disconnectReason?.includes("Receiving end does not exist")
-            ? "현재 탭과의 연결이 없습니다. 탭을 새로고침한 뒤 다시 열어주세요."
-            : disconnectReason || "연결이 끊겼습니다. 탭을 새로고침한 뒤 다시 열어주세요.",
-        );
-      };
-
-      nextPort.onMessage.addListener(onMessage);
-      nextPort.onDisconnect.addListener(onDisconnect);
-      nextPort.postMessage({ type: "GET_STATUS" } satisfies PopupToContentMessage);
     };
 
-    void connect().catch((error: unknown) => {
+    const scheduleReconnect = (message: string): void => {
       if (!active) {
         return;
       }
-      setStatusMessage(error instanceof Error ? error.message : "팝업을 준비하지 못했습니다.");
-    });
+
+      setStatusMessage(message);
+      clearReconnectTimer();
+      const delay = Math.min(5000, 500 * 2 ** reconnectAttempt);
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        void connect();
+      }, delay);
+    };
+
+    const connect = async (): Promise<void> => {
+      if (!active || connecting || currentPort) {
+        return;
+      }
+      connecting = true;
+
+      try {
+        const tab = await queryActiveTab();
+        if (!active) {
+          return;
+        }
+
+        if (!tab?.id || !tab.url) {
+          setTabReady(false);
+          scheduleReconnect("현재 탭 정보를 읽지 못했습니다. 자동으로 다시 연결을 시도합니다.");
+          return;
+        }
+
+        if (!tab.url.startsWith(ASSEMBLY_HOST)) {
+          setUnsupported(true);
+          setTabReady(false);
+          clearReconnectTimer();
+          setStatusMessage("국회 의사중계 페이지에서만 사용할 수 있습니다.");
+          return;
+        }
+
+        setUnsupported(false);
+
+        const ensure = await sendRuntimeMessage({
+          type: "ENSURE_CONTENT_SCRIPT",
+          tabId: tab.id,
+          url: tab.url,
+        });
+        if (!active) {
+          return;
+        }
+
+        if (!ensure.ok) {
+          setTabReady(false);
+          scheduleReconnect(`${ensure.error} 자동으로 다시 연결을 시도합니다.`);
+          return;
+        }
+
+        setRequiresReload(Boolean(ensure.requiresReload));
+        if (!ensure.ready) {
+          setTabReady(false);
+          scheduleReconnect("현재 탭과 아직 연결되지 않았습니다. 자동으로 다시 연결을 시도합니다.");
+          return;
+        }
+
+        reconnectAttempt = 0;
+        clearReconnectTimer();
+        const nextPort = connectToTab(tab.id, 0, POPUP_PORT_NAME);
+        currentPort = nextPort;
+        setPort(nextPort);
+
+        const onMessage = (message: ContentToPopupMessage): void => {
+          if (!active) {
+            return;
+          }
+
+          switch (message.type) {
+            case "CAPTURE_STATUS":
+              setSnapshot((current) => ({
+                connected: message.payload.connected,
+                requiresReload: message.payload.requiresReload,
+                status: message.payload.status,
+                sessionId: message.payload.sessionId,
+                title: message.payload.title,
+                committeeName: message.payload.committeeName,
+                sourceUrl: message.payload.sourceUrl,
+                subtitleCount: current?.subtitleCount ?? 0,
+                charCount: current?.charCount ?? 0,
+                previewText: current?.previewText ?? "",
+                recentEntries: current?.recentEntries ?? [],
+                startedAt: message.payload.startedAt,
+                endedAt: message.payload.endedAt,
+                updatedAt: message.payload.updatedAt,
+                lastPersistedAt: message.payload.lastPersistedAt,
+                observerActive: message.payload.observerActive,
+                currentSelector: message.payload.currentSelector,
+                currentFramePath: message.payload.currentFramePath,
+              }));
+              setTabReady(true);
+              setStatusMessage("페이지 확장판과 연결했습니다.");
+              return;
+            case "PREVIEW_UPDATE":
+              setSnapshot((current) =>
+                current
+                  ? {
+                      ...current,
+                      previewText: message.payload.previewText,
+                      recentEntries: message.payload.recentEntries,
+                    }
+                  : current,
+              );
+              return;
+            case "SESSION_STATS":
+              setSnapshot((current) =>
+                current
+                  ? {
+                      ...current,
+                      subtitleCount: message.payload.subtitleCount,
+                      charCount: message.payload.charCount,
+                    }
+                  : current,
+              );
+              return;
+            case "ERROR":
+              setStatusMessage(message.message);
+              return;
+          }
+        };
+
+        const onDisconnect = (): void => {
+          const disconnectReason = chrome.runtime.lastError?.message;
+          if (!active) {
+            return;
+          }
+          currentPort = null;
+          setPort(null);
+          setTabReady(false);
+          setRequiresReload(true);
+          scheduleReconnect(
+            disconnectReason?.includes("Receiving end does not exist")
+              ? "현재 탭과의 연결이 없습니다. 자동으로 다시 연결을 시도합니다."
+              : disconnectReason || "연결이 끊겼습니다. 자동으로 다시 연결을 시도합니다.",
+          );
+        };
+
+        nextPort.onMessage.addListener(onMessage);
+        nextPort.onDisconnect.addListener(onDisconnect);
+        nextPort.postMessage({ type: "GET_STATUS" } satisfies PopupToContentMessage);
+      } catch (error: unknown) {
+        if (!active) {
+          return;
+        }
+
+        const baseMessage = error instanceof Error ? error.message : "팝업을 준비하지 못했습니다.";
+        scheduleReconnect(`${baseMessage} 자동으로 다시 연결을 시도합니다.`);
+      } finally {
+        connecting = false;
+      }
+    };
+
+    void connect();
 
     return () => {
       active = false;
-      setPort((current) => {
-        current?.disconnect();
-        return null;
-      });
+      clearReconnectTimer();
+      currentPort?.disconnect();
+      currentPort = null;
+      setPort(null);
     };
   }, []);
 

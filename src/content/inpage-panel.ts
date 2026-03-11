@@ -483,6 +483,9 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const previewBox = document.createElement("div");
   previewBox.className = "preview-box";
+  previewBox.setAttribute("role", "status");
+  previewBox.setAttribute("aria-live", "polite");
+  previewBox.setAttribute("aria-atomic", "true");
 
   const liveRowHeader = document.createElement("div");
   liveRowHeader.className = "section-header";
@@ -493,6 +496,9 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const liveRowList = document.createElement("div");
   liveRowList.className = "live-row-list";
+  liveRowList.setAttribute("role", "log");
+  liveRowList.setAttribute("aria-live", "polite");
+  liveRowList.setAttribute("aria-relevant", "additions text");
   const liveRowEmpty = document.createElement("p");
   liveRowEmpty.className = "empty-text";
   liveRowEmpty.textContent = "화면에서 자막을 찾으면 이곳에 표시됩니다.";
@@ -526,6 +532,9 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const notice = document.createElement("div");
   notice.className = "notice";
+  notice.setAttribute("role", "status");
+  notice.setAttribute("aria-live", "polite");
+  notice.setAttribute("aria-atomic", "true");
 
   const footer = document.createElement("div");
   footer.className = "footer-actions";

@@ -166,3 +166,20 @@ offscreen.html
 - 과거 의미론 참고: `legacy/python-desktop/PIPELINE_LOCK.md`
 - 과거 운영 설명 참고: `legacy/python-desktop/README.md`
 - 배포 절차: `DEPLOYMENT.md`
+
+## Sync Delta (2026-03-11)
+
+When editing this repository, align with the current implemented behavior below.
+
+- Destructive actions require user confirmation:
+  - history delete
+  - clear current in-page session
+- History export must pass `filenamePattern` from settings.
+- Popup connection strategy is auto-reconnect with bounded backoff.
+- Accessibility expectation for dynamic UI:
+  - live preview/notice use polite live regions
+  - live row stream uses log semantics
+- Verification gate for meaningful changes:
+  - `npm run typecheck`
+  - `npm run test:coverage`
+  - `npm run build` (or `npm run verify`)

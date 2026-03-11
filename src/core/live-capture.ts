@@ -1,6 +1,7 @@
 import type { SpeakerChannel } from "./subtitle-models";
 import { normalizeSubtitleText } from "./text-normalizer";
 import type { ObservedSubtitleRow } from "../shared/message-types";
+import { PIPELINE_DEFAULTS } from "../shared/constants";
 
 export type CaptureMode = "idle" | "structured" | "fallback";
 
@@ -68,6 +69,39 @@ function sameKeyOrder(left: string[], right: string[]): boolean {
   );
 }
 
+function pruneLedgerRows(
+  rows: Record<string, LiveCaptureRow>,
+  order: string[],
+  activeRowKeys: string[],
+  maxRows: number,
+): { rows: Record<string, LiveCaptureRow>; order: string[] } {
+  if (order.length <= maxRows) {
+    return { rows, order };
+  }
+
+  const keepKeys = new Set<string>(activeRowKeys);
+  for (let index = order.length - 1; index >= 0 && keepKeys.size < maxRows; index -= 1) {
+    const key = order[index];
+    if (rows[key]) {
+      keepKeys.add(key);
+    }
+  }
+
+  const nextOrder = order.filter((key) => keepKeys.has(key));
+  const nextRows: Record<string, LiveCaptureRow> = {};
+  nextOrder.forEach((key) => {
+    const row = rows[key];
+    if (row) {
+      nextRows[key] = row;
+    }
+  });
+
+  return {
+    rows: nextRows,
+    order: nextOrder,
+  };
+}
+
 export function buildLiveRowKey(nodeKey: string, framePath: number[] = []): string {
   const path = framePath.length ? framePath.join(".") : "top";
   return `${path}::${nodeKey}`;
@@ -116,8 +150,17 @@ export function setFallbackCapturePreview(
   ledger: LiveCaptureLedger,
   previewText: string,
 ): LiveCaptureLedger {
+  const pruned = pruneLedgerRows(
+    ledger.rows,
+    ledger.order,
+    [],
+    PIPELINE_DEFAULTS.liveLedgerMaxRows,
+  );
+
   return {
     ...ledger,
+    rows: pruned.rows,
+    order: pruned.order,
     activeRowKeys: [],
     previewText,
     captureMode: previewText ? "fallback" : "idle",
@@ -262,9 +305,16 @@ export function reconcileLiveCapture(
     }
   });
 
+  const pruned = pruneLedgerRows(
+    nextRows,
+    nextOrder,
+    nextActiveRowKeys,
+    PIPELINE_DEFAULTS.liveLedgerMaxRows,
+  );
+
   const nextLedger: LiveCaptureLedger = {
-    rows: nextRows,
-    order: nextOrder,
+    rows: pruned.rows,
+    order: pruned.order,
     activeRowKeys: nextActiveRowKeys,
     previewText: event.previewText,
     captureMode: "structured",

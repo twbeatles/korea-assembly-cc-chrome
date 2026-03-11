@@ -159,7 +159,9 @@ function sanitizeFallbackIndex(value: unknown): string[] {
     return [];
   }
 
-  return [...new Set(value.filter((item): item is string => typeof item === "string" && item))];
+  return [
+    ...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0)),
+  ];
 }
 
 function setMemorySnapshot(snapshot: Record<string, SessionRecord>): void {

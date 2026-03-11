@@ -115,6 +115,10 @@ describe("in-page panel", () => {
     expect(shadowRoot?.textContent).not.toContain("방금 나온 자막");
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
 
+    expect(shadowRoot?.querySelector(".preview-box")?.getAttribute("role")).toBe("status");
+    expect(shadowRoot?.querySelector(".live-row-list")?.getAttribute("role")).toBe("log");
+    expect(shadowRoot?.querySelector(".notice")?.getAttribute("aria-live")).toBe("polite");
+
     controller.destroy();
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
   });

@@ -8,6 +8,7 @@ import {
   reconcileLiveCapture,
   setLiveRowBaseline,
 } from "../src/core/live-capture";
+import { PIPELINE_DEFAULTS } from "../src/shared/constants";
 
 describe("live capture reducer", () => {
   it("keeps the same live row key when a row is corrected", () => {
@@ -92,5 +93,36 @@ describe("live capture reducer", () => {
     expect(fallback.ledger.activeRowKeys).toHaveLength(0);
     expect(fallback.ledger.previewText).toBe("fallback preview");
     expect(getLiveRow(fallback.ledger, structured.liveRows[0].key)?.text).toBe("현재 row");
+  });
+
+  it("prunes stale rows to keep the live ledger bounded", () => {
+    let ledger = createEmptyLiveCaptureLedger();
+
+    for (let i = 0; i < PIPELINE_DEFAULTS.liveLedgerMaxRows + 20; i += 1) {
+      ledger = reconcileLiveCapture(
+        ledger,
+        normalizeCaptureEvent({
+          raw: `문장-${i}`,
+          rows: [
+            {
+              nodeKey: `row_${i}`,
+              text: `문장-${i}`,
+              speakerColor: "rgb(35, 124, 147)",
+              speakerChannel: "primary",
+              unstableKey: false,
+            },
+          ],
+          framePath: [],
+          timestamp: i + 1,
+        }),
+      ).ledger;
+    }
+
+    expect(ledger.order.length).toBe(PIPELINE_DEFAULTS.liveLedgerMaxRows);
+    expect(ledger.activeRowKeys).toHaveLength(1);
+    expect(getLiveRow(ledger, "top::row_0")).toBeNull();
+    expect(getLiveRow(ledger, `top::row_${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`)?.text).toBe(
+      `문장-${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`,
+    );
   });
 });

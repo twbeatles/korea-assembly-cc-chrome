@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
+import { DEFAULT_EXTENSION_SETTINGS } from "../shared/constants";
 import { deleteSession, exportSessionData, listSessions } from "../storage/session-store";
 import { getSettings } from "../storage/settings-store";
 import { getExportFormatLabel, getPersistedStatusLabel } from "../shared/ui-labels";
@@ -16,12 +17,22 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString("ko-KR");
 }
 
+function confirmDeleteSession(target: SessionRecord): boolean {
+  if (typeof window === "undefined" || typeof window.confirm !== "function") {
+    return true;
+  }
+
+  const title = target.committeeName || target.title;
+  return window.confirm(`선택한 기록을 삭제할까요?\n${title}`);
+}
+
 export default function App() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
   const [message, setMessage] = useState("기록을 불러오는 중입니다.");
   const [searchQuery, setSearchQuery] = useState("");
   const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
+  const [filenamePattern, setFilenamePattern] = useState(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
 
   const selectedSession = useMemo(
     () => sessions.find((session) => session.id === selectedId) ?? sessions[0],
@@ -49,6 +60,7 @@ export default function App() {
     void getSettings()
       .then((settings) => {
         setRecentCopyLineCount(settings.recentCopyLineCount);
+        setFilenamePattern(settings.filenamePattern);
       })
       .catch(() => {
         // Keep defaults if settings cannot be loaded from a standalone history page.
@@ -57,6 +69,10 @@ export default function App() {
 
   const handleDelete = async (): Promise<void> => {
     if (!selectedSession) {
+      return;
+    }
+    if (!confirmDeleteSession(selectedSession)) {
+      setMessage("기록 삭제를 취소했습니다.");
       return;
     }
     await deleteSession(selectedSession.id);
@@ -76,7 +92,7 @@ export default function App() {
     if (!selectedSession) {
       return;
     }
-    const payload = await exportSessionData(selectedSession, format);
+    const payload = await exportSessionData(selectedSession, format, filenamePattern);
     const response = await sendRuntimeMessage({
       type: "DOWNLOAD_REQUEST",
       filename: payload.filename,

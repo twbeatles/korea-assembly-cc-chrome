@@ -207,3 +207,27 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - 배포 빌드는 항상 새 `dist/` 를 생성
 - 스토어 제출용 zip 은 매번 새로 생성
 - 릴리스 태그나 커밋 메시지에 manifest 버전을 같이 남김
+
+## 2026-03-11 Release Gate Update
+
+Before packaging a release ZIP, run the full validation path:
+
+```bash
+npm run lint
+npm run typecheck
+npm run test:coverage
+npm run build
+```
+
+Or run the one-shot command:
+
+```bash
+npm run verify
+```
+
+Additional release notes:
+
+- UI/UX safety guards and accessibility updates are now part of baseline behavior.
+- History export now uses user-defined `filenamePattern`.
+- Popup now attempts automatic reconnection on disconnect.
+- `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.

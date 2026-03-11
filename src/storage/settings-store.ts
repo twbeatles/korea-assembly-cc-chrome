@@ -80,6 +80,10 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       typeof settings.autoStartEnabled === "boolean"
         ? settings.autoStartEnabled
         : DEFAULT_EXTENSION_SETTINGS.autoStartEnabled,
+    filterUnconfirmedEnabled:
+      typeof settings.filterUnconfirmedEnabled === "boolean"
+        ? settings.filterUnconfirmedEnabled
+        : DEFAULT_EXTENSION_SETTINGS.filterUnconfirmedEnabled,
   };
 }
 
