@@ -179,21 +179,21 @@ const PANEL_STYLE = `
   }
 
   .preview-box {
-    border-radius: 20px;
+    border-radius: 16px;
     border: 1px solid rgba(20, 54, 90, 0.08);
     background:
       linear-gradient(180deg, rgba(238, 245, 255, 0.96), rgba(228, 239, 252, 0.96)),
       #eff5fc;
-    padding: 20px 18px;
-    font-size: 24px;
-    font-weight: 700;
-    line-height: 1.72;
+    padding: 16px 18px;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.6;
     letter-spacing: -0.01em;
     white-space: pre-wrap;
-    min-height: 240px;
-    max-height: min(46vh, 420px);
+    min-height: 60px;
+    max-height: 140px;
     overflow: auto;
-    color: #10263c;
+    color: #4d6580;
   }
 
   .notice {
@@ -316,17 +316,14 @@ const PANEL_STYLE = `
   }
 
   .entry-list {
-    border-radius: 14px;
+    border-radius: 16px;
     background: #f2f6fb;
-    padding: 12px;
-    font-size: 13px;
-    line-height: 1.6;
-  }
-
-  .entry-list {
+    padding: 14px;
+    font-size: 15px;
+    line-height: 1.65;
     display: grid;
-    gap: 10px;
-    max-height: 188px;
+    gap: 12px;
+    max-height: min(46vh, 420px);
     overflow: auto;
   }
 
@@ -351,6 +348,8 @@ const PANEL_STYLE = `
   .entry-card p,
   .empty-text {
     margin: 0;
+    color: #10263c;
+    font-weight: 500;
   }
 
   .footer-actions {
@@ -374,8 +373,12 @@ const PANEL_STYLE = `
     }
 
     .preview-box {
-      font-size: 21px;
-      min-height: 210px;
+      font-size: 13px;
+      min-height: 50px;
+    }
+
+    .entry-list {
+      font-size: 14px;
     }
 
     .meta-grid,
@@ -548,9 +551,9 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   previewHeader.className = "hero-header";
   const previewCopy = document.createElement("div");
   const previewTitle = document.createElement("h2");
-  previewTitle.textContent = UI_TEXT.livePreview;
+  previewTitle.textContent = "실시간 감지 스트림";
   const previewHint = document.createElement("p");
-  previewHint.textContent = "가장 최근 문장을 크게 보여줍니다.";
+  previewHint.textContent = "현재 변환 중인 자막의 흐름입니다.";
   previewCopy.append(previewTitle, previewHint);
   const previewStats = document.createElement("span");
   previewHeader.append(previewCopy, previewStats);
@@ -639,10 +642,10 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   panel.append(
     header,
+    listSection,
     previewSection,
     summaryCard,
     controlsCard,
-    listSection,
     footer,
   );
   wrapper.append(collapsedTab, panel);
@@ -689,14 +692,44 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       const listChanged = renderedListSignature !== nextListSignature;
       listCount.textContent = `${nextState.recentEntries.length}개`;
       if (listChanged) {
-        entryList.replaceChildren();
-        if (nextState.recentEntries.length) {
-          nextState.recentEntries.forEach((entry) => entryList.appendChild(createEntryCard(entry)));
-        } else {
+        if (!nextState.recentEntries.length) {
+          entryList.replaceChildren();
           const empty = document.createElement("p");
           empty.className = "empty-text";
           empty.textContent = "아직 모인 자막이 없습니다.";
           entryList.append(empty);
+        } else {
+          while (entryList.firstChild) {
+            if ((entryList.firstChild as HTMLElement).className === "empty-text") {
+              entryList.removeChild(entryList.firstChild);
+            } else {
+              break;
+            }
+          }
+
+          const currentNodes = Array.from(entryList.querySelectorAll(".entry-card"));
+
+          nextState.recentEntries.forEach((entry, index) => {
+            const existingNode = currentNodes[index];
+            if (existingNode) {
+              const timeNode = existingNode.querySelector("time");
+              const textNode = existingNode.querySelector("p");
+              const nextTime = formatDate(entry.startTime);
+              
+              if (timeNode && timeNode.textContent !== nextTime) {
+                timeNode.textContent = nextTime;
+              }
+              if (textNode && textNode.textContent !== entry.text) {
+                textNode.textContent = entry.text;
+              }
+            } else {
+              entryList.appendChild(createEntryCard(entry));
+            }
+          });
+
+          for (let i = nextState.recentEntries.length; i < currentNodes.length; i++) {
+            entryList.removeChild(currentNodes[i]);
+          }
         }
         renderedListSignature = nextListSignature;
       }
