@@ -1,14 +1,16 @@
 import { SUBTITLE_SELECTOR_CANDIDATES } from "../shared/constants";
+import type { ObservedSubtitleRow } from "../shared/message-types";
 import {
-  compactSubtitleText,
   extractTailLines,
   normalizeSubtitleText,
 } from "../core/text-normalizer";
+import { buildObservedSubtitlePreview, readObservedSubtitleRows } from "./subtitle-rows";
 
 export interface DomProbeResult {
   text: string;
   matchedSelector: string;
   found: boolean;
+  rows?: ObservedSubtitleRow[];
   sourceMode?: "smi-window" | "container";
 }
 
@@ -58,14 +60,6 @@ export function getSubtitleSelectorCandidates(
   );
 }
 
-function queryAllSafe(root: ParentNode, selector: string): HTMLElement[] {
-  try {
-    return Array.from(root.querySelectorAll<HTMLElement>(selector));
-  } catch {
-    return [];
-  }
-}
-
 function queryOneSafe(root: ParentNode, selector: string): HTMLElement | null {
   try {
     return root.querySelector<HTMLElement>(selector);
@@ -86,48 +80,15 @@ function normalizeContainerText(node: HTMLElement): string {
   return normalizeSubtitleText(extractTailLines(raw, 3));
 }
 
-function collapseAdjacentDuplicateRows(rows: string[]): string[] {
-  return rows.reduce<string[]>((accumulator, rowText) => {
-    const compact = compactSubtitleText(rowText);
-    if (!compact) {
-      return accumulator;
-    }
-
-    const previousCompact = accumulator.length
-      ? compactSubtitleText(accumulator[accumulator.length - 1])
-      : "";
-
-    if (previousCompact === compact) {
-      accumulator[accumulator.length - 1] = rowText;
-      return accumulator;
-    }
-
-    accumulator.push(rowText);
-    return accumulator;
-  }, []);
-}
-
-function readSmiWordWindow(root: ParentNode, selector: string): string {
-  const query = selector.replaceAll(":last-child", "").replaceAll(":last-of-type", "");
-  const nodes = queryAllSafe(root, query || "#viewSubtit .smi_word");
-
-  const fallbackNodes =
-    nodes.length > 0 ? nodes : queryAllSafe(root, "#viewSubtit .smi_word");
-
-  if (!fallbackNodes.length) {
-    return "";
-  }
-
-  const rows = fallbackNodes
-    .map((node) => normalizeSubtitleText(node.innerText || node.textContent || ""))
-    .filter(Boolean);
-
-  const dedupedRows = collapseAdjacentDuplicateRows(rows);
-  if (!dedupedRows.length) {
-    return "";
-  }
-
-  return dedupedRows.slice(-3).join(" ").trim();
+function readSmiWordWindow(
+  root: ParentNode,
+  selector: string,
+): { text: string; rows: ObservedSubtitleRow[] } {
+  const rows = readObservedSubtitleRows(root, selector);
+  return {
+    text: buildObservedSubtitlePreview(rows),
+    rows,
+  };
 }
 
 function readContainerFallback(root: ParentNode): DomProbeResult {
@@ -170,11 +131,12 @@ export function readSubtitleTextBySelectors(
   for (const selector of selectors) {
     if (selector.includes(".smi_word")) {
       const smiText = readSmiWordWindow(root, selector);
-      if (smiText) {
+      if (smiText.text) {
         return {
-          text: smiText,
+          text: smiText.text,
           matchedSelector: selector,
           found: true,
+          rows: smiText.rows,
           sourceMode: "smi-window",
         };
       }

@@ -1,10 +1,12 @@
 import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
+  hasPersistableRunningContent,
   resolveRunningPersistDebounceMs,
   scheduleRunningPersistTimer,
   shouldPersistFinalSession,
   shouldScheduleRunningPersist,
+  shouldWarnBeforeUnload,
 } from "../src/content/autosave";
 import { createEmptySessionState, toSessionRecord } from "../src/core/subtitle-models";
 import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
@@ -37,6 +39,36 @@ describe("content autosave policy", () => {
     expect(shouldPersistFinalSession(true, 3)).toBe(true);
     expect(shouldPersistFinalSession(false, 3)).toBe(false);
     expect(shouldPersistFinalSession(true, 0)).toBe(false);
+  });
+
+  it("treats running preview or pending content as persistable before navigation", () => {
+    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    state.status = "running";
+    state.previewText = "새 자막";
+
+    expect(hasPersistableRunningContent(state)).toBe(true);
+
+    state.previewText = "";
+    state.pendingPreviews = ["대기 중 자막"];
+    expect(hasPersistableRunningContent(state)).toBe(true);
+  });
+
+  it("warns before unload only when a running session has content", () => {
+    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    state.status = "running";
+    state.entries.push({
+      id: "entry_1",
+      text: "테스트 자막",
+      timestamp: "2026-03-10T09:00:00.000Z",
+      startTime: "2026-03-10T09:00:00.000Z",
+      endTime: "2026-03-10T09:00:00.000Z",
+    });
+
+    expect(shouldWarnBeforeUnload(true, state)).toBe(true);
+
+    state.status = "stopped";
+    expect(shouldWarnBeforeUnload(true, state)).toBe(false);
+    expect(shouldWarnBeforeUnload(false, state)).toBe(false);
   });
 
   it("updates lastPersistedAt after a successful save", () => {

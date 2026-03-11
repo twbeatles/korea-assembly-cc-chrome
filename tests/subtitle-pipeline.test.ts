@@ -2,6 +2,7 @@ import {
   applyKeepalive,
   applyPreview,
   applyReset,
+  applyStructuredEntry,
   finalizeSession,
   flushPendingPreviews,
 } from "../src/core/subtitle-pipeline";
@@ -90,5 +91,103 @@ describe("subtitle pipeline", () => {
 
     expect(state.entries).toHaveLength(1);
     expect(state.entries[0].text).toBe("2026");
+  });
+
+  it("updates the last entry in place when the same subtitle node changes", () => {
+    let state = buildRunningState();
+    state = applyStructuredEntry(
+      state,
+      "첫 문장입니다",
+      "첫 문장입니다",
+      Date.parse("2026-03-10T09:00:01.000Z"),
+      undefined,
+      {
+        sourceNodeKey: "node_1",
+        speakerColor: "rgb(35, 124, 147)",
+        speakerChannel: "primary",
+      },
+    ).state;
+    state = applyStructuredEntry(
+      state,
+      "첫 문장입니다 보완되었습니다",
+      "첫 문장입니다 보완되었습니다",
+      Date.parse("2026-03-10T09:00:02.000Z"),
+      undefined,
+      {
+        sourceNodeKey: "node_1",
+        speakerColor: "rgb(35, 124, 147)",
+        speakerChannel: "primary",
+      },
+    ).state;
+
+    expect(state.entries).toHaveLength(1);
+    expect(state.entries[0].text).toBe("첫 문장입니다 보완되었습니다");
+    expect(state.entries[0].sourceNodeKey).toBe("node_1");
+    expect(state.entries[0].speakerChannel).toBe("primary");
+  });
+
+  it("creates a new entry when speaker metadata indicates a boundary", () => {
+    let state = buildRunningState();
+    state = applyStructuredEntry(
+      state,
+      "첫 발언입니다",
+      "첫 발언입니다",
+      Date.parse("2026-03-10T09:00:01.000Z"),
+      undefined,
+      {
+        sourceNodeKey: "node_1",
+        speakerColor: "rgb(35, 124, 147)",
+        speakerChannel: "primary",
+      },
+    ).state;
+    state = applyStructuredEntry(
+      state,
+      "두 번째 발언입니다",
+      "두 번째 발언입니다",
+      Date.parse("2026-03-10T09:00:02.000Z"),
+      undefined,
+      {
+        sourceNodeKey: "node_2",
+        speakerColor: "rgb(30, 30, 30)",
+        speakerChannel: "secondary",
+        speakerChanged: true,
+      },
+    ).state;
+
+    expect(state.entries).toHaveLength(2);
+    expect(state.entries[1].speakerChanged).toBe(true);
+    expect(state.entries[1].speakerChannel).toBe("secondary");
+  });
+
+  it("does not merge the first subtitle after a reset", () => {
+    let state = buildRunningState();
+    state = applyStructuredEntry(
+      state,
+      "리셋 전 발언입니다",
+      "리셋 전 발언입니다",
+      Date.parse("2026-03-10T09:00:01.000Z"),
+      undefined,
+      {
+        sourceNodeKey: "node_1",
+        speakerColor: "rgb(35, 124, 147)",
+        speakerChannel: "primary",
+      },
+    ).state;
+    state = applyReset(state, Date.parse("2026-03-10T09:00:02.000Z")).state;
+    state = applyStructuredEntry(
+      state,
+      "리셋 후 새 발언입니다",
+      "리셋 후 새 발언입니다",
+      Date.parse("2026-03-10T09:00:03.000Z"),
+      undefined,
+      {
+        sourceNodeKey: "node_2",
+        speakerColor: "rgb(35, 124, 147)",
+        speakerChannel: "primary",
+      },
+    ).state;
+
+    expect(state.entries).toHaveLength(2);
+    expect(state.entries[1].text).toBe("리셋 후 새 발언입니다");
   });
 });

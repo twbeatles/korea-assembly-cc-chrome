@@ -3,6 +3,7 @@ import { SESSION_SCHEMA_VERSION } from "../shared/constants";
 export type ExportFormat = "txt" | "srt" | "vtt" | "json";
 export type CaptureStatus = "idle" | "running" | "stopped" | "error";
 export type PersistedSessionStatus = "running" | "stopped" | "saved";
+export type SpeakerChannel = "primary" | "secondary" | "unknown";
 
 export interface SubtitleEntry {
   id: string;
@@ -12,6 +13,10 @@ export interface SubtitleEntry {
   endTime: string;
   sourceSelector?: string;
   sourceFramePath?: number[];
+  sourceNodeKey?: string;
+  speakerColor?: string;
+  speakerChannel?: SpeakerChannel;
+  speakerChanged?: boolean;
 }
 
 export interface SessionRecord {
@@ -55,6 +60,7 @@ export interface SessionState {
   lastObserverEventAt: number | null;
   lastKeepaliveAt: number | null;
   lastPersistedAt: string | null;
+  lastCommittedResetAt: number | null;
 }
 
 export function createId(prefix: string): string {
@@ -115,6 +121,7 @@ export function createEmptySessionState(
     lastObserverEventAt: null,
     lastKeepaliveAt: null,
     lastPersistedAt: null,
+    lastCommittedResetAt: null,
   };
 }
 

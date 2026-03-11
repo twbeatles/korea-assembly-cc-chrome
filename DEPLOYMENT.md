@@ -50,7 +50,11 @@ npm run build
 - 페이지 오른쪽 패널이 자동으로 뜨는지 확인
 - 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
 - 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
+- 같은 `.smi_word`가 보정될 때 자막이 중복 추가되지 않고 마지막 문장만 갱신되는지 확인
+- 발언자 색상이 바뀌면 최근 자막 카드와 큰 미리보기에 색상 힌트가 반영되는지 확인
 - 접이식 `저장 / 내보내기` 메뉴에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
+- 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
+- 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정` 이동 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이 설정 변경 확인
@@ -164,6 +168,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 7. 브라우저/확장 재시작 뒤 남아 있던 `running` 세션이 `stopped`로 정리되는지
 8. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
 9. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하는지
+10. JSON 내보내기에서 `sourceNodeKey`, `speakerColor`, `speakerChannel`, `speakerChanged` 메타가 유지되는지
 
 ## 9. 자주 발생하는 문제
 

@@ -8,6 +8,7 @@ import {
 import {
   cloneState,
   createId,
+  type SpeakerChannel,
   type SessionState,
   type SubtitleEntry,
 } from "./subtitle-models";
@@ -29,6 +30,11 @@ import { differenceSeconds, toIsoString } from "./timeline";
 export interface PipelineSourceMeta {
   selector?: string;
   framePath?: number[];
+  sourceNodeKey?: string;
+  speakerColor?: string;
+  speakerChannel?: SpeakerChannel;
+  speakerChanged?: boolean;
+  forceNewEntry?: boolean;
 }
 
 export interface PipelineResult {
@@ -91,23 +97,73 @@ function mergeOrAppendEntry(
 ): SubtitleEntry {
   const selector = meta?.selector;
   const framePath = meta?.framePath ? [...meta.framePath] : undefined;
+  const sourceNodeKey = meta?.sourceNodeKey;
+  const speakerColor = meta?.speakerColor;
+  const speakerChannel = meta?.speakerChannel;
+  const speakerChanged = Boolean(meta?.speakerChanged);
   const lastEntry = state.entries.at(-1);
 
+  const applySourceMeta = (entry: SubtitleEntry): void => {
+    if (selector) {
+      entry.sourceSelector = selector;
+    }
+    if (framePath) {
+      entry.sourceFramePath = framePath;
+    }
+    if (sourceNodeKey) {
+      entry.sourceNodeKey = sourceNodeKey;
+    }
+    if (speakerColor) {
+      entry.speakerColor = speakerColor;
+    }
+    if (speakerChannel) {
+      entry.speakerChannel = speakerChannel;
+    }
+    if (speakerChanged) {
+      entry.speakerChanged = true;
+    }
+  };
+
   if (lastEntry) {
+    if (sourceNodeKey && lastEntry.sourceNodeKey === sourceNodeKey) {
+      lastEntry.text = text;
+      lastEntry.endTime = nowIso;
+      applySourceMeta(lastEntry);
+      return lastEntry;
+    }
+
+    const speakerBoundary =
+      Boolean(meta?.forceNewEntry) ||
+      Boolean(state.lastCommittedResetAt) ||
+      speakerChanged ||
+      Boolean(
+        sourceNodeKey &&
+          lastEntry.sourceNodeKey &&
+          lastEntry.sourceNodeKey !== sourceNodeKey,
+      ) ||
+      Boolean(
+        speakerChannel &&
+          lastEntry.speakerChannel &&
+          speakerChannel !== "unknown" &&
+          lastEntry.speakerChannel !== "unknown" &&
+          lastEntry.speakerChannel !== speakerChannel,
+      ) ||
+      Boolean(
+        speakerColor &&
+          lastEntry.speakerColor &&
+          speakerColor !== lastEntry.speakerColor,
+      );
+
     const gapSeconds = differenceSeconds(lastEntry.endTime || lastEntry.timestamp, nowIso);
     const canMerge =
+      !speakerBoundary &&
       gapSeconds <= PIPELINE_DEFAULTS.mergeGapSeconds &&
       lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
 
     if (canMerge) {
       lastEntry.text = joinStreamText(lastEntry.text, text);
       lastEntry.endTime = nowIso;
-      if (selector) {
-        lastEntry.sourceSelector = selector;
-      }
-      if (framePath) {
-        lastEntry.sourceFramePath = framePath;
-      }
+      applySourceMeta(lastEntry);
       return lastEntry;
     }
   }
@@ -120,6 +176,10 @@ function mergeOrAppendEntry(
     endTime: nowIso,
     sourceSelector: selector,
     sourceFramePath: framePath,
+    sourceNodeKey,
+    speakerColor,
+    speakerChannel,
+    speakerChanged: speakerChanged || undefined,
   };
   state.entries.push(entry);
   return entry;
@@ -357,6 +417,7 @@ function applyIncrementalAppend(
   next.trailingSuffix = next.confirmedCompact.slice(-PIPELINE_DEFAULTS.suffixLength);
   next.lastProcessedRaw = prepared.trim() || state.lastProcessedRaw;
   next.pendingPreviews = [];
+  next.lastCommittedResetAt = null;
   const appendedEntry = mergeOrAppendEntry(next, newPart, toIsoString(now), meta);
 
   return {
@@ -450,6 +511,63 @@ export function applyPreview(
   return applyPreviewInternal(state, raw, now, settings, meta, false);
 }
 
+export function applyStructuredEntry(
+  state: SessionState,
+  text: string,
+  previewText: string,
+  now: number,
+  settings?: Partial<ExtensionSettings>,
+  meta?: PipelineSourceMeta,
+): PipelineResult {
+  const nextWithMeta = updateStateMetadata(state, now, meta);
+  const next = cloneState(nextWithMeta);
+  const normalizedPreview = normalizeRawText(previewText);
+  const normalizedText = normalizeRawText(text);
+
+  if (normalizedPreview) {
+    next.previewText = normalizedPreview;
+    next.lastObservedRaw = normalizedPreview;
+    next.lastProcessedRaw = normalizedPreview.trim() || next.lastProcessedRaw;
+  }
+
+  if (!normalizedText || !hasRequiredSubtitleContent(normalizedText)) {
+    return {
+      state: next,
+      changed:
+        next.previewText !== state.previewText || next.updatedAt !== state.updatedAt,
+      reason: "structured_empty",
+    };
+  }
+
+  if (
+    settings?.noiseFilterEnabled !== false &&
+    (!isMeaningfulSubtitleText(normalizedText) || isNoiseOnly(normalizedText))
+  ) {
+    return {
+      state: next,
+      changed:
+        next.previewText !== state.previewText || next.updatedAt !== state.updatedAt,
+      reason: "structured_filtered",
+    };
+  }
+
+  next.pendingPreviews = [];
+  const appendedEntry = mergeOrAppendEntry(next, normalizedText, toIsoString(now), meta);
+  const resynced = softResync(next);
+  resynced.previewText = next.previewText;
+  resynced.lastObservedRaw = next.lastObservedRaw;
+  resynced.lastProcessedRaw = next.lastProcessedRaw;
+  resynced.pendingPreviews = [];
+  resynced.lastCommittedResetAt = null;
+
+  return {
+    state: resynced,
+    changed: true,
+    appendedEntry: resynced.entries.find((entry) => entry.id === appendedEntry.id),
+    reason: "structured",
+  };
+}
+
 export function applyKeepalive(state: SessionState, now: number): PipelineResult {
   const next = updateStateMetadata(state, now);
   const lastEntry = next.entries.at(-1);
@@ -477,6 +595,7 @@ export function applyReset(
   next.lastProcessedRaw = "";
   next.previewDesyncCount = 0;
   next.previewAmbiguousSkipCount = 0;
+  next.lastCommittedResetAt = now;
   return { state: next, changed: true, reason: "reset" };
 }
 
@@ -491,6 +610,7 @@ export function finalizeSession(
   next.endedAt = toIsoString(now);
   next.previewText = "";
   next.pendingPreviews = [];
+  next.lastCommittedResetAt = null;
   const lastEntry = next.entries.at(-1);
   if (lastEntry) {
     lastEntry.endTime = toIsoString(now);

@@ -5,7 +5,11 @@ import type {
   OffscreenDocumentMessage,
   OffscreenDocumentResponse,
 } from "../shared/message-types";
-import { closeRunningSessionsOnStartup } from "../storage/session-store";
+import {
+  closeRunningSessionsOnStartup,
+  saveSession,
+  updateRunningSession,
+} from "../storage/session-store";
 
 const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
@@ -214,6 +218,7 @@ function isBackgroundCommandMessage(message: unknown): message is BackgroundComm
   return (
     type === "ENSURE_CONTENT_SCRIPT" ||
     type === "GET_FRAME_FORWARD_NONCE" ||
+    type === "PERSIST_SESSION_RECORD" ||
     type === "DOWNLOAD_REQUEST" ||
     type === "OPEN_HISTORY_PAGE" ||
     type === "OPEN_OPTIONS_PAGE"
@@ -254,6 +259,13 @@ async function handleMessage(
       }
       return { ok: true, nonce: getOrCreateFrameForwardNonce(tabId) };
     }
+    case "PERSIST_SESSION_RECORD":
+      if (message.record.status === "running") {
+        await updateRunningSession(message.record);
+      } else {
+        await saveSession(message.record);
+      }
+      return { ok: true };
     case "DOWNLOAD_REQUEST": {
       const downloadId = await downloadExport(
         message.filename,

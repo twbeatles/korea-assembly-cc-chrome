@@ -2,6 +2,7 @@ import {
   applyKeepalive,
   applyPreview,
   applyReset,
+  applyStructuredEntry,
   finalizeSession,
   flushPendingPreviews,
 } from "../core/subtitle-pipeline";
@@ -27,16 +28,19 @@ import {
 import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
+  hasPersistableRunningContent,
   resolveRunningPersistDebounceMs,
   scheduleRunningPersistTimer,
   shouldPersistFinalSession,
   shouldScheduleRunningPersist,
+  shouldWarnBeforeUnload,
 } from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCopyText, copyTextToClipboard } from "../shared/copy-utils";
 import type {
   ContentToPopupMessage,
   FrameForwardMessage,
+  ObservedSubtitleRow,
   ObserverBridgeEvent,
   PopupToContentMessage,
   StatusSnapshot,
@@ -51,6 +55,7 @@ import { estimateRecentRaw } from "./dom-probe";
 import { exportSessionData, saveSession, updateRunningSession } from "../storage/session-store";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
+import { buildObservedSubtitlePreview } from "./subtitle-rows";
 import { tryDomSubtitleActivation, waitForSubtitleLayer } from "./subtitle-layer";
 
 const isTopFrame = window.top === window;
@@ -58,6 +63,7 @@ const localFramePath = computeCurrentFramePath();
 const injectedScriptId = "assembly-subtitle-observer-script";
 const DEFAULT_IN_PAGE_NOTICE = "이 페이지 오른쪽에서 자막을 바로 볼 수 있습니다.";
 const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-script";
+const SUBTITLE_RESET_GRACE_MS = 1000;
 
 let settings: ExtensionSettings = {
   autoScroll: true,
@@ -77,13 +83,16 @@ const popupPorts = new Set<chrome.runtime.Port>();
 let localPollingTimer: number | null = null;
 let topFallbackTimer: number | null = null;
 let persistTimer: number | null = null;
-let localLastProbeCompact = "";
+let pendingResetTimer: number | null = null;
+let localLastProbeSignature = "";
 let localHadProbeText = false;
 let panelCollapsed = false;
 let panelNotice = DEFAULT_IN_PAGE_NOTICE;
 let inPagePanel: InPagePanelController | null = null;
 let frameForwardNonce = "";
 let lastSubtitleActivationAttemptAt = 0;
+let lastNavigationSnapshotAt = 0;
+let lastObservedStableRows = new Map<string, ObservedSubtitleRow>();
 
 function setPanelNotice(message: string): void {
   panelNotice = message;
@@ -203,6 +212,10 @@ function clearRunningPersistTimer(): void {
   persistTimer = clearScheduledRunningPersist(persistTimer, (timerId) => window.clearTimeout(timerId));
 }
 
+function canPersistCurrentRunningState(): boolean {
+  return hasPersistableRunningContent(state);
+}
+
 function buildPreparedSessionState(now = Date.now()): SessionState {
   return flushPendingPreviews(state, now, settings);
 }
@@ -236,6 +249,121 @@ function updateInPagePanel(): void {
 function syncUserInterfaces(requiresReload = false): void {
   updateInPagePanel();
   broadcastPopupState(requiresReload);
+}
+
+function clearPendingReset(): void {
+  if (pendingResetTimer) {
+    window.clearTimeout(pendingResetTimer);
+    pendingResetTimer = null;
+  }
+}
+
+function clearStructuredRuntimeState(): void {
+  clearPendingReset();
+  lastObservedStableRows = new Map<string, ObservedSubtitleRow>();
+  localLastProbeSignature = "";
+  localHadProbeText = false;
+}
+
+function buildObservedRowsSignature(rows: ObservedSubtitleRow[]): string {
+  return rows
+    .map(
+      (row) =>
+        `${row.nodeKey}|${compactSubtitleText(row.text)}|${row.speakerColor}|${row.speakerChannel}|${row.unstableKey}`,
+    )
+    .join("||");
+}
+
+function hasOnlyStableRows(rows: ObservedSubtitleRow[]): boolean {
+  return rows.length > 0 && rows.every((row) => !row.unstableKey);
+}
+
+function replaceObservedStableRows(rows: ObservedSubtitleRow[]): void {
+  lastObservedStableRows = new Map(rows.map((row) => [row.nodeKey, row]));
+}
+
+function getChangedStableRows(rows: ObservedSubtitleRow[]): ObservedSubtitleRow[] {
+  return rows.filter((row) => {
+    const previous = lastObservedStableRows.get(row.nodeKey);
+    return (
+      !previous ||
+      previous.text !== row.text ||
+      previous.speakerColor !== row.speakerColor ||
+      previous.speakerChannel !== row.speakerChannel
+    );
+  });
+}
+
+function hasSpeakerBoundary(row: ObservedSubtitleRow): boolean {
+  const lastEntry = state.entries.at(-1);
+  if (!lastEntry || lastEntry.sourceNodeKey === row.nodeKey) {
+    return false;
+  }
+
+  if (
+    lastEntry.speakerChannel &&
+    lastEntry.speakerChannel !== "unknown" &&
+    row.speakerChannel !== "unknown" &&
+    lastEntry.speakerChannel !== row.speakerChannel
+  ) {
+    return true;
+  }
+
+  return Boolean(lastEntry.speakerColor && lastEntry.speakerColor !== row.speakerColor);
+}
+
+function scheduleDeferredSubtitleReset(): void {
+  if (!isTopFrame || pendingResetTimer || state.status !== "running") {
+    return;
+  }
+
+  pendingResetTimer = window.setTimeout(() => {
+    pendingResetTimer = null;
+    if (state.status !== "running") {
+      return;
+    }
+
+    state = applyReset(state, Date.now(), settings).state;
+    clearStructuredRuntimeState();
+    setPanelNotice("자막 영역이 비워져서 내용을 다시 모으고 있습니다.");
+    scheduleRunningPersist();
+    syncUserInterfaces();
+  }, SUBTITLE_RESET_GRACE_MS);
+}
+
+function applyStructuredRowsEvent(
+  rows: ObservedSubtitleRow[],
+  previewText: string,
+  now: number,
+  selector?: string,
+  framePath?: number[],
+): boolean {
+  const changedRows = getChangedStableRows(rows);
+  replaceObservedStableRows(rows);
+
+  if (!changedRows.length) {
+    if (previewText !== state.previewText) {
+      state.previewText = previewText;
+      state.lastObservedRaw = previewText;
+      state.updatedAt = new Date(now).toISOString();
+      state.lastObserverEventAt = now;
+      return true;
+    }
+    return false;
+  }
+
+  changedRows.forEach((row) => {
+    state = applyStructuredEntry(state, row.text, previewText, now, settings, {
+      selector,
+      framePath,
+      sourceNodeKey: row.nodeKey,
+      speakerColor: row.speakerColor,
+      speakerChannel: row.speakerChannel,
+      speakerChanged: hasSpeakerBoundary(row),
+    }).state;
+  });
+
+  return true;
 }
 
 function scheduleRunningPersist(): void {
@@ -272,6 +400,66 @@ async function persistStoppedSession(record: SessionRecord): Promise<void> {
   } catch (error) {
     reportRuntimeError("중지된 세션 저장에 실패했습니다.", error);
   }
+}
+
+function persistSessionRecordInBackground(record: SessionRecord): void {
+  try {
+    chrome.runtime.sendMessage(
+      {
+        type: "PERSIST_SESSION_RECORD",
+        record,
+      },
+      () => {
+        const lastError = chrome.runtime.lastError;
+        if (lastError) {
+          console.warn("[assembly-subtitle] Background session persist failed", lastError.message);
+          return;
+        }
+
+        if (record.status === "running" && state.sessionId === record.id) {
+          state = applyPersistSuccess(state, record.updatedAt);
+          if (document.visibilityState === "visible") {
+            syncUserInterfaces();
+          }
+        }
+      },
+    );
+  } catch (error) {
+    console.warn("[assembly-subtitle] Failed to dispatch background session persist", error);
+  }
+}
+
+function persistRunningSnapshotForVisibilityChange(now = Date.now()): void {
+  if (!isTopFrame || !canPersistCurrentRunningState()) {
+    return;
+  }
+
+  if (now - lastNavigationSnapshotAt < 250) {
+    return;
+  }
+
+  clearRunningPersistTimer();
+  const record = buildPreparedSessionRecord("running", now);
+  if (!record.entries.length) {
+    return;
+  }
+
+  lastNavigationSnapshotAt = now;
+  persistSessionRecordInBackground(record);
+}
+
+function persistStoppedSnapshotForPageExit(now = Date.now()): void {
+  if (!isTopFrame || !canPersistCurrentRunningState()) {
+    return;
+  }
+
+  clearRunningPersistTimer();
+  const record = buildPreparedSessionRecord("stopped", now);
+  if (!record.entries.length) {
+    return;
+  }
+
+  persistSessionRecordInBackground(record);
 }
 
 async function saveCurrentSessionSnapshot(): Promise<void> {
@@ -370,24 +558,51 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     const now = event.timestamp || Date.now();
     if (event.kind === "subtitle:health") {
       state.lastObserverEventAt = now;
-      syncUserInterfaces();
       return;
     }
 
     if (state.status !== "running") {
-      syncUserInterfaces();
       return;
     }
 
     if (event.kind === "subtitle:reset") {
-      state = applyReset(state, now, settings).state;
-      setPanelNotice("자막 영역이 비워져서 내용을 다시 모으고 있습니다.");
-      scheduleRunningPersist();
-      syncUserInterfaces();
+      scheduleDeferredSubtitleReset();
       return;
     }
 
-    const normalized = normalizeRawText(event.raw ?? "");
+    clearPendingReset();
+    const previewText = normalizeRawText(event.raw ?? "") || buildObservedSubtitlePreview(event.rows ?? []);
+    if (!previewText) {
+      return;
+    }
+
+    if (hasOnlyStableRows(event.rows ?? [])) {
+      const changed = applyStructuredRowsEvent(
+        event.rows ?? [],
+        previewText,
+        now,
+        event.selector,
+        event.framePath,
+      );
+      if (
+        !changed &&
+        previewText === state.lastObservedRaw &&
+        (!state.lastKeepaliveAt || now - state.lastKeepaliveAt >= settings.keepaliveIntervalMs)
+      ) {
+        state = applyKeepalive(state, now).state;
+        scheduleRunningPersist();
+        syncUserInterfaces();
+        return;
+      }
+      if (changed) {
+        scheduleRunningPersist();
+        syncUserInterfaces();
+      }
+      return;
+    }
+
+    replaceObservedStableRows([]);
+    const normalized = previewText;
     if (!normalized) {
       return;
     }
@@ -420,11 +635,13 @@ function emitLocalProbeEvent(
   kind: "subtitle:update" | "subtitle:reset",
   raw?: string,
   selector?: string,
+  rows?: ObservedSubtitleRow[],
 ): void {
   forwardToTop({
     source: OBSERVER_BRIDGE_SOURCE,
     kind,
     raw,
+    rows,
     selector,
     framePath: localFramePath,
     timestamp: Date.now(),
@@ -444,20 +661,22 @@ function startLocalPolling(): void {
       if (!probe.found || !probe.text) {
         if (localHadProbeText) {
           localHadProbeText = false;
-          localLastProbeCompact = "";
+          localLastProbeSignature = "";
           emitLocalProbeEvent("subtitle:reset");
         }
         return;
       }
 
       const compact = compactSubtitleText(probe.text);
-      if (!compact || compact === localLastProbeCompact) {
+      const probeSignature =
+        probe.rows?.length ? buildObservedRowsSignature(probe.rows) : compact;
+      if (!compact || probeSignature === localLastProbeSignature) {
         return;
       }
 
       localHadProbeText = true;
-      localLastProbeCompact = compact;
-      emitLocalProbeEvent("subtitle:update", probe.text, probe.matchedSelector);
+      localLastProbeSignature = probeSignature;
+      emitLocalProbeEvent("subtitle:update", probe.text, probe.matchedSelector, probe.rows);
     } catch (error) {
       reportRuntimeError("로컬 자막 폴링 중 오류가 발생했습니다.", error);
     }
@@ -513,14 +732,14 @@ function startTopFrameFallback(): void {
 
 function resetRuntimeState(): void {
   clearRunningPersistTimer();
+  clearStructuredRuntimeState();
   state = createEmptySessionState(
     window.location.href,
     document.title,
     deriveCommitteeName(document.title),
   );
-  localLastProbeCompact = "";
-  localHadProbeText = false;
   lastSubtitleActivationAttemptAt = 0;
+  lastNavigationSnapshotAt = 0;
   setPanelNotice(DEFAULT_IN_PAGE_NOTICE);
 }
 
@@ -534,7 +753,7 @@ async function startCapture(): Promise<void> {
   state.updatedAt = now;
   state.title = document.title;
   state.committeeName = deriveCommitteeName(document.title);
-  setPanelNotice("자막 모으기를 시작했습니다.");
+  setPanelNotice("자막 모으기를 시작했습니다. 페이지를 이동하거나 새로고침하면 수집이 중단되고, 떠나기 직전에 자동 저장을 시도합니다.");
   dispatchObserverConfig();
   syncUserInterfaces();
 
@@ -559,6 +778,7 @@ async function startCapture(): Promise<void> {
 
 async function stopCapture(): Promise<void> {
   clearRunningPersistTimer();
+  clearPendingReset();
   const now = Date.now();
   const stoppedRecord = buildPreparedSessionRecord("stopped", now);
   state = finalizeSession(state, now, settings).state;
@@ -820,6 +1040,37 @@ function bindSettingsChanges(): void {
   });
 }
 
+function bindNavigationGuards(): void {
+  if (!isTopFrame) {
+    return;
+  }
+
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") {
+      persistRunningSnapshotForVisibilityChange();
+    }
+  });
+
+  window.addEventListener("pagehide", (event) => {
+    const pageTransitionEvent = event as PageTransitionEvent;
+    if (pageTransitionEvent.persisted) {
+      persistRunningSnapshotForVisibilityChange();
+      return;
+    }
+    persistStoppedSnapshotForPageExit();
+  });
+
+  window.addEventListener("beforeunload", (event) => {
+    if (!shouldWarnBeforeUnload(isTopFrame, state)) {
+      return;
+    }
+
+    persistRunningSnapshotForVisibilityChange();
+    event.preventDefault();
+    event.returnValue = "";
+  });
+}
+
 function isObserverBridgeEventMessage(
   data: Partial<ObserverBridgeEvent>,
 ): data is ObserverBridgeEvent {
@@ -893,6 +1144,7 @@ async function bootstrap(): Promise<void> {
   bindBridgeMessages();
   bindPopupPort();
   bindSettingsChanges();
+  bindNavigationGuards();
   mountInPagePanel();
   updateInPagePanel();
 

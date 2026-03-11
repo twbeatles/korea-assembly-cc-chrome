@@ -1,4 +1,5 @@
 import { OBSERVER_ACTIVATE_EVENT } from "../shared/constants";
+import { buildObservedSubtitlePreview, readObservedSubtitleRows } from "./subtitle-rows";
 
 const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";
 const OBSERVER_STOP_EVENT = "assembly-subtitle-observer:stop";
@@ -25,6 +26,13 @@ const BRIDGE_KEY = "__assemblySubtitleObserverBridge";
 type SubtitleReadResult = {
   text: string;
   selector: string;
+  rows: {
+    nodeKey: string;
+    text: string;
+    speakerColor: string;
+    speakerChannel: "primary" | "secondary" | "unknown";
+    unstableKey: boolean;
+  }[];
 };
 
 type BridgeState = {
@@ -34,6 +42,7 @@ type BridgeState = {
   selectors: string[];
   lastText: string;
   lastCompact: string;
+  lastRowSignature: string;
   target: HTMLElement | null;
   observerSelector: string;
   observerActive: boolean;
@@ -62,14 +71,6 @@ function queryOne(selector: string): HTMLElement | null {
     return document.querySelector<HTMLElement>(selector);
   } catch {
     return null;
-  }
-}
-
-function queryAll(selector: string): HTMLElement[] {
-  try {
-    return Array.from(document.querySelectorAll<HTMLElement>(selector));
-  } catch {
-    return [];
   }
 }
 
@@ -174,37 +175,21 @@ function readContainerText(node: HTMLElement | null): string {
   return normalizeText(extractTailLines(raw, 3));
 }
 
-function readSmiWordWindow(selector: string): string {
-  const normalizedSelector = String(selector || "")
-    .replace(/:last-child/g, "")
-    .replace(/:last-of-type/g, "")
-    .trim();
-  const query = normalizedSelector || "#viewSubtit .smi_word";
-  const nodes = queryAll(query);
-  const fallbackNodes = nodes.length ? nodes : queryAll("#viewSubtit .smi_word");
-
-  if (!fallbackNodes.length) {
-    return "";
-  }
-
-  const dedupedRows: string[] = [];
-  for (const node of fallbackNodes) {
-    const rowText = normalizeText(node.innerText || node.textContent || "");
-    const rowCompact = compactText(rowText);
-    if (!rowCompact) {
-      continue;
-    }
-
-    const lastRow = dedupedRows[dedupedRows.length - 1] || "";
-    if (compactText(lastRow) === rowCompact) {
-      dedupedRows[dedupedRows.length - 1] = rowText;
-      continue;
-    }
-
-    dedupedRows.push(rowText);
-  }
-
-  return dedupedRows.slice(-3).join(" ").trim();
+function buildRowSignature(
+  rows: {
+    nodeKey: string;
+    text: string;
+    speakerColor: string;
+    speakerChannel: "primary" | "secondary" | "unknown";
+    unstableKey: boolean;
+  }[],
+): string {
+  return rows
+    .map(
+      (row) =>
+        `${row.nodeKey}|${compactText(row.text)}|${row.speakerColor}|${row.speakerChannel}|${row.unstableKey}`,
+    )
+    .join("||");
 }
 
 function uniqueSelectors(selectors: string[]): string[] {
@@ -228,11 +213,13 @@ function readSubtitleText(selectors: string[], preferredSelector = ""): Subtitle
 
   for (const selector of orderedSelectors) {
     if (selector.includes(".smi_word")) {
-      const smiText = readSmiWordWindow(selector);
+      const rows = readObservedSubtitleRows(document, selector);
+      const smiText = buildObservedSubtitlePreview(rows);
       if (smiText) {
         return {
           text: smiText,
           selector,
+          rows,
         };
       }
     }
@@ -243,6 +230,7 @@ function readSubtitleText(selectors: string[], preferredSelector = ""): Subtitle
       return {
         text,
         selector,
+        rows: [],
       };
     }
   }
@@ -254,6 +242,7 @@ function readSubtitleText(selectors: string[], preferredSelector = ""): Subtitle
       return {
         text,
         selector: fallbackSelector,
+        rows: [],
       };
     }
   }
@@ -261,6 +250,7 @@ function readSubtitleText(selectors: string[], preferredSelector = ""): Subtitle
   return {
     text: "",
     selector: preferredSelector,
+    rows: [],
   };
 }
 
@@ -318,10 +308,12 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
   }
 
   const compact = compactText(current.text);
+  const rowSignature = buildRowSignature(current.rows);
   if (!compact) {
     if (state.lastCompact) {
       state.lastText = "";
       state.lastCompact = "";
+      state.lastRowSignature = "";
       emit("subtitle:reset", {
         selector: state.observerSelector,
         observerActive,
@@ -330,14 +322,16 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
     return;
   }
 
-  if (compact === state.lastCompact) {
+  if (compact === state.lastCompact && rowSignature === state.lastRowSignature) {
     return;
   }
 
   state.lastText = current.text;
   state.lastCompact = compact;
+  state.lastRowSignature = rowSignature;
   emit("subtitle:update", {
     raw: current.text,
+    rows: current.rows,
     selector: state.observerSelector,
     observerActive,
   });
@@ -422,6 +416,7 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
     selectors: [...DEFAULT_SELECTORS],
     lastText: "",
     lastCompact: "",
+    lastRowSignature: "",
     target: null,
     observerSelector: "",
     observerActive: false,

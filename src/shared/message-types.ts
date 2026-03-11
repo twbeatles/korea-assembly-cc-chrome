@@ -1,8 +1,18 @@
 import type {
   CaptureStatus,
   ExportFormat,
+  SpeakerChannel,
+  SessionRecord,
   SubtitleEntry,
 } from "../core/subtitle-models";
+
+export interface ObservedSubtitleRow {
+  nodeKey: string;
+  text: string;
+  speakerColor: string;
+  speakerChannel: SpeakerChannel;
+  unstableKey: boolean;
+}
 
 export interface StatusSnapshot {
   connected: boolean;
@@ -74,6 +84,10 @@ export type BackgroundCommandMessage =
   | { type: "ENSURE_CONTENT_SCRIPT"; tabId: number; url?: string }
   | { type: "GET_FRAME_FORWARD_NONCE" }
   | {
+      type: "PERSIST_SESSION_RECORD";
+      record: SessionRecord;
+    }
+  | {
       type: "DOWNLOAD_REQUEST";
       filename: string;
       content: string;
@@ -90,6 +104,7 @@ export interface ObserverBridgeEvent {
   source: string;
   kind: "subtitle:update" | "subtitle:reset" | "subtitle:health";
   raw?: string;
+  rows?: ObservedSubtitleRow[];
   selector?: string;
   framePath?: number[];
   timestamp: number;

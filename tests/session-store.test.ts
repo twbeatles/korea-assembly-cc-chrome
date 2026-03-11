@@ -48,6 +48,7 @@ describe("session store", () => {
     const listed = await listSessions({ limit: 10 });
 
     expect(loaded?.id).toBe(session.id);
+    expect(loaded?.version).toBe("1");
     expect(listed.map((item) => item.id)).toContain(session.id);
 
     await deleteSession(session.id);

@@ -24,6 +24,24 @@ export function shouldPersistFinalSession(
   return isTopFrame && entryCount > 0;
 }
 
+export function hasPersistableRunningContent(
+  state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
+): boolean {
+  return (
+    state.status === "running" &&
+    (state.entries.length > 0 ||
+      state.pendingPreviews.length > 0 ||
+      Boolean(state.previewText.trim()))
+  );
+}
+
+export function shouldWarnBeforeUnload(
+  isTopFrame: boolean,
+  state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
+): boolean {
+  return isTopFrame && hasPersistableRunningContent(state);
+}
+
 export function applyPersistSuccess(state: SessionState, persistedAt: string): SessionState {
   const next = cloneState(state);
   next.lastPersistedAt = persistedAt;

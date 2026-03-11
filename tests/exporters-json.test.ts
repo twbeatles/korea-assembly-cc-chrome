@@ -3,7 +3,7 @@ import type { SessionRecord } from "../src/core/subtitle-models";
 
 const session: SessionRecord = {
   id: "session_json",
-  version: "1",
+  version: "2",
   title: "법사위",
   committeeName: "법제사법위원회",
   sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
@@ -21,6 +21,10 @@ const session: SessionRecord = {
       timestamp: "2026-03-10T09:00:01.200Z",
       startTime: "2026-03-10T09:00:01.200Z",
       endTime: "2026-03-10T09:00:04.000Z",
+      sourceNodeKey: "row_1",
+      speakerColor: "rgb(35, 124, 147)",
+      speakerChannel: "primary",
+      speakerChanged: true,
       sourceFramePath: [0, 1],
     },
   ],
@@ -37,6 +41,8 @@ describe("JSON exporter", () => {
     expect(parsed.startedAt).toBe(session.startedAt);
     expect(parsed.endedAt).toBe(session.endedAt);
     expect(parsed.entries).toHaveLength(1);
+    expect(parsed.entries[0].sourceNodeKey).toBe("row_1");
+    expect(parsed.entries[0].speakerColor).toBe("rgb(35, 124, 147)");
     expect(parsed.entries[0].sourceFramePath).toEqual([0, 1]);
   });
 });

@@ -6,7 +6,13 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["dist", "node_modules", "legacy", "public/injected-observer.js"],
+    ignores: [
+      "dist",
+      "node_modules",
+      "legacy",
+      "public/injected-observer.js",
+      "iiadnfahoocbannfpgfgbommblpagacl",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
