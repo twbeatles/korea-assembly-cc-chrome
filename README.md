@@ -1,5 +1,9 @@
 # 국회 AI 자막 추출기 Chrome Extension
 
+<p align="center">
+  <img src="public/icons/icon128.png" alt="국회 AI 자막 추출기 아이콘" width="128" />
+</p>
+
 기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON`으로 저장하는 최소 실용 버전을 제공하는 것입니다.
 
 ## 왜 데스크톱 앱에서 크롬 확장으로 바꿨나
@@ -37,6 +41,7 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - history 기록 내부 검색 / 복사
 - 실행 중 자동 저장 상태 표시 및 설정
 - 페이지 패널 / options / history UI
+- **크롬 확장프로그램 전용 아이콘 세트 적용(16, 32, 48, 128px)**
 - 최소 단위 테스트
 
 ## 자막 및 내보내기 정합성
@@ -133,11 +138,13 @@ npm run build
 ## 크롬에서 unpacked extension 로드하기
 
 1. `npm run build`
-2. Chrome 주소창에 `chrome://extensions`
+2. Chrome 주소창에 `chrome://extensions` 입력
 3. 우측 상단 `개발자 모드` 활성화
-4. `압축해제된 확장 프로그램을 로드합니다`
+4. 좌측 상단 `압축해제된 확장 프로그램을 로드합니다(Load unpacked)` 버튼 클릭
 5. 저장소의 `dist/` 폴더 선택
-6. 국회 의사중계 페이지를 새로고침하면 오른쪽에 패널이 자동으로 나타납니다
+6. 확장프로그램 툴바에 새롭게 추가된 **국회 로고+CC(자막)** 아이콘이 표시되는지 확인
+7. 브라우저 우측 상단의 퍼즐 조각 아이콘 확장 프로그램 목록에서 `국회 AI 자막 추출기`를 핀 고정
+8. 국회 의사중계 페이지(`https://assembly.webcast.go.kr/*`)를 열고 새로고침하면 오른쪽에 패널이 자동으로 나타납니다.
 
 ## 사용 방법
 
@@ -228,6 +235,17 @@ npm run build
 - 영상 캡처
 - 중요 표시 / 발언자 편집
 - 브라우저 E2E 테스트 추가
+
+## 스토어 배포 (Publishing) 가이드
+
+크롬 웹스토어에 정식 출시하기 위해서는 다음 과정을 거칩니다:
+
+1. **프로덕션 빌드**: `npm run build` 명령을 통해 `dist/` 디렉터리에 배포용 에셋을 생성합니다. (아이콘 등 에셋 포함)
+2. **압축(Zip)**: 생성된 `dist/` 폴더 내부의 모든 파일(디렉터리 포함)을 `extension.zip` 형태로 압축합니다. 폴더 자체를 압축하지 않고 내부 에셋들을 압축해야 합니다.
+3. **스토어 등록**: 
+   - [Chrome 웹 스토어 개발자 대시보드](https://chrome.google.com/webstore/devconsole)에 로그인합니다.
+   - 우측 상단 `새 항목(New Item)`을 클릭하고 `extension.zip`을 업로드합니다.
+4. **리뷰 요청**: 정보(설명, 스토어 아이콘, 스크린샷 등)를 기입한 뒤 검토(Review)를 요청합니다.
 
 ## 검증 기준
 
