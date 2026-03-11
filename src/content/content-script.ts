@@ -109,10 +109,14 @@ function reportRuntimeError(message: string, error?: unknown): void {
   }
 
   popupPorts.forEach((port) => {
-    postToPort(port, {
-      type: "ERROR",
-      message,
-    });
+    try {
+      postToPort(port, {
+        type: "ERROR",
+        message,
+      });
+    } catch {
+      // Ignore Invalidated context errors on ports
+    }
   });
 }
 
@@ -202,7 +206,11 @@ function broadcastPopupState(requiresReload = false): void {
 
   const messages = createPopupMessages(requiresReload);
   popupPorts.forEach((port) => {
-    messages.forEach((message) => postToPort(port, message));
+    try {
+      messages.forEach((message) => postToPort(port, message));
+    } catch {
+      // Ignore Invalidated context errors on ports
+    }
   });
 }
 
@@ -393,6 +401,14 @@ function persistSessionRecordInBackground(record: SessionRecord): void {
       },
     );
   } catch (error) {
+    if (error instanceof Error && error.message.includes("Extension context invalidated")) {
+      reportRuntimeError("확장프로그램이 업데이트 되었습니다. 페이지를 새로고침(F5) 해주세요.");
+      if (state.status === "running") {
+        state.status = "stopped";
+        clearRunningPersistTimer();
+      }
+      return;
+    }
     console.warn("[assembly-subtitle] Failed to dispatch background session persist", error);
   }
 }
