@@ -125,10 +125,8 @@ function mergeOrAppendEntry(
           lastEntry.sourceNodeKey !== sourceNodeKey,
       );
 
-    const gapSeconds = differenceSeconds(lastEntry.endTime || lastEntry.timestamp, nowIso);
     const canMerge =
       !structuredBoundary &&
-      gapSeconds <= PIPELINE_DEFAULTS.mergeGapSeconds &&
       lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
 
     if (canMerge) {

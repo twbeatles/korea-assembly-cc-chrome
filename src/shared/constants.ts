@@ -47,7 +47,7 @@ export const PIPELINE_DEFAULTS = {
   confirmedCompactMaxLength: 50000,
   recentDuplicateMinLength: 8,
   mergeGapSeconds: 5,
-  mergeMaxChars: 300,
+  mergeMaxChars: 1000,
   keepaliveIntervalMs: 1000,
   recentHistoryEntries: 12,
   recentHistoryCompactLength: 5000,
