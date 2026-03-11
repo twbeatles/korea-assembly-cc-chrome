@@ -205,31 +205,15 @@ const PANEL_STYLE = `
     line-height: 1.5;
   }
 
-  .meta-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .meta-item {
-    min-width: 0;
-    padding: 10px 12px;
-    border-radius: 14px;
-    background: #f3f7fc;
-  }
-
-  .meta-item span {
-    display: block;
-    color: #5a7088;
-    font-size: 12px;
-    margin-bottom: 6px;
-  }
-
-  .meta-item strong {
-    display: block;
+  .header-count {
     font-size: 13px;
-    color: #173651;
-    line-height: 1.45;
-    word-break: break-word;
+    font-weight: 700;
+    color: #536b83;
+    background: #eef3f9;
+    padding: 6px 10px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
   }
 
   .controls-card {
@@ -242,10 +226,22 @@ const PANEL_STYLE = `
     min-width: 0;
   }
 
-  .export-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
+  .export-row {
+    display: flex;
+    gap: 6px;
+  }
+
+  .export-row button {
+    flex: 1;
+    padding: 8px 4px;
+    font-size: 12px;
+    color: #314b66;
+    background: #f5f8fc;
+    border: 1px solid rgba(20, 54, 90, 0.08);
+  }
+
+  .export-row button:hover:not(:disabled) {
+    background: #eef3f9;
   }
 
   button {
@@ -281,33 +277,7 @@ const PANEL_STYLE = `
     opacity: 0.45;
   }
 
-  details {
-    border-radius: 16px;
-    background: #f5f8fc;
-    border: 1px solid rgba(20, 54, 90, 0.08);
-    padding: 0 12px 12px;
-  }
-
-  summary {
-    list-style: none;
-    cursor: pointer;
-    padding: 12px 0 10px;
-  }
-
-  summary::-webkit-details-marker {
-    display: none;
-  }
-
-  .summary-copy {
-    display: grid;
-    gap: 2px;
-  }
-
-  .summary-indicator {
-    color: #33506d;
-    font-size: 12px;
-    font-weight: 700;
-  }
+  /* Removed details/summary styles */
 
   .section-header span,
   .hero-header span {
@@ -459,18 +429,6 @@ function createButton(
   return button;
 }
 
-function createMetaItem(label: string): { wrapper: HTMLElement; value: HTMLElement } {
-  const wrapper = document.createElement("div");
-  wrapper.className = "meta-item";
-
-  const title = document.createElement("span");
-  title.textContent = label;
-
-  const value = document.createElement("strong");
-  wrapper.append(title, value);
-  return { wrapper, value };
-}
-
 function buildEntrySignature(entries: SubtitleEntry[]): string {
   return entries
     .map(
@@ -535,13 +493,16 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   subtitle.textContent = "실시간 자막을 먼저 크게 보고, 저장과 내보내기는 아래에서 관리합니다.";
   titleGroup.append(eyebrow, title, subtitle);
 
+  const headerCount = document.createElement("span");
+  headerCount.className = "header-count";
+
   const statusBadge = document.createElement("span");
   statusBadge.className = "status-badge";
 
   const headerActions = document.createElement("div");
   headerActions.className = "header-actions";
   const collapseButton = createButton(UI_TEXT.collapse, actions.onCollapse, "secondary icon");
-  headerActions.append(statusBadge, collapseButton);
+  headerActions.append(headerCount, statusBadge, collapseButton);
 
   header.append(titleGroup, headerActions);
 
@@ -555,29 +516,12 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const previewHint = document.createElement("p");
   previewHint.textContent = "현재 변환 중인 자막의 흐름입니다.";
   previewCopy.append(previewTitle, previewHint);
-  const previewStats = document.createElement("span");
-  previewHeader.append(previewCopy, previewStats);
+  previewHeader.append(previewCopy);
   const previewBox = document.createElement("div");
   previewBox.className = "preview-box";
   const notice = document.createElement("div");
   notice.className = "notice";
   previewSection.append(previewHeader, previewBox, notice);
-
-  const summaryCard = document.createElement("section");
-  summaryCard.className = "summary-card";
-  const metaGrid = document.createElement("div");
-  metaGrid.className = "meta-grid";
-  const committeeMeta = createMetaItem("회의 이름");
-  const startedMeta = createMetaItem("시작 시각");
-  const lastSavedMeta = createMetaItem("마지막 저장");
-  const countMeta = createMetaItem("모인 자막");
-  metaGrid.append(
-    committeeMeta.wrapper,
-    startedMeta.wrapper,
-    lastSavedMeta.wrapper,
-    countMeta.wrapper,
-  );
-  summaryCard.append(metaGrid);
 
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
@@ -588,39 +532,21 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const copyRecentButton = createButton(UI_TEXT.copyRecent, actions.onCopyRecent, "secondary");
   primaryActions.append(startButton, stopButton, copyRecentButton);
 
+  const exportRow = document.createElement("div");
+  exportRow.className = "export-row";
+  const exportButtons = (["txt", "srt", "vtt", "json"] as ExportFormat[]).map((format) => {
+    const button = createButton(getExportFormatLabel(format), () => actions.onExport(format));
+    exportRow.append(button);
+    return button;
+  });
+
   const secondaryActions = document.createElement("div");
   secondaryActions.className = "action-row";
   const clearButton = createButton(UI_TEXT.clearSession, actions.onClearSession, "secondary");
   const saveButton = createButton(UI_TEXT.saveSession, actions.onSaveSession, "secondary");
   secondaryActions.append(clearButton, saveButton);
 
-  const exportDetails = document.createElement("details");
-  exportDetails.open = false;
-  const exportSummary = document.createElement("summary");
-  const exportSummaryCopy = document.createElement("div");
-  exportSummaryCopy.className = "summary-copy";
-  const exportSummaryTitle = document.createElement("strong");
-  exportSummaryTitle.textContent = "저장 / 내보내기";
-  const exportSummaryHint = document.createElement("p");
-  exportSummaryHint.textContent = "TXT, SRT, VTT, JSON 형식으로 내보낼 수 있습니다.";
-  exportSummaryCopy.append(exportSummaryTitle, exportSummaryHint);
-  const exportIndicator = document.createElement("span");
-  exportIndicator.className = "summary-indicator";
-  exportIndicator.textContent = "펼치기";
-  exportSummary.append(exportSummaryCopy, exportIndicator);
-  exportDetails.addEventListener("toggle", () => {
-    exportIndicator.textContent = exportDetails.open ? "접기" : "펼치기";
-  });
-
-  const exportGrid = document.createElement("div");
-  exportGrid.className = "export-grid";
-  const exportButtons = (["txt", "srt", "vtt", "json"] as ExportFormat[]).map((format) => {
-    const button = createButton(getExportFormatLabel(format), () => actions.onExport(format), "ghost");
-    exportGrid.append(button);
-    return button;
-  });
-  exportDetails.append(exportSummary, exportGrid);
-  controlsCard.append(primaryActions, secondaryActions, exportDetails);
+  controlsCard.append(primaryActions, exportRow, secondaryActions);
 
   const listSection = document.createElement("section");
   listSection.className = "section-card";
@@ -644,7 +570,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
     header,
     listSection,
     previewSection,
-    summaryCard,
     controlsCard,
     footer,
   );
@@ -669,13 +594,10 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       statusBadge.textContent = nextState.statusLabel;
       statusBadge.className = `status-badge ${nextState.status}`;
 
-      committeeMeta.value.textContent = nextState.committeeName;
-      startedMeta.value.textContent = formatDate(nextState.startedAt);
-      lastSavedMeta.value.textContent = formatDate(nextState.lastPersistedAt);
-      countMeta.value.textContent = `${nextState.subtitleCount}문장 / ${nextState.charCount}자`;
+      headerCount.textContent = `${nextState.subtitleCount}문장`;
+
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
 
-      previewStats.textContent = `${nextState.subtitleCount}문장`;
       const nextPreview = nextState.previewText || emptyPreviewText;
       const previewChanged = renderedPreview !== nextPreview;
       if (previewChanged) {
@@ -736,8 +658,8 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
       const hasEntries = nextState.subtitleCount > 0;
       const hasPersistableContent = hasEntries || Boolean(nextState.previewText.trim());
-      startButton.disabled = nextState.status === "running";
-      stopButton.disabled = nextState.status !== "running";
+      startButton.style.display = nextState.status === "running" ? "none" : "";
+      stopButton.style.display = nextState.status === "running" ? "" : "none";
       clearButton.disabled = !hasPersistableContent;
       saveButton.disabled = !hasPersistableContent;
       copyRecentButton.disabled = !hasPersistableContent;

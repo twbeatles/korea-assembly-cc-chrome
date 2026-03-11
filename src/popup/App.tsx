@@ -203,12 +203,8 @@ export default function App() {
 
       <section className="panel">
         <div className="meta-row">
-          <span>현재 페이지</span>
+          <span>작동 상태</span>
           <strong>{unsupported ? "지원되지 않음" : tabReady ? "연결됨" : "대기 중"}</strong>
-        </div>
-        <div className="meta-row">
-          <span>상태</span>
-          <strong>{snapshot ? getCaptureStatusLabel(snapshot.status) : "-"}</strong>
         </div>
         <div className="meta-row">
           <span>회의 이름</span>
@@ -216,17 +212,7 @@ export default function App() {
         </div>
         <div className="meta-row">
           <span>모인 자막</span>
-          <strong>
-            {snapshot?.subtitleCount ?? 0}문장 / {snapshot?.charCount ?? 0}자
-          </strong>
-        </div>
-        <div className="meta-row">
-          <span>시작 시각</span>
-          <strong>{formatDate(snapshot?.startedAt ?? null)}</strong>
-        </div>
-        <div className="meta-row">
-          <span>마지막 저장</span>
-          <strong>{formatDate(snapshot?.lastPersistedAt ?? null)}</strong>
+          <strong>{snapshot?.subtitleCount ?? 0}문장</strong>
         </div>
         <div className="status-line">{statusMessage}</div>
         {requiresReload ? (
@@ -237,17 +223,10 @@ export default function App() {
       </section>
 
       <section className="panel">
-        <div className="panel-header">
-          <h2>사용 방법</h2>
-        </div>
-        <p className="help-text">
-          이제 자막 수집 화면은 확장 아이콘 안이 아니라 국회 사이트 오른쪽 패널에 바로
-          나타납니다.
-        </p>
         <div className="actions-stack">
           <button
             onClick={() =>
-              sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 오른쪽 패널을 다시 열고 있습니다.")
+              sendCommand({ type: "OPEN_INPAGE_PANEL" }, "패널을 다시 엽니다.")
             }
             disabled={!tabReady}
           >

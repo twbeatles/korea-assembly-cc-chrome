@@ -93,10 +93,8 @@ describe("in-page panel", () => {
 
     const shadowRoot = host?.shadowRoot;
     expect(shadowRoot?.textContent).toContain("국회 자막 도우미");
-    expect(shadowRoot?.textContent).toContain("정무위원회");
     expect(shadowRoot?.textContent).toContain("방금 나온 자막");
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
-    expect(shadowRoot?.textContent).toContain("저장 / 내보내기");
 
     controller.destroy();
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
