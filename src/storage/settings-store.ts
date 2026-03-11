@@ -76,6 +76,10 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       typeof settings.debugLogging === "boolean"
         ? settings.debugLogging
         : DEFAULT_EXTENSION_SETTINGS.debugLogging,
+    autoStartEnabled:
+      typeof settings.autoStartEnabled === "boolean"
+        ? settings.autoStartEnabled
+        : DEFAULT_EXTENSION_SETTINGS.autoStartEnabled,
   };
 }
 

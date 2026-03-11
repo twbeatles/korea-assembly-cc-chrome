@@ -140,6 +140,18 @@ export default function App() {
           />
         </label>
 
+        <label className="setting-card">
+          <div>
+            <strong>페이지 접속 시 자동 시작</strong>
+            <span>국회 의사/생중계 페이지를 열 때 바로 수집을 시작합니다.</span>
+          </div>
+          <input
+            type="checkbox"
+            checked={settings.autoStartEnabled}
+            onChange={(event) => updateField("autoStartEnabled", event.target.checked)}
+          />
+        </label>
+
         {BASIC_NUMBER_FIELDS.map((field) => (
           <label className="setting-card input-card" key={field}>
             <div>
@@ -149,7 +161,7 @@ export default function App() {
             <input
               type="number"
               min={getFieldMin(field)}
-              value={settings[field]}
+              value={String(settings[field])}
               onChange={(event) =>
                 updateField(field, Number(event.target.value) as ExtensionSettings[typeof field])
               }
@@ -205,7 +217,7 @@ export default function App() {
                 <input
                   type="number"
                   min={getFieldMin(field)}
-                  value={settings[field]}
+                  value={String(settings[field])}
                   onChange={(event) =>
                     updateField(
                       field,

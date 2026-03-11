@@ -12,6 +12,7 @@ export interface ExtensionSettings {
   runningAutoSaveDebounceMs: number;
   recentCopyLineCount: number;
   debugLogging: boolean;
+  autoStartEnabled: boolean;
 }
 
 export interface ExportPayload {

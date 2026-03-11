@@ -37,6 +37,7 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
   debugLogging: false,
+  autoStartEnabled: true,
 };
 
 export const PIPELINE_DEFAULTS = {

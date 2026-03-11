@@ -77,6 +77,7 @@ let settings: ExtensionSettings = {
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
   debugLogging: false,
+  autoStartEnabled: true,
 };
 let state: SessionState = createEmptySessionState(window.location.href, document.title);
 const popupPorts = new Set<chrome.runtime.Port>();
@@ -307,8 +308,8 @@ function applyStructuredRowsEvent(
   const rowChanged =
     Boolean(activeRow) &&
     (!lastObservedStableRow ||
-      lastObservedStableRow.nodeKey !== activeRow.nodeKey ||
-      lastObservedStableRow.text !== activeRow.text);
+      lastObservedStableRow.nodeKey !== activeRow?.nodeKey ||
+      lastObservedStableRow.text !== activeRow?.text);
   lastObservedStableRow = activeRow;
 
   if (!rowChanged || !activeRow) {
@@ -1128,6 +1129,12 @@ async function bootstrap(): Promise<void> {
     localFramePath,
     nonceSource: FRAME_FORWARD_NONCE_SOURCE,
   });
+
+  if (isTopFrame && settings.autoStartEnabled && state.status !== "running") {
+    void startCapture().catch((error: unknown) => {
+      reportRuntimeError("자동 시작 설정에 의해 자막 모으기를 시도했으나 실패했습니다.", error);
+    });
+  }
 }
 
 const bootstrapRoot = document.documentElement;
