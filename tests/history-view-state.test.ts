@@ -101,8 +101,9 @@ describe("history view state helpers", () => {
         addedCount: 2,
         updatedCount: 1,
         keptCount: 3,
+        failedCount: 1,
         invalidCount: 4,
       }),
-    ).toBe("JSON 가져오기를 완료했습니다. 추가 2건 / 갱신 1건 / 유지 3건 / 무효 4건");
+    ).toBe("JSON 가져오기를 완료했습니다. 추가 2건 / 갱신 1건 / 유지 3건 / 실패 1건 / 무효 4건");
   });
 });

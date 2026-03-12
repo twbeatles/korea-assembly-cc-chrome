@@ -242,3 +242,11 @@ Current closure status:
 - Offscreen duplicate-create tolerance: completed.
 - Subtitle row style-cost tuning: completed.
 - Focused regression tests added for probe/bridge paths.
+
+## 2026-03-12 Additional Sync Update
+
+- content -> popup messaging now also includes `POPUP_FEEDBACK`.
+- popup command feedback must explicitly surface `OPEN_INPAGE_PANEL` results.
+- session import summaries now include `failedCount`.
+- supported hosts are fixed to both `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
+- options field exposure is now declared in `settings-fields.ts` and covered by regression tests.

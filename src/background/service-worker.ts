@@ -1,4 +1,4 @@
-import { ASSEMBLY_HOST, OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
+import { isSupportedAssemblyUrl, OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
 import type {
   BackgroundCommandMessage,
   BackgroundCommandResponse,
@@ -15,6 +15,7 @@ const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
 const frameForwardNonceByTabId = new Map<number, string>();
 const blobDownloadUrls = new Map<number, string>();
+const BLOB_DOWNLOAD_URLS_STORAGE_KEY = "assembly-subtitle-download-blob-urls";
 
 function callbackPromise<T>(executor: (callback: (value: T) => void) => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -30,7 +31,48 @@ function callbackPromise<T>(executor: (callback: (value: T) => void) => void): P
 }
 
 function supportsAssemblyPage(url?: string): boolean {
-  return typeof url === "string" && url.startsWith(ASSEMBLY_HOST);
+  return isSupportedAssemblyUrl(url);
+}
+
+async function persistBlobDownloadUrls(): Promise<void> {
+  await chrome.storage.local.set({
+    [BLOB_DOWNLOAD_URLS_STORAGE_KEY]: Object.fromEntries(blobDownloadUrls.entries()),
+  });
+}
+
+async function restoreBlobDownloadUrls(): Promise<void> {
+  const stored = await chrome.storage.local.get(BLOB_DOWNLOAD_URLS_STORAGE_KEY);
+  const snapshot = stored[BLOB_DOWNLOAD_URLS_STORAGE_KEY];
+  blobDownloadUrls.clear();
+  if (!snapshot || typeof snapshot !== "object") {
+    return;
+  }
+
+  Object.entries(snapshot as Record<string, unknown>).forEach(([key, value]) => {
+    const downloadId = Number(key);
+    if (Number.isInteger(downloadId) && typeof value === "string" && value) {
+      blobDownloadUrls.set(downloadId, value);
+    }
+  });
+}
+
+async function cleanupPersistedBlobDownloadUrls(): Promise<void> {
+  try {
+    await restoreBlobDownloadUrls();
+    for (const [downloadId, blobUrl] of [...blobDownloadUrls.entries()]) {
+      const items = await callbackPromise<chrome.downloads.DownloadItem[]>((callback) =>
+        chrome.downloads.search({ id: downloadId }, callback),
+      );
+      const state = items[0]?.state;
+      if (!state || state === "complete" || state === "interrupted") {
+        blobDownloadUrls.delete(downloadId);
+        await revokeBlobUrl(blobUrl);
+      }
+    }
+    await persistBlobDownloadUrls();
+  } catch (error) {
+    console.warn("[service-worker] Failed to restore persisted Blob URLs", error);
+  }
 }
 
 function bytesToBase64(bytes: Uint8Array): string {
@@ -233,6 +275,7 @@ async function downloadExport(
     blobUrl = await requestBlobUrl(content, mimeType);
     const downloadId = await downloadByUrl(blobUrl, filename);
     blobDownloadUrls.set(downloadId, blobUrl);
+    await persistBlobDownloadUrls();
     return downloadId;
   } catch (blobError) {
     if (blobUrl) {
@@ -322,6 +365,7 @@ async function handleMessage(
 }
 
 async function runStartupSessionCleanup(): Promise<void> {
+  await cleanupPersistedBlobDownloadUrls();
   try {
     const closed = await closeRunningSessionsOnStartup();
     if (closed > 0) {
@@ -360,6 +404,7 @@ chrome.downloads.onChanged.addListener((delta) => {
   }
 
   blobDownloadUrls.delete(delta.id);
+  void persistBlobDownloadUrls();
   void revokeBlobUrl(blobUrl);
 });
 

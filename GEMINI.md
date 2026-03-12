@@ -243,3 +243,11 @@ Reference consistency set:
 - `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
 - `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
 - `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`
+
+## 2026-03-12 Additional Sync Update
+
+- content -> popup messaging now also includes `POPUP_FEEDBACK`.
+- popup command feedback must explicitly surface `OPEN_INPAGE_PANEL` results.
+- session import summaries now include `failedCount`.
+- supported hosts are fixed to both `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
+- options field exposure is now declared in code and covered by regression tests.

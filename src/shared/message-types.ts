@@ -75,6 +75,12 @@ export interface SessionStatsPayload {
   charCount: number;
 }
 
+export interface PopupFeedbackPayload {
+  command: "OPEN_INPAGE_PANEL";
+  message: string;
+  panelOpened: boolean;
+}
+
 export type PopupToContentMessage =
   | { type: "PING" }
   | { type: "GET_STATUS" }
@@ -89,6 +95,7 @@ export type ContentToPopupMessage =
   | { type: "CAPTURE_STATUS"; payload: CaptureStatusPayload }
   | { type: "PREVIEW_UPDATE"; payload: PreviewUpdatePayload }
   | { type: "SESSION_STATS"; payload: SessionStatsPayload }
+  | { type: "POPUP_FEEDBACK"; payload: PopupFeedbackPayload }
   | { type: "ERROR"; message: string };
 
 export type BackgroundCommandMessage =

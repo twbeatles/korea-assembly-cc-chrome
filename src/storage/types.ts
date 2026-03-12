@@ -36,6 +36,7 @@ export interface SessionImportSummary {
   addedCount: number;
   updatedCount: number;
   keptCount: number;
+  failedCount: number;
 }
 
 export interface SessionStoreApi {

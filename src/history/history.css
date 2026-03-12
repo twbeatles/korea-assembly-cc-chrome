@@ -102,10 +102,12 @@ button.secondary {
 .session-list-actions,
 .session-item-row,
 .session-check,
+.session-pagination,
 .selection-toolbar,
 .selection-actions,
 .note-actions,
 .section-row,
+.note-meta,
 .entry-card-row,
 .entry-check {
   display: flex;
@@ -254,6 +256,25 @@ button.secondary {
   padding: 16px;
 }
 
+.note-meta {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.note-status {
+  border-radius: 999px;
+  background: rgba(26, 108, 88, 0.12);
+  color: #1a6c58;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+}
+
+.note-status.dirty {
+  background: rgba(186, 106, 12, 0.14);
+  color: #9a5600;
+}
+
 .note-input {
   width: 100%;
   min-height: 112px;
@@ -293,6 +314,12 @@ button.secondary {
 
 .empty-card {
   padding: 20px;
+}
+
+.session-pagination {
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 6px;
 }
 
 .entry-card-row {
@@ -342,10 +369,12 @@ button.secondary {
   .search-row,
   .session-list-toolbar,
   .session-list-actions,
+  .session-pagination,
   .session-item-row,
   .selection-toolbar,
   .selection-actions,
   .note-actions,
+  .note-meta,
   .entry-card-row {
     flex-direction: column;
     align-items: stretch;

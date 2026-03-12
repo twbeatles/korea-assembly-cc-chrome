@@ -15,4 +15,14 @@ describe("noise filter", () => {
     expect(isNoiseOnly("...")).toBe(true);
     expect(isMeaningfulSubtitleText("!!!")).toBe(false);
   });
+
+  it("keeps mixed numeric-symbol fragments classified as noise", () => {
+    expect(isNoiseOnly("123_456")).toBe(true);
+    expect(isMeaningfulSubtitleText("123_456")).toBe(false);
+  });
+
+  it("continues to treat non-Korean foreign text as unsupported noise", () => {
+    expect(isNoiseOnly("字幕")).toBe(true);
+    expect(isMeaningfulSubtitleText("字幕")).toBe(false);
+  });
 });

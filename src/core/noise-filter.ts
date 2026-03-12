@@ -46,6 +46,7 @@ export function isNoiseOnly(text: string): boolean {
     return true;
   }
 
+  // Mixed digit/symbol fragments such as "123_456" are also treated as noise.
   return true;
 }
 

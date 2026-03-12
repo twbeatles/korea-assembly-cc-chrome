@@ -48,4 +48,15 @@ describe("capture notice helper", () => {
     expect(RESET_CAPTURE_NOTICE).not.toBe(FALLBACK_CAPTURE_NOTICE);
     expect(RESET_CAPTURE_NOTICE).not.toBe(POLLING_CAPTURE_NOTICE);
   });
+
+  it("prioritizes reset recovery copy while a reset is still in progress", () => {
+    expect(
+      resolveCaptureNotice({
+        captureMode: "structured",
+        observerActive: true,
+        hasStableRows: true,
+        isResetting: true,
+      }),
+    ).toBe(RESET_CAPTURE_NOTICE);
+  });
 });

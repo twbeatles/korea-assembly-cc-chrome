@@ -224,4 +224,41 @@ describe("subtitle pipeline", () => {
     const noiseFlushed = flushPendingPreviews(noiseState, now);
     expect(noiseFlushed.entries).toHaveLength(0);
   });
+
+  it("starts a new entry when the merge gap exceeds the configured boundary", () => {
+    const base = Date.parse("2026-03-11T09:00:00.000Z");
+    let state = createEmptySessionState("http://test.com", "Test");
+
+    state = applyPreview(state, "첫 문장", base).state;
+    state = applyPreview(state, "이어지는 문장", base + 1000).state;
+
+    const later = applyPreview(state, "한참 뒤 문장", base + 7000);
+
+    expect(later.state.entries).toHaveLength(2);
+    expect(later.state.entries[0].text).toContain("이어지는 문장");
+    expect(later.state.entries[1].text).toBe("한참 뒤 문장");
+  });
+
+  it("keeps trimming cumulative previews even when they span beyond the recent-history window", () => {
+    const base = Date.parse("2026-03-11T09:10:00.000Z");
+    let state = createEmptySessionState("http://test.com", "Test");
+
+    for (let index = 0; index < 16; index += 1) {
+      const text = `문장${index}`;
+      state = applyStructuredEntry(
+        state,
+        text,
+        text,
+        base + index * 1000,
+        undefined,
+        { sourceNodeKey: `top::row_${index}` },
+      ).state;
+    }
+
+    const fullPreview = state.entries.map((entry) => entry.text).join(" ") + " 마지막 추가 문장";
+    const result = applyPreview(state, fullPreview, base + 22000);
+
+    expect(result.state.entries.at(-1)?.text).toBe("마지막 추가 문장");
+    expect(result.state.entries).toHaveLength(17);
+  });
 });

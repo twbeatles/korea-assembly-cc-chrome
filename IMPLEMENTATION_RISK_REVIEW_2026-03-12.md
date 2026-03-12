@@ -137,3 +137,28 @@
 
 - 이번 점검은 "현재 구현이 바로 실패하는지"보다 "운영 중 간헐 장애/회귀를 만들 수 있는 부분"을 우선 식별했습니다.
 - 특히 저장 경로와 메시지 경로는 정상 경로에서는 안정적으로 보여도, 실패 경로 관리를 강화해야 문서의 신뢰성 목표와 맞습니다.
+
+## 2026-03-12 Status Update
+
+- This document remains a risk review, not a closure checklist.
+- Functional-review closure was completed on 2026-03-12 except for the intentionally excluded `1-3` foreign-language/CJK item.
+- The following risks should still be treated as open unless separately closed:
+  - history action error-surfacing consistency
+  - startup running-session cleanup result reporting
+  - strict JSON import schema validation
+  - page-exit persistence durability
+  - bridge origin/security hardening beyond nonce/token
+  - broader runtime UI/integration test coverage
+  - transient invalid numeric input UX in options
+- Risk-reducing changes now present in code:
+  - transaction handler ordering hardening
+  - fallback mutation serialization
+  - partial import failure accounting via `failedCount`
+  - cursor-based IndexedDB listing with starred index backfill
+  - persisted Blob URL cleanup tracking
+  - popup/history/options feedback improvements
+- Latest verification completed on 2026-03-12:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+  - `npm run build`

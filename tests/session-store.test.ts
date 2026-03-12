@@ -169,6 +169,37 @@ describe("session store", () => {
     }
   });
 
+  it("serializes concurrent fallback writes so every record remains listed", async () => {
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await Promise.all([
+        saveSession(buildSession("session_fallback_a", "saved")),
+        saveSession(buildSession("session_fallback_b", "saved")),
+        saveSession(buildSession("session_fallback_c", "saved")),
+      ]);
+
+      const listed = await listSessions({ limit: 10 });
+      expect(listed.map((item) => item.id)).toEqual(
+        expect.arrayContaining([
+          "session_fallback_a",
+          "session_fallback_b",
+          "session_fallback_c",
+        ]),
+      );
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+      await resetSessionStoreForTests();
+    }
+  });
+
   it("deduplicates carry-over entries and strips speaker metadata during export", async () => {
     const session: SessionRecord = {
       ...buildSession("session_export_cleanup", "saved"),
@@ -293,6 +324,52 @@ describe("session store", () => {
     }
   });
 
+  it("reports partial import failures without aborting the remaining records", async () => {
+    const originalPut = IDBObjectStore.prototype.put;
+    const putSpy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
+      this: IDBObjectStore,
+      value,
+    ) {
+      const record = value as SessionRecord;
+      if (record.id === "session_import_fail") {
+        throw new Error("Intentional import failure");
+      }
+      return originalPut.call(this, value);
+    });
+
+    const summary = await importSessionRecords([
+      buildSession("session_import_ok", "saved"),
+      buildSession("session_import_fail", "saved"),
+    ]);
+
+    putSpy.mockRestore();
+
+    expect(summary).toEqual({
+      addedCount: 1,
+      updatedCount: 0,
+      keptCount: 0,
+      failedCount: 1,
+    });
+    expect((await loadSession("session_import_ok"))?.id).toBe("session_import_ok");
+    await expect(loadSession("session_import_fail")).resolves.toBeUndefined();
+  });
+
+  it("keeps starred sessions eligible even when a small limit is requested", async () => {
+    await saveSession({
+      ...buildSession("session_starred_old", "saved"),
+      starred: true,
+      pinnedAt: "2026-03-10T09:00:00.000Z",
+      updatedAt: "2026-03-10T09:00:00.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_recent", "saved"),
+      updatedAt: "2026-03-10T10:00:00.000Z",
+    });
+
+    const listed = await listSessions({ limit: 1 });
+    expect(listed.map((item) => item.id)).toEqual(["session_starred_old"]);
+  });
+
   it("imports fresher records and preserves newer existing records", async () => {
     await importSessionRecords([
       {
@@ -329,6 +406,7 @@ describe("session store", () => {
       addedCount: 0,
       updatedCount: 1,
       keptCount: 1,
+      failedCount: 0,
     });
     expect(loadedImport?.note).toBe("가져온 최신 메모");
     expect(loadedImport?.starred).toBe(true);
@@ -356,6 +434,7 @@ describe("session store", () => {
       addedCount: 0,
       updatedCount: 0,
       keptCount: 1,
+      failedCount: 0,
     });
     expect(loaded?.note).toBe("기존 최신본");
   });
@@ -468,6 +547,46 @@ describe("session store", () => {
 
     try {
       await expect(loadSession("session_fallback_saved")).resolves.toBeUndefined();
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+  });
+
+  it("does not clear fallback storage when IndexedDB delete-all fails with an actual error", async () => {
+    await saveSession(buildSession("session_idb_saved", "saved"));
+
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await saveSession(buildSession("session_fallback_saved", "saved"));
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+
+    const clearSpy = vi.spyOn(IDBObjectStore.prototype, "clear").mockImplementationOnce(() => {
+      throw new Error("Intentional clear failure");
+    });
+
+    await expect(deleteAllSessions()).rejects.toThrow("IndexedDB 정리에 실패했습니다");
+    clearSpy.mockRestore();
+
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      expect((await loadSession("session_fallback_saved"))?.id).toBe("session_fallback_saved");
     } finally {
       Object.defineProperty(globalThis, "indexedDB", {
         configurable: true,

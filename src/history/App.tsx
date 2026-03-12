@@ -38,6 +38,7 @@ import {
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
 const HISTORY_PAGE_SESSION_LIMIT = 1000;
+const HISTORY_PAGE_SIZE = 200;
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -55,7 +56,11 @@ function confirmDeleteSession(target: SessionRecord): boolean {
   return window.confirm(`선택한 기록을 삭제할까요?\n${title}`);
 }
 
-function confirmDeleteSessions(targets: SessionRecord[], scopeLabel: string): boolean {
+function confirmDeleteSessions(
+  targets: SessionRecord[],
+  scopeLabel: string,
+  extraNotice?: string,
+): boolean {
   if (!targets.length) {
     return false;
   }
@@ -71,8 +76,16 @@ function confirmDeleteSessions(targets: SessionRecord[], scopeLabel: string): bo
   const moreLabel = targets.length > 3 ? `\n외 ${targets.length - 3}건` : "";
 
   return window.confirm(
-    `${scopeLabel} 기록 ${targets.length}건을 삭제할까요?\n\n${previewTitles}${moreLabel}`,
+    `${scopeLabel} 기록 ${targets.length}건을 삭제할까요?\n\n${previewTitles}${moreLabel}${extraNotice ? `\n\n${extraNotice}` : ""}`,
   );
+}
+
+function confirmDiscardUnsavedNote(actionLabel: string): boolean {
+  if (typeof window === "undefined" || typeof window.confirm !== "function") {
+    return true;
+  }
+
+  return window.confirm(`저장하지 않은 메모가 있습니다. ${actionLabel} 전에 변경 내용을 버릴까요?`);
 }
 
 export default function App() {
@@ -85,6 +98,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showStarredOnly, setShowStarredOnly] = useState(false);
   const [noteDraft, setNoteDraft] = useState("");
+  const [sessionPage, setSessionPage] = useState(1);
   const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
   const [filenamePattern, setFilenamePattern] = useState(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
 
@@ -106,15 +120,23 @@ export default function App() {
     () => sessions.filter((session) => checkedIdSet.has(session.id)),
     [checkedIdSet, sessions],
   );
+  const pageCount = Math.max(1, Math.ceil(sessions.length / HISTORY_PAGE_SIZE));
+  const pagedSessions = useMemo(() => {
+    const start = (sessionPage - 1) * HISTORY_PAGE_SIZE;
+    return sessions.slice(start, start + HISTORY_PAGE_SIZE);
+  }, [sessionPage, sessions]);
   const selectedEntries = useMemo(
     () =>
       selectedSession?.entries.filter((entry) => checkedEntryIdSet.has(entry.id)) ?? [],
     [checkedEntryIdSet, selectedSession],
   );
-  const allSessionsChecked = sessions.length > 0 && checkedIds.length === sessions.length;
+  const currentPageSessionsChecked =
+    pagedSessions.length > 0 && pagedSessions.every((session) => checkedIdSet.has(session.id));
   const allVisibleEntriesChecked =
     filteredEntries.length > 0 &&
     filteredEntries.every((entry) => checkedEntryIdSet.has(entry.id));
+  const hasUnsavedNote =
+    selectedSession ? noteDraft !== selectedSession.note : noteDraft.trim().length > 0;
 
   const refresh = async (messageOnSuccess?: string): Promise<SessionRecord[]> => {
     const nextSessions = await listSessions({ limit: HISTORY_PAGE_SESSION_LIMIT });
@@ -132,6 +154,7 @@ export default function App() {
   useEffect(() => {
     setSelectedId((current) => resolveSelectedSessionId(current, sessions));
     setCheckedIds((current) => resolveSelectedSessionIds(current, sessions));
+    setSessionPage((current) => Math.min(current, Math.max(1, Math.ceil(sessions.length / HISTORY_PAGE_SIZE))));
   }, [sessions]);
 
   useEffect(() => {
@@ -140,6 +163,19 @@ export default function App() {
       resolveSelectedEntryIds(current, selectedSession?.entries ?? []),
     );
   }, [selectedSession]);
+
+  useEffect(() => {
+    const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
+      if (!hasUnsavedNote) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [hasUnsavedNote]);
 
   useEffect(() => {
     let active = true;
@@ -183,6 +219,15 @@ export default function App() {
       chrome.storage.onChanged.removeListener(handleStorageChange);
     };
   }, []);
+
+  const handleRefreshClick = async (): Promise<void> => {
+    if (hasUnsavedNote && !confirmDiscardUnsavedNote("목록 새로고침")) {
+      setMessage("새로고침을 취소했습니다.");
+      return;
+    }
+
+    await refresh();
+  };
 
   const handleDelete = async (): Promise<void> => {
     if (!selectedSession) {
@@ -231,6 +276,7 @@ export default function App() {
 
     try {
       const result = await deleteSessionIds(checkedSessions.map((session) => session.id));
+      setCheckedIds([]);
       await refresh(
         buildSelectedDeleteMessage(
           checkedSessions.length,
@@ -250,13 +296,20 @@ export default function App() {
         await refresh();
         return;
       }
-      if (!confirmDeleteSessions(storedSessions, "전체")) {
+      if (
+        !confirmDeleteSessions(
+          storedSessions,
+          "전체",
+          "이 확인 이후에 새로 저장된 기록도 함께 삭제될 수 있습니다.",
+        )
+      ) {
         setMessage("전체 삭제를 취소했습니다.");
         return;
       }
 
       await deleteAllSessions();
       setSearchQuery("");
+      setCheckedIds([]);
       setCheckedEntryIds([]);
       await refresh(buildDeleteAllSuccessMessage(storedSessions.length));
     } catch (error) {
@@ -282,7 +335,9 @@ export default function App() {
 
   const handleToggleCheckAll = (): void => {
     setCheckedIds((current) =>
-      current.length === sessions.length ? [] : selectAllSessionIds(sessions),
+      currentPageSessionsChecked
+        ? current.filter((id) => !pagedSessions.some((session) => session.id === id))
+        : [...new Set([...current, ...selectAllSessionIds(pagedSessions)])],
     );
   };
 
@@ -368,6 +423,30 @@ export default function App() {
     ]);
   };
 
+  const handleToggleVisibleEntries = (): void => {
+    if (allVisibleEntriesChecked) {
+      setCheckedEntryIds((current) =>
+        current.filter((id) => !filteredEntries.some((entry) => entry.id === id)),
+      );
+      return;
+    }
+
+    handleSelectVisibleEntries();
+  };
+
+  const handleSelectSession = (sessionId: string): void => {
+    if (sessionId !== selectedSession?.id && hasUnsavedNote && !confirmDiscardUnsavedNote("세션 전환")) {
+      setMessage("세션 전환을 취소했습니다.");
+      return;
+    }
+
+    const nextIndex = sessions.findIndex((session) => session.id === sessionId);
+    if (nextIndex >= 0) {
+      setSessionPage(Math.floor(nextIndex / HISTORY_PAGE_SIZE) + 1);
+    }
+    setSelectedId(sessionId);
+  };
+
   const handleToggleEntryChecked = (entryId: string): void => {
     setCheckedEntryIds((current) => toggleSelectedEntryId(current, entryId));
   };
@@ -440,10 +519,16 @@ export default function App() {
           <h1>저장된 자막 기록</h1>
         </div>
         <div className="hero-actions">
-          <button onClick={() => void refresh()}>목록 새로고침</button>
+          <button onClick={() => void handleRefreshClick()}>목록 새로고침</button>
           <button
             className={`secondary ${showStarredOnly ? "active-toggle" : ""}`}
-            onClick={() => setShowStarredOnly((current) => !current)}
+            onClick={() => {
+              if (hasUnsavedNote && !confirmDiscardUnsavedNote("필터 변경")) {
+                setMessage("필터 변경을 취소했습니다.");
+                return;
+              }
+              setShowStarredOnly((current) => !current);
+            }}
           >
             {showStarredOnly ? "전체 보기" : "즐겨찾기만 보기"}
           </button>
@@ -468,11 +553,11 @@ export default function App() {
         <aside className="session-list">
           <div className="session-list-toolbar">
             <span>
-              전체 {allSessions.length}개 / 표시 {sessions.length}개 / 선택 {checkedIds.length}개
+              전체 {allSessions.length}개 / 표시 {sessions.length}개 / 현재 페이지 {pagedSessions.length}개 / 선택 {checkedIds.length}개
             </span>
             <div className="session-list-actions">
               <button className="secondary" onClick={handleToggleCheckAll} disabled={!sessions.length}>
-                {allSessionsChecked ? "선택 해제" : "전체 선택"}
+                {currentPageSessionsChecked ? "현재 페이지 선택 해제" : "현재 페이지 전체 선택"}
               </button>
               <button className="secondary" onClick={() => void handleDeleteChecked()} disabled={!checkedIds.length}>
                 선택 삭제
@@ -483,7 +568,7 @@ export default function App() {
             </div>
           </div>
           {sessions.length ? (
-            sessions.map((session) => (
+            pagedSessions.map((session) => (
               <div key={session.id} className="session-item-row">
                 <label className="session-check">
                   <input
@@ -507,7 +592,7 @@ export default function App() {
                 </button>
                 <button
                   className={`session-item ${selectedSession?.id === session.id ? "active" : ""}`}
-                  onClick={() => setSelectedId(session.id)}
+                  onClick={() => handleSelectSession(session.id)}
                 >
                   <strong>{session.committeeName || session.title}</strong>
                   <span>{formatDate(session.startedAt)}</span>
@@ -526,6 +611,27 @@ export default function App() {
                 : "아직 저장해 둔 기록이 없습니다."}
             </div>
           )}
+          {sessions.length > HISTORY_PAGE_SIZE ? (
+            <div className="session-pagination">
+              <button
+                className="secondary"
+                onClick={() => setSessionPage((current) => Math.max(1, current - 1))}
+                disabled={sessionPage <= 1}
+              >
+                이전 페이지
+              </button>
+              <span>
+                {sessionPage} / {pageCount}
+              </span>
+              <button
+                className="secondary"
+                onClick={() => setSessionPage((current) => Math.min(pageCount, current + 1))}
+                disabled={sessionPage >= pageCount}
+              >
+                다음 페이지
+              </button>
+            </div>
+          ) : null}
         </aside>
 
         <section className="session-detail">
@@ -574,7 +680,12 @@ export default function App() {
               <div className="note-card">
                 <div className="section-row">
                   <strong>세션 메모</strong>
-                  <span>{noteDraft.trim().length}자</span>
+                  <div className="note-meta">
+                    <span>{noteDraft.trim().length}자</span>
+                    <span className={`note-status ${hasUnsavedNote ? "dirty" : ""}`}>
+                      {hasUnsavedNote ? "저장되지 않음" : "저장됨"}
+                    </span>
+                  </div>
                 </div>
                 <textarea
                   className="note-input"
@@ -620,17 +731,17 @@ export default function App() {
                 <div className="selection-actions">
                   <button
                     className="secondary"
-                    onClick={handleSelectVisibleEntries}
-                    disabled={!filteredEntries.length || allVisibleEntriesChecked}
+                    onClick={handleToggleVisibleEntries}
+                    disabled={!filteredEntries.length}
                   >
-                    보이는 항목 전체 선택
+                    {allVisibleEntriesChecked ? "보이는 항목 선택 해제" : "보이는 항목 전체 선택"}
                   </button>
                   <button
                     className="secondary"
                     onClick={() => setCheckedEntryIds([])}
                     disabled={!checkedEntryIds.length}
                   >
-                    선택 해제
+                    전체 선택 해제
                   </button>
                   <button
                     onClick={() =>

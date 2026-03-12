@@ -266,3 +266,15 @@ Deployment documentation consistency sources:
 - `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
 - `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
 - `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`
+
+## 2026-03-12 Deployment Consistency Update
+
+- Supported hosts are fixed to both:
+  - `https://assembly.webcast.go.kr/*`
+  - `https://webcast.assembly.go.kr/*`
+- Release verification should additionally confirm:
+  - popup `OPEN_INPAGE_PANEL` feedback is visible
+  - popup char-count display is correct
+  - history pagination and visible-only selection controls behave as expected
+  - options page explains that `autoStartEnabled` defaults to `true`
+  - startup cleanup restores persisted Blob download URL tracking safely

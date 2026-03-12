@@ -40,12 +40,14 @@ export function buildSessionImportMessage(input: {
   addedCount: number;
   updatedCount: number;
   keptCount: number;
+  failedCount: number;
   invalidCount: number;
 }): string {
   const parts = [
     `추가 ${input.addedCount}건`,
     `갱신 ${input.updatedCount}건`,
     `유지 ${input.keptCount}건`,
+    `실패 ${input.failedCount}건`,
     `무효 ${input.invalidCount}건`,
   ];
   return `JSON 가져오기를 완료했습니다. ${parts.join(" / ")}`;

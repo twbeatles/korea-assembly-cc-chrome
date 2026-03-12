@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ASSEMBLY_HOST, POPUP_PORT_NAME } from "../shared/constants";
+import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
 import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
 import { connectToTab, getTab, queryTabs, sendRuntimeMessage } from "../shared/chrome-api";
 import type {
@@ -11,20 +11,9 @@ import type {
 import { getCaptureStatusLabel, UI_TEXT } from "../shared/ui-labels";
 import { getSettings, resetSettings, saveSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
+import { ADVANCED_NUMBER_FIELDS, BASIC_NUMBER_FIELDS } from "./settings-fields";
 
 type OptionsView = "settings" | "diagnostics";
-
-const BASIC_NUMBER_FIELDS: Array<keyof ExtensionSettings> = [
-  "runningAutoSaveDebounceMs",
-  "recentCopyLineCount",
-];
-
-const ADVANCED_NUMBER_FIELDS: Array<keyof ExtensionSettings> = [
-  "keepaliveIntervalMs",
-  "pollingFallbackIntervalMs",
-  "maxBufferLength",
-  "recentDuplicateMinLength",
-];
 
 function getFieldLabel(field: keyof ExtensionSettings): string {
   switch (field) {
@@ -118,7 +107,7 @@ async function resolveDiagnosticsTab(preferredTabId: number | null): Promise<chr
 
   const tabs = await queryTabs({ currentWindow: true });
   const candidates = tabs.filter(
-    (tab) => typeof tab.id === "number" && typeof tab.url === "string" && tab.url.startsWith(ASSEMBLY_HOST),
+    (tab) => typeof tab.id === "number" && typeof tab.url === "string" && isSupportedAssemblyUrl(tab.url),
   );
   candidates.sort((left, right) => (right.lastAccessed ?? 0) - (left.lastAccessed ?? 0));
   return candidates[0] ?? null;
@@ -126,7 +115,7 @@ async function resolveDiagnosticsTab(preferredTabId: number | null): Promise<chr
 
 function mergeSnapshot(
   current: StatusSnapshot | null,
-  message: Exclude<ContentToPopupMessage, { type: "ERROR" }>,
+  message: Exclude<ContentToPopupMessage, { type: "ERROR" } | { type: "POPUP_FEEDBACK" }>,
 ): StatusSnapshot | null {
   switch (message.type) {
     case "CAPTURE_STATUS":
@@ -249,7 +238,7 @@ export default function App() {
           return;
         }
 
-        if (!tab.url.startsWith(ASSEMBLY_HOST)) {
+        if (!isSupportedAssemblyUrl(tab.url)) {
           setSnapshot(null);
           setUnsupported(true);
           setTabReady(false);
@@ -305,6 +294,8 @@ export default function App() {
                 setTabReady(true);
                 setDiagnosticsMessage("현재 탭의 수집 진단 정보를 불러왔습니다.");
               }
+              return;
+            case "POPUP_FEEDBACK":
               return;
           }
         };
@@ -465,6 +456,10 @@ export default function App() {
                 onChange={(event) => updateField("autoStartEnabled", event.target.checked)}
               />
             </label>
+
+            <div className="warning-box full-width">
+              기본값은 켜짐입니다. 국회 중계 페이지를 열면 바로 수집을 시작하므로, 원하지 않으면 이 옵션을 꺼두세요.
+            </div>
 
             <label className="setting-card">
               <div>

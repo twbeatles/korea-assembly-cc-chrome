@@ -56,4 +56,24 @@ describe("injected observer token bridge", () => {
 
     expect(hasTokenizedBridgeEvent).toBe(true);
   });
+
+  it("does not emit bridge events before the token-bearing config arrives", async () => {
+    vi.resetModules();
+
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="smi_word row_1"><span>bridge token subtitle</span></div>
+      </div>
+    `;
+
+    const postMessageSpy = vi.spyOn(window, "postMessage");
+    await import("../src/content/injected-observer");
+
+    const bridgeEvents = postMessageSpy.mock.calls.filter(([payload]) => {
+      const data = payload as { source?: string };
+      return data.source === OBSERVER_BRIDGE_SOURCE;
+    });
+
+    expect(bridgeEvents).toHaveLength(0);
+  });
 });

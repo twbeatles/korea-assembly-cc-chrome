@@ -154,6 +154,31 @@ function softResyncHistory(
   state.previewAmbiguousSkipCount = 0;
 }
 
+function buildRecentCompactHistory(entries: SubtitleEntry[]): string {
+  return buildConfirmedCompactHistory(
+    entries.slice(-PIPELINE_DEFAULTS.recentHistoryEntries),
+    PIPELINE_DEFAULTS.recentHistoryCompactLength,
+  );
+}
+
+function extractIncrementalTextWithRecentHistory(
+  rawText: string,
+  historyCompact: string,
+  recentHistoryCompact: string,
+): IncrementalExtractResult {
+  const recentHistory = compactSubtitleText(recentHistoryCompact);
+  const fullHistory = compactSubtitleText(historyCompact);
+
+  if (recentHistory && recentHistory !== fullHistory) {
+    const recentResult = extractIncrementalTextFromHistory(rawText, recentHistory);
+    if (recentResult.matched || recentResult.duplicate) {
+      return recentResult;
+    }
+  }
+
+  return extractIncrementalTextFromHistory(rawText, fullHistory);
+}
+
 function sliceFromCompactIndex(text: string, compactIndex: number): string {
   const raw = stripZeroWidth(String(text || ""));
   if (compactIndex <= 0) {
@@ -356,6 +381,7 @@ function updateEntryById(
 function appendOrMergeEntry(
   state: SessionState,
   text: string,
+  nowMs: number,
   nowIso: string,
   meta?: PipelineSourceMeta,
 ): SubtitleEntry {
@@ -368,7 +394,13 @@ function appendOrMergeEntry(
         lastEntry.sourceNodeKey !== meta.sourceNodeKey,
     );
 
+    const lastEntryEndMs = Date.parse(lastEntry.endTime);
+    const exceedsMergeGap =
+      Number.isFinite(lastEntryEndMs) &&
+      nowMs - lastEntryEndMs > PIPELINE_DEFAULTS.mergeGapSeconds * 1000;
+
     const canMerge =
+      !exceedsMergeGap &&
       !structuredBoundary &&
       lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
 
@@ -427,7 +459,11 @@ export function applyPreview(
   next.previewText = normalizedRaw;
   next.lastObservedRaw = normalizedRaw;
 
-  const extraction = extractIncrementalTextFromHistory(normalizedRaw, next.confirmedCompact);
+  const extraction = extractIncrementalTextWithRecentHistory(
+    normalizedRaw,
+    next.confirmedCompact,
+    buildRecentCompactHistory(next.entries),
+  );
 
   if (!extraction.matched && next.confirmedCompact) {
     next.previewDesyncCount += 1;
@@ -451,7 +487,11 @@ export function applyPreview(
 
   const retriedExtraction =
     next.previewDesyncCount === 0 && next.previewAmbiguousSkipCount === 0
-      ? extractIncrementalTextFromHistory(normalizedRaw, next.confirmedCompact)
+      ? extractIncrementalTextWithRecentHistory(
+          normalizedRaw,
+          next.confirmedCompact,
+          buildRecentCompactHistory(next.entries),
+        )
       : extraction;
 
   if (retriedExtraction.duplicate || !retriedExtraction.text) {
@@ -471,7 +511,7 @@ export function applyPreview(
     };
   }
 
-  const appendedEntry = appendOrMergeEntry(next, candidateText, toIsoString(now), meta);
+  const appendedEntry = appendOrMergeEntry(next, candidateText, now, toIsoString(now), meta);
   next.lastProcessedRaw = normalizedRaw;
   next.lastCommittedResetAt = null;
   next.previewDesyncCount = 0;
@@ -498,11 +538,18 @@ export function commitLiveRow(
   const normalizedPreview = normalizeRawText(previewText) || normalizeRawText(rowText);
   const previewChanged = next.previewText !== normalizedPreview;
   const baselineCompact = meta?.baselineCompact ?? next.confirmedCompact;
+  const recentBaselineCompact = compactSubtitleText(baselineCompact).slice(
+    -PIPELINE_DEFAULTS.recentHistoryCompactLength,
+  );
 
   next.previewText = normalizedPreview;
   next.lastObservedRaw = normalizedPreview;
 
-  const extraction = extractIncrementalTextFromHistory(rowText, baselineCompact);
+  const extraction = extractIncrementalTextWithRecentHistory(
+    rowText,
+    baselineCompact,
+    recentBaselineCompact,
+  );
   const candidateText = sanitizeCommittedText(extraction.text, settings);
 
   if (!candidateText) {
@@ -537,7 +584,7 @@ export function commitLiveRow(
     };
   }
 
-  const appendedEntry = appendOrMergeEntry(next, candidateText, nowIso, {
+  const appendedEntry = appendOrMergeEntry(next, candidateText, now, nowIso, {
     ...meta,
     forceNewEntry: true,
   });

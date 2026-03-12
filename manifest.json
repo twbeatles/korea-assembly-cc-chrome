@@ -19,10 +19,16 @@
   },
   "options_page": "options.html",
   "permissions": ["storage", "downloads", "activeTab", "scripting", "offscreen"],
-  "host_permissions": ["https://assembly.webcast.go.kr/*"],
+  "host_permissions": [
+    "https://assembly.webcast.go.kr/*",
+    "https://webcast.assembly.go.kr/*"
+  ],
   "content_scripts": [
     {
-      "matches": ["https://assembly.webcast.go.kr/*"],
+      "matches": [
+        "https://assembly.webcast.go.kr/*",
+        "https://webcast.assembly.go.kr/*"
+      ],
       "js": ["src/content/content-script.ts"],
       "run_at": "document_idle",
       "all_frames": true
@@ -31,7 +37,10 @@
   "web_accessible_resources": [
     {
       "resources": ["injected-observer.js"],
-      "matches": ["https://assembly.webcast.go.kr/*"]
+      "matches": [
+        "https://assembly.webcast.go.kr/*",
+        "https://webcast.assembly.go.kr/*"
+      ]
     }
   ],
   "icons": {

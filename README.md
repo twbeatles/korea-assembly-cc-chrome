@@ -58,7 +58,7 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 
 ## 1차 범위
 
-- 이미 열린 `https://assembly.webcast.go.kr/*` 페이지에서 자막 추출
+- 이미 열린 `https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*` 페이지에서 자막 추출
 - 페이지 오른쪽 패널에서 시작 / 중지 / 저장 / 파일 저장
 - options에서 수집 설정 조정
 - history에서 저장된 기록 목록, 삭제, 재열기, 즐겨찾기, 세션 메모, 파일 저장, 기록 내부 검색 / 복사
@@ -151,11 +151,11 @@ npm run build
 5. 저장소의 `dist/` 폴더 선택
 6. 확장프로그램 툴바에 새롭게 추가된 **국회 로고+CC(자막)** 아이콘이 표시되는지 확인
 7. 브라우저 우측 상단의 퍼즐 조각 아이콘 확장 프로그램 목록에서 `국회 AI 자막 추출기`를 핀 고정
-8. 국회 의사중계 페이지(`https://assembly.webcast.go.kr/*`)를 열고 새로고침하면 오른쪽에 패널이 자동으로 나타납니다.
+8. 국회 의사중계 페이지(`https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*`)를 열고 새로고침하면 오른쪽에 패널이 자동으로 나타납니다.
 
 ## 사용 방법
 
-1. `https://assembly.webcast.go.kr/*` 페이지를 연다
+1. `https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*` 페이지를 연다
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
 3. `자막 모으기`를 눌러 수집을 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 실패하면 패널 notice 로 수동 클릭 안내를 표시한다
@@ -180,8 +180,8 @@ npm run build
 - `offscreen`: 대용량 export용 Blob URL 생성
 - `activeTab`: 현재 탭 상태 조회
 - `scripting`: MV3 런타임 보조 권한
-- `host_permissions: https://assembly.webcast.go.kr/*`
-  국회 의사중계 도메인만 대상으로 제한합니다
+- `host_permissions: https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`
+  국회 의사중계 고정 도메인 2개만 대상으로 제한합니다
 
 ## 동작 구조
 
@@ -353,3 +353,11 @@ Reference docs:
 - `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
 - `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
 - `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`
+
+## 2026-03-12 Additional Sync Update
+
+- session import summaries now include `failedCount`.
+- popup command feedback now includes `POPUP_FEEDBACK`, including explicit `OPEN_INPAGE_PANEL` result messages.
+- supported host matching is fixed to `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
+- options field exposure is declared in code and regression-tested.
+- the foreign-language/CJK review item remains intentionally excluded by product policy.

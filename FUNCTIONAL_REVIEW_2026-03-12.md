@@ -416,3 +416,28 @@ export function isNoiseOnly(text: string): boolean {
 
 > 이 문서는 코드 직접 분석 기반이며, 실제 런타임 테스트로 보완이 필요한 항목이 포함되어 있습니다.
 > 다음 우선 처리 권장 순서: **1-1 (mergeGapSeconds) → 3-1 (fallback race) → 4-1 (token) → 2-2 (reset notice) → 1-5 (deleteAll 순서)**
+
+## 2026-03-12 Implementation Closure Update
+
+- Scope decision:
+  - `1-3. noise-filter.ts - CJK symbol-only` is intentionally not changed.
+  - Foreign-language subtitle support remains out of scope by product decision.
+- Closed in code:
+  - `1-1`, `1-2`, `1-4`, `1-5`
+  - `2-1`, `2-2`, `2-3`, `2-4`
+  - `3-1`, `3-2`, `3-3`
+  - `4-1`, `4-2`
+  - `5-1`, `5-2`, `5-3`
+  - `6-1`, `6-2`, `6-3`, `6-4`
+  - `7-1`, `7-2`, `7-3`, `7-4`
+- Verification completed on 2026-03-12:
+  - `npm run lint`
+  - `npm run typecheck`
+  - `npm run test`
+  - `npm run build`
+- Notes:
+  - `mergeGapSeconds` is now enforced during append/merge decisions.
+  - recent-history extraction is now wired into preview/live-row processing with full-history fallback.
+  - `withTransaction` handler ordering was hardened.
+  - `SessionImportSummary.failedCount` is now implemented.
+  - supported hosts are fixed to `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.

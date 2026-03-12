@@ -9,7 +9,12 @@ export function resolveCaptureNotice(input: {
   captureMode: CaptureMode;
   observerActive: boolean;
   hasStableRows: boolean;
+  isResetting?: boolean;
 }): string {
+  if (input.isResetting) {
+    return RESET_CAPTURE_NOTICE;
+  }
+
   if (input.captureMode === "structured" && input.hasStableRows && input.observerActive) {
     return ACTIVE_CAPTURE_NOTICE;
   }

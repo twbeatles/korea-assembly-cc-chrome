@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { ASSEMBLY_HOST, POPUP_PORT_NAME } from "../shared/constants";
+import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
 import { connectToTab, queryActiveTab, sendRuntimeMessage } from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
@@ -66,7 +66,7 @@ export default function App() {
         }
 
         setCurrentTabId(tab.id);
-        if (!tab.url.startsWith(ASSEMBLY_HOST)) {
+        if (!isSupportedAssemblyUrl(tab.url)) {
           setUnsupported(true);
           setTabReady(false);
           clearReconnectTimer();
@@ -133,7 +133,11 @@ export default function App() {
                 diagnostics: message.payload.diagnostics,
               }));
               setTabReady(true);
-              setStatusMessage("페이지 확장판과 연결했습니다.");
+              setStatusMessage((current) =>
+                current === "현재 페이지를 확인하고 있습니다."
+                  ? "페이지 확장판과 연결했습니다."
+                  : current,
+              );
               return;
             case "PREVIEW_UPDATE":
               setSnapshot((current) =>
@@ -159,6 +163,9 @@ export default function App() {
               return;
             case "ERROR":
               setStatusMessage(message.message);
+              return;
+            case "POPUP_FEEDBACK":
+              setStatusMessage(message.payload.message);
               return;
           }
         };
@@ -270,6 +277,10 @@ export default function App() {
           <span>모인 자막</span>
           <strong>{snapshot?.subtitleCount ?? 0}문장</strong>
         </div>
+        <div className="meta-row">
+          <span>누적 글자</span>
+          <strong>{snapshot?.charCount ?? 0}자</strong>
+        </div>
         <div className="status-line">{statusMessage}</div>
         {requiresReload ? (
           <div className="warning-box">
@@ -280,10 +291,30 @@ export default function App() {
 
       <section className="panel">
         <div className="actions-stack">
+          {snapshot?.status === "running" ? (
+            <button
+              onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 멈춥니다.")}
+              disabled={!tabReady}
+            >
+              {UI_TEXT.stopCapture}
+            </button>
+          ) : (
+            <button
+              onClick={() => sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")}
+              disabled={!tabReady}
+            >
+              {UI_TEXT.startCapture}
+            </button>
+          )}
           <button
-            onClick={() =>
-              sendCommand({ type: "OPEN_INPAGE_PANEL" }, "패널을 다시 엽니다.")
-            }
+            className="secondary"
+            onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
+            disabled={!tabReady}
+          >
+            {UI_TEXT.saveSession}
+          </button>
+          <button
+            onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
             disabled={!tabReady}
           >
             {UI_TEXT.openPanel}

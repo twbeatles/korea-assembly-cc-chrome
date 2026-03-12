@@ -28,6 +28,7 @@ const FALLBACK_RECORD_PREFIX = "assembly-subtitle-session-fallback:record:";
 let dbPromise: Promise<IDBDatabase> | null = null;
 let indexedDbAvailable = true;
 const memoryFallbackStore = new Map<string, SessionRecord>();
+let fallbackMutationQueue = Promise.resolve();
 
 interface IndexedDbAttempt<T> {
   ok: boolean;
@@ -42,8 +43,19 @@ interface SourcedSessionRecord {
   record: SessionRecord;
 }
 
+interface IndexedDbSessionRecord extends SessionRecord {
+  starredIndexKey: 0 | 1;
+}
+
 function logStoreError(message: string, error?: unknown): void {
   console.warn(`[session-store] ${message}`, error);
+}
+
+function toIndexedDbRecord(record: SessionRecord): IndexedDbSessionRecord {
+  return {
+    ...cloneSessionRecord(record),
+    starredIndexKey: record.starred ? 1 : 0,
+  };
 }
 
 function withRequest<T>(request: IDBRequest<T>): Promise<T> {
@@ -61,16 +73,66 @@ async function withTransaction<T>(
   return new Promise<T>((resolve, reject) => {
     const transaction = db.transaction(SESSION_STORE_NAME, mode);
     const store = transaction.objectStore(SESSION_STORE_NAME);
+    let settled = false;
+    let transactionCompleted = false;
+    let callbackCompleted = false;
+    let callbackResult: T | undefined;
+    let callbackError: unknown;
 
-    callback(store)
-      .then((result) => {
-        transaction.oncomplete = () => resolve(result);
-        transaction.onerror = () =>
-          reject(transaction.error ?? new Error("IndexedDB transaction failed"));
-        transaction.onabort = () =>
-          reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
-      })
-      .catch(reject);
+    const rejectOnce = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error instanceof Error ? error : new Error("IndexedDB transaction failed"));
+    };
+
+    const resolveIfReady = (): void => {
+      if (settled || !transactionCompleted || !callbackCompleted) {
+        return;
+      }
+      settled = true;
+      resolve(callbackResult as T);
+    };
+
+    transaction.oncomplete = () => {
+      transactionCompleted = true;
+      if (callbackError) {
+        rejectOnce(callbackError);
+        return;
+      }
+      resolveIfReady();
+    };
+    transaction.onerror = () =>
+      rejectOnce(transaction.error ?? new Error("IndexedDB transaction failed"));
+    transaction.onabort = () =>
+      rejectOnce(transaction.error ?? callbackError ?? new Error("IndexedDB transaction aborted"));
+
+    try {
+      void callback(store)
+        .then((result) => {
+          callbackResult = result;
+          callbackCompleted = true;
+          resolveIfReady();
+        })
+        .catch((error) => {
+          callbackError = error;
+          try {
+            transaction.abort();
+          } catch {
+            // Ignore abort errors if the transaction already completed.
+          }
+          rejectOnce(error);
+        });
+    } catch (error) {
+      callbackError = error;
+      try {
+        transaction.abort();
+      } catch {
+        // Ignore abort errors if the transaction already completed.
+      }
+      rejectOnce(error);
+    }
   });
 }
 
@@ -97,11 +159,39 @@ function openDb(): Promise<IDBDatabase> {
 
       request.onupgradeneeded = () => {
         const db = request.result;
-        if (!db.objectStoreNames.contains(SESSION_STORE_NAME)) {
-          const store = db.createObjectStore(SESSION_STORE_NAME, { keyPath: "id" });
+        const store = db.objectStoreNames.contains(SESSION_STORE_NAME)
+          ? request.transaction?.objectStore(SESSION_STORE_NAME)
+          : db.createObjectStore(SESSION_STORE_NAME, { keyPath: "id" });
+        if (!store) {
+          return;
+        }
+        if (!store.indexNames.contains("updatedAt")) {
           store.createIndex("updatedAt", "updatedAt");
+        }
+        if (!store.indexNames.contains("status")) {
           store.createIndex("status", "status");
         }
+        if (!store.indexNames.contains("starred")) {
+          store.createIndex("starred", "starredIndexKey");
+        }
+
+        const cursorRequest = store.openCursor();
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) {
+            return;
+          }
+
+          const value = cursor.value as Partial<IndexedDbSessionRecord>;
+          const expectedStarredIndexKey = value.starred ? 1 : 0;
+          if (value.starredIndexKey !== expectedStarredIndexKey) {
+            cursor.update({
+              ...value,
+              starredIndexKey: expectedStarredIndexKey,
+            });
+          }
+          cursor.continue();
+        };
       };
 
       request.onsuccess = () => resolve(request.result);
@@ -286,6 +376,15 @@ function sanitizeFallbackIndex(value: unknown): string[] {
   ];
 }
 
+function enqueueFallbackMutation<T>(action: () => Promise<T>): Promise<T> {
+  const next = fallbackMutationQueue.then(action, action);
+  fallbackMutationQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
 function setMemorySnapshot(snapshot: Record<string, SessionRecord>): void {
   memoryFallbackStore.clear();
   Object.entries(snapshot).forEach(([key, value]) => {
@@ -409,12 +508,14 @@ async function saveChromeFallbackRecord(record: SessionRecord): Promise<void> {
   }
 
   try {
-    await migrateLegacyChromeFallbackIfNeeded();
-    const index = (await readChromeFallbackIndex()) ?? [];
-    const nextIndex = index.includes(record.id) ? index : [...index, record.id];
-    await chrome.storage.local.set({
-      [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
-      [getFallbackRecordStorageKey(record.id)]: cloneSessionRecord(record),
+    await enqueueFallbackMutation(async () => {
+      await migrateLegacyChromeFallbackIfNeeded();
+      const index = (await readChromeFallbackIndex()) ?? [];
+      const nextIndex = index.includes(record.id) ? index : [...index, record.id];
+      await chrome.storage.local.set({
+        [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+        [getFallbackRecordStorageKey(record.id)]: cloneSessionRecord(record),
+      });
     });
   } catch (error) {
     throw buildFallbackWriteError("세션", error);
@@ -427,13 +528,15 @@ async function deleteChromeFallbackRecord(id: string): Promise<void> {
   }
 
   try {
-    await migrateLegacyChromeFallbackIfNeeded();
-    const index = (await readChromeFallbackIndex()) ?? [];
-    const nextIndex = index.filter((item) => item !== id);
-    await chrome.storage.local.set({
-      [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+    await enqueueFallbackMutation(async () => {
+      await migrateLegacyChromeFallbackIfNeeded();
+      const index = (await readChromeFallbackIndex()) ?? [];
+      const nextIndex = index.filter((item) => item !== id);
+      await chrome.storage.local.set({
+        [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+      });
+      await chrome.storage.local.remove(getFallbackRecordStorageKey(id));
     });
-    await chrome.storage.local.remove(getFallbackRecordStorageKey(id));
   } catch (error) {
     throw buildFallbackWriteError("세션 삭제", error);
   }
@@ -462,14 +565,83 @@ async function clearFallbackRecords(action: string): Promise<void> {
   }
 
   try {
-    const all = await chrome.storage.local.get(null);
-    const keys = getFallbackStorageKeys(all);
-    if (keys.length) {
-      await chrome.storage.local.remove(keys);
-    }
+    await enqueueFallbackMutation(async () => {
+      const all = await chrome.storage.local.get(null);
+      const keys = getFallbackStorageKeys(all);
+      if (keys.length) {
+        await chrome.storage.local.remove(keys);
+      }
+    });
   } catch (error) {
     throw buildFallbackWriteError(action, error);
   }
+}
+
+function readCursorRecords(
+  source: IDBObjectStore | IDBIndex,
+  options: {
+    direction?: IDBCursorDirection;
+    limit?: number;
+    query?: IDBValidKey | IDBKeyRange | null;
+  } = {},
+): Promise<SessionRecord[]> {
+  const direction = options.direction ?? "next";
+  const limit = Math.max(1, options.limit ?? Number.MAX_SAFE_INTEGER);
+  const query = options.query ?? null;
+
+  return new Promise<SessionRecord[]>((resolve, reject) => {
+    const records: SessionRecord[] = [];
+    const request = source.openCursor(query, direction);
+
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor || records.length >= limit) {
+        resolve(records);
+        return;
+      }
+
+      records.push(cursor.value as SessionRecord);
+      if (records.length >= limit) {
+        resolve(records);
+        return;
+      }
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB cursor request failed"));
+  });
+}
+
+async function listIndexedDbSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
+  return withTransaction("readonly", async (store) => {
+    const updatedAtIndex = store.index("updatedAt");
+    const limit = Math.max(1, options.limit ?? 100);
+
+    if (!store.indexNames.contains("starred")) {
+      return readCursorRecords(updatedAtIndex, {
+        direction: "prev",
+        limit,
+      });
+    }
+
+    const starredRecordsPromise = readCursorRecords(store.index("starred"), {
+      query: IDBKeyRange.only(1),
+    });
+    const recentRecordsPromise = readCursorRecords(updatedAtIndex, {
+      direction: "prev",
+      limit,
+    });
+    const [starredRecords, recentRecords] = await Promise.all([
+      starredRecordsPromise,
+      recentRecordsPromise,
+    ]);
+    const merged = new Map<string, SessionRecord>();
+
+    [...starredRecords, ...recentRecords].forEach((record) => {
+      merged.set(record.id, record);
+    });
+
+    return [...merged.values()];
+  });
 }
 
 async function saveFallbackRecord(session: SessionRecord): Promise<SessionRecord> {
@@ -581,10 +753,16 @@ function stopRunningRecord(record: SessionRecord): SessionRecord {
   };
 }
 
-async function writeSessionRecord(record: SessionRecord): Promise<SessionRecord> {
+async function writeSessionRecord(
+  record: SessionRecord,
+  options: {
+    allowFallbackOnIndexedDbError?: boolean;
+  } = {},
+): Promise<SessionRecord> {
+  const allowFallbackOnIndexedDbError = options.allowFallbackOnIndexedDbError !== false;
   const indexedDbResult = await tryIndexedDb(async () => {
     await withTransaction("readwrite", async (store) => {
-      await withRequest(store.put(record));
+      await withRequest(store.put(toIndexedDbRecord(record)));
       return record;
     });
     return record;
@@ -593,6 +771,12 @@ async function writeSessionRecord(record: SessionRecord): Promise<SessionRecord>
   if (indexedDbResult.ok && indexedDbResult.value) {
     await bestEffortDeleteFallbackRecord(record.id);
     return cloneSessionRecord(indexedDbResult.value);
+  }
+
+  if (!allowFallbackOnIndexedDbError && indexedDbResult.error) {
+    throw indexedDbResult.error instanceof Error
+      ? indexedDbResult.error
+      : new Error("IndexedDB session write failed");
   }
 
   return saveFallbackRecord(record);
@@ -654,12 +838,7 @@ export async function loadSession(id: string): Promise<SessionRecord | undefined
 
 export async function listSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
   const [indexedDbResult, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () =>
-      withTransaction("readonly", async (store) => {
-        const all = await withRequest(store.getAll());
-        return all as SessionRecord[];
-      }),
-    ),
+    tryIndexedDb(async () => listIndexedDbSessions(options)),
     listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
 
@@ -706,7 +885,10 @@ export async function deleteAllSessions(): Promise<void> {
     return true;
   });
 
-  await clearFallbackRecords("전체 세션 삭제");
+  if (indexedDbResult.ok && indexedDbResult.value) {
+    await clearFallbackRecords("전체 세션 삭제");
+    return;
+  }
 
   if (!indexedDbResult.ok && indexedDbResult.error) {
     if (indexedDbResult.error instanceof Error) {
@@ -714,6 +896,8 @@ export async function deleteAllSessions(): Promise<void> {
     }
     throw new Error("저장된 기록 전체 삭제 중 IndexedDB 정리에 실패했습니다.");
   }
+
+  await clearFallbackRecords("전체 세션 삭제");
 }
 
 export async function importSessionRecords(
@@ -737,28 +921,39 @@ export async function importSessionRecords(
   let addedCount = 0;
   let updatedCount = 0;
   let keptCount = 0;
+  let failedCount = 0;
 
   for (const record of importedById.values()) {
-    const existing = existingById.get(record.id);
-    if (!existing) {
-      await writeSessionRecord(record);
-      addedCount += 1;
-      continue;
-    }
+    try {
+      const existing = existingById.get(record.id);
+      if (!existing) {
+        await writeSessionRecord(record, {
+          allowFallbackOnIndexedDbError: false,
+        });
+        addedCount += 1;
+        continue;
+      }
 
-    if (record.updatedAt.localeCompare(existing.updatedAt) > 0) {
-      await writeSessionRecord(record);
-      updatedCount += 1;
-      continue;
-    }
+      if (record.updatedAt.localeCompare(existing.updatedAt) > 0) {
+        await writeSessionRecord(record, {
+          allowFallbackOnIndexedDbError: false,
+        });
+        updatedCount += 1;
+        continue;
+      }
 
-    keptCount += 1;
+      keptCount += 1;
+    } catch (error) {
+      failedCount += 1;
+      logStoreError(`Failed to import session ${record.id}`, error);
+    }
   }
 
   return {
     addedCount,
     updatedCount,
     keptCount,
+    failedCount,
   };
 }
 
@@ -795,7 +990,9 @@ export async function closeRunningSessionsOnStartup(): Promise<number> {
     await tryIndexedDb(async () =>
       withTransaction("readwrite", async (store) => {
         await Promise.all(
-          indexedDbRunning.map((record) => withRequest(store.put(stopRunningRecord(record)))),
+          indexedDbRunning.map((record) =>
+            withRequest(store.put(toIndexedDbRecord(stopRunningRecord(record)))),
+          ),
         );
       }),
     );

@@ -1,9 +1,10 @@
-import { OBSERVER_ACTIVATE_EVENT } from "../shared/constants";
+import {
+  OBSERVER_ACTIVATE_EVENT,
+  OBSERVER_BRIDGE_SOURCE,
+  OBSERVER_CONFIG_EVENT,
+  OBSERVER_STOP_EVENT,
+} from "../shared/constants";
 import { buildObservedSubtitlePreview, readObservedSubtitleRows } from "./subtitle-rows";
-
-const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";
-const OBSERVER_STOP_EVENT = "assembly-subtitle-observer:stop";
-const OBSERVER_BRIDGE_SOURCE = "assembly-subtitle-observer";
 const DEFAULT_SELECTORS = [
   "#viewSubtit .smi_word:last-child",
   "#viewSubtit .smi_word",
@@ -538,5 +539,3 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
     }
   });
 }
-
-installBridge();

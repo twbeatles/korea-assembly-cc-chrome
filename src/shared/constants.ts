@@ -4,7 +4,7 @@ export const EXTENSION_STORAGE_KEY = "assembly-extension-settings";
 export const SESSION_DB_NAME = "assembly-subtitle-sessions";
 export const SESSION_STORE_NAME = "sessions";
 export const SESSION_RECORD_VERSION = "3";
-export const SESSION_DB_SCHEMA_VERSION = 1;
+export const SESSION_DB_SCHEMA_VERSION = 2;
 
 export const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";
 export const OBSERVER_STOP_EVENT = "assembly-subtitle-observer:stop";
@@ -60,4 +60,26 @@ export const PIPELINE_DEFAULTS = {
   liveLedgerMaxRows: 300,
 } as const;
 
-export const ASSEMBLY_HOST = "https://assembly.webcast.go.kr/";
+export const ASSEMBLY_HOSTS = [
+  "https://assembly.webcast.go.kr/",
+  "https://webcast.assembly.go.kr/",
+] as const;
+
+export const ASSEMBLY_HOST_MATCH_PATTERNS = [
+  "https://assembly.webcast.go.kr/*",
+  "https://webcast.assembly.go.kr/*",
+] as const;
+
+export function isSupportedAssemblyUrl(url?: string): boolean {
+  return typeof url === "string" && ASSEMBLY_HOSTS.some((host) => url.startsWith(host));
+}
+
+export function isSupportedAssemblyHostname(hostname: string): boolean {
+  return ASSEMBLY_HOSTS.some((host) => {
+    try {
+      return new URL(host).hostname === hostname;
+    } catch {
+      return false;
+    }
+  });
+}
