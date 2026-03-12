@@ -385,12 +385,12 @@ function createButton(
   return button;
 }
 
-function buildLiveSignature(rows: LivePanelRow[], previewText: string, captureMode: CaptureMode): string {
-  return [
-    captureMode,
-    previewText,
-    ...rows.map((row) => `${row.key}|${row.text}|${row.updatedAt}`),
-  ].join("||");
+function buildPreviewSignature(previewText: string): string {
+  return previewText;
+}
+
+function buildLiveRowsSignature(rows: LivePanelRow[]): string {
+  return rows.map((row) => `${row.key}|${row.text}|${row.updatedAt}`).join("||");
 }
 
 export function buildInPagePanelState(
@@ -501,7 +501,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   liveRowList.setAttribute("aria-relevant", "additions text");
   const liveRowEmpty = document.createElement("p");
   liveRowEmpty.className = "empty-text";
-  liveRowEmpty.textContent = "화면에서 자막을 찾으면 이곳에 표시됩니다.";
+  liveRowEmpty.textContent = "화면에서 자막을 찾으면 최근 자막이 이곳에 누적됩니다.";
   liveRowList.append(liveRowEmpty);
 
   heroCard.append(heroHeader, previewBox, liveRowHeader, liveRowList);
@@ -551,7 +551,8 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const liveRowNodes = new Map<string, HTMLElement>();
   let renderedNotice = "";
   let renderedCollapsed = false;
-  let renderedLiveSignature = "";
+  let renderedPreviewSignature = "";
+  let renderedLiveRowsSignature = "";
 
   return {
     update(nextState) {
@@ -571,15 +572,15 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
       const nextPreviewText =
         nextState.livePreviewText.trim() || nextState.previewText.trim() || emptyPreviewText;
-      const nextLiveSignature = buildLiveSignature(
-        nextState.liveRows,
-        nextPreviewText,
-        nextState.captureMode,
-      );
-      const liveChanged = renderedLiveSignature !== nextLiveSignature;
-      if (liveChanged) {
+      const nextPreviewSignature = buildPreviewSignature(nextPreviewText);
+      if (renderedPreviewSignature !== nextPreviewSignature) {
         previewBox.textContent = nextPreviewText;
+        renderedPreviewSignature = nextPreviewSignature;
+      }
 
+      const nextLiveRowsSignature = buildLiveRowsSignature(nextState.liveRows);
+      const liveRowsChanged = renderedLiveRowsSignature !== nextLiveRowsSignature;
+      if (liveRowsChanged) {
         if (!nextState.liveRows.length) {
           liveRowNodes.forEach((node) => node.remove());
           liveRowNodes.clear();
@@ -618,8 +619,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
             liveRowNodes.delete(key);
           });
         }
-
-        renderedLiveSignature = nextLiveSignature;
+        renderedLiveRowsSignature = nextLiveRowsSignature;
       }
 
       if (renderedNotice !== nextState.notice) {
@@ -643,7 +643,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       });
 
       if (!nextState.collapsed && nextState.autoScroll) {
-        if (liveChanged) {
+        if (liveRowsChanged) {
           liveRowList.scrollTop = liveRowList.scrollHeight;
         }
       }

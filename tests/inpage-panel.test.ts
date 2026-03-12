@@ -191,6 +191,43 @@ describe("in-page panel", () => {
     controller.destroy();
   });
 
+  it("does not reset the live row scroll position when only preview text changes", () => {
+    const controller = createInPagePanel({
+      onStartCapture: vi.fn(),
+      onStopCapture: vi.fn(),
+      onClearSession: vi.fn(),
+      onSaveSession: vi.fn(),
+      onExport: vi.fn(),
+      onCopyRecent: vi.fn(),
+      onOpenHistory: vi.fn(),
+      onOpenOptions: vi.fn(),
+      onExpand: vi.fn(),
+      onCollapse: vi.fn(),
+    });
+
+    controller.update(buildPanelState());
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    expect(liveRowList).not.toBeNull();
+
+    Object.defineProperty(liveRowList, "scrollHeight", {
+      configurable: true,
+      value: 640,
+    });
+    liveRowList!.scrollTop = 123;
+
+    controller.update(
+      buildPanelState({
+        livePreviewText: "미리보기만 바뀌었습니다.",
+      }),
+    );
+
+    expect(liveRowList?.scrollTop).toBe(123);
+
+    controller.destroy();
+  });
+
   it("reuses the live row DOM node when the same row key is updated", () => {
     const controller = createInPagePanel({
       onStartCapture: vi.fn(),

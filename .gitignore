@@ -61,6 +61,10 @@ korea-assembly-cc-chrome.zip
 iiadnfahoocbannfpgfgbommblpagacl/
 *.tmp
 *.orig
+/*.zip
+/*.crx
+/화면 캡처 *.png
+/스크린샷 *.png
 
 # -----------------------------------------------------------------------------
 # Local database/state files

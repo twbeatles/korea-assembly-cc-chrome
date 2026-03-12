@@ -3,10 +3,15 @@ import { useEffect, useMemo, useState } from "react";
 import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
-import { DEFAULT_EXTENSION_SETTINGS } from "../shared/constants";
+import { DEFAULT_EXTENSION_SETTINGS, EXTENSION_STORAGE_KEY } from "../shared/constants";
 import { deleteSession, exportSessionData, listSessions } from "../storage/session-store";
 import { getSettings } from "../storage/settings-store";
 import { getExportFormatLabel, getPersistedStatusLabel } from "../shared/ui-labels";
+import {
+  extractHistoryViewSettings,
+  resolveSelectedSessionId,
+  selectHistoryViewSettings,
+} from "./history-view-state";
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
 
@@ -46,7 +51,7 @@ export default function App() {
   const refresh = async (): Promise<void> => {
     const nextSessions = await listSessions({ limit: 200 });
     setSessions(nextSessions);
-    setSelectedId((current) => current || nextSessions[0]?.id || "");
+    setSelectedId((current) => resolveSelectedSessionId(current, nextSessions));
     setMessage(nextSessions.length ? "최신 기록부터 보여주고 있습니다." : "저장된 기록이 없습니다.");
   };
 
@@ -57,14 +62,46 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    let active = true;
+
     void getSettings()
       .then((settings) => {
-        setRecentCopyLineCount(settings.recentCopyLineCount);
-        setFilenamePattern(settings.filenamePattern);
+        if (!active) {
+          return;
+        }
+
+        const nextSettings = selectHistoryViewSettings(settings);
+        setRecentCopyLineCount(nextSettings.recentCopyLineCount);
+        setFilenamePattern(nextSettings.filenamePattern);
       })
       .catch(() => {
         // Keep defaults if settings cannot be loaded from a standalone history page.
       });
+
+    if (typeof chrome === "undefined" || !chrome.storage?.onChanged) {
+      return () => {
+        active = false;
+      };
+    }
+
+    const handleStorageChange = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      areaName: string,
+    ): void => {
+      if (!active || areaName !== "local" || !changes[EXTENSION_STORAGE_KEY]) {
+        return;
+      }
+
+      const nextSettings = extractHistoryViewSettings(changes[EXTENSION_STORAGE_KEY].newValue);
+      setRecentCopyLineCount(nextSettings.recentCopyLineCount);
+      setFilenamePattern(nextSettings.filenamePattern);
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => {
+      active = false;
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
   }, []);
 
   const handleDelete = async (): Promise<void> => {

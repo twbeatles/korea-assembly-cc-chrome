@@ -7,6 +7,7 @@ import {
   applyStructuredEntry,
   commitLiveRow,
   finalizeSession,
+  flushPendingPreviews,
 } from "../src/core/subtitle-pipeline";
 
 describe("subtitle pipeline", () => {
@@ -182,5 +183,45 @@ describe("subtitle pipeline", () => {
 
     expect(result.state.entries).toHaveLength(1);
     expect(result.state.confirmedCompact.length).toBe(1000);
+  });
+
+  it("materializes preview-only text when preparing a save/export snapshot", () => {
+    const now = Date.parse("2026-03-11T08:35:00.000Z");
+    const state = createEmptySessionState("http://test.com", "Test");
+    state.status = "running";
+    state.previewText = "아직 commit되지 않은 자막";
+    state.currentSelector = "#viewSubtit";
+    state.currentFramePath = [0];
+
+    const flushed = flushPendingPreviews(state, now);
+
+    expect(state.entries).toHaveLength(0);
+    expect(flushed.entries).toHaveLength(1);
+    expect(flushed.entries[0].text).toBe("아직 commit되지 않은 자막");
+    expect(flushed.entries[0].sourceSelector).toBe("#viewSubtit");
+    expect(flushed.entries[0].sourceFramePath).toEqual([0]);
+  });
+
+  it("does not materialize duplicate or noise-only preview text when flushing", () => {
+    const now = Date.parse("2026-03-11T08:40:00.000Z");
+
+    const duplicateState = createEmptySessionState("http://test.com", "Test");
+    duplicateState.previewText = "이미 저장된 자막";
+    duplicateState.entries.push({
+      id: "entry_1",
+      text: "이미 저장된 자막",
+      timestamp: "2026-03-11T08:39:00.000Z",
+      startTime: "2026-03-11T08:39:00.000Z",
+      endTime: "2026-03-11T08:39:00.000Z",
+    });
+    duplicateState.confirmedCompact = "이미저장된자막";
+
+    const duplicateFlushed = flushPendingPreviews(duplicateState, now);
+    expect(duplicateFlushed.entries).toHaveLength(1);
+
+    const noiseState = createEmptySessionState("http://test.com", "Test");
+    noiseState.previewText = "12345";
+    const noiseFlushed = flushPendingPreviews(noiseState, now);
+    expect(noiseFlushed.entries).toHaveLength(0);
   });
 });

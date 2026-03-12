@@ -37,6 +37,7 @@
 ```bash
 npm install
 npm run lint
+npm run typecheck
 npm run test
 npm run build
 ```
@@ -56,9 +57,11 @@ npm run build
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
+- preview-only 자막만 남은 시점에도 저장/export/pagehide에서 내용이 유실되지 않는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정` 이동 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이 설정 변경 확인
+- stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
 
 ## 4. 로컬 설치
 
@@ -148,6 +151,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - `package.json` 버전 증가
 - `manifest.json` 버전 증가
 - `npm run lint` 통과
+- `npm run typecheck` 통과
 - `npm run test` 통과
 - `npm run build` 통과
 - `dist/manifest.json` 생성 확인
@@ -171,6 +175,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 9. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하는지
 10. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
 11. 자막 보정 중에는 패널의 `실시간 내용`과 `화면 자막`이 바로 갱신되는지
+12. `화면 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
 
 ## 9. 자주 발생하는 문제
 
@@ -230,6 +235,7 @@ Additional release notes:
 - UI/UX safety guards and accessibility updates are now part of baseline behavior.
 - History export now uses user-defined `filenamePattern`.
 - Popup now attempts automatic reconnection on disconnect.
+- Preview-only subtitle persistence, stopped-session retry guard, and cumulative `화면 자막` panel behavior are part of current release baseline.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
 
 ## 2026-03-11 Addendum Deployment Notes

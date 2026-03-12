@@ -1,4 +1,4 @@
-import { SESSION_SCHEMA_VERSION } from "../shared/constants";
+import { SESSION_RECORD_VERSION } from "../shared/constants";
 
 export type ExportFormat = "txt" | "srt" | "vtt" | "json";
 export type CaptureStatus = "idle" | "running" | "stopped" | "error";
@@ -137,7 +137,7 @@ export function toSessionRecord(
 
   return {
     id: state.sessionId,
-    version: SESSION_SCHEMA_VERSION,
+    version: SESSION_RECORD_VERSION,
     title: state.title || "국회 자막 세션",
     committeeName: state.committeeName,
     sourceUrl: state.sourceUrl,

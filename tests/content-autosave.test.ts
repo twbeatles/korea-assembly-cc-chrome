@@ -9,6 +9,7 @@ import {
   shouldWarnBeforeUnload,
 } from "../src/content/autosave";
 import { createEmptySessionState, toSessionRecord } from "../src/core/subtitle-models";
+import { flushPendingPreviews } from "../src/core/subtitle-pipeline";
 import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
 
 describe("content autosave policy", () => {
@@ -69,6 +70,24 @@ describe("content autosave policy", () => {
     state.status = "stopped";
     expect(shouldWarnBeforeUnload(true, state)).toBe(false);
     expect(shouldWarnBeforeUnload(false, state)).toBe(false);
+  });
+
+  it("keeps preview-only unload warnings aligned with the prepared running snapshot", () => {
+    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    state.status = "running";
+    state.previewText = "페이지에만 보이는 자막";
+
+    expect(hasPersistableRunningContent(state)).toBe(true);
+
+    const prepared = flushPendingPreviews(
+      state,
+      Date.parse("2026-03-10T09:00:02.000Z"),
+      DEFAULT_EXTENSION_SETTINGS,
+    );
+    const record = toSessionRecord(prepared, "running");
+
+    expect(record.entries).toHaveLength(1);
+    expect(record.entries[0].text).toBe("페이지에만 보이는 자막");
   });
 
   it("updates lastPersistedAt after a successful save", () => {

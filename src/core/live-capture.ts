@@ -175,6 +175,20 @@ export function getLiveRow(
   return row ? cloneRow(row) : null;
 }
 
+export function listLivePanelRows(ledger: LiveCaptureLedger): LivePanelRow[] {
+  return ledger.order
+    .map((key) => ledger.rows[key])
+    .filter((row): row is LiveCaptureRow => Boolean(row))
+    .map((row) => ({
+      key: row.key,
+      text: row.text,
+      nodeKey: row.nodeKey,
+      speakerColor: row.speakerColor,
+      speakerChannel: row.speakerChannel,
+      updatedAt: row.updatedAt,
+    }));
+}
+
 export function setLiveRowBaseline(
   ledger: LiveCaptureLedger,
   key: string,

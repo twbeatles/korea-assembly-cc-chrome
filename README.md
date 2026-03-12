@@ -51,6 +51,7 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
 - 중복 문장은 실시간 수집 단계에서 먼저 차단하고, export 정규화는 마지막 안전망으로만 한 번 더 적용합니다
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
+- 저장/export/pagehide/beforeunload/stop 직전 snapshot에서는 preview-only 자막도 clone 기반 flush를 거쳐 `entries`에 반영합니다
 
 ## 1차 범위
 
@@ -119,10 +120,11 @@ npm run dev
 npm run test
 ```
 
-정적 점검까지 포함한 기본 검증은 아래 세 명령을 기준으로 합니다.
+정적 점검까지 포함한 기본 검증은 아래 네 명령을 기준으로 합니다.
 
 ```bash
 npm run lint
+npm run typecheck
 npm run test
 npm run build
 ```
@@ -152,16 +154,17 @@ npm run build
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
 3. `자막 모으기`를 눌러 수집을 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 실패하면 패널 notice 로 수동 클릭 안내를 표시한다
-5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `화면 자막`에서 지금 화면에 보이는 줄을 본다
-6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다
+5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `화면 자막`에서 최근 화면 자막이 누적되는 목록을 본다
+6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 이때 아직 확정되지 않은 preview-only 자막도 저장 후보에 포함된다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
-9. 브라우저/확장을 다시 시작하면 남아 있던 `running` 세션은 자동으로 `stopped`로 정리된다
-10. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`을 빠르게 여는 보조 화면으로 사용한다
+9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
+10. 브라우저/확장을 다시 시작하면 남아 있던 `running` 세션은 자동으로 `stopped`로 정리된다
+11. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`을 빠르게 여는 보조 화면으로 사용한다
 
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
-- 탭이 숨겨지거나 페이지를 떠날 때는 현재까지의 running/stopped 스냅샷을 background에 넘겨 자동 저장을 시도합니다.
+- 탭이 숨겨지거나 페이지를 떠날 때는 preview flush를 포함한 running/stopped 스냅샷을 background에 넘겨 자동 저장을 시도합니다.
 
 ## 권한 설명
 
@@ -184,6 +187,7 @@ npm run build
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도합니다
+- stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 
 ### injected observer
 
@@ -200,15 +204,18 @@ npm run build
 - recent compact tail 기반 중복 차단
 - export 정규화는 마지막 안전망으로만 exact carry-over duplicate 를 한 번 더 정리합니다
 - keepalive / reset / finalize 처리
+- persistence/export용 prepared snapshot은 `flushPendingPreviews`를 통해 현재 preview를 clone 상태에 materialize한 뒤 저장합니다
 
 ### storage
 
 - 세션 본문은 `IndexedDB`를 우선 사용합니다
-- `IndexedDB`가 실패하면 `chrome.storage.local` per-session fallback을 사용합니다
+- `IndexedDB` open/capability 실패 시에만 런타임 전체를 fallback 모드로 내리고, 개별 read/write 실패는 현재 연산만 `chrome.storage.local` per-session fallback으로 우회합니다
+- `loadSession`/`listSessions`는 `IndexedDB`와 fallback 저장소를 함께 읽고, `updatedAt`이 더 최신인 레코드를 우선 사용합니다. 동률이면 `IndexedDB`를 우선합니다
+- 성공한 `IndexedDB` write/delete는 동일 id의 stale fallback copy를 best-effort로 정리합니다
 - 두 저장소가 모두 실패하는 극단적 상황에서는 현재 런타임 동안 메모리 fallback을 유지합니다
 - 설정은 `chrome.storage.local`
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
-- 브라우저/확장 cold start 시 남아 있던 `running` 세션은 `stopped`로 자동 정리됩니다
+- 브라우저/확장 cold start 시 남아 있던 `running` 세션은 `IndexedDB`와 fallback 양쪽을 함께 훑어 `stopped`로 자동 정리됩니다
 
 ### background
 
@@ -251,13 +258,35 @@ npm run build
 
 ## 검증 기준
 
-현재 기준 기본 검증은 아래 세 명령입니다.
+현재 기준 기본 검증은 아래 네 명령입니다.
 
 ```bash
 npm run lint
+npm run typecheck
 npm run test
 npm run build
 ```
+
+## 2026-03-12 Sync Update
+
+This section tracks the latest persistence and runtime consistency changes.
+
+- Persistence consistency completed:
+  - preview-only subtitles are now preserved in save/export/pagehide/beforeunload/stop snapshots
+  - stopped-session final save failures are retried before `start`/`clear`, with explicit discard confirmation only after the retry fails
+- Session store hardening completed:
+  - session record version and IndexedDB schema version are separated
+  - transient IndexedDB operation failures no longer disable IndexedDB for the whole runtime
+  - `loadSession`/`listSessions` now merge IndexedDB and fallback records and prefer the freshest copy
+  - startup cleanup now closes running sessions across both backends with duplicate id dedupe
+- History/settings consistency completed:
+  - history view now live-syncs `recentCopyLineCount` and `filenamePattern` through `chrome.storage.onChanged`
+- Panel readability update completed:
+  - `화면 자막` now keeps recent live rows accumulated instead of only rendering the currently active row set
+  - preview-only updates no longer reset the `화면 자막` list scroll position
+- Local polling deferred item status:
+  - added regression scaffolding for probe signature changes
+  - heuristic broadening was intentionally deferred until a reproducible miss case exists
 
 ## 2026-03-11 Sync Update
 

@@ -397,9 +397,20 @@ export function flushPendingPreviews(
   now: number,
   settings?: Partial<ExtensionSettings>,
 ): SessionState {
-  void now;
-  void settings;
-  return state;
+  const preparedState = cloneState(state);
+  const normalizedPreview = normalizeRawText(preparedState.previewText);
+  if (!normalizedPreview) {
+    return preparedState;
+  }
+
+  const result = applyPreview(preparedState, normalizedPreview, now, settings, {
+    selector: preparedState.currentSelector || undefined,
+    framePath: preparedState.currentFramePath.length
+      ? preparedState.currentFramePath
+      : undefined,
+  });
+
+  return result.state;
 }
 
 export function applyPreview(

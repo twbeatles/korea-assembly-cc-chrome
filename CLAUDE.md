@@ -9,10 +9,11 @@
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정` 중심의 보조 화면입니다.
 - 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `autosave 상태 표시`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 화면 자막 2단 구성`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
-- 현재 기준 기본 검증 명령은 아래 3개입니다.
+- 현재 기준 기본 검증 명령은 아래 4개입니다.
 
 ```bash
 npm run lint
+npm run typecheck
 npm run test
 npm run build
 ```
@@ -24,7 +25,7 @@ npm run build
 - UI: `React`
 - 테스트: `Vitest`
 - 확장 런타임: `Manifest V3`
-- 세션 저장: `IndexedDB` 우선, 실패 시 `chrome.storage.local` per-session fallback, 최후에는 메모리 fallback
+- 세션 저장: `IndexedDB` 우선, open/capability 실패 시 `chrome.storage.local` per-session fallback, 최후에는 메모리 fallback
 
 ## 3. 주요 파일 구조
 
@@ -101,7 +102,8 @@ offscreen.html
   - 반복 실패 시 soft resync
 - 동일 raw 유지 시 keepalive 로 마지막 entry 의 `endTime` 만 갱신합니다.
 - `subtitle_reset` 이 오면 grace 이후 live ledger 와 pipeline state 를 함께 완전 리셋합니다.
-- `finalizeSession` 은 현재 state 기준으로 종료 처리하며, queued preview drain 을 전제하지 않습니다.
+- `finalizeSession` 은 현재 state 기준으로 종료 처리합니다.
+- 저장/export/unload/stop 직전 prepared snapshot 생성 경로에서는 `flushPendingPreviews` 가 현재 preview-only 텍스트를 clone 상태에 materialize 합니다.
 
 ## 6. noise filtering 규칙
 
@@ -136,6 +138,12 @@ offscreen.html
 
 위 CRUD 흐름과 startup cleanup 의미론은 유지해야 합니다.
 
+- record payload version 과 IndexedDB schema version 은 분리해서 관리합니다.
+- `loadSession`/`listSessions` 는 IndexedDB + fallback 을 함께 읽고 `updatedAt` 기준으로 더 최신 레코드를 고릅니다. 동률이면 IndexedDB 를 우선합니다.
+- 개별 IndexedDB transaction/read/write 실패는 현재 연산만 fallback 으로 우회하고, 런타임 전체 disable 은 open/capability failure 에만 허용됩니다.
+- 성공한 IndexedDB write/delete 는 동일 id fallback copy 를 best-effort 로 정리합니다.
+- `closeRunningSessionsOnStartup` 는 IndexedDB 와 fallback 양쪽의 persisted running 세션을 닫고 중복 id 는 1건으로 count 합니다.
+
 ### 7.3 UX 보강 규칙
 
 - top frame 의 content script 가 우측 패널을 자동으로 삽입합니다.
@@ -143,11 +151,14 @@ offscreen.html
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
 - 패널은 `실시간 내용`과 `화면 자막` 2단으로 보입니다.
+- `화면 자막` 목록은 현재 active row만 번쩍 보여 주는 뷰가 아니라, live ledger 기준 최근 row가 누적되는 뷰를 유지합니다.
 - 같은 row key 의 갱신은 라이브 목록 DOM 노드를 재사용해 제자리 수정합니다.
 - history 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 `최근 N줄 복사`를 지원합니다.
+- history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 `chrome.storage.onChanged` 로 즉시 반영합니다.
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `화면 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
+- stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
 - 브라우저/확장 cold start 시 남아 있던 persisted `running` 세션은 `stopped` 로 자동 정리됩니다.
 
 ## 8. 작업 시 주의사항
@@ -158,7 +169,7 @@ offscreen.html
 - storage 실패, observer 실패, frame 접근 실패, selector 미탐색은 크래시 대신 fallback 으로 내려가야 합니다.
 - export 는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback 을 유지합니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 top frame 에서 수용해야 합니다.
-- 코드 수정 후 가능하면 `lint`, `test`, `build` 를 모두 확인합니다.
+- 코드 수정 후 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 확인합니다.
 
 ## 9. 관련 문서
 
@@ -166,6 +177,17 @@ offscreen.html
 - 과거 의미론 참고: `legacy/python-desktop/PIPELINE_LOCK.md`
 - 과거 운영 설명 참고: `legacy/python-desktop/README.md`
 - 배포 절차: `DEPLOYMENT.md`
+
+## Sync Delta (2026-03-12)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- Preview-only subtitles must be preserved in save/export/pagehide/beforeunload/stop snapshots.
+- Failed stopped-session persistence must retry before destructive continuation and require explicit discard confirmation only after the retry fails.
+- Session storage reads must merge IndexedDB and fallback records, while successful IndexedDB writes heal stale fallback copies.
+- History view must live-sync `recentCopyLineCount` and `filenamePattern` while the page remains open.
+- The in-page `화면 자막` list must accumulate recent live rows and must not jump-scroll on preview-only updates.
+- Local polling change-detection work stays test-first; use the regression scaffold before broadening heuristics.
 
 ## Sync Delta (2026-03-11)
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createEmptyLiveCaptureLedger,
   getLiveRow,
+  listLivePanelRows,
   markLiveRowCommitted,
   normalizeCaptureEvent,
   reconcileLiveCapture,
@@ -93,6 +94,11 @@ describe("live capture reducer", () => {
     expect(fallback.ledger.activeRowKeys).toHaveLength(0);
     expect(fallback.ledger.previewText).toBe("fallback preview");
     expect(getLiveRow(fallback.ledger, structured.liveRows[0].key)?.text).toBe("현재 row");
+    expect(listLivePanelRows(fallback.ledger)).toEqual([
+      {
+        ...structured.liveRows[0],
+      },
+    ]);
   });
 
   it("prunes stale rows to keep the live ledger bounded", () => {

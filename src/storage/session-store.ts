@@ -7,8 +7,9 @@ import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
 import { getSessionCharCount } from "../core/subtitle-models";
 import { buildExportFilename } from "../core/timeline";
 import {
+  SESSION_DB_SCHEMA_VERSION,
   SESSION_DB_NAME,
-  SESSION_SCHEMA_VERSION,
+  SESSION_RECORD_VERSION,
   SESSION_STORE_NAME,
 } from "../shared/constants";
 import type { ExportPayload, SessionListOptions } from "./types";
@@ -20,6 +21,19 @@ const FALLBACK_RECORD_PREFIX = "assembly-subtitle-session-fallback:record:";
 let dbPromise: Promise<IDBDatabase> | null = null;
 let indexedDbAvailable = true;
 const memoryFallbackStore = new Map<string, SessionRecord>();
+
+interface IndexedDbAttempt<T> {
+  ok: boolean;
+  value?: T;
+  error?: unknown;
+}
+
+type SessionRecordSource = "indexeddb" | "fallback";
+
+interface SourcedSessionRecord {
+  source: SessionRecordSource;
+  record: SessionRecord;
+}
 
 function logStoreError(message: string, error?: unknown): void {
   console.warn(`[session-store] ${message}`, error);
@@ -78,7 +92,7 @@ function openDb(): Promise<IDBDatabase> {
       let request: IDBOpenDBRequest;
 
       try {
-        request = indexedDB.open(SESSION_DB_NAME, 1);
+        request = indexedDB.open(SESSION_DB_NAME, SESSION_DB_SCHEMA_VERSION);
       } catch (error) {
         reject(error instanceof Error ? error : new Error("Failed to open session database"));
         return;
@@ -115,7 +129,7 @@ function normalizeSessionRecord(session: SessionRecord): SessionRecord {
 
   return {
     ...session,
-    version: session.version || SESSION_SCHEMA_VERSION,
+    version: session.version || SESSION_RECORD_VERSION,
     title: session.title || "국회 자막 세션",
     committeeName: session.committeeName || "",
     createdAt: session.createdAt || session.startedAt || now,
@@ -136,17 +150,72 @@ function sortSessions(records: SessionRecord[], options: SessionListOptions = {}
     .map(cloneSessionRecord);
 }
 
-async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<T | undefined> {
+async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<IndexedDbAttempt<T>> {
   if (!indexedDbAvailable || typeof indexedDB === "undefined") {
-    return undefined;
+    return {
+      ok: false,
+    };
   }
 
   try {
-    return await operation();
+    return {
+      ok: true,
+      value: await operation(),
+    };
   } catch (error) {
     logStoreError("IndexedDB operation failed, falling back", error);
-    disableIndexedDb();
-    return undefined;
+    return {
+      ok: false,
+      error,
+    };
+  }
+}
+
+function compareSessionFreshness(left: SourcedSessionRecord, right: SourcedSessionRecord): number {
+  const updatedCompare = left.record.updatedAt.localeCompare(right.record.updatedAt);
+  if (updatedCompare !== 0) {
+    return updatedCompare;
+  }
+
+  if (left.source === right.source) {
+    return 0;
+  }
+
+  return left.source === "indexeddb" ? 1 : -1;
+}
+
+function mergeSessionCollections(
+  indexedDbRecords: SessionRecord[],
+  fallbackRecords: SessionRecord[],
+): SessionRecord[] {
+  const merged = new Map<string, SourcedSessionRecord>();
+
+  indexedDbRecords.forEach((record) => {
+    merged.set(record.id, {
+      source: "indexeddb",
+      record: cloneSessionRecord(record),
+    });
+  });
+
+  fallbackRecords.forEach((record) => {
+    const next: SourcedSessionRecord = {
+      source: "fallback",
+      record: cloneSessionRecord(record),
+    };
+    const current = merged.get(record.id);
+    if (!current || compareSessionFreshness(next, current) > 0) {
+      merged.set(record.id, next);
+    }
+  });
+
+  return Array.from(merged.values(), (value) => cloneSessionRecord(value.record));
+}
+
+async function bestEffortDeleteFallbackRecord(id: string): Promise<void> {
+  try {
+    await deleteFallbackRecord(id);
+  } catch (error) {
+    logStoreError(`Failed to heal fallback record for ${id}`, error);
   }
 }
 
@@ -424,7 +493,7 @@ function stopRunningRecord(record: SessionRecord): SessionRecord {
 
   return {
     ...record,
-    version: record.version || SESSION_SCHEMA_VERSION,
+    version: record.version || SESSION_RECORD_VERSION,
     status: "stopped",
     endedAt: record.endedAt ?? stoppedAt,
     updatedAt: stoppedAt,
@@ -448,7 +517,12 @@ export async function saveSession(session: SessionRecord): Promise<SessionRecord
     return record;
   });
 
-  return indexedDbResult ? cloneSessionRecord(indexedDbResult) : saveFallbackRecord(record);
+  if (indexedDbResult.ok && indexedDbResult.value) {
+    await bestEffortDeleteFallbackRecord(record.id);
+    return cloneSessionRecord(indexedDbResult.value);
+  }
+
+  return saveFallbackRecord(record);
 }
 
 export async function updateRunningSession(session: SessionRecord): Promise<SessionRecord> {
@@ -465,7 +539,12 @@ export async function updateRunningSession(session: SessionRecord): Promise<Sess
     return record;
   });
 
-  return indexedDbResult ? cloneSessionRecord(indexedDbResult) : saveFallbackRecord(record);
+  if (indexedDbResult.ok && indexedDbResult.value) {
+    await bestEffortDeleteFallbackRecord(record.id);
+    return cloneSessionRecord(indexedDbResult.value);
+  }
+
+  return saveFallbackRecord(record);
 }
 
 export async function loadSession(id: string): Promise<SessionRecord | undefined> {
@@ -473,33 +552,42 @@ export async function loadSession(id: string): Promise<SessionRecord | undefined
     return undefined;
   }
 
-  const indexedDbResult = await tryIndexedDb(async () =>
-    withTransaction("readonly", async (store) => {
-      const record = await withRequest(store.get(id));
-      return record as SessionRecord | undefined;
-    }),
+  const [indexedDbResult, fallbackRecord] = await Promise.all([
+    tryIndexedDb(async () =>
+      withTransaction("readonly", async (store) => {
+        const record = await withRequest(store.get(id));
+        return record as SessionRecord | undefined;
+      }),
+    ),
+    loadFallbackRecord(id),
+  ]);
+
+  const merged = mergeSessionCollections(
+    indexedDbResult.ok && indexedDbResult.value ? [indexedDbResult.value] : [],
+    fallbackRecord ? [fallbackRecord] : [],
   );
 
-  if (indexedDbResult) {
-    return cloneSessionRecord(indexedDbResult);
-  }
-
-  return loadFallbackRecord(id);
+  return merged[0] ? cloneSessionRecord(merged[0]) : undefined;
 }
 
 export async function listSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
-  const indexedDbResult = await tryIndexedDb(async () =>
-    withTransaction("readonly", async (store) => {
-      const all = await withRequest(store.getAll());
-      return all as SessionRecord[];
-    }),
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () =>
+      withTransaction("readonly", async (store) => {
+        const all = await withRequest(store.getAll());
+        return all as SessionRecord[];
+      }),
+    ),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+
+  return sortSessions(
+    mergeSessionCollections(
+      indexedDbResult.ok && indexedDbResult.value ? indexedDbResult.value : [],
+      fallbackRecords,
+    ),
+    options,
   );
-
-  if (indexedDbResult) {
-    return sortSessions(indexedDbResult, options);
-  }
-
-  return listFallbackRecords(options);
 }
 
 export async function deleteSession(id: string): Promise<void> {
@@ -514,7 +602,8 @@ export async function deleteSession(id: string): Promise<void> {
     return true;
   });
 
-  if (indexedDbResult) {
+  if (indexedDbResult.ok && indexedDbResult.value) {
+    await bestEffortDeleteFallbackRecord(id);
     return;
   }
 
@@ -530,23 +619,37 @@ export async function exportSessionData(
 }
 
 export async function closeRunningSessionsOnStartup(): Promise<number> {
-  const indexedDbResult = await tryIndexedDb(async () => {
-    return withTransaction("readwrite", async (store) => {
-      const all = (await withRequest(store.getAll())) as SessionRecord[];
-      const running = all.filter((record) => record.status === "running");
-      await Promise.all(running.map((record) => withRequest(store.put(stopRunningRecord(record)))));
-      return running.length;
-    });
-  });
+  const [indexedDbRecords, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () =>
+      withTransaction("readonly", async (store) => {
+        const all = await withRequest(store.getAll());
+        return all as SessionRecord[];
+      }),
+    ),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
 
-  if (typeof indexedDbResult === "number") {
-    return indexedDbResult;
+  const indexedDbRunning =
+    indexedDbRecords.ok && indexedDbRecords.value
+      ? indexedDbRecords.value.filter((record) => record.status === "running")
+      : [];
+  const fallbackRunning = fallbackRecords.filter((record) => record.status === "running");
+  const uniqueRunningIds = new Set(
+    [...indexedDbRunning, ...fallbackRunning].map((record) => record.id),
+  );
+
+  if (indexedDbRunning.length) {
+    await tryIndexedDb(async () =>
+      withTransaction("readwrite", async (store) => {
+        await Promise.all(
+          indexedDbRunning.map((record) => withRequest(store.put(stopRunningRecord(record)))),
+        );
+      }),
+    );
   }
 
-  const fallbackRecords = await listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER });
-  const running = fallbackRecords.filter((record) => record.status === "running");
-  await Promise.all(running.map((record) => saveFallbackRecord(stopRunningRecord(record))));
-  return running.length;
+  await Promise.all(fallbackRunning.map((record) => saveFallbackRecord(stopRunningRecord(record))));
+  return uniqueRunningIds.size;
 }
 
 export async function resetSessionStoreForTests(): Promise<void> {

@@ -170,4 +170,110 @@ describe("session store", () => {
     expect(parsed.entries[0].speakerColor).toBeUndefined();
     expect(parsed.entries[2].speakerChannel).toBeUndefined();
   });
+
+  it("prefers the fresher fallback copy when IndexedDB and fallback diverge", async () => {
+    await saveSession(buildSession("session_union", "saved"));
+    await new Promise((resolve) => setTimeout(resolve, 5));
+
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await saveSession({
+        ...buildSession("session_union", "saved"),
+        title: "최신 fallback 제목",
+      });
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+
+    const loaded = await loadSession("session_union");
+    const listed = await listSessions({ limit: 10 });
+
+    expect(loaded?.title).toBe("최신 fallback 제목");
+    expect(listed.find((item) => item.id === "session_union")?.title).toBe("최신 fallback 제목");
+  });
+
+  it("keeps IndexedDB usable after a transient write failure and heals fallback on later success", async () => {
+    const putSpy = vi
+      .spyOn(IDBObjectStore.prototype, "put")
+      .mockImplementationOnce(() => {
+        throw new Error("Transient put failure");
+      });
+
+    await saveSession(buildSession("session_heal", "saved"));
+    putSpy.mockRestore();
+
+    await saveSession({
+      ...buildSession("session_heal", "saved"),
+      title: "IndexedDB 최신본",
+    });
+
+    const loaded = await loadSession("session_heal");
+    expect(loaded?.title).toBe("IndexedDB 최신본");
+
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await expect(loadSession("session_heal")).resolves.toBeUndefined();
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+  });
+
+  it("closes running sessions across IndexedDB and fallback backends with unique counting", async () => {
+    await updateRunningSession(buildSession("session_idb_only", "running"));
+
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await updateRunningSession(buildSession("session_fallback_only", "running"));
+      await updateRunningSession(buildSession("session_shared", "running"));
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+
+    await updateRunningSession(buildSession("session_shared", "running"));
+
+    const closedCount = await closeRunningSessionsOnStartup();
+    expect(closedCount).toBe(3);
+
+    expect((await loadSession("session_idb_only"))?.status).toBe("stopped");
+    expect((await loadSession("session_shared"))?.status).toBe("stopped");
+
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      expect((await loadSession("session_fallback_only"))?.status).toBe("stopped");
+      await expect(loadSession("session_shared")).resolves.toBeUndefined();
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+  });
 });

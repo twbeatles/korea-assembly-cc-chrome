@@ -23,6 +23,7 @@
 ```bash
 npm install
 npm run lint
+npm run typecheck
 npm run test
 npm run build
 ```
@@ -130,11 +131,12 @@ npm run build
 - 동일 raw 유지 시 마지막 entry `endTime` 갱신
 - `subtitle_reset` 시 live ledger 와 pipeline state 를 함께 완전 리셋
 - stop 시 현재 state 기준으로 finalize
+- 저장/export/unload/stop 직전 prepared snapshot 생성 경로에서는 preview-only 텍스트도 flush 후 반영
 
 ## 7. persistence 규칙
 
 - `IndexedDB` 우선
-- 실패 시 `chrome.storage.local` per-session fallback
+- open/capability 실패 시 `chrome.storage.local` per-session fallback
 - 둘 다 실패하면 메모리 fallback
 
 다음 API 는 깨지면 안 됩니다.
@@ -152,11 +154,14 @@ npm run build
 - popup 은 페이지 패널 다시 열기용 보조 화면
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려감
 - 패널은 `실시간 내용`과 `화면 자막` 2단으로 표시
+- `화면 자막`은 live ledger 기준 최근 row 누적 목록이며, preview-only 갱신만으로 목록 스크롤이 초기화되면 안 됨
 - 복사 포맷은 `[HH:MM:SS] text`
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
+- history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
 - `autoScroll` 이 꺼지면 `실시간 내용` / `화면 자막` 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
-- browser/extension cold start 시 남아 있던 `running` 세션은 `stopped` 로 정리
+- stopped 세션 최종 저장 실패 시 다음 시작/비우기 전에 1회 재시도 후, 계속 실패하면 폐기 확인
+- browser/extension cold start 시 남아 있던 `running` 세션은 두 backend를 함께 정리해 `stopped` 로 정리
 
 ## 8. exporter 규칙
 
@@ -179,7 +184,17 @@ npm run build
 - popup 종료와 수집 중단을 연결하면 안 됩니다.
 - `legacy/` 는 Git ignore 대상이므로, 현재 구현 변경은 루트 확장 코드에만 반영해야 합니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
-- 변경 후에는 가능하면 `lint`, `test`, `build` 를 모두 실행합니다.
+- 변경 후에는 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 실행합니다.
+
+## Sync Delta (2026-03-12)
+
+Use this delta as the current operational baseline.
+
+- Preview-only subtitles must survive save/export/pagehide/beforeunload/stop snapshots.
+- Failed stopped-session persistence must retry before `start`/`clear` proceeds.
+- Session reads must merge IndexedDB and fallback storage using freshest `updatedAt`.
+- History view must live-sync settings-driven copy/export behavior.
+- The in-page `화면 자막` list now accumulates recent live rows and should remain visually stable during preview-only updates.
 
 ## Sync Delta (2026-03-11)
 
