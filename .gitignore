@@ -89,6 +89,8 @@ presets_*.json
 /*.rtf
 /*.hwp
 /*.docx
+/CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md
+/PRIVACY_POLICY_DRAFT_KO.md
 국회자막_*.hwp
 자막통계_*.txt
 backup_*.json
