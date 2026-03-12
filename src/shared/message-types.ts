@@ -105,7 +105,8 @@ export type BackgroundCommandMessage =
       mimeType: string;
     }
   | { type: "OPEN_HISTORY_PAGE" }
-  | { type: "OPEN_OPTIONS_PAGE" };
+  | { type: "OPEN_OPTIONS_PAGE" }
+  | { type: "OPEN_DIAGNOSTICS_PAGE"; tabId?: number };
 
 export type BackgroundCommandResponse =
   | { ok: true; ready?: boolean; requiresReload?: boolean; downloadId?: number; nonce?: string }

@@ -1212,6 +1212,15 @@ async function openOptionsPage(): Promise<void> {
   syncUserInterfaces();
 }
 
+async function openDiagnosticsPage(): Promise<void> {
+  const response = await sendRuntimeMessage({ type: "OPEN_DIAGNOSTICS_PAGE" });
+  if (!response.ok) {
+    throw new Error(response.error);
+  }
+  setPanelNotice("수집 진단 화면을 열었습니다.");
+  syncUserInterfaces();
+}
+
 function openInPagePanel(): void {
   panelCollapsed = false;
   setPanelNotice("페이지 오른쪽 패널을 열었습니다.");
@@ -1297,6 +1306,14 @@ function mountInPagePanel(): void {
       void openOptionsPage().catch((error: unknown) => {
         reportRuntimeError(
           error instanceof Error ? error.message : "환경 설정 화면을 열지 못했습니다.",
+          error,
+        );
+      });
+    },
+    onOpenDiagnostics: () => {
+      void openDiagnosticsPage().catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "수집 진단 화면을 열지 못했습니다.",
           error,
         );
       });

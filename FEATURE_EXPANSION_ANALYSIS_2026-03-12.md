@@ -28,6 +28,7 @@
 - 부분 선택 복사 / 부분 export
 - JSON 백업/복원
 - 캡처 진단 정보 표시
+  - 현재 구현은 popup/패널 상시 노출이 아니라 options 페이지의 `수집 진단` 탭으로 분리됨
 
 따라서 이 문서는 이제 `A` 항목의 회고 + `B/C` 항목 우선순위 재검토 문서로 읽는 것이 맞습니다.
 
@@ -106,8 +107,8 @@
 
 ### 1.5 `src/options/`
 
-- 현재는 전역 설정만 관리
-- 수집 정책과 UI 동작 관련 값 위주
+- 현재는 전역 설정과 `수집 진단` 탭을 함께 관리
+- 수집 정책과 UI 동작 관련 값, 활성 탭 진단 정보를 다룸
 
 해석:
 
@@ -301,9 +302,11 @@
 - `src/content/content-script.ts`
   - capture source, selector, frame path, fallback 여부 계산
 - `src/popup/App.tsx`
-  - 요약 상태 배지
+  - `수집 진단` 화면 진입 버튼
 - `src/content/inpage-panel.ts`
-  - 간단한 진단 영역
+  - `수집 진단` 화면 진입 버튼
+- `src/options/App.tsx`
+  - 상세 진단 탭과 최근 저장 시각 표시
 
 왜 잘 맞는가:
 

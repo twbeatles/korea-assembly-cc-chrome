@@ -58,14 +58,14 @@ npm run build
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
 - preview-only 자막만 남은 시점에도 저장/export/pagehide에서 내용이 유실되지 않는지 확인
-- popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정` 이동 확인
+- popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이 설정 변경 확인
 - stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
-- popup / 패널에서 수집 방식, observer, selector, frame path 진단이 현재 상태와 맞는지 확인
+- popup / 패널의 `수집 진단` 버튼이 options 페이지의 `수집 진단` 탭으로 연결되고, 그 탭에서 수집 방식, observer, selector, frame path 진단이 현재 상태와 맞는지 확인
 
 ## 4. 로컬 설치
 
@@ -166,7 +166,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - exporter 결과물 확인
 - history 즐겨찾기/메모 persistence 확인
 - 부분 선택 export 및 JSON 백업/복원 확인
-- popup / 패널 진단 정보 확인
+- options 페이지 `수집 진단` 탭 정보 확인
 
 ## 8. 배포 후 확인 항목
 
@@ -177,7 +177,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 3. observer 실패 시 polling fallback 이 계속 동작하는지
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
-6. 페이지 패널과 popup 에 마지막 자동 저장 시각이 보이는지
+6. options 페이지 `수집 진단` 탭에 마지막 자동 저장 시각이 보이는지
 7. 브라우저/확장 재시작 뒤 남아 있던 `running` 세션이 `stopped`로 정리되는지
 8. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
 9. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하는지
@@ -187,7 +187,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 13. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
 14. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
 15. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
-16. popup 과 패널의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
+16. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
 
 ## 9. 자주 발생하는 문제
 

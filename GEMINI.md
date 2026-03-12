@@ -17,7 +17,7 @@
   - 우측 패널 + popup/options/history 동작
   - 쉬운 한국어 UI / 검색 / 최근 N줄 복사 / autosave UX
   - history 즐겨찾기 / 세션 메모 / 부분 선택 복사 / 부분 export / JSON 백업·복원
-  - 패널 / popup 수집 진단 표시
+  - 패널 / popup 수집 진단 진입 + options 수집 진단 탭
   - 자막 우선 대형 미리보기 / 화면 자막 2단 UI
 
 ## 3. 필수 명령
@@ -88,6 +88,7 @@ npm run build
 - `DOWNLOAD_REQUEST`
 - `OPEN_HISTORY_PAGE`
 - `OPEN_OPTIONS_PAGE`
+- `OPEN_DIAGNOSTICS_PAGE`
 
 `shared/message-types.ts` 의 타입 정의를 기준으로 유지해야 합니다.
 
@@ -171,7 +172,7 @@ npm run build
 - `autoScroll` 이 꺼지면 `실시간 내용` / `화면 자막` 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
 - stopped 세션 최종 저장 실패 시 다음 시작/비우기 전에 1회 재시도 후, 계속 실패하면 폐기 확인
-- 패널과 popup 은 capture mode, observer, selector, frame path 를 진단용으로 표시
+- 패널과 popup 은 `수집 진단` 화면 진입을 제공하고, capture mode, observer, selector, frame path, 최근 저장 시각은 options 의 `수집 진단` 탭에서 표시
 - browser/extension cold start 시 남아 있던 `running` 세션은 두 backend를 함께 정리해 `stopped` 로 정리
 
 ## 8. exporter 규칙

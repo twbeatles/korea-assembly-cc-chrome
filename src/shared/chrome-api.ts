@@ -34,6 +34,14 @@ export async function queryActiveTab(): Promise<chrome.tabs.Tab | undefined> {
   return tabs[0];
 }
 
+export function queryTabs(queryInfo: chrome.tabs.QueryInfo): Promise<chrome.tabs.Tab[]> {
+  return callbackPromise((callback) => chrome.tabs.query(queryInfo, callback));
+}
+
+export function getTab(tabId: number): Promise<chrome.tabs.Tab> {
+  return callbackPromise((callback) => chrome.tabs.get(tabId, callback));
+}
+
 export function connectToTab(
   tabId: number,
   frameId = 0,

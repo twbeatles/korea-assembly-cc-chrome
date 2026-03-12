@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 
 import { ASSEMBLY_HOST, POPUP_PORT_NAME } from "../shared/constants";
-import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
 import { connectToTab, queryActiveTab, sendRuntimeMessage } from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
@@ -17,6 +16,7 @@ export default function App() {
   const [unsupported, setUnsupported] = useState(false);
   const [requiresReload, setRequiresReload] = useState(false);
   const [port, setPort] = useState<chrome.runtime.Port | null>(null);
+  const [currentTabId, setCurrentTabId] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -59,11 +59,13 @@ export default function App() {
         }
 
         if (!tab?.id || !tab.url) {
+          setCurrentTabId(null);
           setTabReady(false);
           scheduleReconnect("현재 탭 정보를 읽지 못했습니다. 자동으로 다시 연결을 시도합니다.");
           return;
         }
 
+        setCurrentTabId(tab.id);
         if (!tab.url.startsWith(ASSEMBLY_HOST)) {
           setUnsupported(true);
           setTabReady(false);
@@ -231,6 +233,18 @@ export default function App() {
     setStatusMessage("환경 설정 화면을 열었습니다.");
   };
 
+  const openDiagnostics = async (): Promise<void> => {
+    const response = await sendRuntimeMessage({
+      type: "OPEN_DIAGNOSTICS_PAGE",
+      tabId: currentTabId ?? undefined,
+    });
+    if (!response.ok) {
+      setStatusMessage(response.error);
+      return;
+    }
+    setStatusMessage("수집 진단 화면을 열었습니다.");
+  };
+
   return (
     <div className="popup-shell">
       <header className="popup-header">
@@ -256,24 +270,6 @@ export default function App() {
           <span>모인 자막</span>
           <strong>{snapshot?.subtitleCount ?? 0}문장</strong>
         </div>
-        <div className="meta-row">
-          <span>수집 방식</span>
-          <strong>{snapshot?.diagnostics.sourceLabel || "-"}</strong>
-        </div>
-        <div className="meta-row">
-          <span>Observer</span>
-          <strong>{snapshot?.diagnostics.observerActive ? "켜짐" : snapshot ? "꺼짐" : "-"}</strong>
-        </div>
-        <div className="meta-row">
-          <span>Selector</span>
-          <strong>{snapshot?.diagnostics.currentSelector || "-"}</strong>
-        </div>
-        <div className="meta-row">
-          <span>Frame</span>
-          <strong>
-            {snapshot ? formatCaptureDiagnosticsFramePath(snapshot.diagnostics.currentFramePath) : "-"}
-          </strong>
-        </div>
         <div className="status-line">{statusMessage}</div>
         {requiresReload ? (
           <div className="warning-box">
@@ -297,6 +293,9 @@ export default function App() {
           </button>
           <button className="secondary" onClick={() => void openOptions()}>
             {UI_TEXT.openOptions}
+          </button>
+          <button className="secondary" onClick={() => void openDiagnostics()}>
+            {UI_TEXT.openDiagnostics}
           </button>
         </div>
       </section>

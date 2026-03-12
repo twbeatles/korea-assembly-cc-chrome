@@ -41,8 +41,8 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - history 기록 내부 검색 / 복사 / 즐겨찾기 / 세션 메모
 - history 상세 entry 체크박스 기반 부분 선택 복사 / 부분 export
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
-- 실행 중 자동 저장 상태 표시 및 설정
-- 패널 / popup 수집 진단 정보 표시
+- 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각 확인
+- 패널 / popup 에서 수집 진단 화면 진입
 - 페이지 패널 / options / history UI
 - **크롬 확장프로그램 전용 아이콘 세트 적용(16, 32, 48, 128px)**
 - 최소 단위 테스트
@@ -167,7 +167,7 @@ npm run build
 10. 브라우저/확장을 다시 시작하면 남아 있던 `running` 세션은 자동으로 `stopped`로 정리된다
 11. history에서는 세션별 `즐겨찾기`, `메모 저장`, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 사용할 수 있다
 12. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있다
-13. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`을 빠르게 여는 보조 화면으로 사용하며, 현재 수집 방식/observer/selector/frame 진단 요약도 함께 보여 준다
+13. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`을 빠르게 여는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭에서 확인한다
 
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
@@ -195,7 +195,7 @@ npm run build
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도합니다
 - 패널 notice는 `정상 수집 / fallback 수집 / reset 복구 중`을 구분해 표시합니다
-- 패널과 popup은 현재 `structured / fallback / polling` 수집 진단, selector, frame path를 live 상태로 표시합니다
+- 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 
 ### injected observer

@@ -9,9 +9,12 @@ export default tseslint.config(
     ignores: [
       "dist",
       "node_modules",
+      "coverage",
       "legacy",
       "public/injected-observer.js",
       "iiadnfahoocbannfpgfgbommblpagacl",
+      "tmp-*.js",
+      "tmp-*.cjs",
     ],
   },
   js.configs.recommended,

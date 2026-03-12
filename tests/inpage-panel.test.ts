@@ -80,6 +80,22 @@ function buildPanelState(overrides?: Partial<Parameters<typeof buildInPagePanelS
   });
 }
 
+function createActions() {
+  return {
+    onStartCapture: vi.fn(),
+    onStopCapture: vi.fn(),
+    onClearSession: vi.fn(),
+    onSaveSession: vi.fn(),
+    onExport: vi.fn(),
+    onCopyRecent: vi.fn(),
+    onOpenHistory: vi.fn(),
+    onOpenOptions: vi.fn(),
+    onOpenDiagnostics: vi.fn(),
+    onExpand: vi.fn(),
+    onCollapse: vi.fn(),
+  };
+}
+
 describe("in-page panel", () => {
   it("builds a user-facing panel state from snapshot", () => {
     const view = buildPanelState();
@@ -94,19 +110,8 @@ describe("in-page panel", () => {
     expect(view.captureMode).toBe("structured");
   });
 
-  it("mounts once and renders both live and committed sections", () => {
-    const controller = createInPagePanel({
-      onStartCapture: vi.fn(),
-      onStopCapture: vi.fn(),
-      onClearSession: vi.fn(),
-      onSaveSession: vi.fn(),
-      onExport: vi.fn(),
-      onCopyRecent: vi.fn(),
-      onOpenHistory: vi.fn(),
-      onOpenOptions: vi.fn(),
-      onExpand: vi.fn(),
-      onCollapse: vi.fn(),
-    });
+  it("mounts once and renders the live sections with footer menus", () => {
+    const controller = createInPagePanel(createActions());
 
     controller.update(buildPanelState());
 
@@ -119,7 +124,7 @@ describe("in-page panel", () => {
     expect(shadowRoot?.textContent).toContain("실시간 내용");
     expect(shadowRoot?.textContent).toContain("화면 자막");
     expect(shadowRoot?.textContent).toContain("수집 진단");
-    expect(shadowRoot?.textContent).toContain("structured");
+    expect(shadowRoot?.textContent).toContain("환경 설정");
     expect(shadowRoot?.textContent).not.toContain("방금 나온 자막");
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
 
@@ -133,16 +138,9 @@ describe("in-page panel", () => {
 
   it("shows collapsed tab after clicking collapse", () => {
     let collapsed = false;
+    const actions = createActions();
     const controller = createInPagePanel({
-      onStartCapture: vi.fn(),
-      onStopCapture: vi.fn(),
-      onClearSession: vi.fn(),
-      onSaveSession: vi.fn(),
-      onExport: vi.fn(),
-      onCopyRecent: vi.fn(),
-      onOpenHistory: vi.fn(),
-      onOpenOptions: vi.fn(),
-      onExpand: vi.fn(),
+      ...actions,
       onCollapse: () => {
         collapsed = true;
         controller.update(
@@ -170,18 +168,7 @@ describe("in-page panel", () => {
   });
 
   it("does not force scroll when autoScroll is disabled", () => {
-    const controller = createInPagePanel({
-      onStartCapture: vi.fn(),
-      onStopCapture: vi.fn(),
-      onClearSession: vi.fn(),
-      onSaveSession: vi.fn(),
-      onExport: vi.fn(),
-      onCopyRecent: vi.fn(),
-      onOpenHistory: vi.fn(),
-      onOpenOptions: vi.fn(),
-      onExpand: vi.fn(),
-      onCollapse: vi.fn(),
-    });
+    const controller = createInPagePanel(createActions());
 
     controller.update(
       buildPanelState({
@@ -210,18 +197,7 @@ describe("in-page panel", () => {
   });
 
   it("auto-scrolls the preview box when preview text grows", () => {
-    const controller = createInPagePanel({
-      onStartCapture: vi.fn(),
-      onStopCapture: vi.fn(),
-      onClearSession: vi.fn(),
-      onSaveSession: vi.fn(),
-      onExport: vi.fn(),
-      onCopyRecent: vi.fn(),
-      onOpenHistory: vi.fn(),
-      onOpenOptions: vi.fn(),
-      onExpand: vi.fn(),
-      onCollapse: vi.fn(),
-    });
+    const controller = createInPagePanel(createActions());
 
     controller.update(buildPanelState());
 
@@ -247,18 +223,7 @@ describe("in-page panel", () => {
   });
 
   it("does not reset the live row scroll position when only preview text changes", () => {
-    const controller = createInPagePanel({
-      onStartCapture: vi.fn(),
-      onStopCapture: vi.fn(),
-      onClearSession: vi.fn(),
-      onSaveSession: vi.fn(),
-      onExport: vi.fn(),
-      onCopyRecent: vi.fn(),
-      onOpenHistory: vi.fn(),
-      onOpenOptions: vi.fn(),
-      onExpand: vi.fn(),
-      onCollapse: vi.fn(),
-    });
+    const controller = createInPagePanel(createActions());
 
     controller.update(buildPanelState());
 
@@ -284,18 +249,7 @@ describe("in-page panel", () => {
   });
 
   it("reuses the live row DOM node when the same row key is updated", () => {
-    const controller = createInPagePanel({
-      onStartCapture: vi.fn(),
-      onStopCapture: vi.fn(),
-      onClearSession: vi.fn(),
-      onSaveSession: vi.fn(),
-      onExport: vi.fn(),
-      onCopyRecent: vi.fn(),
-      onOpenHistory: vi.fn(),
-      onOpenOptions: vi.fn(),
-      onExpand: vi.fn(),
-      onCollapse: vi.fn(),
-    });
+    const controller = createInPagePanel(createActions());
 
     controller.update(buildPanelState());
 

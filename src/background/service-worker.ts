@@ -134,6 +134,16 @@ async function openOptionsPage(): Promise<void> {
   await callbackPromise<void>((callback) => chrome.runtime.openOptionsPage(callback));
 }
 
+async function openDiagnosticsPage(tabId?: number): Promise<void> {
+  const url = new URL(chrome.runtime.getURL("options.html"));
+  url.searchParams.set("view", "diagnostics");
+  if (typeof tabId === "number") {
+    url.searchParams.set("tabId", String(tabId));
+  }
+
+  await callbackPromise((callback) => chrome.tabs.create({ url: url.toString() }, callback));
+}
+
 async function ensureOffscreenDocument(): Promise<void> {
   if (!chrome.offscreen?.createDocument) {
     throw new Error("Offscreen document API를 사용할 수 없습니다.");
@@ -245,7 +255,8 @@ function isBackgroundCommandMessage(message: unknown): message is BackgroundComm
     type === "PERSIST_SESSION_RECORD" ||
     type === "DOWNLOAD_REQUEST" ||
     type === "OPEN_HISTORY_PAGE" ||
-    type === "OPEN_OPTIONS_PAGE"
+    type === "OPEN_OPTIONS_PAGE" ||
+    type === "OPEN_DIAGNOSTICS_PAGE"
   );
 }
 
@@ -303,6 +314,9 @@ async function handleMessage(
       return { ok: true };
     case "OPEN_OPTIONS_PAGE":
       await openOptionsPage();
+      return { ok: true };
+    case "OPEN_DIAGNOSTICS_PAGE":
+      await openDiagnosticsPage(message.tabId ?? sender.tab?.id);
       return { ok: true };
   }
 }
