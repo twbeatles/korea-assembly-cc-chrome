@@ -1,4 +1,4 @@
-import type { SessionRecord } from "../core/subtitle-models";
+import type { SessionRecord, SubtitleEntry } from "../core/subtitle-models";
 import { sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
 
@@ -34,6 +34,21 @@ export function buildDeleteAllSuccessMessage(totalCount: number): string {
 export function buildDeleteAllFailureMessage(detail?: string): string {
   const base = "저장된 기록 전체 삭제를 완료하지 못했습니다. 남은 기록을 다시 확인해주세요.";
   return detail ? `${base} ${detail}` : base;
+}
+
+export function buildSessionImportMessage(input: {
+  addedCount: number;
+  updatedCount: number;
+  keptCount: number;
+  invalidCount: number;
+}): string {
+  const parts = [
+    `추가 ${input.addedCount}건`,
+    `갱신 ${input.updatedCount}건`,
+    `유지 ${input.keptCount}건`,
+    `무효 ${input.invalidCount}건`,
+  ];
+  return `JSON 가져오기를 완료했습니다. ${parts.join(" / ")}`;
 }
 
 export function selectHistoryViewSettings(
@@ -90,4 +105,31 @@ export function selectAllSessionIds(
   sessions: Array<Pick<SessionRecord, "id">>,
 ): string[] {
   return sessions.map((session) => session.id);
+}
+
+export function resolveSelectedEntryIds(
+  currentSelectedIds: string[],
+  entries: Array<Pick<SubtitleEntry, "id">>,
+): string[] {
+  const availableIds = new Set(entries.map((entry) => entry.id));
+  return currentSelectedIds.filter((id) => availableIds.has(id));
+}
+
+export function toggleSelectedEntryId(
+  currentSelectedIds: string[],
+  entryId: string,
+): string[] {
+  const next = new Set(currentSelectedIds);
+  if (next.has(entryId)) {
+    next.delete(entryId);
+  } else {
+    next.add(entryId);
+  }
+  return [...next];
+}
+
+export function selectAllEntryIds(
+  entries: Array<Pick<SubtitleEntry, "id">>,
+): string[] {
+  return entries.map((entry) => entry.id);
 }

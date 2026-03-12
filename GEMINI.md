@@ -16,6 +16,8 @@
   - 세션 persistence
   - 우측 패널 + popup/options/history 동작
   - 쉬운 한국어 UI / 검색 / 최근 N줄 복사 / autosave UX
+  - history 즐겨찾기 / 세션 메모 / 부분 선택 복사 / 부분 export / JSON 백업·복원
+  - 패널 / popup 수집 진단 표시
   - 자막 우선 대형 미리보기 / 화면 자막 2단 UI
 
 ## 3. 필수 명령
@@ -54,11 +56,13 @@ npm run build
 ### 4.3 저장 / 내보내기
 
 - `src/storage/session-store.ts`
+- `src/storage/session-backup.ts`
 - `src/storage/settings-store.ts`
 - `src/core/exporters/txt.ts`
 - `src/core/exporters/srt.ts`
 - `src/core/exporters/vtt.ts`
 - `src/core/exporters/json.ts`
+- `src/shared/capture-diagnostics.ts`
 
 ## 5. 메시지와 책임 분리
 
@@ -145,7 +149,11 @@ npm run build
 - `loadSession`
 - `listSessions`
 - `deleteSession`
+- `deleteAllSessions`
 - `updateRunningSession`
+- `upsertSessionRecord`
+- `importSessionRecords`
+- `exportSessionData`
 - `closeRunningSessionsOnStartup`
 
 추가 UX 규칙:
@@ -158,9 +166,12 @@ npm run build
 - 복사 포맷은 `[HH:MM:SS] text`
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
+- session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
+- history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
 - `autoScroll` 이 꺼지면 `실시간 내용` / `화면 자막` 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
 - stopped 세션 최종 저장 실패 시 다음 시작/비우기 전에 1회 재시도 후, 계속 실패하면 폐기 확인
+- 패널과 popup 은 capture mode, observer, selector, frame path 를 진단용으로 표시
 - browser/extension cold start 시 남아 있던 `running` 세션은 두 backend를 함께 정리해 `stopped` 로 정리
 
 ## 8. exporter 규칙
@@ -195,6 +206,8 @@ Use this delta as the current operational baseline.
 - Session reads must merge IndexedDB and fallback storage using freshest `updatedAt`.
 - History view must live-sync settings-driven copy/export behavior.
 - The in-page `화면 자막` list now accumulates recent live rows and should remain visually stable during preview-only updates.
+- History now supports favorites, notes, partial copy/export, and full JSON backup/import.
+- Panel and popup now surface runtime capture diagnostics.
 
 ## Sync Delta (2026-03-11)
 

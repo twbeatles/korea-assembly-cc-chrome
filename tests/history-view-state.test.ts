@@ -3,11 +3,15 @@ import {
   buildDeleteAllFailureMessage,
   buildDeleteAllSuccessMessage,
   buildHistoryRefreshMessage,
+  buildSessionImportMessage,
   buildSelectedDeleteMessage,
   extractHistoryViewSettings,
+  resolveSelectedEntryIds,
   resolveSelectedSessionIds,
   resolveSelectedSessionId,
+  selectAllEntryIds,
   selectAllSessionIds,
+  toggleSelectedEntryId,
   toggleSelectedSessionId,
 } from "../src/history/history-view-state";
 
@@ -65,6 +69,19 @@ describe("history view state helpers", () => {
     ]);
   });
 
+  it("keeps entry selection across search changes and supports select-all helpers", () => {
+    expect(
+      resolveSelectedEntryIds(["entry_1", "entry_3"], [{ id: "entry_1" }, { id: "entry_2" }]),
+    ).toEqual(["entry_1"]);
+
+    expect(toggleSelectedEntryId(["entry_1"], "entry_2")).toEqual(["entry_1", "entry_2"]);
+    expect(toggleSelectedEntryId(["entry_1", "entry_2"], "entry_1")).toEqual(["entry_2"]);
+    expect(selectAllEntryIds([{ id: "entry_1" }, { id: "entry_2" }])).toEqual([
+      "entry_1",
+      "entry_2",
+    ]);
+  });
+
   it("builds refresh and deletion status messages without losing action context", () => {
     expect(buildHistoryRefreshMessage(3)).toBe("최신 기록부터 보여주고 있습니다.");
     expect(buildHistoryRefreshMessage(0)).toBe("저장된 기록이 없습니다.");
@@ -79,5 +96,13 @@ describe("history view state helpers", () => {
     expect(buildDeleteAllFailureMessage()).toBe(
       "저장된 기록 전체 삭제를 완료하지 못했습니다. 남은 기록을 다시 확인해주세요.",
     );
+    expect(
+      buildSessionImportMessage({
+        addedCount: 2,
+        updatedCount: 1,
+        keptCount: 3,
+        invalidCount: 4,
+      }),
+    ).toBe("JSON 가져오기를 완료했습니다. 추가 2건 / 갱신 1건 / 유지 3건 / 무효 4건");
   });
 });

@@ -38,8 +38,11 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - 페이지 패널 / history에서 최근 `N`줄 복사
 - `autoScroll`, 중복 차단 최소 길이, noise filter 토글 등 옵션 반영
 - popup 보조 화면
-- history 기록 내부 검색 / 복사
+- history 기록 내부 검색 / 복사 / 즐겨찾기 / 세션 메모
+- history 상세 entry 체크박스 기반 부분 선택 복사 / 부분 export
+- 저장된 기록 전체 JSON 백업 / JSON 가져오기
 - 실행 중 자동 저장 상태 표시 및 설정
+- 패널 / popup 수집 진단 정보 표시
 - 페이지 패널 / options / history UI
 - **크롬 확장프로그램 전용 아이콘 세트 적용(16, 32, 48, 128px)**
 - 최소 단위 테스트
@@ -58,7 +61,8 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - 이미 열린 `https://assembly.webcast.go.kr/*` 페이지에서 자막 추출
 - 페이지 오른쪽 패널에서 시작 / 중지 / 저장 / 파일 저장
 - options에서 수집 설정 조정
-- history에서 저장된 기록 목록, 삭제, 재열기, 파일 저장, 기록 내부 검색 / 복사
+- history에서 저장된 기록 목록, 삭제, 재열기, 즐겨찾기, 세션 메모, 파일 저장, 기록 내부 검색 / 복사
+- history에서 선택 entry 기준 부분 복사 / 부분 export, 전체 JSON 백업 / JSON 가져오기
 - history의 `전체 삭제`는 현재 화면이 아니라 저장소 전체를 기준으로 동작하고, 선택 삭제는 성공/실패 건수를 요약해 표시합니다
 
 ## 제외 범위
@@ -161,7 +165,9 @@ npm run build
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
 10. 브라우저/확장을 다시 시작하면 남아 있던 `running` 세션은 자동으로 `stopped`로 정리된다
-11. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`을 빠르게 여는 보조 화면으로 사용한다
+11. history에서는 세션별 `즐겨찾기`, `메모 저장`, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 사용할 수 있다
+12. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있다
+13. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`을 빠르게 여는 보조 화면으로 사용하며, 현재 수집 방식/observer/selector/frame 진단 요약도 함께 보여 준다
 
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
@@ -169,7 +175,7 @@ npm run build
 
 ## 권한 설명
 
-- `storage`: options 저장, lightweight state 저장
+- `storage`: options, 저장된 세션 본문, 즐겨찾기/메모 같은 세션 메타데이터 저장
 - `downloads`: TXT/SRT/VTT/JSON 파일 다운로드
 - `offscreen`: 대용량 export용 Blob URL 생성
 - `activeTab`: 현재 탭 상태 조회
@@ -189,6 +195,7 @@ npm run build
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도합니다
 - 패널 notice는 `정상 수집 / fallback 수집 / reset 복구 중`을 구분해 표시합니다
+- 패널과 popup은 현재 `structured / fallback / polling` 수집 진단, selector, frame path를 live 상태로 표시합니다
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 
 ### injected observer
@@ -218,6 +225,7 @@ npm run build
 - 설정은 `chrome.storage.local`
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
 - 브라우저/확장 cold start 시 남아 있던 `running` 세션은 `IndexedDB`와 fallback 양쪽을 함께 훑어 `stopped`로 자동 정리됩니다
+- 세션 레코드에는 `starred`, `pinnedAt`, `note` 메타데이터가 포함되며, history의 즐겨찾기/메모 기능과 JSON 백업/복원에서 함께 유지됩니다
 
 ### background
 
@@ -239,11 +247,11 @@ npm run build
 
 ## 향후 계획
 
+- 전체 기록을 가로지르는 통합 검색
+- 사용자 태그 / 카테고리
 - 페이지/위원회 preset 관리
+- 세션 품질 점수 / 수집 건강도 표시
 - DOM 구조 변화에 대한 selector profile 추가
-- reconnect / restore robustness 강화
-- session detail 검색과 부분 export
-- 영상 캡처
 - 중요 표시 / 발언자 편집
 - 브라우저 E2E 테스트 추가
 
@@ -283,6 +291,12 @@ This section tracks the latest persistence and runtime consistency changes.
   - startup cleanup now closes running sessions across both backends with duplicate id dedupe
 - History/settings consistency completed:
   - history view now live-syncs `recentCopyLineCount` and `filenamePattern` through `chrome.storage.onChanged`
+- History workspace expansion completed:
+  - session favorites and session notes are now stored with the session record
+  - history detail now supports entry checkbox-based partial copy and partial `TXT / SRT / VTT / JSON` export
+  - history now supports full-library JSON backup and JSON import for both single-session and bundle payloads
+- Runtime diagnostics completed:
+  - in-page panel and popup now expose capture mode, observer state, selector, and frame path
 - Panel readability update completed:
   - `화면 자막` now keeps recent live rows accumulated instead of only rendering the currently active row set
   - preview-only updates no longer reset the `화면 자막` list scroll position

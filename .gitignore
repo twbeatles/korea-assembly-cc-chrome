@@ -94,6 +94,7 @@ presets_*.json
 국회자막_*.hwp
 자막통계_*.txt
 backup_*.json
+/assembly_subtitle_backup_*.json
 
 # -----------------------------------------------------------------------------
 # OS junk

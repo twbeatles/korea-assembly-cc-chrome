@@ -8,7 +8,7 @@
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정` 중심의 보조 화면입니다.
-- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `autosave 상태 표시`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 화면 자막 2단 구성`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
+- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모`, `entry 체크박스 기반 부분 복사/부분 export`, `전체 JSON 백업/복원`, `autosave 상태 표시`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 화면 자막 2단 구성`, `패널/popup 수집 진단`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
 - 현재 기준 기본 검증 명령은 아래 4개입니다.
 
 ```bash
@@ -38,13 +38,18 @@ src/
     injected-observer.ts
     dom-probe.ts
     frame-probe.ts
+    capture-notice.ts
+    failed-stopped-session.ts
   core/
     live-capture.ts
     subtitle-pipeline.ts
     noise-filter.ts
     exporters/
+  shared/
+    capture-diagnostics.ts
   storage/
     session-store.ts
+    session-backup.ts
     settings-store.ts
   popup/
   options/
@@ -133,12 +138,17 @@ offscreen.html
 - `loadSession`
 - `listSessions`
 - `deleteSession`
+- `deleteAllSessions`
 - `updateRunningSession`
+- `upsertSessionRecord`
+- `importSessionRecords`
+- `exportSessionData`
 - `closeRunningSessionsOnStartup`
 
 위 CRUD 흐름과 startup cleanup 의미론은 유지해야 합니다.
 
 - record payload version 과 IndexedDB schema version 은 분리해서 관리합니다.
+- 현재 session record schema 는 `version = "3"` 기준이며 `starred`, `pinnedAt`, `note` 필드를 포함합니다.
 - `loadSession`/`listSessions` 는 IndexedDB + fallback 을 함께 읽고 `updatedAt` 기준으로 더 최신 레코드를 고릅니다. 동률이면 IndexedDB 를 우선합니다.
 - 개별 IndexedDB transaction/read/write 실패는 현재 연산만 fallback 으로 우회하고, 런타임 전체 disable 은 open/capability failure 에만 허용됩니다.
 - 성공한 IndexedDB write/delete 는 동일 id fallback copy 를 best-effort 로 정리합니다.
@@ -157,10 +167,14 @@ offscreen.html
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 `최근 N줄 복사`를 지원합니다.
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 `chrome.storage.onChanged` 로 즉시 반영합니다.
 - history 의 `전체 삭제` 는 현재 로드된 1000건만이 아니라 저장소 전체를 비워야 하며, 선택 삭제는 부분 성공/실패 요약을 남긴 뒤 항상 refresh 해야 합니다.
+- history 는 session-level `즐겨찾기`, `메모`, `즐겨찾기만 보기` 필터를 제공하고, 이 메타데이터는 persistence 및 JSON 백업/복원에서 함께 보존되어야 합니다.
+- history detail 은 entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
+- history 상단은 전체 저장소 기준 `JSON 백업` 과 단일 세션/번들 `JSON 가져오기` 를 지원하며, 가져오기는 같은 `id` 충돌 시 더 최신 `updatedAt` 레코드를 유지합니다.
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `화면 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
 - capture notice 는 `정상 수집`, `fallback 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 합니다.
+- 패널과 popup 은 현재 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path 를 진단용으로 표시합니다.
 - 브라우저/확장 cold start 시 남아 있던 persisted `running` 세션은 `stopped` 로 자동 정리됩니다.
 
 ## 8. 작업 시 주의사항
@@ -189,6 +203,8 @@ When editing this repository, align with the newly implemented behavior below.
 - Session storage reads must merge IndexedDB and fallback records, while successful IndexedDB writes heal stale fallback copies.
 - History view must live-sync `recentCopyLineCount` and `filenamePattern` while the page remains open.
 - The in-page `화면 자막` list must accumulate recent live rows and must not jump-scroll on preview-only updates.
+- History now persists session favorites/notes, supports partial copy/export, and supports JSON backup/import with freshest-`updatedAt` conflict resolution.
+- Panel and popup now expose runtime capture diagnostics (mode, observer, selector, frame path).
 - Local polling change-detection work stays test-first; use the regression scaffold before broadening heuristics.
 
 ## Sync Delta (2026-03-11)

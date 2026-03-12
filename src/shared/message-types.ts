@@ -5,6 +5,15 @@ import type {
   SessionRecord,
   SubtitleEntry,
 } from "../core/subtitle-models";
+import type { CaptureMode } from "../core/live-capture";
+
+export interface CaptureDiagnostics {
+  captureMode: CaptureMode;
+  observerActive: boolean;
+  currentSelector: string;
+  currentFramePath: number[];
+  sourceLabel: string;
+}
 
 export interface ObservedSubtitleRow {
   nodeKey: string;
@@ -33,6 +42,7 @@ export interface StatusSnapshot {
   observerActive: boolean;
   currentSelector: string;
   currentFramePath: number[];
+  diagnostics: CaptureDiagnostics;
 }
 
 export interface CaptureStatusPayload {
@@ -50,6 +60,7 @@ export interface CaptureStatusPayload {
   observerActive: boolean;
   currentSelector: string;
   currentFramePath: number[];
+  diagnostics: CaptureDiagnostics;
 }
 
 export interface PreviewUpdatePayload {

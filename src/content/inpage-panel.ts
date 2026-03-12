@@ -1,6 +1,7 @@
 import type { CaptureStatus, ExportFormat } from "../core/subtitle-models";
 import type { CaptureMode, LivePanelRow } from "../core/live-capture";
-import type { StatusSnapshot } from "../shared/message-types";
+import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
+import type { CaptureDiagnostics, StatusSnapshot } from "../shared/message-types";
 import { getCaptureStatusLabel, getExportFormatLabel, UI_TEXT } from "../shared/ui-labels";
 
 export const IN_PAGE_PANEL_HOST_ID = "assembly-subtitle-panel-host";
@@ -238,6 +239,25 @@ const PANEL_STYLE = `
     line-height: 1.5;
   }
 
+  .diagnostic-grid {
+    display: grid;
+    gap: 8px;
+  }
+
+  .diagnostic-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    color: #314b66;
+  }
+
+  .diagnostic-row strong {
+    color: #16324c;
+    text-align: right;
+    word-break: break-word;
+  }
+
   .action-row button,
   .footer-actions button {
     flex: 1;
@@ -326,6 +346,7 @@ export interface InPagePanelState {
   livePreviewText: string;
   liveRows: LivePanelRow[];
   captureMode: CaptureMode;
+  diagnostics: CaptureDiagnostics;
   subtitleCount: number;
   charCount: number;
   recentCopyLineCount: number;
@@ -415,7 +436,6 @@ export function buildInPagePanelState(
     recentCopyLineCount: number;
     livePreviewText: string;
     liveRows: LivePanelRow[];
-    captureMode: CaptureMode;
   },
 ): InPagePanelState {
   return {
@@ -430,7 +450,8 @@ export function buildInPagePanelState(
     previewText: snapshot.previewText,
     livePreviewText: options.livePreviewText || snapshot.previewText,
     liveRows: options.liveRows,
-    captureMode: options.captureMode,
+    captureMode: snapshot.diagnostics.captureMode,
+    diagnostics: snapshot.diagnostics,
     subtitleCount: snapshot.subtitleCount,
     charCount: snapshot.charCount,
     recentCopyLineCount: options.recentCopyLineCount,
@@ -522,6 +543,47 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   heroCard.append(heroHeader, previewBox, liveRowHeader, liveRowList);
 
+  const diagnosticsCard = document.createElement("section");
+  diagnosticsCard.className = "section-card";
+  const diagnosticsHeader = document.createElement("div");
+  diagnosticsHeader.className = "section-header";
+  const diagnosticsTitle = document.createElement("h2");
+  diagnosticsTitle.textContent = "수집 진단";
+  diagnosticsHeader.append(diagnosticsTitle);
+
+  const diagnosticsGrid = document.createElement("div");
+  diagnosticsGrid.className = "diagnostic-grid";
+  const sourceRow = document.createElement("div");
+  sourceRow.className = "diagnostic-row";
+  const sourceLabel = document.createElement("span");
+  sourceLabel.textContent = "수집 방식";
+  const sourceValue = document.createElement("strong");
+  sourceRow.append(sourceLabel, sourceValue);
+
+  const observerRow = document.createElement("div");
+  observerRow.className = "diagnostic-row";
+  const observerLabel = document.createElement("span");
+  observerLabel.textContent = "Observer";
+  const observerValue = document.createElement("strong");
+  observerRow.append(observerLabel, observerValue);
+
+  const selectorRow = document.createElement("div");
+  selectorRow.className = "diagnostic-row";
+  const selectorLabel = document.createElement("span");
+  selectorLabel.textContent = "Selector";
+  const selectorValue = document.createElement("strong");
+  selectorRow.append(selectorLabel, selectorValue);
+
+  const framePathRow = document.createElement("div");
+  framePathRow.className = "diagnostic-row";
+  const framePathLabel = document.createElement("span");
+  framePathLabel.textContent = "Frame";
+  const framePathValue = document.createElement("strong");
+  framePathRow.append(framePathLabel, framePathValue);
+
+  diagnosticsGrid.append(sourceRow, observerRow, selectorRow, framePathRow);
+  diagnosticsCard.append(diagnosticsHeader, diagnosticsGrid);
+
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
   const primaryActions = document.createElement("div");
@@ -558,7 +620,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const optionsButton = createButton(UI_TEXT.openOptions, actions.onOpenOptions, "secondary");
   footer.append(historyButton, optionsButton);
 
-  panel.append(header, heroCard, notice, controlsCard, footer);
+  panel.append(header, heroCard, diagnosticsCard, notice, controlsCard, footer);
   wrapper.append(collapsedTab, panel);
   shadowRoot.append(style, wrapper);
   (document.body || document.documentElement).appendChild(host);
@@ -582,9 +644,15 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       statusBadge.textContent = nextState.statusLabel;
       statusBadge.className = `status-badge ${nextState.status}`;
       headerCount.textContent = `모은 자막 ${nextState.subtitleCount}줄`;
-      modeBadge.textContent = formatCaptureMode(nextState.captureMode);
+      modeBadge.textContent = formatCaptureMode(nextState.diagnostics.captureMode);
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
+      sourceValue.textContent = nextState.diagnostics.sourceLabel;
+      observerValue.textContent = nextState.diagnostics.observerActive ? "켜짐" : "꺼짐";
+      selectorValue.textContent = nextState.diagnostics.currentSelector || "-";
+      framePathValue.textContent = formatCaptureDiagnosticsFramePath(
+        nextState.diagnostics.currentFramePath,
+      );
 
       const nextPreviewText =
         nextState.livePreviewText.trim() || nextState.previewText.trim() || emptyPreviewText;

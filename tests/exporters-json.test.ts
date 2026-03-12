@@ -3,7 +3,7 @@ import type { SessionRecord } from "../src/core/subtitle-models";
 
 const session: SessionRecord = {
   id: "session_json",
-  version: "2",
+  version: "3",
   title: "법사위",
   committeeName: "법제사법위원회",
   sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
@@ -14,6 +14,9 @@ const session: SessionRecord = {
   subtitleCount: 1,
   charCount: 5,
   status: "saved",
+  starred: true,
+  pinnedAt: "2026-03-10T09:00:04.000Z",
+  note: "중요 세션",
   entries: [
     {
       id: "subtitle_json_1",
@@ -40,6 +43,9 @@ describe("JSON exporter", () => {
     expect(parsed.sourceUrl).toBe(session.sourceUrl);
     expect(parsed.startedAt).toBe(session.startedAt);
     expect(parsed.endedAt).toBe(session.endedAt);
+    expect(parsed.starred).toBe(true);
+    expect(parsed.pinnedAt).toBe("2026-03-10T09:00:04.000Z");
+    expect(parsed.note).toBe("중요 세션");
     expect(parsed.entries).toHaveLength(1);
     expect(parsed.entries[0].sourceNodeKey).toBe("row_1");
     expect(parsed.entries[0].speakerColor).toBe("rgb(35, 124, 147)");

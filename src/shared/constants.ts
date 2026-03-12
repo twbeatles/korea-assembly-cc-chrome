@@ -3,7 +3,7 @@ import type { ExtensionSettings } from "../storage/types";
 export const EXTENSION_STORAGE_KEY = "assembly-extension-settings";
 export const SESSION_DB_NAME = "assembly-subtitle-sessions";
 export const SESSION_STORE_NAME = "sessions";
-export const SESSION_RECORD_VERSION = "2";
+export const SESSION_RECORD_VERSION = "3";
 export const SESSION_DB_SCHEMA_VERSION = 1;
 
 export const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";

@@ -3,7 +3,7 @@ import type { SessionRecord } from "../src/core/subtitle-models";
 
 const session: SessionRecord = {
   id: "session_1",
-  version: "1",
+  version: "3",
   title: "법사위",
   committeeName: "법제사법위원회",
   sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
@@ -14,6 +14,9 @@ const session: SessionRecord = {
   subtitleCount: 1,
   charCount: 5,
   status: "saved",
+  starred: false,
+  pinnedAt: null,
+  note: "",
   entries: [
     {
       id: "subtitle_1",

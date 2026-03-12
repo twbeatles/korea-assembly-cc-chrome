@@ -60,8 +60,12 @@ npm run build
 - preview-only 자막만 남은 시점에도 저장/export/pagehide에서 내용이 유실되지 않는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정` 이동 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
+- history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
+- history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
+- history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이 설정 변경 확인
 - stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
+- popup / 패널에서 수집 방식, observer, selector, frame path 진단이 현재 상태와 맞는지 확인
 
 ## 4. 로컬 설치
 
@@ -145,6 +149,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - 수집 데이터는 세션 저장 및 내보내기 목적
 - `downloads` 권한은 TXT/SRT/VTT/JSON 파일 저장용
 - `storage` 권한은 설정 및 세션 저장 fallback 용
+- `storage` 는 즐겨찾기/메모 같은 세션 메타와 JSON 가져오기 후 복원된 기록 저장에도 사용됨
 
 ## 7. 릴리스 체크리스트
 
@@ -159,6 +164,9 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - unpacked 로드 테스트 완료
 - 실제 국회 페이지 자막 추출 확인
 - exporter 결과물 확인
+- history 즐겨찾기/메모 persistence 확인
+- 부분 선택 export 및 JSON 백업/복원 확인
+- popup / 패널 진단 정보 확인
 
 ## 8. 배포 후 확인 항목
 
@@ -176,6 +184,10 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 10. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
 11. 자막 보정 중에는 패널의 `실시간 내용`과 `화면 자막`이 바로 갱신되는지
 12. `화면 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
+13. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
+14. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
+15. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
+16. popup 과 패널의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
 
 ## 9. 자주 발생하는 문제
 
@@ -236,6 +248,7 @@ Additional release notes:
 - History export now uses user-defined `filenamePattern`.
 - Popup now attempts automatic reconnection on disconnect.
 - Preview-only subtitle persistence, stopped-session retry guard, and cumulative `화면 자막` panel behavior are part of current release baseline.
+- History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
 
 ## 2026-03-11 Addendum Deployment Notes

@@ -8,7 +8,7 @@ import {
 function buildStoppedRecord(id = "session_failed"): SessionRecord {
   return {
     id,
-    version: "2",
+    version: "3",
     title: "정무위",
     committeeName: "정무위원회",
     sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
@@ -19,6 +19,9 @@ function buildStoppedRecord(id = "session_failed"): SessionRecord {
     subtitleCount: 1,
     charCount: 6,
     status: "stopped",
+    starred: false,
+    pinnedAt: null,
+    note: "",
     entries: [
       {
         id: `${id}_entry_1`,

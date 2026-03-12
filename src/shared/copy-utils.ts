@@ -4,6 +4,7 @@ import { formatClockTime } from "../core/timeline";
 export interface BuildCopyTextOptions {
   limit?: number;
   query?: string;
+  selectedIds?: string[];
 }
 
 function normalizeQuery(query: string): string {
@@ -21,6 +22,18 @@ export function filterEntriesByQuery(entries: SubtitleEntry[], query = ""): Subt
   );
 }
 
+export function filterEntriesByIds(
+  entries: SubtitleEntry[],
+  selectedIds: string[] = [],
+): SubtitleEntry[] {
+  if (!selectedIds.length) {
+    return [...entries];
+  }
+
+  const selectedIdSet = new Set(selectedIds);
+  return entries.filter((entry) => selectedIdSet.has(entry.id));
+}
+
 function formatCopyLine(entry: SubtitleEntry): string {
   const timestamp = formatClockTime(entry.startTime || entry.timestamp);
   return `[${timestamp}] ${entry.text}`;
@@ -30,7 +43,8 @@ export function buildCopyText(
   entries: SubtitleEntry[],
   options: BuildCopyTextOptions = {},
 ): string {
-  const filteredEntries = filterEntriesByQuery(entries, options.query);
+  const selectedEntries = filterEntriesByIds(entries, options.selectedIds);
+  const filteredEntries = filterEntriesByQuery(selectedEntries, options.query);
   const limitedEntries =
     typeof options.limit === "number" && options.limit > 0
       ? filteredEntries.slice(-options.limit)

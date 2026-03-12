@@ -32,7 +32,20 @@ export interface SessionRecord {
   subtitleCount: number;
   charCount: number;
   status: PersistedSessionStatus;
+  starred: boolean;
+  pinnedAt: string | null;
+  note: string;
   entries: SubtitleEntry[];
+}
+
+export type StoredSessionRecord = Omit<SessionRecord, "starred" | "pinnedAt" | "note"> &
+  Partial<Pick<SessionRecord, "starred" | "pinnedAt" | "note">>;
+
+export interface SessionBackupBundle {
+  kind: string;
+  version: string;
+  exportedAt: string;
+  sessions: SessionRecord[];
 }
 
 export interface SessionState {
@@ -78,6 +91,15 @@ export function cloneEntry(entry: SubtitleEntry): SubtitleEntry {
   };
 }
 
+export function cloneSessionRecord(record: SessionRecord): SessionRecord {
+  return {
+    ...record,
+    pinnedAt: record.pinnedAt,
+    note: record.note,
+    entries: record.entries.map(cloneEntry),
+  };
+}
+
 export function cloneState(state: SessionState): SessionState {
   return {
     ...state,
@@ -89,6 +111,19 @@ export function cloneState(state: SessionState): SessionState {
 
 export function getSessionCharCount(entries: SubtitleEntry[]): number {
   return entries.reduce((sum, entry) => sum + entry.text.length, 0);
+}
+
+export function withSessionEntries(
+  session: SessionRecord,
+  entries: SubtitleEntry[],
+): SessionRecord {
+  const nextEntries = entries.map(cloneEntry);
+  return {
+    ...cloneSessionRecord(session),
+    entries: nextEntries,
+    subtitleCount: nextEntries.length,
+    charCount: getSessionCharCount(nextEntries),
+  };
 }
 
 export function createEmptySessionState(
@@ -148,6 +183,9 @@ export function toSessionRecord(
     subtitleCount: entries.length,
     charCount: getSessionCharCount(entries),
     status: persistedStatus,
+    starred: false,
+    pinnedAt: null,
+    note: "",
     entries,
   };
 }

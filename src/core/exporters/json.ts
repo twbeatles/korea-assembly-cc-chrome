@@ -13,6 +13,9 @@ export interface JsonSessionExport {
   subtitleCount: number;
   charCount: number;
   status: SessionRecord["status"];
+  starred: boolean;
+  pinnedAt: string | null;
+  note: string;
   entries: SessionRecord["entries"];
 }
 
@@ -30,6 +33,9 @@ export function buildJsonExport(session: SessionRecord): JsonSessionExport {
     subtitleCount: session.subtitleCount,
     charCount: session.charCount,
     status: session.status,
+    starred: session.starred,
+    pinnedAt: session.pinnedAt,
+    note: session.note,
     entries: session.entries.map((entry) => ({
       ...entry,
       sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,

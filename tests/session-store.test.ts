@@ -4,17 +4,19 @@ import {
   deleteAllSessions,
   deleteSession,
   exportSessionData,
+  importSessionRecords,
   listSessions,
   loadSession,
   resetSessionStoreForTests,
   saveSession,
+  upsertSessionRecord,
   updateRunningSession,
 } from "../src/storage/session-store";
 
 function buildSession(id: string, status: SessionRecord["status"]): SessionRecord {
   return {
     id,
-    version: "1",
+    version: "3",
     title: "법사위",
     committeeName: "법제사법위원회",
     sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
@@ -25,6 +27,9 @@ function buildSession(id: string, status: SessionRecord["status"]): SessionRecor
     subtitleCount: 1,
     charCount: 8,
     status,
+    starred: false,
+    pinnedAt: null,
+    note: "",
     entries: [
       {
         id: `${id}_entry`,
@@ -50,7 +55,7 @@ describe("session store", () => {
     const listed = await listSessions({ limit: 10 });
 
     expect(loaded?.id).toBe(session.id);
-    expect(loaded?.version).toBe("1");
+    expect(loaded?.version).toBe("3");
     expect(listed.map((item) => item.id)).toContain(session.id);
 
     await deleteSession(session.id);
@@ -65,6 +70,59 @@ describe("session store", () => {
 
     expect(updated?.status).toBe("running");
     expect(updated?.endedAt).toBeNull();
+  });
+
+  it("persists favorites and notes and sorts favorites to the top", async () => {
+    await saveSession(buildSession("session_regular", "saved"));
+    await upsertSessionRecord({
+      ...buildSession("session_starred", "saved"),
+      starred: true,
+      pinnedAt: "2026-03-10T09:30:00.000Z",
+      note: "중요 메모",
+    });
+
+    const listed = await listSessions({ limit: 10 });
+    const loaded = await loadSession("session_starred");
+
+    expect(listed[0]?.id).toBe("session_starred");
+    expect(loaded?.starred).toBe(true);
+    expect(loaded?.pinnedAt).toBe("2026-03-10T09:30:00.000Z");
+    expect(loaded?.note).toBe("중요 메모");
+  });
+
+  it("fills default favorite and note fields for imported legacy records", async () => {
+    await importSessionRecords([
+      {
+        id: "session_legacy",
+        version: "2",
+        title: "기존 세션",
+        committeeName: "정무위원회",
+        sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+        startedAt: "2026-03-10T09:00:00.000Z",
+        endedAt: "2026-03-10T09:02:00.000Z",
+        createdAt: "2026-03-10T09:00:00.000Z",
+        updatedAt: "2026-03-10T09:02:00.000Z",
+        subtitleCount: 1,
+        charCount: 6,
+        status: "saved",
+        entries: [
+          {
+            id: "session_legacy_entry_1",
+            text: "레거시 자막",
+            timestamp: "2026-03-10T09:00:01.000Z",
+            startTime: "2026-03-10T09:00:01.000Z",
+            endTime: "2026-03-10T09:00:03.000Z",
+          },
+        ],
+      },
+    ]);
+
+    const loaded = await loadSession("session_legacy");
+
+    expect(loaded?.version).toBe("3");
+    expect(loaded?.starred).toBe(false);
+    expect(loaded?.pinnedAt).toBeNull();
+    expect(loaded?.note).toBe("");
   });
 
   it("closes stale running sessions on startup", async () => {
@@ -233,6 +291,108 @@ describe("session store", () => {
         value: originalIndexedDb,
       });
     }
+  });
+
+  it("imports fresher records and preserves newer existing records", async () => {
+    await importSessionRecords([
+      {
+        ...buildSession("session_import", "saved"),
+        updatedAt: "2026-03-10T09:00:04.000Z",
+        note: "기존 메모",
+      },
+      {
+        ...buildSession("session_keep", "saved"),
+        updatedAt: "2026-03-10T09:10:00.000Z",
+        note: "기존 최신 keep",
+      },
+    ]);
+
+    const summary = await importSessionRecords([
+      {
+        ...buildSession("session_import", "saved"),
+        updatedAt: "2026-03-10T09:05:00.000Z",
+        note: "가져온 최신 메모",
+        starred: true,
+        pinnedAt: "2026-03-10T09:05:00.000Z",
+      },
+      {
+        ...buildSession("session_keep", "saved"),
+        updatedAt: "2026-03-10T09:03:00.000Z",
+        note: "가져온 오래된 keep",
+      },
+    ]);
+
+    const loadedImport = await loadSession("session_import");
+    const loadedKeep = await loadSession("session_keep");
+
+    expect(summary).toEqual({
+      addedCount: 0,
+      updatedCount: 1,
+      keptCount: 1,
+    });
+    expect(loadedImport?.note).toBe("가져온 최신 메모");
+    expect(loadedImport?.starred).toBe(true);
+    expect(loadedKeep?.updatedAt).toBe("2026-03-10T09:10:00.000Z");
+    expect(loadedKeep?.note).toBe("기존 최신 keep");
+  });
+
+  it("keeps the newer existing record when importing an older duplicate", async () => {
+    await saveSession({
+      ...buildSession("session_keep_newer", "saved"),
+      updatedAt: "2026-03-10T09:10:00.000Z",
+      note: "기존 최신본",
+    });
+
+    const summary = await importSessionRecords([
+      {
+        ...buildSession("session_keep_newer", "saved"),
+        updatedAt: "2026-03-10T09:03:00.000Z",
+        note: "오래된 가져오기",
+      },
+    ]);
+    const loaded = await loadSession("session_keep_newer");
+
+    expect(summary).toEqual({
+      addedCount: 0,
+      updatedCount: 0,
+      keptCount: 1,
+    });
+    expect(loaded?.note).toBe("기존 최신본");
+  });
+
+  it("exports selected entries without changing session-relative SRT timestamps", async () => {
+    const session: SessionRecord = {
+      ...buildSession("session_partial_export", "saved"),
+      subtitleCount: 3,
+      charCount: 0,
+      entries: [
+        {
+          id: "entry_1",
+          text: "첫 번째 자막",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+        {
+          id: "entry_2",
+          text: "두 번째 자막",
+          timestamp: "2026-03-10T09:00:05.000Z",
+          startTime: "2026-03-10T09:00:05.000Z",
+          endTime: "2026-03-10T09:00:06.000Z",
+        },
+        {
+          id: "entry_3",
+          text: "세 번째 자막",
+          timestamp: "2026-03-10T09:00:09.000Z",
+          startTime: "2026-03-10T09:00:09.000Z",
+          endTime: "2026-03-10T09:00:10.000Z",
+        },
+      ],
+    };
+
+    const payload = await exportSessionData(session, "srt", undefined, [session.entries[1]]);
+
+    expect(payload.content).toBe("1\n00:00:05,000 --> 00:00:06,000\n두 번째 자막");
   });
 
   it("closes running sessions across IndexedDB and fallback backends with unique counting", async () => {

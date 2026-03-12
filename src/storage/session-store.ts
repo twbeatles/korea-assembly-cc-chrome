@@ -3,8 +3,15 @@ import { normalizeSessionForExport } from "../core/exporters/normalize-session";
 import { exportSrt } from "../core/exporters/srt";
 import { exportTxt } from "../core/exporters/txt";
 import { exportVtt } from "../core/exporters/vtt";
-import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
-import { getSessionCharCount } from "../core/subtitle-models";
+import {
+  cloneSessionRecord,
+  getSessionCharCount,
+  withSessionEntries,
+  type ExportFormat,
+  type SessionRecord,
+  type StoredSessionRecord,
+  type SubtitleEntry,
+} from "../core/subtitle-models";
 import { buildExportFilename } from "../core/timeline";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -12,7 +19,7 @@ import {
   SESSION_RECORD_VERSION,
   SESSION_STORE_NAME,
 } from "../shared/constants";
-import type { ExportPayload, SessionListOptions } from "./types";
+import type { ExportPayload, SessionImportSummary, SessionListOptions } from "./types";
 
 const LEGACY_FALLBACK_STORAGE_KEY = "assembly-subtitle-session-fallback";
 const FALLBACK_INDEX_STORAGE_KEY = "assembly-subtitle-session-fallback:index";
@@ -37,16 +44,6 @@ interface SourcedSessionRecord {
 
 function logStoreError(message: string, error?: unknown): void {
   console.warn(`[session-store] ${message}`, error);
-}
-
-function cloneSessionRecord(record: SessionRecord): SessionRecord {
-  return {
-    ...record,
-    entries: record.entries.map((entry) => ({
-      ...entry,
-      sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
-    })),
-  };
 }
 
 function withRequest<T>(request: IDBRequest<T>): Promise<T> {
@@ -120,24 +117,67 @@ function openDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-function normalizeSessionRecord(session: SessionRecord): SessionRecord {
-  const now = new Date().toISOString();
-  const entries = session.entries.map((entry) => ({
+function normalizeEntries(entries: SubtitleEntry[]): SubtitleEntry[] {
+  return entries.map((entry) => ({
     ...entry,
     sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
   }));
+}
+
+function normalizeSessionRecord(
+  session: StoredSessionRecord,
+  options: {
+    preserveTimestamps?: boolean;
+    forceStatus?: SessionRecord["status"];
+  } = {},
+): SessionRecord {
+  const now = new Date().toISOString();
+  const entries = normalizeEntries(session.entries);
+  const status = options.forceStatus ?? session.status ?? "saved";
+  const createdAt =
+    typeof session.createdAt === "string" && session.createdAt
+      ? session.createdAt
+      : typeof session.startedAt === "string" && session.startedAt
+        ? session.startedAt
+        : now;
+  const startedAt =
+    typeof session.startedAt === "string" && session.startedAt
+      ? session.startedAt
+      : createdAt;
+  const updatedAt =
+    options.preserveTimestamps &&
+    typeof session.updatedAt === "string" &&
+    session.updatedAt
+      ? session.updatedAt
+      : now;
+  const starred = typeof session.starred === "boolean" ? session.starred : false;
+  const pinnedAt =
+    starred && typeof session.pinnedAt === "string" && session.pinnedAt
+      ? session.pinnedAt
+      : starred
+        ? updatedAt
+        : null;
+  const note = typeof session.note === "string" ? session.note : "";
+  const endedAt =
+    status === "running"
+      ? null
+      : session.endedAt ?? updatedAt;
 
   return {
     ...session,
-    version: session.version || SESSION_RECORD_VERSION,
+    version: SESSION_RECORD_VERSION,
     title: session.title || "국회 자막 세션",
     committeeName: session.committeeName || "",
-    createdAt: session.createdAt || session.startedAt || now,
-    startedAt: session.startedAt || session.createdAt || now,
-    updatedAt: now,
-    endedAt: session.status === "running" ? null : session.endedAt ?? now,
+    createdAt,
+    startedAt,
+    updatedAt,
+    endedAt,
     subtitleCount: entries.length,
     charCount: getSessionCharCount(entries),
+    status,
+    starred,
+    pinnedAt,
+    note,
     entries,
   };
 }
@@ -145,7 +185,20 @@ function normalizeSessionRecord(session: SessionRecord): SessionRecord {
 function sortSessions(records: SessionRecord[], options: SessionListOptions = {}): SessionRecord[] {
   const limit = Math.max(1, options.limit ?? 100);
   return [...records]
-    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))
+    .sort((left, right) => {
+      if (left.starred !== right.starred) {
+        return left.starred ? -1 : 1;
+      }
+
+      const leftPinnedAt = left.starred ? left.pinnedAt || left.updatedAt : "";
+      const rightPinnedAt = right.starred ? right.pinnedAt || right.updatedAt : "";
+      const pinnedCompare = rightPinnedAt.localeCompare(leftPinnedAt);
+      if (pinnedCompare !== 0) {
+        return pinnedCompare;
+      }
+
+      return right.updatedAt.localeCompare(left.updatedAt);
+    })
     .slice(0, limit)
     .map(cloneSessionRecord);
 }
@@ -470,8 +523,15 @@ function toExportPayload(
   session: SessionRecord,
   format: ExportFormat,
   filenamePattern?: string,
+  entries?: SubtitleEntry[],
 ): ExportPayload {
-  const normalized = normalizeSessionForExport(normalizeSessionRecord(session));
+  const baseSession = entries ? withSessionEntries(session, entries) : session;
+  const normalized = normalizeSessionForExport(
+    normalizeSessionRecord(baseSession, {
+      preserveTimestamps: true,
+      forceStatus: baseSession.status,
+    }),
+  );
 
   switch (format) {
     case "txt":
@@ -507,14 +567,11 @@ function toExportPayload(
 
 function stopRunningRecord(record: SessionRecord): SessionRecord {
   const stoppedAt = record.updatedAt || new Date().toISOString();
-  const entries = record.entries.map((entry) => ({
-    ...entry,
-    sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
-  }));
+  const entries = normalizeEntries(record.entries);
 
   return {
     ...record,
-    version: record.version || SESSION_RECORD_VERSION,
+    version: SESSION_RECORD_VERSION,
     status: "stopped",
     endedAt: record.endedAt ?? stoppedAt,
     updatedAt: stoppedAt,
@@ -524,12 +581,7 @@ function stopRunningRecord(record: SessionRecord): SessionRecord {
   };
 }
 
-export async function saveSession(session: SessionRecord): Promise<SessionRecord> {
-  const record = normalizeSessionRecord({
-    ...session,
-    status: session.status === "running" ? "saved" : session.status,
-  });
-
+async function writeSessionRecord(record: SessionRecord): Promise<SessionRecord> {
   const indexedDbResult = await tryIndexedDb(async () => {
     await withTransaction("readwrite", async (store) => {
       await withRequest(store.put(record));
@@ -546,26 +598,31 @@ export async function saveSession(session: SessionRecord): Promise<SessionRecord
   return saveFallbackRecord(record);
 }
 
+export async function saveSession(session: SessionRecord): Promise<SessionRecord> {
+  const record = normalizeSessionRecord({
+    ...session,
+    status: session.status === "running" ? "saved" : session.status,
+  }, {
+    forceStatus: session.status === "running" ? "saved" : session.status,
+  });
+  return writeSessionRecord(record);
+}
+
 export async function updateRunningSession(session: SessionRecord): Promise<SessionRecord> {
   const record = normalizeSessionRecord({
     ...session,
     status: "running",
+  }, {
+    forceStatus: "running",
   });
+  return writeSessionRecord(record);
+}
 
-  const indexedDbResult = await tryIndexedDb(async () => {
-    await withTransaction("readwrite", async (store) => {
-      await withRequest(store.put(record));
-      return record;
-    });
-    return record;
+export async function upsertSessionRecord(session: SessionRecord): Promise<SessionRecord> {
+  const record = normalizeSessionRecord(session, {
+    forceStatus: session.status,
   });
-
-  if (indexedDbResult.ok && indexedDbResult.value) {
-    await bestEffortDeleteFallbackRecord(record.id);
-    return cloneSessionRecord(indexedDbResult.value);
-  }
-
-  return saveFallbackRecord(record);
+  return writeSessionRecord(record);
 }
 
 export async function loadSession(id: string): Promise<SessionRecord | undefined> {
@@ -584,8 +641,12 @@ export async function loadSession(id: string): Promise<SessionRecord | undefined
   ]);
 
   const merged = mergeSessionCollections(
-    indexedDbResult.ok && indexedDbResult.value ? [indexedDbResult.value] : [],
-    fallbackRecord ? [fallbackRecord] : [],
+    indexedDbResult.ok && indexedDbResult.value
+      ? [normalizeSessionRecord(indexedDbResult.value as StoredSessionRecord, { preserveTimestamps: true })]
+      : [],
+    fallbackRecord
+      ? [normalizeSessionRecord(fallbackRecord as StoredSessionRecord, { preserveTimestamps: true })]
+      : [],
   );
 
   return merged[0] ? cloneSessionRecord(merged[0]) : undefined;
@@ -604,8 +665,14 @@ export async function listSessions(options: SessionListOptions = {}): Promise<Se
 
   return sortSessions(
     mergeSessionCollections(
-      indexedDbResult.ok && indexedDbResult.value ? indexedDbResult.value : [],
-      fallbackRecords,
+      indexedDbResult.ok && indexedDbResult.value
+        ? indexedDbResult.value.map((record) =>
+            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+          )
+        : [],
+      fallbackRecords.map((record) =>
+        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+      ),
     ),
     options,
   );
@@ -649,12 +716,59 @@ export async function deleteAllSessions(): Promise<void> {
   }
 }
 
+export async function importSessionRecords(
+  sessions: StoredSessionRecord[],
+): Promise<SessionImportSummary> {
+  const existingSessions = await listSessions({ limit: Number.MAX_SAFE_INTEGER });
+  const existingById = new Map(existingSessions.map((session) => [session.id, session]));
+  const importedById = new Map<string, SessionRecord>();
+
+  sessions.forEach((session) => {
+    const normalized = normalizeSessionRecord(session, {
+      preserveTimestamps: true,
+      forceStatus: session.status ?? "saved",
+    });
+    const current = importedById.get(normalized.id);
+    if (!current || normalized.updatedAt.localeCompare(current.updatedAt) > 0) {
+      importedById.set(normalized.id, normalized);
+    }
+  });
+
+  let addedCount = 0;
+  let updatedCount = 0;
+  let keptCount = 0;
+
+  for (const record of importedById.values()) {
+    const existing = existingById.get(record.id);
+    if (!existing) {
+      await writeSessionRecord(record);
+      addedCount += 1;
+      continue;
+    }
+
+    if (record.updatedAt.localeCompare(existing.updatedAt) > 0) {
+      await writeSessionRecord(record);
+      updatedCount += 1;
+      continue;
+    }
+
+    keptCount += 1;
+  }
+
+  return {
+    addedCount,
+    updatedCount,
+    keptCount,
+  };
+}
+
 export async function exportSessionData(
   session: SessionRecord,
   format: ExportFormat,
   filenamePattern?: string,
+  entries?: SubtitleEntry[],
 ): Promise<ExportPayload> {
-  return toExportPayload(session, format, filenamePattern);
+  return toExportPayload(session, format, filenamePattern, entries);
 }
 
 export async function closeRunningSessionsOnStartup(): Promise<number> {

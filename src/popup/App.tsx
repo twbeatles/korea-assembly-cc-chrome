@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
 import { ASSEMBLY_HOST, POPUP_PORT_NAME } from "../shared/constants";
+import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
 import { connectToTab, queryActiveTab, sendRuntimeMessage } from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
@@ -127,6 +128,7 @@ export default function App() {
                 observerActive: message.payload.observerActive,
                 currentSelector: message.payload.currentSelector,
                 currentFramePath: message.payload.currentFramePath,
+                diagnostics: message.payload.diagnostics,
               }));
               setTabReady(true);
               setStatusMessage("페이지 확장판과 연결했습니다.");
@@ -253,6 +255,24 @@ export default function App() {
         <div className="meta-row">
           <span>모인 자막</span>
           <strong>{snapshot?.subtitleCount ?? 0}문장</strong>
+        </div>
+        <div className="meta-row">
+          <span>수집 방식</span>
+          <strong>{snapshot?.diagnostics.sourceLabel || "-"}</strong>
+        </div>
+        <div className="meta-row">
+          <span>Observer</span>
+          <strong>{snapshot?.diagnostics.observerActive ? "켜짐" : snapshot ? "꺼짐" : "-"}</strong>
+        </div>
+        <div className="meta-row">
+          <span>Selector</span>
+          <strong>{snapshot?.diagnostics.currentSelector || "-"}</strong>
+        </div>
+        <div className="meta-row">
+          <span>Frame</span>
+          <strong>
+            {snapshot ? formatCaptureDiagnosticsFramePath(snapshot.diagnostics.currentFramePath) : "-"}
+          </strong>
         </div>
         <div className="status-line">{statusMessage}</div>
         {requiresReload ? (

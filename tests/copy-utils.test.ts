@@ -41,6 +41,18 @@ describe("copy utils", () => {
     expect(copied).toBe("[09:00:02] 검색 대상 문장");
   });
 
+  it("builds copy text only from explicitly selected entries while preserving original order", () => {
+    const copied = buildCopyText(entries, {
+      selectedIds: ["5", "2", "4"],
+    });
+
+    expect(copied).toBe(
+      ["[09:00:01] 두 번째 문장", "[09:00:03] 네 번째 문장", "[09:00:04] 다섯 번째 문장"].join(
+        "\n",
+      ),
+    );
+  });
+
   it("returns an empty string when no entry matches", () => {
     expect(buildCopyText(entries, { query: "없는 문장" })).toBe("");
   });

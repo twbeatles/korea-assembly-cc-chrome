@@ -40,6 +40,10 @@ button.secondary {
   box-sizing: border-box;
 }
 
+.hidden-file-input {
+  display: none;
+}
+
 .hero,
 .hero-actions,
 .detail-header,
@@ -97,7 +101,13 @@ button.secondary {
 .session-list-toolbar,
 .session-list-actions,
 .session-item-row,
-.session-check {
+.session-check,
+.selection-toolbar,
+.selection-actions,
+.note-actions,
+.section-row,
+.entry-card-row,
+.entry-check {
   display: flex;
   gap: 10px;
 }
@@ -114,6 +124,19 @@ button.secondary {
 
 .session-item-row {
   align-items: stretch;
+}
+
+.favorite-toggle {
+  min-width: 44px;
+  padding: 0;
+  background: rgba(216, 231, 226, 0.9);
+  color: #567369;
+  box-shadow: none;
+}
+
+.favorite-toggle.active {
+  background: #ffe8a8;
+  color: #8a5a00;
 }
 
 .session-check {
@@ -212,6 +235,45 @@ button.secondary {
   justify-content: space-between;
 }
 
+.selection-toolbar,
+.note-actions,
+.section-row {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.selection-actions {
+  flex-wrap: wrap;
+}
+
+.note-card {
+  margin-bottom: 18px;
+  border-radius: 18px;
+  background: #f4f7fa;
+  padding: 16px;
+}
+
+.note-input {
+  width: 100%;
+  min-height: 112px;
+  margin-top: 12px;
+  box-sizing: border-box;
+  border: 1px solid rgba(20, 52, 74, 0.16);
+  border-radius: 14px;
+  padding: 12px 14px;
+  resize: vertical;
+  font: inherit;
+  line-height: 1.55;
+}
+
+.selection-toolbar {
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: #f4f7fa;
+}
+
 .search-input {
   width: min(420px, 100%);
   border: 1px solid rgba(20, 52, 74, 0.16);
@@ -224,8 +286,35 @@ button.secondary {
   margin-top: 12px;
 }
 
+.partial-export-row button {
+  background: #dfe8f4;
+  color: #18344f;
+}
+
 .empty-card {
   padding: 20px;
+}
+
+.entry-card-row {
+  align-items: stretch;
+}
+
+.entry-check {
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  border-radius: 16px;
+  background: rgba(216, 231, 226, 0.9);
+}
+
+.entry-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #1a6c58;
+}
+
+.active-toggle {
+  outline: 2px solid rgba(26, 108, 88, 0.25);
 }
 
 @media (max-width: 1120px) {
@@ -253,12 +342,21 @@ button.secondary {
   .search-row,
   .session-list-toolbar,
   .session-list-actions,
-  .session-item-row {
+  .session-item-row,
+  .selection-toolbar,
+  .selection-actions,
+  .note-actions,
+  .entry-card-row {
     flex-direction: column;
     align-items: stretch;
   }
 
   .session-check {
+    min-height: 42px;
+  }
+
+  .favorite-toggle,
+  .entry-check {
     min-height: 42px;
   }
 

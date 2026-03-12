@@ -48,6 +48,7 @@ import {
   shouldWarnBeforeUnload,
 } from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
+import { buildCaptureDiagnostics } from "../shared/capture-diagnostics";
 import { buildCopyText, copyTextToClipboard } from "../shared/copy-utils";
 import type {
   BackgroundCommandResponse,
@@ -258,6 +259,7 @@ function getCaptureMode(): CaptureMode {
 }
 
 function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
+  const captureMode = getCaptureMode();
   return {
     connected: window.location.hostname === "assembly.webcast.go.kr",
     requiresReload,
@@ -277,6 +279,12 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
     observerActive: state.observerActive,
     currentSelector: state.currentSelector,
     currentFramePath: [...state.currentFramePath],
+    diagnostics: buildCaptureDiagnostics({
+      captureMode,
+      observerActive: state.observerActive,
+      currentSelector: state.currentSelector,
+      currentFramePath: state.currentFramePath,
+    }),
   };
 }
 
@@ -304,6 +312,7 @@ function createPopupMessages(requiresReload = false): ContentToPopupMessage[] {
         observerActive: snapshot.observerActive,
         currentSelector: snapshot.currentSelector,
         currentFramePath: snapshot.currentFramePath,
+        diagnostics: snapshot.diagnostics,
       },
     },
     {
@@ -381,7 +390,6 @@ function updateInPagePanel(): void {
       recentCopyLineCount: settings.recentCopyLineCount,
       livePreviewText: getLivePreviewText(),
       liveRows: getPanelLiveRows(),
-      captureMode: getCaptureMode(),
     }),
   );
 }

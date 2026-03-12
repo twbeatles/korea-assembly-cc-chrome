@@ -45,6 +45,13 @@ function createSnapshot(): StatusSnapshot {
     observerActive: true,
     currentSelector: "#viewSubtit",
     currentFramePath: [],
+    diagnostics: {
+      captureMode: "structured",
+      observerActive: true,
+      currentSelector: "#viewSubtit",
+      currentFramePath: [],
+      sourceLabel: "structured",
+    },
   };
 }
 
@@ -69,7 +76,6 @@ function buildPanelState(overrides?: Partial<Parameters<typeof buildInPagePanelS
     recentCopyLineCount: 5,
     livePreviewText: "안녕하세요",
     liveRows: createLiveRows(),
-    captureMode: "structured",
     ...overrides,
   });
 }
@@ -112,6 +118,8 @@ describe("in-page panel", () => {
     expect(shadowRoot?.textContent).toContain("국회 자막 도우미");
     expect(shadowRoot?.textContent).toContain("실시간 내용");
     expect(shadowRoot?.textContent).toContain("화면 자막");
+    expect(shadowRoot?.textContent).toContain("수집 진단");
+    expect(shadowRoot?.textContent).toContain("structured");
     expect(shadowRoot?.textContent).not.toContain("방금 나온 자막");
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
 
