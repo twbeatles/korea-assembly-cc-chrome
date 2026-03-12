@@ -94,10 +94,48 @@ button.secondary {
   align-content: start;
 }
 
+.session-list-toolbar,
+.session-list-actions,
+.session-item-row,
+.session-check {
+  display: flex;
+  gap: 10px;
+}
+
+.session-list-toolbar {
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.session-list-actions {
+  flex-wrap: wrap;
+}
+
+.session-item-row {
+  align-items: stretch;
+}
+
+.session-check {
+  align-items: center;
+  justify-content: center;
+  min-width: 34px;
+  border-radius: 14px;
+  background: rgba(216, 231, 226, 0.9);
+  padding: 0 6px;
+}
+
+.session-check input {
+  width: 16px;
+  height: 16px;
+  accent-color: #1a6c58;
+}
+
 .session-item {
   text-align: left;
   background: #f5faf8;
   color: #17374a;
+  flex: 1;
 }
 
 .session-item.active {
@@ -212,9 +250,16 @@ button.secondary {
   .detail-actions,
   .export-row,
   .copy-row,
-  .search-row {
+  .search-row,
+  .session-list-toolbar,
+  .session-list-actions,
+  .session-item-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .session-check {
+    min-height: 42px;
   }
 
   .stats-grid {

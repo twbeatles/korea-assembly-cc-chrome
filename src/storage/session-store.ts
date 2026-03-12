@@ -244,6 +244,15 @@ function getFallbackRecordStorageKey(id: string): string {
   return `${FALLBACK_RECORD_PREFIX}${id}`;
 }
 
+function getFallbackStorageKeys(snapshot: Record<string, unknown>): string[] {
+  return Object.keys(snapshot).filter(
+    (key) =>
+      key === LEGACY_FALLBACK_STORAGE_KEY ||
+      key === FALLBACK_INDEX_STORAGE_KEY ||
+      key.startsWith(FALLBACK_RECORD_PREFIX),
+  );
+}
+
 function isQuotaExceededError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error ?? "");
   return /quota|QUOTA|MAX_ITEMS|bytes/i.test(message);
@@ -384,17 +393,29 @@ async function clearChromeFallbackRecordsForTests(): Promise<void> {
 
   try {
     const all = await chrome.storage.local.get(null);
-    const keys = Object.keys(all).filter(
-      (key) =>
-        key === LEGACY_FALLBACK_STORAGE_KEY ||
-        key === FALLBACK_INDEX_STORAGE_KEY ||
-        key.startsWith(FALLBACK_RECORD_PREFIX),
-    );
+    const keys = getFallbackStorageKeys(all);
     if (keys.length) {
       await chrome.storage.local.remove(keys);
     }
   } catch (error) {
     logStoreError("Failed to clear chrome.storage.local fallback", error);
+  }
+}
+
+async function clearFallbackRecords(action: string): Promise<void> {
+  memoryFallbackStore.clear();
+  if (!hasChromeStorageFallback()) {
+    return;
+  }
+
+  try {
+    const all = await chrome.storage.local.get(null);
+    const keys = getFallbackStorageKeys(all);
+    if (keys.length) {
+      await chrome.storage.local.remove(keys);
+    }
+  } catch (error) {
+    throw buildFallbackWriteError(action, error);
   }
 }
 
@@ -608,6 +629,24 @@ export async function deleteSession(id: string): Promise<void> {
   }
 
   await deleteFallbackRecord(id);
+}
+
+export async function deleteAllSessions(): Promise<void> {
+  const indexedDbResult = await tryIndexedDb(async () => {
+    await withTransaction("readwrite", async (store) => {
+      await withRequest(store.clear());
+    });
+    return true;
+  });
+
+  await clearFallbackRecords("전체 세션 삭제");
+
+  if (!indexedDbResult.ok && indexedDbResult.error) {
+    if (indexedDbResult.error instanceof Error) {
+      throw new Error(`저장된 기록 전체 삭제 중 IndexedDB 정리에 실패했습니다: ${indexedDbResult.error.message}`);
+    }
+    throw new Error("저장된 기록 전체 삭제 중 IndexedDB 정리에 실패했습니다.");
+  }
 }
 
 export async function exportSessionData(

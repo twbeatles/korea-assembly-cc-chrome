@@ -4,16 +4,24 @@ import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
 import { DEFAULT_EXTENSION_SETTINGS, EXTENSION_STORAGE_KEY } from "../shared/constants";
-import { deleteSession, exportSessionData, listSessions } from "../storage/session-store";
+import { deleteAllSessions, deleteSession, exportSessionData, listSessions } from "../storage/session-store";
 import { getSettings } from "../storage/settings-store";
 import { getExportFormatLabel, getPersistedStatusLabel } from "../shared/ui-labels";
 import {
+  buildDeleteAllFailureMessage,
+  buildDeleteAllSuccessMessage,
+  buildHistoryRefreshMessage,
+  buildSelectedDeleteMessage,
   extractHistoryViewSettings,
+  resolveSelectedSessionIds,
   resolveSelectedSessionId,
+  selectAllSessionIds,
   selectHistoryViewSettings,
+  toggleSelectedSessionId,
 } from "./history-view-state";
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
+const HISTORY_PAGE_SESSION_LIMIT = 1000;
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -31,9 +39,31 @@ function confirmDeleteSession(target: SessionRecord): boolean {
   return window.confirm(`선택한 기록을 삭제할까요?\n${title}`);
 }
 
+function confirmDeleteSessions(targets: SessionRecord[], scopeLabel: string): boolean {
+  if (!targets.length) {
+    return false;
+  }
+
+  if (typeof window === "undefined" || typeof window.confirm !== "function") {
+    return true;
+  }
+
+  const previewTitles = targets
+    .slice(0, 3)
+    .map((target) => `- ${target.committeeName || target.title}`)
+    .join("\n");
+  const moreLabel =
+    targets.length > 3 ? `\n외 ${targets.length - 3}건` : "";
+
+  return window.confirm(
+    `${scopeLabel} 기록 ${targets.length}건을 삭제할까요?\n\n${previewTitles}${moreLabel}`,
+  );
+}
+
 export default function App() {
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string>("");
+  const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const [message, setMessage] = useState("기록을 불러오는 중입니다.");
   const [searchQuery, setSearchQuery] = useState("");
   const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
@@ -47,12 +77,20 @@ export default function App() {
     () => filterEntriesByQuery(selectedSession?.entries ?? [], searchQuery),
     [searchQuery, selectedSession],
   );
+  const checkedIdSet = useMemo(() => new Set(checkedIds), [checkedIds]);
+  const checkedSessions = useMemo(
+    () => sessions.filter((session) => checkedIdSet.has(session.id)),
+    [checkedIdSet, sessions],
+  );
+  const allSessionsChecked = sessions.length > 0 && checkedIds.length === sessions.length;
 
-  const refresh = async (): Promise<void> => {
-    const nextSessions = await listSessions({ limit: 200 });
+  const refresh = async (messageOnSuccess?: string): Promise<SessionRecord[]> => {
+    const nextSessions = await listSessions({ limit: HISTORY_PAGE_SESSION_LIMIT });
     setSessions(nextSessions);
     setSelectedId((current) => resolveSelectedSessionId(current, nextSessions));
-    setMessage(nextSessions.length ? "최신 기록부터 보여주고 있습니다." : "저장된 기록이 없습니다.");
+    setCheckedIds((current) => resolveSelectedSessionIds(current, nextSessions));
+    setMessage(messageOnSuccess ?? buildHistoryRefreshMessage(nextSessions.length));
+    return nextSessions;
   };
 
   useEffect(() => {
@@ -112,9 +150,97 @@ export default function App() {
       setMessage("기록 삭제를 취소했습니다.");
       return;
     }
-    await deleteSession(selectedSession.id);
-    setMessage("선택한 기록을 삭제했습니다.");
-    await refresh();
+
+    try {
+      await deleteSession(selectedSession.id);
+      await refresh("선택한 기록을 삭제했습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "기록 삭제에 실패했습니다.");
+    }
+  };
+
+  const deleteSessionIds = async (
+    ids: string[],
+  ): Promise<{
+    deletedCount: number;
+    failedCount: number;
+  }> => {
+    const results = await Promise.allSettled(ids.map((id) => deleteSession(id)));
+    return results.reduce(
+      (summary, result) => ({
+        deletedCount: summary.deletedCount + (result.status === "fulfilled" ? 1 : 0),
+        failedCount: summary.failedCount + (result.status === "rejected" ? 1 : 0),
+      }),
+      {
+        deletedCount: 0,
+        failedCount: 0,
+      },
+    );
+  };
+
+  const handleDeleteChecked = async (): Promise<void> => {
+    if (!checkedSessions.length) {
+      return;
+    }
+    if (!confirmDeleteSessions(checkedSessions, "선택한")) {
+      setMessage("선택 삭제를 취소했습니다.");
+      return;
+    }
+
+    try {
+      const result = await deleteSessionIds(checkedSessions.map((session) => session.id));
+      await refresh(
+        buildSelectedDeleteMessage(
+          checkedSessions.length,
+          result.deletedCount,
+          result.failedCount,
+        ),
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "선택 삭제에 실패했습니다.");
+    }
+  };
+
+  const handleDeleteAll = async (): Promise<void> => {
+    try {
+      const allSessions = await listSessions({ limit: Number.MAX_SAFE_INTEGER });
+      if (!allSessions.length) {
+        await refresh();
+        return;
+      }
+      if (!confirmDeleteSessions(allSessions, "전체")) {
+        setMessage("전체 삭제를 취소했습니다.");
+        return;
+      }
+
+      await deleteAllSessions();
+      setSearchQuery("");
+      await refresh(buildDeleteAllSuccessMessage(allSessions.length));
+    } catch (error) {
+      try {
+        await refresh(
+          buildDeleteAllFailureMessage(
+            error instanceof Error ? `(${error.message})` : undefined,
+          ),
+        );
+      } catch (refreshError) {
+        setMessage(
+          refreshError instanceof Error
+            ? refreshError.message
+            : "저장된 기록 목록을 다시 불러오지 못했습니다.",
+        );
+      }
+    }
+  };
+
+  const handleToggleChecked = (sessionId: string): void => {
+    setCheckedIds((current) => toggleSelectedSessionId(current, sessionId));
+  };
+
+  const handleToggleCheckAll = (): void => {
+    setCheckedIds((current) =>
+      current.length === sessions.length ? [] : selectAllSessionIds(sessions),
+    );
   };
 
   const handleReopen = async (): Promise<void> => {
@@ -167,20 +293,45 @@ export default function App() {
 
       <section className="layout">
         <aside className="session-list">
+          <div className="session-list-toolbar">
+            <span>
+              총 {sessions.length}개 / 선택 {checkedIds.length}개
+            </span>
+            <div className="session-list-actions">
+              <button className="secondary" onClick={handleToggleCheckAll} disabled={!sessions.length}>
+                {allSessionsChecked ? "선택 해제" : "전체 선택"}
+              </button>
+              <button className="secondary" onClick={() => void handleDeleteChecked()} disabled={!checkedIds.length}>
+                선택 삭제
+              </button>
+              <button className="secondary" onClick={() => void handleDeleteAll()} disabled={!sessions.length}>
+                전체 삭제
+              </button>
+            </div>
+          </div>
           {sessions.length ? (
             sessions.map((session) => (
-              <button
-                key={session.id}
-                className={`session-item ${selectedSession?.id === session.id ? "active" : ""}`}
-                onClick={() => setSelectedId(session.id)}
-              >
-                <strong>{session.committeeName || session.title}</strong>
-                <span>{formatDate(session.startedAt)}</span>
-                <span>
-                  {session.subtitleCount}문장 / {session.charCount}자
-                </span>
-                <small>{getPersistedStatusLabel(session.status)}</small>
-              </button>
+              <div key={session.id} className="session-item-row">
+                <label className="session-check">
+                  <input
+                    type="checkbox"
+                    checked={checkedIdSet.has(session.id)}
+                    onChange={() => handleToggleChecked(session.id)}
+                    aria-label={`${session.committeeName || session.title} 선택`}
+                  />
+                </label>
+                <button
+                  className={`session-item ${selectedSession?.id === session.id ? "active" : ""}`}
+                  onClick={() => setSelectedId(session.id)}
+                >
+                  <strong>{session.committeeName || session.title}</strong>
+                  <span>{formatDate(session.startedAt)}</span>
+                  <span>
+                    {session.subtitleCount}문장 / {session.charCount}자
+                  </span>
+                  <small>{getPersistedStatusLabel(session.status)}</small>
+                </button>
+              </div>
             ))
           ) : (
             <div className="empty-card">아직 저장해 둔 기록이 없습니다.</div>

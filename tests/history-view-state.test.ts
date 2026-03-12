@@ -1,7 +1,14 @@
 import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
 import {
+  buildDeleteAllFailureMessage,
+  buildDeleteAllSuccessMessage,
+  buildHistoryRefreshMessage,
+  buildSelectedDeleteMessage,
   extractHistoryViewSettings,
+  resolveSelectedSessionIds,
   resolveSelectedSessionId,
+  selectAllSessionIds,
+  toggleSelectedSessionId,
 } from "../src/history/history-view-state";
 
 describe("history view state helpers", () => {
@@ -35,5 +42,42 @@ describe("history view state helpers", () => {
       recentCopyLineCount: DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
       filenamePattern: DEFAULT_EXTENSION_SETTINGS.filenamePattern,
     });
+  });
+
+  it("keeps only still-existing checked ids and toggles selection cleanly", () => {
+    expect(
+      resolveSelectedSessionIds(["session_1", "session_3"], [
+        { id: "session_1" },
+        { id: "session_2" },
+      ]),
+    ).toEqual(["session_1"]);
+
+    expect(toggleSelectedSessionId(["session_1"], "session_2")).toEqual([
+      "session_1",
+      "session_2",
+    ]);
+    expect(toggleSelectedSessionId(["session_1", "session_2"], "session_1")).toEqual([
+      "session_2",
+    ]);
+    expect(selectAllSessionIds([{ id: "session_1" }, { id: "session_2" }])).toEqual([
+      "session_1",
+      "session_2",
+    ]);
+  });
+
+  it("builds refresh and deletion status messages without losing action context", () => {
+    expect(buildHistoryRefreshMessage(3)).toBe("최신 기록부터 보여주고 있습니다.");
+    expect(buildHistoryRefreshMessage(0)).toBe("저장된 기록이 없습니다.");
+
+    expect(buildSelectedDeleteMessage(3, 3, 0)).toBe("선택한 기록 3건을 삭제했습니다.");
+    expect(buildSelectedDeleteMessage(3, 2, 1)).toBe(
+      "선택한 기록 2건을 삭제했고 1건은 삭제하지 못했습니다.",
+    );
+    expect(buildSelectedDeleteMessage(3, 0, 3)).toBe("선택한 기록 3건을 삭제하지 못했습니다.");
+
+    expect(buildDeleteAllSuccessMessage(12)).toBe("저장된 기록 12건을 모두 삭제했습니다.");
+    expect(buildDeleteAllFailureMessage()).toBe(
+      "저장된 기록 전체 삭제를 완료하지 못했습니다. 남은 기록을 다시 확인해주세요.",
+    );
   });
 });

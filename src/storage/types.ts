@@ -32,6 +32,7 @@ export interface SessionStoreApi {
   loadSession: (id: string) => Promise<SessionRecord | undefined>;
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;
   deleteSession: (id: string) => Promise<void>;
+  deleteAllSessions: () => Promise<void>;
   updateRunningSession: (session: SessionRecord) => Promise<SessionRecord>;
   exportSessionData: (
     session: SessionRecord,

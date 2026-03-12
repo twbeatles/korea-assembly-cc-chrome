@@ -156,9 +156,11 @@ offscreen.html
 - history 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 `최근 N줄 복사`를 지원합니다.
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 `chrome.storage.onChanged` 로 즉시 반영합니다.
+- history 의 `전체 삭제` 는 현재 로드된 1000건만이 아니라 저장소 전체를 비워야 하며, 선택 삭제는 부분 성공/실패 요약을 남긴 뒤 항상 refresh 해야 합니다.
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `화면 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
+- capture notice 는 `정상 수집`, `fallback 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 합니다.
 - 브라우저/확장 cold start 시 남아 있던 persisted `running` 세션은 `stopped` 로 자동 정리됩니다.
 
 ## 8. 작업 시 주의사항

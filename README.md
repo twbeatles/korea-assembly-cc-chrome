@@ -59,6 +59,7 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - 페이지 오른쪽 패널에서 시작 / 중지 / 저장 / 파일 저장
 - options에서 수집 설정 조정
 - history에서 저장된 기록 목록, 삭제, 재열기, 파일 저장, 기록 내부 검색 / 복사
+- history의 `전체 삭제`는 현재 화면이 아니라 저장소 전체를 기준으로 동작하고, 선택 삭제는 성공/실패 건수를 요약해 표시합니다
 
 ## 제외 범위
 
@@ -187,6 +188,7 @@ npm run build
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도합니다
+- 패널 notice는 `정상 수집 / fallback 수집 / reset 복구 중`을 구분해 표시합니다
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 
 ### injected observer

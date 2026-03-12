@@ -176,16 +176,23 @@ const PANEL_STYLE = `
     border-radius: 16px;
     background: #f2f6fb;
     border: 1px solid rgba(20, 54, 90, 0.06);
-    overflow: auto;
   }
 
   .preview-box {
+    height: 132px;
+    overflow: hidden;
+  }
+
+  .preview-scroll {
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
     padding: 16px 18px;
     font-size: 14px;
     font-weight: 500;
     line-height: 1.6;
-    min-height: 60px;
-    max-height: 140px;
     white-space: pre-wrap;
     color: #18344f;
   }
@@ -195,6 +202,8 @@ const PANEL_STYLE = `
     gap: 10px;
     padding: 12px;
     max-height: min(36vh, 320px);
+    overflow: auto;
+    scrollbar-gutter: stable both-edges;
   }
 
   .live-row {
@@ -294,8 +303,12 @@ const PANEL_STYLE = `
     }
 
     .preview-box {
+      height: 112px;
+    }
+
+    .preview-scroll {
       font-size: 13px;
-      min-height: 50px;
+      padding: 14px 16px;
     }
   }
 `;
@@ -486,6 +499,9 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   previewBox.setAttribute("role", "status");
   previewBox.setAttribute("aria-live", "polite");
   previewBox.setAttribute("aria-atomic", "true");
+  const previewScroll = document.createElement("div");
+  previewScroll.className = "preview-scroll";
+  previewBox.append(previewScroll);
 
   const liveRowHeader = document.createElement("div");
   liveRowHeader.className = "section-header";
@@ -573,8 +589,9 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       const nextPreviewText =
         nextState.livePreviewText.trim() || nextState.previewText.trim() || emptyPreviewText;
       const nextPreviewSignature = buildPreviewSignature(nextPreviewText);
-      if (renderedPreviewSignature !== nextPreviewSignature) {
-        previewBox.textContent = nextPreviewText;
+      const previewChanged = renderedPreviewSignature !== nextPreviewSignature;
+      if (previewChanged) {
+        previewScroll.textContent = nextPreviewText;
         renderedPreviewSignature = nextPreviewSignature;
       }
 
@@ -643,6 +660,9 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       });
 
       if (!nextState.collapsed && nextState.autoScroll) {
+        if (previewChanged) {
+          previewScroll.scrollTop = previewScroll.scrollHeight;
+        }
         if (liveRowsChanged) {
           liveRowList.scrollTop = liveRowList.scrollHeight;
         }

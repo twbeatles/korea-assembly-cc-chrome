@@ -184,9 +184,56 @@ describe("in-page panel", () => {
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
     const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const previewScroll = shadowRoot?.querySelector(".preview-scroll") as HTMLDivElement | null;
+
+    if (previewScroll) {
+      Object.defineProperty(previewScroll, "scrollHeight", {
+        configurable: true,
+        value: 420,
+      });
+      previewScroll.scrollTop = 17;
+    }
 
     expect(liveRowList?.scrollTop ?? 0).toBe(0);
+    expect(previewScroll?.scrollTop ?? 0).toBe(17);
     expect(shadowRoot?.querySelector(".entry-list")).toBeNull();
+
+    controller.destroy();
+  });
+
+  it("auto-scrolls the preview box when preview text grows", () => {
+    const controller = createInPagePanel({
+      onStartCapture: vi.fn(),
+      onStopCapture: vi.fn(),
+      onClearSession: vi.fn(),
+      onSaveSession: vi.fn(),
+      onExport: vi.fn(),
+      onCopyRecent: vi.fn(),
+      onOpenHistory: vi.fn(),
+      onOpenOptions: vi.fn(),
+      onExpand: vi.fn(),
+      onCollapse: vi.fn(),
+    });
+
+    controller.update(buildPanelState());
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const previewScroll = shadowRoot?.querySelector(".preview-scroll") as HTMLDivElement | null;
+    expect(previewScroll).not.toBeNull();
+
+    Object.defineProperty(previewScroll, "scrollHeight", {
+      configurable: true,
+      value: 560,
+    });
+    previewScroll!.scrollTop = 0;
+
+    controller.update(
+      buildPanelState({
+        livePreviewText: "안녕하세요\n두 번째 줄입니다.\n세 번째 줄입니다.",
+      }),
+    );
+
+    expect(previewScroll?.scrollTop).toBe(560);
 
     controller.destroy();
   });

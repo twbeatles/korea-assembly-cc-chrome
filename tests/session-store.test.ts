@@ -1,6 +1,7 @@
 import type { SessionRecord } from "../src/core/subtitle-models";
 import {
   closeRunningSessionsOnStartup,
+  deleteAllSessions,
   deleteSession,
   exportSessionData,
   listSessions,
@@ -269,6 +270,44 @@ describe("session store", () => {
     try {
       expect((await loadSession("session_fallback_only"))?.status).toBe("stopped");
       await expect(loadSession("session_shared")).resolves.toBeUndefined();
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+  });
+
+  it("deletes all persisted sessions across IndexedDB and fallback storage", async () => {
+    await saveSession(buildSession("session_idb_saved", "saved"));
+
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await saveSession(buildSession("session_fallback_saved", "saved"));
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+
+    await deleteAllSessions();
+
+    await expect(listSessions({ limit: 10 })).resolves.toEqual([]);
+    await expect(loadSession("session_idb_saved")).resolves.toBeUndefined();
+
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await expect(loadSession("session_fallback_saved")).resolves.toBeUndefined();
     } finally {
       Object.defineProperty(globalThis, "indexedDB", {
         configurable: true,

@@ -74,6 +74,7 @@ import {
   rememberFailedStoppedSession,
   resolveFailedStoppedSessionGuard,
 } from "./failed-stopped-session";
+import { RESET_CAPTURE_NOTICE, resolveCaptureNotice } from "./capture-notice";
 import { shouldEmitLocalProbeUpdate } from "./local-polling";
 import { estimateRecentRaw } from "./dom-probe";
 import {
@@ -130,8 +131,12 @@ let liveCaptureLedger = createEmptyLiveCaptureLedger();
 let extensionContextInvalidated = false;
 let failedStoppedSessionGuard = createEmptyFailedStoppedSessionGuard();
 
-function setPanelNotice(message: string): void {
+function setPanelNotice(message: string): boolean {
+  if (panelNotice === message) {
+    return false;
+  }
   panelNotice = message;
+  return true;
 }
 
 function confirmSessionClear(): boolean {
@@ -417,7 +422,7 @@ function scheduleDeferredSubtitleReset(): void {
 
     state = applyReset(state, Date.now(), settings).state;
     clearStructuredRuntimeState();
-    setPanelNotice("자막 영역이 비워져서 내용을 다시 모으고 있습니다.");
+    setPanelNotice(RESET_CAPTURE_NOTICE);
     scheduleRunningPersist();
     syncUserInterfaces();
   }, SUBTITLE_RESET_GRACE_MS);
@@ -769,7 +774,17 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       return;
     }
 
-    if (captureEvent.captureMode === "structured" && hasOnlyStableRows(captureEvent.rows)) {
+    const hasStableStructuredRows =
+      captureEvent.captureMode === "structured" && hasOnlyStableRows(captureEvent.rows);
+    const noticeChanged = setPanelNotice(
+      resolveCaptureNotice({
+        captureMode: captureEvent.captureMode,
+        observerActive: state.observerActive,
+        hasStableRows: hasStableStructuredRows,
+      }),
+    );
+
+    if (hasStableStructuredRows) {
       const changed = applyStructuredRowsEvent(
         captureEvent.rows,
         captureEvent.previewText,
@@ -789,6 +804,8 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       }
       if (changed) {
         scheduleRunningPersist();
+      }
+      if (changed || noticeChanged) {
         syncUserInterfaces();
       }
       return;
@@ -823,7 +840,7 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     if (result.changed) {
       scheduleRunningPersist();
     }
-    if (fallbackReconciliation.changed || result.changed) {
+    if (fallbackReconciliation.changed || result.changed || noticeChanged) {
       syncUserInterfaces();
     }
   } catch (error) {
