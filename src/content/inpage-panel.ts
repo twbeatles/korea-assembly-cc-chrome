@@ -10,6 +10,17 @@ const PANEL_STYLE = `
     all: initial;
   }
 
+  :host {
+    --panel-title-size: clamp(22px, 1.2vw + 16px, 28px);
+    --panel-section-size: clamp(19px, 0.85vw + 14px, 24px);
+    --panel-preview-title-size: clamp(16px, 0.45vw + 13px, 19px);
+    --panel-body-size: clamp(15px, 0.45vw + 12px, 18px);
+    --panel-caption-size: clamp(12.5px, 0.28vw + 11px, 14px);
+    --panel-live-row-size: clamp(17px, 0.55vw + 14px, 21px);
+    --panel-button-size: clamp(14px, 0.32vw + 12px, 16px);
+    --panel-chip-size: clamp(12px, 0.18vw + 11px, 13px);
+  }
+
   .host {
     position: fixed;
     top: 12px;
@@ -20,13 +31,14 @@ const PANEL_STYLE = `
   }
 
   .panel {
-    width: min(468px, calc(100vw - 24px));
+    width: min(496px, calc(100vw - 24px));
     height: calc(100vh - 24px);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: clamp(12px, 0.45vw + 10px, 16px);
     box-sizing: border-box;
-    padding: 16px 16px 14px;
+    padding: clamp(16px, 0.55vw + 12px, 20px) clamp(16px, 0.55vw + 12px, 20px)
+      clamp(14px, 0.4vw + 12px, 18px);
     overflow: hidden auto;
     border-radius: 24px;
     border: 1px solid rgba(255, 255, 255, 0.6);
@@ -67,8 +79,9 @@ const PANEL_STYLE = `
   .header-actions,
   .action-row,
   .footer-actions,
-  .hero-header,
-  .section-header {
+  .section-header,
+  .section-meta,
+  .preview-header {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -76,8 +89,8 @@ const PANEL_STYLE = `
 
   .header,
   .footer-actions,
-  .hero-header,
-  .section-header {
+  .section-header,
+  .preview-header {
     justify-content: space-between;
   }
 
@@ -96,37 +109,40 @@ const PANEL_STYLE = `
   .eyebrow {
     margin: 0 0 4px;
     color: #5a7088;
-    font-size: 11px;
+    font-size: var(--panel-caption-size);
     letter-spacing: 0.08em;
     text-transform: uppercase;
   }
 
   .title-group h1,
-  .hero-copy h2,
-  .section-header h2 {
+  .section-header h2,
+  .preview-copy h2 {
     margin: 0;
   }
 
   .title-group h1 {
-    font-size: 20px;
+    font-size: var(--panel-title-size);
+    line-height: 1.15;
   }
 
   .title-group p:last-child,
-  .hero-copy p {
+  .section-copy p,
+  .preview-copy p {
     margin: 6px 0 0;
     color: #4d6580;
-    font-size: 12px;
+    font-size: var(--panel-caption-size);
     line-height: 1.45;
   }
 
   .status-badge,
   .header-count,
-  .mode-badge {
+  .mode-badge,
+  .section-count {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: var(--panel-chip-size);
     font-weight: 700;
   }
 
@@ -165,12 +181,12 @@ const PANEL_STYLE = `
   }
 
   .hero-card,
-  .controls-card,
-  .section-card {
+  .controls-card {
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.6);
-    border: 1px solid rgba(255, 255, 255, 0.7); box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.5);
-    padding: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.7);
+    box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.5);
+    padding: clamp(14px, 0.45vw + 12px, 18px);
   }
 
   .hero-card {
@@ -178,7 +194,7 @@ const PANEL_STYLE = `
     flex-direction: column;
     flex: 1;
     min-height: 0;
-    gap: 10px;
+    gap: clamp(14px, 0.45vw + 12px, 18px);
   }
 
   .controls-card {
@@ -187,9 +203,63 @@ const PANEL_STYLE = `
     flex-shrink: 0;
   }
 
-  .hero-header,
-  .section-header {
+  .section-header,
+  .preview-header {
     flex-shrink: 0;
+  }
+
+  .section-header.primary {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .section-copy,
+  .preview-copy {
+    min-width: 0;
+  }
+
+  .section-copy h2 {
+    font-size: var(--panel-section-size);
+    line-height: 1.2;
+  }
+
+  .preview-copy h2 {
+    font-size: var(--panel-preview-title-size);
+    line-height: 1.15;
+  }
+
+  .section-copy p {
+    max-width: 30ch;
+  }
+
+  .section-meta {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .preview-section {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: clamp(12px, 0.35vw + 10px, 16px);
+    border-radius: 18px;
+    background: linear-gradient(180deg, rgba(242, 246, 251, 0.94), rgba(235, 242, 249, 0.82));
+    border: 1px solid rgba(20, 54, 90, 0.06);
+  }
+
+  .preview-header {
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .preview-copy p {
+    max-width: 32ch;
+  }
+
+  .preview-toggle {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding-inline: 14px;
   }
 
   .preview-box,
@@ -200,49 +270,69 @@ const PANEL_STYLE = `
   }
 
   .preview-box {
-    height: 132px;
     overflow: hidden;
     flex-shrink: 0;
+    min-height: clamp(112px, 17vh, 152px);
+    max-height: clamp(112px, 17vh, 152px);
+    opacity: 1;
+    transition:
+      max-height 180ms ease,
+      min-height 180ms ease,
+      opacity 180ms ease,
+      border-color 180ms ease;
+  }
+
+  .preview-section.collapsed .preview-box {
+    min-height: 0;
+    max-height: 0;
+    opacity: 0;
+    border-color: transparent;
+  }
+
+  .preview-section.collapsed .preview-scroll {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 
   .preview-scroll {
     box-sizing: border-box;
     width: 100%;
-    height: 100%;
+    height: clamp(112px, 17vh, 152px);
     overflow: auto;
     scrollbar-gutter: stable both-edges;
-    padding: 16px 18px;
-    font-size: 14px;
+    padding: clamp(14px, 0.4vw + 12px, 18px);
+    font-size: var(--panel-body-size);
     font-weight: 500;
-    line-height: 1.6;
+    line-height: 1.65;
     white-space: pre-wrap;
     color: #18344f;
   }
 
   .live-row-list {
-    flex: 1;
+    flex: 1.65;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 12px;
+    gap: 12px;
+    padding: clamp(14px, 0.45vw + 12px, 18px);
     overflow: auto;
     scrollbar-gutter: stable both-edges;
     min-height: 0;
+    min-height: clamp(260px, 40vh, 500px);
   }
 
   .live-row {
-    padding: 10px 12px;
-    border-radius: 12px;
+    padding: clamp(14px, 0.4vw + 12px, 18px) clamp(15px, 0.45vw + 12px, 20px);
+    border-radius: 14px;
     background: #ffffff;
     border: 1px solid rgba(20, 54, 90, 0.08);
+    box-shadow: 0 8px 18px rgba(20, 54, 90, 0.06);
   }
 
-  .live-row time,
   .live-row time {
     display: block;
-    margin-bottom: 4px;
+    margin-bottom: 6px;
     color: #5a7088;
-    font-size: 11px;
+    font-size: var(--panel-caption-size);
   }
 
   .live-row p,
@@ -250,14 +340,22 @@ const PANEL_STYLE = `
     margin: 0;
     color: #10263c;
     font-weight: 500;
-    line-height: 1.6;
+    line-height: 1.65;
+    font-size: var(--panel-live-row-size);
+    letter-spacing: -0.01em;
+  }
+
+  .section-count {
+    padding: 6px 10px;
+    background: #e8f0fa;
+    color: #2e526f;
   }
 
   .notice {
     padding: 10px 12px;
     border-radius: 14px;
     background: rgba(227, 236, 247, 0.72);
-    font-size: 13px;
+    font-size: var(--panel-body-size);
     color: #314b66;
     line-height: 1.5;
     flex-shrink: 0;
@@ -281,7 +379,7 @@ const PANEL_STYLE = `
   .export-row button {
     flex: 1;
     padding: 8px 4px;
-    font-size: 12px;
+    font-size: var(--panel-chip-size);
     color: #314b66;
     background: #f5f8fc;
     border: 1px solid rgba(20, 54, 90, 0.08);
@@ -297,10 +395,10 @@ const PANEL_STYLE = `
     background: #173f6e;
     color: #ffffff;
     font: inherit;
-    font-size: 13px;
+    font-size: var(--panel-button-size);
     font-weight: 700;
     cursor: pointer;
-    padding: 10px 12px;
+    padding: clamp(10px, 0.28vw + 9px, 12px) clamp(12px, 0.28vw + 10px, 14px);
   }
 
   button.icon {
@@ -332,12 +430,28 @@ const PANEL_STYLE = `
     }
 
     .preview-box {
-      height: 112px;
+      min-height: clamp(96px, 15vh, 120px);
+      max-height: clamp(96px, 15vh, 120px);
     }
 
     .preview-scroll {
-      font-size: 13px;
+      height: clamp(96px, 15vh, 120px);
+      font-size: 14px;
       padding: 14px 16px;
+    }
+
+    .live-row-list {
+      min-height: clamp(240px, 42vh, 420px);
+    }
+
+    .preview-header,
+    .section-header.primary {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .section-meta {
+      justify-content: flex-start;
     }
   }
 `;
@@ -345,6 +459,7 @@ const PANEL_STYLE = `
 export interface InPagePanelState {
   visible: boolean;
   collapsed: boolean;
+  previewCollapsed: boolean;
   autoScroll: boolean;
   status: CaptureStatus;
   statusLabel: string;
@@ -373,6 +488,7 @@ export interface InPagePanelActions {
   onOpenDiagnostics: () => void;
   onExpand: () => void;
   onCollapse: () => void;
+  onTogglePreviewCollapsed: () => void;
 }
 
 export interface InPagePanelController {
@@ -440,6 +556,7 @@ export function buildInPagePanelState(
   snapshot: StatusSnapshot,
   options: {
     collapsed: boolean;
+    previewCollapsed: boolean;
     notice: string;
     autoScroll: boolean;
     recentCopyLineCount: number;
@@ -450,6 +567,7 @@ export function buildInPagePanelState(
   return {
     visible: snapshot.connected,
     collapsed: options.collapsed,
+    previewCollapsed: options.previewCollapsed,
     autoScroll: options.autoScroll,
     status: snapshot.status,
     statusLabel: getCaptureStatusLabel(snapshot.status),
@@ -505,34 +623,24 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const heroCard = document.createElement("section");
   heroCard.className = "hero-card";
-  const heroHeader = document.createElement("div");
-  heroHeader.className = "hero-header";
-  const heroCopy = document.createElement("div");
-  heroCopy.className = "hero-copy";
-  const heroTitle = document.createElement("h2");
-  heroTitle.textContent = UI_TEXT.livePreview;
-  const heroHint = document.createElement("p");
-  heroHint.textContent = "지금 화면에 보이는 자막을 먼저 보여줍니다.";
-  heroCopy.append(heroTitle, heroHint);
   const modeBadge = document.createElement("span");
   modeBadge.className = "mode-badge";
-  heroHeader.append(heroCopy, modeBadge);
-
-  const previewBox = document.createElement("div");
-  previewBox.className = "preview-box";
-  previewBox.setAttribute("role", "status");
-  previewBox.setAttribute("aria-live", "polite");
-  previewBox.setAttribute("aria-atomic", "true");
-  const previewScroll = document.createElement("div");
-  previewScroll.className = "preview-scroll";
-  previewBox.append(previewScroll);
 
   const liveRowHeader = document.createElement("div");
-  liveRowHeader.className = "section-header";
+  liveRowHeader.className = "section-header primary";
+  const liveRowCopy = document.createElement("div");
+  liveRowCopy.className = "section-copy";
   const liveRowTitle = document.createElement("h2");
   liveRowTitle.textContent = UI_TEXT.screenSubtitles;
+  const liveRowHint = document.createElement("p");
+  liveRowHint.textContent = "최근 화면 자막을 더 큰 글씨로 바로 확인합니다.";
+  liveRowCopy.append(liveRowTitle, liveRowHint);
+  const liveRowMeta = document.createElement("div");
+  liveRowMeta.className = "section-meta";
   const liveRowCount = document.createElement("span");
-  liveRowHeader.append(liveRowTitle, liveRowCount);
+  liveRowCount.className = "section-count";
+  liveRowMeta.append(modeBadge, liveRowCount);
+  liveRowHeader.append(liveRowCopy, liveRowMeta);
 
   const liveRowList = document.createElement("div");
   liveRowList.className = "live-row-list";
@@ -544,7 +652,32 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   liveRowEmpty.textContent = "화면에서 자막을 찾으면 최근 자막이 이곳에 누적됩니다.";
   liveRowList.append(liveRowEmpty);
 
-  heroCard.append(heroHeader, previewBox, liveRowHeader, liveRowList);
+  const previewSection = document.createElement("section");
+  previewSection.className = "preview-section";
+  const previewHeader = document.createElement("div");
+  previewHeader.className = "preview-header";
+  const previewCopy = document.createElement("div");
+  previewCopy.className = "preview-copy";
+  const previewTitle = document.createElement("h2");
+  previewTitle.textContent = UI_TEXT.livePreview;
+  const previewHint = document.createElement("p");
+  previewHint.textContent = "지금 화면에서 감지한 최신 자막 흐름을 보조로 표시합니다.";
+  previewCopy.append(previewTitle, previewHint);
+  const previewToggle = createButton("실시간 내용 접기", actions.onTogglePreviewCollapsed, "secondary preview-toggle");
+  previewToggle.setAttribute("aria-expanded", "true");
+  previewHeader.append(previewCopy, previewToggle);
+
+  const previewBox = document.createElement("div");
+  previewBox.className = "preview-box";
+  previewBox.setAttribute("role", "status");
+  previewBox.setAttribute("aria-live", "polite");
+  previewBox.setAttribute("aria-atomic", "true");
+  const previewScroll = document.createElement("div");
+  previewScroll.className = "preview-scroll";
+  previewBox.append(previewScroll);
+  previewSection.append(previewHeader, previewBox);
+
+  heroCard.append(liveRowHeader, liveRowList, previewSection);
 
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
@@ -596,6 +729,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const liveRowNodes = new Map<string, HTMLElement>();
   let renderedNotice = "";
   let renderedCollapsed = false;
+  let renderedPreviewCollapsed = false;
   let renderedPreviewSignature = "";
   let renderedLiveRowsSignature = "";
 
@@ -606,6 +740,16 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       if (renderedCollapsed !== nextState.collapsed) {
         wrapper.classList.toggle("collapsed", nextState.collapsed);
         renderedCollapsed = nextState.collapsed;
+      }
+
+      if (renderedPreviewCollapsed !== nextState.previewCollapsed) {
+        previewSection.classList.toggle("collapsed", nextState.previewCollapsed);
+        previewBox.setAttribute("aria-hidden", String(nextState.previewCollapsed));
+        previewToggle.textContent = nextState.previewCollapsed
+          ? "실시간 내용 펼치기"
+          : "실시간 내용 접기";
+        previewToggle.setAttribute("aria-expanded", String(!nextState.previewCollapsed));
+        renderedPreviewCollapsed = nextState.previewCollapsed;
       }
 
       statusBadge.textContent = nextState.statusLabel;
@@ -689,7 +833,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       });
 
       if (!nextState.collapsed && nextState.autoScroll) {
-        if (previewChanged) {
+        if (previewChanged && !nextState.previewCollapsed) {
           previewScroll.scrollTop = previewScroll.scrollHeight;
         }
         if (liveRowsChanged) {

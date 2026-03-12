@@ -71,6 +71,7 @@ function createLiveRows(): LivePanelRow[] {
 function buildPanelState(overrides?: Partial<Parameters<typeof buildInPagePanelState>[1]>) {
   return buildInPagePanelState(createSnapshot(), {
     collapsed: false,
+    previewCollapsed: false,
     notice: "자막을 모으는 중입니다.",
     autoScroll: true,
     recentCopyLineCount: 5,
@@ -93,6 +94,7 @@ function createActions() {
     onOpenDiagnostics: vi.fn(),
     onExpand: vi.fn(),
     onCollapse: vi.fn(),
+    onTogglePreviewCollapsed: vi.fn(),
   };
 }
 
@@ -102,6 +104,7 @@ describe("in-page panel", () => {
 
     expect(view.visible).toBe(true);
     expect(view.collapsed).toBe(false);
+    expect(view.previewCollapsed).toBe(false);
     expect(view.autoScroll).toBe(true);
     expect(view.statusLabel).toBe("수집 중");
     expect(view.committeeName).toBe("정무위원회");
@@ -131,9 +134,32 @@ describe("in-page panel", () => {
     expect(shadowRoot?.querySelector(".preview-box")?.getAttribute("role")).toBe("status");
     expect(shadowRoot?.querySelector(".live-row-list")?.getAttribute("role")).toBe("log");
     expect(shadowRoot?.querySelector(".notice")?.getAttribute("aria-live")).toBe("polite");
+    expect(shadowRoot?.querySelector(".preview-toggle")?.textContent).toBe("실시간 내용 접기");
 
     controller.destroy();
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
+  });
+
+  it("renders the screen subtitles section before the preview section", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(buildPanelState());
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const screenSubtitleTitle = shadowRoot?.querySelector(
+      ".section-header h2",
+    ) as HTMLHeadingElement | null;
+    const previewTitle = shadowRoot?.querySelector(".preview-header h2") as HTMLHeadingElement | null;
+
+    expect(screenSubtitleTitle?.textContent).toBe("화면 자막");
+    expect(previewTitle?.textContent).toBe("실시간 내용");
+    expect(screenSubtitleTitle).not.toBeNull();
+    expect(previewTitle).not.toBeNull();
+    expect(
+      screenSubtitleTitle!.compareDocumentPosition(previewTitle!) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    controller.destroy();
   });
 
   it("shows collapsed tab after clicking collapse", () => {
@@ -218,6 +244,79 @@ describe("in-page panel", () => {
     );
 
     expect(previewScroll?.scrollTop).toBe(560);
+
+    controller.destroy();
+  });
+
+  it("does not auto-scroll the preview box while the preview section is collapsed", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        previewCollapsed: true,
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const previewScroll = shadowRoot?.querySelector(".preview-scroll") as HTMLDivElement | null;
+    const previewSection = shadowRoot?.querySelector(".preview-section") as HTMLDivElement | null;
+    const previewToggle = shadowRoot?.querySelector(".preview-toggle") as HTMLButtonElement | null;
+    expect(previewScroll).not.toBeNull();
+    expect(previewSection?.classList.contains("collapsed")).toBe(true);
+    expect(previewToggle?.textContent).toBe("실시간 내용 펼치기");
+    expect(previewToggle?.getAttribute("aria-expanded")).toBe("false");
+
+    Object.defineProperty(previewScroll, "scrollHeight", {
+      configurable: true,
+      value: 560,
+    });
+    previewScroll!.scrollTop = 31;
+
+    controller.update(
+      buildPanelState({
+        previewCollapsed: true,
+        livePreviewText: "안녕하세요\n두 번째 줄입니다.\n세 번째 줄입니다.",
+      }),
+    );
+
+    expect(previewScroll?.scrollTop).toBe(31);
+
+    controller.destroy();
+  });
+
+  it("toggles the preview section without resetting its collapsed state on later updates", () => {
+    const actions = createActions();
+    const controller = createInPagePanel({
+      ...actions,
+      onTogglePreviewCollapsed: () => {
+        controller.update(
+          buildPanelState({
+            previewCollapsed: true,
+          }),
+        );
+      },
+    });
+
+    controller.update(buildPanelState());
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const previewSection = shadowRoot?.querySelector(".preview-section") as HTMLDivElement | null;
+    const previewToggle = shadowRoot?.querySelector(".preview-toggle") as HTMLButtonElement | null;
+
+    previewToggle?.click();
+
+    expect(previewSection?.classList.contains("collapsed")).toBe(true);
+    expect(previewToggle?.textContent).toBe("실시간 내용 펼치기");
+
+    controller.update(
+      buildPanelState({
+        previewCollapsed: true,
+        notice: "상태만 다시 동기화했습니다.",
+      }),
+    );
+
+    expect(previewSection?.classList.contains("collapsed")).toBe(true);
+    expect(previewToggle?.textContent).toBe("실시간 내용 펼치기");
 
     controller.destroy();
   });

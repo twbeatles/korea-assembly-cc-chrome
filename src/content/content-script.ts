@@ -137,6 +137,7 @@ let localHadProbeText = false;
 let topFallbackMissStreak = 0;
 let lastSuccessfulFallbackFramePath: number[] | null = null;
 let panelCollapsed = false;
+let previewCollapsed = false;
 let panelNotice = DEFAULT_IN_PAGE_NOTICE;
 let inPagePanel: InPagePanelController | null = null;
 let frameForwardNonce = "";
@@ -355,6 +356,7 @@ function updateInPagePanel(): void {
   inPagePanel.update(
     buildInPagePanelState(buildStatusSnapshot(false), {
       collapsed: panelCollapsed,
+      previewCollapsed,
       notice: panelNotice,
       autoScroll: settings.autoScroll,
       recentCopyLineCount: settings.recentCopyLineCount,
@@ -1286,6 +1288,10 @@ function mountInPagePanel(): void {
     },
     onExpand: openInPagePanel,
     onCollapse: collapseInPagePanel,
+    onTogglePreviewCollapsed: () => {
+      previewCollapsed = !previewCollapsed;
+      syncUserInterfaces();
+    },
   });
 
   updateInPagePanel();
