@@ -106,7 +106,7 @@ import { hasOnlyStableRows, resolveRuntimeCaptureNotice } from "./subtitle-event
 const isTopFrame = window.top === window;
 const localFramePath = computeCurrentFramePath();
 const injectedScriptId = "assembly-subtitle-observer-script";
-const DEFAULT_IN_PAGE_NOTICE = "페이지 오른쪽에서 화면 자막을 바로 보고 있습니다.";
+const DEFAULT_IN_PAGE_NOTICE = "페이지 오른쪽에서 수집된 자막을 바로 보고 있습니다.";
 const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-script";
 const SUBTITLE_RESET_GRACE_MS = 1000;
 const INVALIDATED_CONTEXT_NOTICE = "Extension was updated. Please refresh the page (F5).";
@@ -137,7 +137,7 @@ let localHadProbeText = false;
 let topFallbackMissStreak = 0;
 let lastSuccessfulFallbackFramePath: number[] | null = null;
 let panelCollapsed = false;
-let previewCollapsed = false;
+let previewCollapsed = true;
 let panelNotice = DEFAULT_IN_PAGE_NOTICE;
 let inPagePanel: InPagePanelController | null = null;
 let frameForwardNonce = "";
@@ -1143,7 +1143,7 @@ async function copyRecentSessionLines(): Promise<void> {
   await copyTextToClipboard(copyText);
   setPanelNotice(
     visibleEntries.length
-      ? `화면 자막 ${Math.min(visibleEntries.length, settings.recentCopyLineCount)}줄을 복사했습니다.`
+      ? `수집된 자막 ${Math.min(visibleEntries.length, settings.recentCopyLineCount)}줄을 복사했습니다.`
       : `최근 ${settings.recentCopyLineCount}줄을 복사했습니다.`,
   );
   syncUserInterfaces();

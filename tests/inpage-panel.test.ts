@@ -71,7 +71,7 @@ function createLiveRows(): LivePanelRow[] {
 function buildPanelState(overrides?: Partial<Parameters<typeof buildInPagePanelState>[1]>) {
   return buildInPagePanelState(createSnapshot(), {
     collapsed: false,
-    previewCollapsed: false,
+    previewCollapsed: true,
     notice: "자막을 모으는 중입니다.",
     autoScroll: true,
     recentCopyLineCount: 5,
@@ -104,7 +104,7 @@ describe("in-page panel", () => {
 
     expect(view.visible).toBe(true);
     expect(view.collapsed).toBe(false);
-    expect(view.previewCollapsed).toBe(false);
+    expect(view.previewCollapsed).toBe(true);
     expect(view.autoScroll).toBe(true);
     expect(view.statusLabel).toBe("수집 중");
     expect(view.committeeName).toBe("정무위원회");
@@ -125,16 +125,17 @@ describe("in-page panel", () => {
     const shadowRoot = host?.shadowRoot;
     expect(shadowRoot?.textContent).toContain("국회 자막 도우미");
     expect(shadowRoot?.textContent).toContain("실시간 내용");
-    expect(shadowRoot?.textContent).toContain("화면 자막");
+    expect(shadowRoot?.textContent).toContain("수집된 자막");
     expect(shadowRoot?.textContent).toContain("수집 진단");
     expect(shadowRoot?.textContent).toContain("환경 설정");
     expect(shadowRoot?.textContent).not.toContain("방금 나온 자막");
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
+    expect(shadowRoot?.querySelector(".panel-scroll")).not.toBeNull();
 
     expect(shadowRoot?.querySelector(".preview-box")?.getAttribute("role")).toBe("status");
     expect(shadowRoot?.querySelector(".live-row-list")?.getAttribute("role")).toBe("log");
     expect(shadowRoot?.querySelector(".notice")?.getAttribute("aria-live")).toBe("polite");
-    expect(shadowRoot?.querySelector(".preview-toggle")?.textContent).toBe("실시간 내용 접기");
+    expect(shadowRoot?.querySelector(".preview-toggle")?.textContent).toBe("실시간 내용 펼치기");
 
     controller.destroy();
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
@@ -151,7 +152,7 @@ describe("in-page panel", () => {
     ) as HTMLHeadingElement | null;
     const previewTitle = shadowRoot?.querySelector(".preview-header h2") as HTMLHeadingElement | null;
 
-    expect(screenSubtitleTitle?.textContent).toBe("화면 자막");
+    expect(screenSubtitleTitle?.textContent).toBe("수집된 자막");
     expect(previewTitle?.textContent).toBe("실시간 내용");
     expect(screenSubtitleTitle).not.toBeNull();
     expect(previewTitle).not.toBeNull();
@@ -239,6 +240,7 @@ describe("in-page panel", () => {
 
     controller.update(
       buildPanelState({
+        previewCollapsed: false,
         livePreviewText: "안녕하세요\n두 번째 줄입니다.\n세 번째 줄입니다.",
       }),
     );
@@ -291,7 +293,7 @@ describe("in-page panel", () => {
       onTogglePreviewCollapsed: () => {
         controller.update(
           buildPanelState({
-            previewCollapsed: true,
+            previewCollapsed: false,
           }),
         );
       },
@@ -305,18 +307,18 @@ describe("in-page panel", () => {
 
     previewToggle?.click();
 
-    expect(previewSection?.classList.contains("collapsed")).toBe(true);
-    expect(previewToggle?.textContent).toBe("실시간 내용 펼치기");
+    expect(previewSection?.classList.contains("collapsed")).toBe(false);
+    expect(previewToggle?.textContent).toBe("실시간 내용 접기");
 
     controller.update(
       buildPanelState({
-        previewCollapsed: true,
+        previewCollapsed: false,
         notice: "상태만 다시 동기화했습니다.",
       }),
     );
 
-    expect(previewSection?.classList.contains("collapsed")).toBe(true);
-    expect(previewToggle?.textContent).toBe("실시간 내용 펼치기");
+    expect(previewSection?.classList.contains("collapsed")).toBe(false);
+    expect(previewToggle?.textContent).toBe("실시간 내용 접기");
 
     controller.destroy();
   });

@@ -20,7 +20,7 @@ export const UI_TEXT = {
   openDiagnostics: "수집 진단",
   openPanel: "페이지 패널 열기",
   livePreview: "실시간 내용",
-  screenSubtitles: "화면 자막",
+  screenSubtitles: "수집된 자막",
   copyRecent: "최근 N줄 복사",
   search: "내용 찾기",
   copy: "복사",
