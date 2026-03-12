@@ -106,7 +106,7 @@ import { hasOnlyStableRows, resolveRuntimeCaptureNotice } from "./subtitle-event
 const isTopFrame = window.top === window;
 const localFramePath = computeCurrentFramePath();
 const injectedScriptId = "assembly-subtitle-observer-script";
-const DEFAULT_IN_PAGE_NOTICE = "???섏씠吏 ?ㅻⅨ履쎌뿉???먮쭑??諛붾줈 蹂????덉뒿?덈떎.";
+const DEFAULT_IN_PAGE_NOTICE = "페이지 오른쪽에서 화면 자막을 바로 보고 있습니다.";
 const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-script";
 const SUBTITLE_RESET_GRACE_MS = 1000;
 const INVALIDATED_CONTEXT_NOTICE = "Extension was updated. Please refresh the page (F5).";
@@ -160,7 +160,7 @@ function confirmSessionClear(): boolean {
     return true;
   }
 
-  return window.confirm("?꾩옱 ?몄뀡 湲곕줉??鍮꾩슦怨??ㅼ떆 ?쒖옉?좉퉴??");
+  return window.confirm("현재 세션 기록을 비우고 다시 시작할까요?");
 }
 
 function confirmFailedStoppedSessionDiscard(message: string): boolean {
@@ -498,7 +498,7 @@ function scheduleRunningPersist(): void {
       syncUserInterfaces();
     },
     onError: (error) => {
-      reportRuntimeError("?ㅽ뻾 以??몄뀡 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.", error);
+      reportRuntimeError("수집 중 세션 저장에 실패했습니다.", error);
     },
   });
 }
@@ -512,10 +512,10 @@ async function persistStoppedSession(record: SessionRecord): Promise<void> {
     const saved = await saveSession(record);
     failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
     state = applyPersistSuccess(state, saved.updatedAt);
-    setPanelNotice("紐⑥? ?먮쭑????ν뻽?듬땲??");
+    setPanelNotice("모든 자막을 저장했습니다.");
   } catch (error) {
     failedStoppedSessionGuard = rememberFailedStoppedSession(record, error);
-    reportRuntimeError("以묒????몄뀡 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.", error);
+    reportRuntimeError("종료된 세션 저장에 실패했습니다.", error);
   }
 }
 
@@ -554,13 +554,13 @@ function persistSessionRecordInBackground(record: SessionRecord, retryAttempt = 
       (response?: BackgroundCommandResponse) => {
         const lastError = chrome.runtime.lastError;
         if (lastError) {
-          handlePersistFailure("諛깃렇?쇱슫???몄뀡 ????붿껌???ㅽ뙣?덉뒿?덈떎.", lastError.message);
+          handlePersistFailure("백그라운드 세션 저장 요청이 실패했습니다.", lastError.message);
           return;
         }
 
         if (!response?.ok) {
           handlePersistFailure(
-            response?.error || "諛깃렇?쇱슫???몄뀡 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.",
+            response?.error || "백그라운드 세션 저장에 실패했습니다.",
             response,
           );
           return;
@@ -575,7 +575,7 @@ function persistSessionRecordInBackground(record: SessionRecord, retryAttempt = 
       },
     );
   } catch (error) {
-    handlePersistFailure("諛깃렇?쇱슫???몄뀡 ????꾩넚???ㅽ뙣?덉뒿?덈떎.", error);
+    handlePersistFailure("백그라운드 세션 저장 전송이 실패했습니다.", error);
   }
 }
 
@@ -624,12 +624,12 @@ async function saveCurrentSessionSnapshot(): Promise<void> {
       failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
     }
     state = applyPersistSuccess(state, saved.updatedAt);
-    setPanelNotice("?꾩옱源뚯? 紐⑥? ?댁슜????ν뻽?듬땲??");
+    setPanelNotice("현재까지 모든 내용을 저장했습니다.");
   } catch (error) {
     if (state.status !== "running") {
       failedStoppedSessionGuard = rememberFailedStoppedSession(record, error);
     }
-    reportRuntimeError("?몄뀡 ?ㅻ깄????μ뿉 ?ㅽ뙣?덉뒿?덈떎.", error);
+    reportRuntimeError("세션 저장에 실패했습니다.", error);
   }
 }
 
@@ -810,7 +810,7 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       syncUserInterfaces();
     }
   } catch (error) {
-    reportRuntimeError("?먮쭑 ?뚯씠?꾨씪??泥섎━ 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.", error);
+    reportRuntimeError("자막 파이프라인 처리 중 오류가 발생했습니다.", error);
   }
 }
 
@@ -864,7 +864,7 @@ function startLocalPolling(): void {
       localLastProbeSignature = decision.signature;
       emitLocalProbeEvent("subtitle:update", probe.text, probe.matchedSelector, probe.rows);
     } catch (error) {
-      reportRuntimeError("濡쒖뺄 ?먮쭑 ?대쭅 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.", error);
+      reportRuntimeError("로컬 자막 감지 중 오류가 발생했습니다.", error);
     }
   }, settings.pollingFallbackIntervalMs);
 }
@@ -947,7 +947,7 @@ function runTopFrameFallbackTick(): void {
     });
   } catch (error) {
     topFallbackMissStreak += 1;
-    reportRuntimeError("?꾨젅???먮쭑 fallback ?먯깋 以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.", error);
+    reportRuntimeError("프레임 자막 fallback 탐색 중 오류가 발생했습니다.", error);
   }
 
   scheduleTopFrameFallbackTick(
@@ -1014,7 +1014,7 @@ async function ensureCurrentRunningSessionPreservedBeforeReset(): Promise<boolea
       return true;
     } catch (error) {
       failedStoppedSessionGuard = rememberFailedStoppedSession(stoppedRecord, error);
-      reportRuntimeError("?몄뀡 珥덇린???꾩뿉 ?댁쟾 ?ㅽ뻾 ?몄뀡 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.", error);
+      reportRuntimeError("세션 초기화 전에 이전 실행 세션 저장에 실패했습니다.", error);
       return false;
     }
   }
@@ -1023,7 +1023,7 @@ async function ensureCurrentRunningSessionPreservedBeforeReset(): Promise<boolea
     await deleteSession(sessionId);
     return true;
   } catch (error) {
-    reportRuntimeError("?몄뀡 珥덇린???꾩뿉 ?댁쟾 ?ㅽ뻾 ?몄뀡 ?뺣━???ㅽ뙣?덉뒿?덈떎.", error);
+    reportRuntimeError("세션 초기화 전에 이전 실행 세션 정리에 실패했습니다.", error);
     return false;
   }
 }
@@ -1036,12 +1036,12 @@ async function clearSessionAndReset(): Promise<void> {
     return;
   }
   resetRuntimeState();
-  setPanelNotice("?붾㈃??鍮꾩슦怨??덈줈 ?쒖옉??以鍮꾨? 留덉낀?듬땲??");
+  setPanelNotice("화면을 비우고 새로 시작할 준비를 마쳤습니다.");
   syncUserInterfaces();
 }
 
 async function startCapture(): Promise<void> {
-  if (!(await ensureFailedStoppedSessionResolved("???섏쭛 ?쒖옉"))) {
+  if (!(await ensureFailedStoppedSessionResolved("자막 수집 시작"))) {
     return;
   }
   if (!(await ensureCurrentRunningSessionPreservedBeforeReset())) {
@@ -1057,17 +1057,17 @@ async function startCapture(): Promise<void> {
   state.title = document.title;
   state.committeeName = deriveCommitteeName(document.title);
   setPanelNotice(
-    "?먮쭑 紐⑥쑝湲곕? ?쒖옉?덉뒿?덈떎. ?섏씠吏瑜??대룞?섍굅???덈줈怨좎묠?섎㈃ ?섏쭛??以묐떒?섍퀬, ?좊굹湲?吏곸쟾???먮룞 ??μ쓣 ?쒕룄?⑸땲??",
+    "자막 모으기를 시작했습니다. 페이지를 이동하거나 닫으려고 하면 수집을 중단하고, 종료 직전에 자동 저장을 시도합니다.",
   );
   dispatchObserverConfig();
   syncUserInterfaces();
 
   const subtitleLayerReady = await ensureSubtitleLayerActive().catch((error: unknown) => {
-    reportRuntimeError("AI ?먮쭑 ?덉씠?대? ?먮룞?쇰줈 ?댁? 紐삵뻽?듬땲??", error);
+    reportRuntimeError("AI 자막 레이어를 자동으로 열지 못했습니다.", error);
     return false;
   });
   if (!subtitleLayerReady) {
-    setPanelNotice("?먮쭑 紐⑥쑝湲곕? ?쒖옉?덉뒿?덈떎. ?섏씠吏??'AI ?먮쭑蹂닿린'瑜???踰??뚮윭二쇱꽭??");
+    setPanelNotice("자막 모으기를 시작했습니다. 페이지에서 'AI 자막보기'를 한 번 눌러주세요.");
   }
 
   if (settings.runningAutoSaveEnabled) {
@@ -1075,7 +1075,7 @@ async function startCapture(): Promise<void> {
       const saved = await updateRunningSession(toSessionRecord(state, "running"));
       state = applyPersistSuccess(state, saved.updatedAt);
     } catch (error) {
-      reportRuntimeError("?ㅽ뻾 以??몄뀡 珥덇린 ??μ뿉 ?ㅽ뙣?덉뒿?덈떎.", error);
+      reportRuntimeError("수집 중 세션 초기 저장에 실패했습니다.", error);
     }
   }
   syncUserInterfaces();
@@ -1087,7 +1087,7 @@ async function stopCapture(): Promise<void> {
   const now = Date.now();
   const stoppedRecord = buildPreparedSessionRecord("stopped", now);
   state = finalizeSession(state, now, settings).state;
-  setPanelNotice("?먮쭑 紐⑥쑝湲곕? 硫덉톬?듬땲??");
+  setPanelNotice("자막 모으기를 멈췄습니다.");
   await persistStoppedSession(stoppedRecord);
   syncUserInterfaces();
 }
@@ -1095,7 +1095,7 @@ async function stopCapture(): Promise<void> {
 async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Promise<void> {
   const record = buildPreparedSessionRecord(state.status === "running" ? "running" : "stopped");
   if (!record.entries.length) {
-    setPanelNotice("癒쇱? ?먮쭑??紐⑥? ???뚯씪濡???ν븯?몄슂.");
+    setPanelNotice("먼저 자막을 모은 뒤 파일로 저장하세요.");
     syncUserInterfaces();
     return;
   }
@@ -1110,7 +1110,7 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
   if (!response.ok) {
     throw new Error(response.error);
   }
-  setPanelNotice(`${payload.filename} ?뚯씪 ???李쎌쓣 ?댁뿀?듬땲??`);
+  setPanelNotice(`${payload.filename} 파일 저장 창을 열었습니다.`);
   syncUserInterfaces();
 }
 
@@ -1133,7 +1133,7 @@ async function copyRecentSessionLines(): Promise<void> {
   });
 
   if (!copyText) {
-    setPanelNotice("蹂듭궗???먮쭑???꾩쭅 ?놁뒿?덈떎.");
+    setPanelNotice("복사할 자막이 아직 없습니다.");
     syncUserInterfaces();
     return;
   }
@@ -1141,8 +1141,8 @@ async function copyRecentSessionLines(): Promise<void> {
   await copyTextToClipboard(copyText);
   setPanelNotice(
     visibleEntries.length
-      ? `?붾㈃ ?먮쭑 ${Math.min(visibleEntries.length, settings.recentCopyLineCount)}以꾩쓣 蹂듭궗?덉뒿?덈떎.`
-      : `理쒓렐 ${settings.recentCopyLineCount}以꾩쓣 蹂듭궗?덉뒿?덈떎.`,
+      ? `화면 자막 ${Math.min(visibleEntries.length, settings.recentCopyLineCount)}줄을 복사했습니다.`
+      : `최근 ${settings.recentCopyLineCount}줄을 복사했습니다.`,
   );
   syncUserInterfaces();
 }
@@ -1152,7 +1152,7 @@ async function openHistoryPage(): Promise<void> {
   if (!response.ok) {
     throw new Error(response.error);
   }
-  setPanelNotice("??λ맂 湲곕줉 ?붾㈃???댁뿀?듬땲??");
+  setPanelNotice("저장된 기록 화면을 열었습니다.");
   syncUserInterfaces();
 }
 
@@ -1161,7 +1161,7 @@ async function openOptionsPage(): Promise<void> {
   if (!response.ok) {
     throw new Error(response.error);
   }
-  setPanelNotice("?섍꼍 ?ㅼ젙 ?붾㈃???댁뿀?듬땲??");
+  setPanelNotice("환경 설정 화면을 열었습니다.");
   syncUserInterfaces();
 }
 
@@ -1170,7 +1170,7 @@ async function openDiagnosticsPage(): Promise<void> {
   if (!response.ok) {
     throw new Error(response.error);
   }
-  setPanelNotice("?섏쭛 吏꾨떒 ?붾㈃???댁뿀?듬땲??");
+  setPanelNotice("수집 진단 화면을 열었습니다.");
   syncUserInterfaces();
 }
 
@@ -1182,8 +1182,8 @@ function openInPagePanel(): {
   const panelOpened = panelCollapsed;
   panelCollapsed = false;
   const message = panelOpened
-    ? "?섏씠吏 ?ㅻⅨ履??⑤꼸???댁뿀?듬땲??"
-    : "?섏씠吏 ?ㅻⅨ履??⑤꼸???대? ?대젮 ?덉뒿?덈떎.";
+    ? "페이지 오른쪽 패널을 열었습니다."
+    : "페이지 오른쪽 패널이 이미 열려 있습니다.";
   setPanelNotice(message);
   syncUserInterfaces();
   return {
@@ -1195,7 +1195,7 @@ function openInPagePanel(): {
 
 function collapseInPagePanel(): void {
   panelCollapsed = true;
-  setPanelNotice("?ㅻⅨ履?媛?μ옄由ъ쓽 '?먮쭑 蹂닿린' 踰꾪듉?쇰줈 ?ㅼ떆 ?????덉뒿?덈떎.");
+  setPanelNotice("오른쪽 가장자리의 '자막 보기' 버튼으로 다시 열 수 있습니다.");
   syncUserInterfaces();
 }
 
@@ -1208,7 +1208,7 @@ function mountInPagePanel(): void {
     onStartCapture: () => {
       void startCapture().catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "?먮쭑 紐⑥쑝湲곕? ?쒖옉?섏? 紐삵뻽?듬땲??",
+          error instanceof Error ? error.message : "자막 모으기를 시작하지 못했습니다.",
           error,
         );
       });
@@ -1216,20 +1216,20 @@ function mountInPagePanel(): void {
     onStopCapture: () => {
       void stopCapture().catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "?먮쭑 紐⑥쑝湲곕? 硫덉텛吏 紐삵뻽?듬땲??",
+          error instanceof Error ? error.message : "자막 모으기를 멈추지 못했습니다.",
           error,
         );
       });
     },
     onClearSession: () => {
       if (!confirmSessionClear()) {
-        setPanelNotice("?몄뀡 鍮꾩슦湲곕? 痍⑥냼?덉뒿?덈떎.");
+        setPanelNotice("세션 비우기를 취소했습니다.");
         syncUserInterfaces();
         return;
       }
       void clearSessionAndReset().catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "?몄뀡 鍮꾩슦湲곕? ?꾨즺?섏? 紐삵뻽?듬땲??",
+          error instanceof Error ? error.message : "세션 비우기를 완료하지 못했습니다.",
           error,
         );
       });
@@ -1239,7 +1239,7 @@ function mountInPagePanel(): void {
         .then(() => syncUserInterfaces())
         .catch((error: unknown) => {
           reportRuntimeError(
-            error instanceof Error ? error.message : "吏湲???μ쓣 ?꾨즺?섏? 紐삵뻽?듬땲??",
+            error instanceof Error ? error.message : "지금 저장을 완료하지 못했습니다.",
             error,
           );
         });
@@ -1247,7 +1247,7 @@ function mountInPagePanel(): void {
     onExport: (format) => {
       void exportCurrentSession(format).catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "?뚯씪 ??μ쓣 ?쒖옉?섏? 紐삵뻽?듬땲??",
+          error instanceof Error ? error.message : "파일 저장을 시작하지 못했습니다.",
           error,
         );
       });
@@ -1255,7 +1255,7 @@ function mountInPagePanel(): void {
     onCopyRecent: () => {
       void copyRecentSessionLines().catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "理쒓렐 ?먮쭑 蹂듭궗???ㅽ뙣?덉뒿?덈떎.",
+          error instanceof Error ? error.message : "최근 자막 복사에 실패했습니다.",
           error,
         );
       });
@@ -1263,7 +1263,7 @@ function mountInPagePanel(): void {
     onOpenHistory: () => {
       void openHistoryPage().catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "??λ맂 湲곕줉 ?붾㈃???댁? 紐삵뻽?듬땲??",
+          error instanceof Error ? error.message : "저장된 기록 화면을 열지 못했습니다.",
           error,
         );
       });
@@ -1271,7 +1271,7 @@ function mountInPagePanel(): void {
     onOpenOptions: () => {
       void openOptionsPage().catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "?섍꼍 ?ㅼ젙 ?붾㈃???댁? 紐삵뻽?듬땲??",
+          error instanceof Error ? error.message : "환경 설정 화면을 열지 못했습니다.",
           error,
         );
       });
@@ -1279,7 +1279,7 @@ function mountInPagePanel(): void {
     onOpenDiagnostics: () => {
       void openDiagnosticsPage().catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "?섏쭛 吏꾨떒 ?붾㈃???댁? 紐삵뻽?듬땲??",
+          error instanceof Error ? error.message : "수집 진단 화면을 열지 못했습니다.",
           error,
         );
       });
@@ -1318,7 +1318,7 @@ async function handleCommand(
       return;
     case "CLEAR_SESSION":
       if (!confirmSessionClear()) {
-        setPanelNotice("?몄뀡 鍮꾩슦湲곕? 痍⑥냼?덉뒿?덈떎.");
+        setPanelNotice("세션 비우기를 취소했습니다.");
         syncUserInterfaces();
         syncPortState(port);
         return;
@@ -1355,7 +1355,7 @@ function bindPopupPort(): void {
       void handleCommand(port, message).catch((error: unknown) => {
         postToPopupPort(port, {
           type: "ERROR",
-          message: error instanceof Error ? error.message : "?????녿뒗 ?ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.",
+          message: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
         });
       });
     });
@@ -1474,7 +1474,7 @@ function bindBridgeMessages(): void {
 async function ensureFrameForwardNonce(): Promise<void> {
   const response = await sendRuntimeMessage({ type: "GET_FRAME_FORWARD_NONCE" });
   if (!response.ok || !response.nonce) {
-    throw new Error(response.ok ? "?꾨젅???꾨떖 ?좏겙??諛쏆? 紐삵뻽?듬땲??" : response.error);
+    throw new Error(response.ok ? "프레임 전달 토큰을 받지 못했습니다." : response.error);
   }
   frameForwardNonce = response.nonce;
 }
@@ -1487,7 +1487,7 @@ async function bootstrap(): Promise<void> {
   try {
     settings = await getSettings();
   } catch (error) {
-    reportRuntimeError("?뺤옣 ?ㅼ젙??遺덈윭?ㅼ? 紐삵빐 湲곕낯媛믪쑝濡?怨꾩냽 吏꾪뻾?⑸땲??", error);
+    reportRuntimeError("확장 설정을 불러오지 못해 기본값으로 계속 진행합니다.", error);
   }
   if (extensionContextInvalidated) {
     return;
@@ -1496,7 +1496,7 @@ async function bootstrap(): Promise<void> {
   try {
     await ensureFrameForwardNonce();
   } catch (error) {
-    reportRuntimeError("?꾨젅???꾨떖 蹂댁븞 ?좏겙 以鍮꾩뿉 ?ㅽ뙣?덉뒿?덈떎.", error);
+    reportRuntimeError("프레임 전달 보안 토큰 준비에 실패했습니다.", error);
   }
   if (extensionContextInvalidated) {
     return;
@@ -1514,7 +1514,7 @@ async function bootstrap(): Promise<void> {
   try {
     await injectObserverScript();
   } catch (error) {
-    reportRuntimeError("MutationObserver 二쇱엯???ㅽ뙣??polling fallback?쇰줈 怨꾩냽 吏꾪뻾?⑸땲??", error);
+    reportRuntimeError("MutationObserver 주입에 실패해 polling fallback으로 계속 진행합니다.", error);
   }
   if (extensionContextInvalidated) {
     return;
@@ -1531,7 +1531,7 @@ async function bootstrap(): Promise<void> {
 
   if (isTopFrame && settings.autoStartEnabled && state.status !== "running") {
     void startCapture().catch((error: unknown) => {
-      reportRuntimeError("?먮룞 ?쒖옉 ?ㅼ젙???섑빐 ?먮쭑 紐⑥쑝湲곕? ?쒕룄?덉쑝???ㅽ뙣?덉뒿?덈떎.", error);
+      reportRuntimeError("자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.", error);
     });
   }
 }
@@ -1541,7 +1541,7 @@ const bootstrapRoot = document.documentElement;
 if (!bootstrapRoot?.hasAttribute(CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE)) {
   bootstrapRoot?.setAttribute(CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE, "true");
   void bootstrap().catch((error: unknown) => {
-    reportRuntimeError("content script 珥덇린??以??ㅻ쪟媛 諛쒖깮?덉뒿?덈떎.", error);
+    reportRuntimeError("content script 초기화 중 오류가 발생했습니다.", error);
     if (extensionContextInvalidated) {
       return;
     }
