@@ -68,17 +68,26 @@ function createLiveRows(): LivePanelRow[] {
   ];
 }
 
-function buildPanelState(overrides?: Partial<Parameters<typeof buildInPagePanelState>[1]>) {
-  return buildInPagePanelState(createSnapshot(), {
-    collapsed: false,
-    previewCollapsed: true,
-    notice: "자막을 모으는 중입니다.",
-    autoScroll: true,
-    recentCopyLineCount: 5,
-    livePreviewText: "안녕하세요",
-    liveRows: createLiveRows(),
-    ...overrides,
-  });
+function buildPanelState(input?: {
+  snapshot?: Partial<StatusSnapshot>;
+  options?: Partial<Parameters<typeof buildInPagePanelState>[1]>;
+}) {
+  return buildInPagePanelState(
+    {
+      ...createSnapshot(),
+      ...input?.snapshot,
+    },
+    {
+      collapsed: false,
+      previewCollapsed: true,
+      notice: "자막을 모으는 중입니다.",
+      autoScroll: true,
+      recentCopyLineCount: 5,
+      livePreviewText: "안녕하세요",
+      liveRows: createLiveRows(),
+      ...input?.options,
+    },
+  );
 }
 
 function createActions() {
@@ -163,6 +172,35 @@ describe("in-page panel", () => {
     controller.destroy();
   });
 
+  it("shows a live capture label while fallback collection is still producing subtitles", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        snapshot: {
+          diagnostics: {
+            ...createSnapshot().diagnostics,
+            captureMode: "fallback",
+          },
+        },
+        options: {
+          notice: "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
+          livePreviewText: "계속 수집되는 자막",
+          liveRows: [],
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    expect(shadowRoot?.textContent).toContain("실시간 자막");
+    expect(shadowRoot?.textContent).toContain(
+      "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
+    );
+    expect(shadowRoot?.textContent).not.toContain("자막 찾는 중");
+
+    controller.destroy();
+  });
+
   it("shows collapsed tab after clicking collapse", () => {
     let collapsed = false;
     const actions = createActions();
@@ -172,8 +210,10 @@ describe("in-page panel", () => {
         collapsed = true;
         controller.update(
           buildPanelState({
-            collapsed: true,
-            notice: "패널을 접었습니다.",
+            options: {
+              collapsed: true,
+              notice: "패널을 접었습니다.",
+            },
           }),
         );
       },
@@ -199,8 +239,10 @@ describe("in-page panel", () => {
 
     controller.update(
       buildPanelState({
-        autoScroll: false,
-        recentCopyLineCount: 3,
+        options: {
+          autoScroll: false,
+          recentCopyLineCount: 3,
+        },
       }),
     );
 
@@ -240,8 +282,10 @@ describe("in-page panel", () => {
 
     controller.update(
       buildPanelState({
-        previewCollapsed: false,
-        livePreviewText: "안녕하세요\n두 번째 줄입니다.\n세 번째 줄입니다.",
+        options: {
+          previewCollapsed: false,
+          livePreviewText: "안녕하세요\n두 번째 줄입니다.\n세 번째 줄입니다.",
+        },
       }),
     );
 
@@ -255,7 +299,9 @@ describe("in-page panel", () => {
 
     controller.update(
       buildPanelState({
-        previewCollapsed: true,
+        options: {
+          previewCollapsed: true,
+        },
       }),
     );
 
@@ -276,8 +322,10 @@ describe("in-page panel", () => {
 
     controller.update(
       buildPanelState({
-        previewCollapsed: true,
-        livePreviewText: "안녕하세요\n두 번째 줄입니다.\n세 번째 줄입니다.",
+        options: {
+          previewCollapsed: true,
+          livePreviewText: "안녕하세요\n두 번째 줄입니다.\n세 번째 줄입니다.",
+        },
       }),
     );
 
@@ -293,7 +341,9 @@ describe("in-page panel", () => {
       onTogglePreviewCollapsed: () => {
         controller.update(
           buildPanelState({
-            previewCollapsed: false,
+            options: {
+              previewCollapsed: false,
+            },
           }),
         );
       },
@@ -312,8 +362,10 @@ describe("in-page panel", () => {
 
     controller.update(
       buildPanelState({
-        previewCollapsed: false,
-        notice: "상태만 다시 동기화했습니다.",
+        options: {
+          previewCollapsed: false,
+          notice: "상태만 다시 동기화했습니다.",
+        },
       }),
     );
 
@@ -340,7 +392,9 @@ describe("in-page panel", () => {
 
     controller.update(
       buildPanelState({
-        livePreviewText: "미리보기만 바뀌었습니다.",
+        options: {
+          livePreviewText: "미리보기만 바뀌었습니다.",
+        },
       }),
     );
 
@@ -360,14 +414,16 @@ describe("in-page panel", () => {
 
     controller.update(
       buildPanelState({
-        livePreviewText: "안녕하세요 수정",
-        liveRows: [
-          {
-            ...createLiveRows()[0],
-            text: "안녕하세요 수정",
-            updatedAt: Date.parse("2026-03-10T09:00:01.000Z"),
-          },
-        ],
+        options: {
+          livePreviewText: "안녕하세요 수정",
+          liveRows: [
+            {
+              ...createLiveRows()[0],
+              text: "안녕하세요 수정",
+              updatedAt: Date.parse("2026-03-10T09:00:01.000Z"),
+            },
+          ],
+        },
       }),
     );
 

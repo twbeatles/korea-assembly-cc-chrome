@@ -70,10 +70,44 @@ describe("session backup helpers", () => {
     expect(bundle.invalidCount).toBe(1);
   });
 
+  it("drops unknown fields while preserving supported session metadata", () => {
+    const parsed = parseSessionImportPayload({
+      ...buildSession("session_unknown_field", "2026-03-12T12:00:00.000Z"),
+      injected: "drop me",
+      entries: [
+        {
+          ...buildSession("session_unknown_field", "2026-03-12T12:00:00.000Z").entries[0],
+          extraEntryField: "drop me too",
+        },
+      ],
+    });
+
+    expect(parsed.records[0]).not.toHaveProperty("injected");
+    expect(parsed.records[0].entries[0]).not.toHaveProperty("extraEntryField");
+  });
+
   it("rejects unsupported JSON shapes", () => {
     expect(() => parseSessionImportPayload({ sessions: [] })).toThrow(
       "가져온 JSON 형식이 올바르지 않습니다.",
     );
+  });
+
+  it("rejects unsupported backup versions and invalid timestamps", () => {
+    expect(() =>
+      parseSessionImportPayload({
+        kind: SESSION_BACKUP_KIND,
+        version: "999",
+        exportedAt: "2026-03-12T12:30:45.000Z",
+        sessions: [buildSession("session_invalid_version", "2026-03-12T12:00:00.000Z")],
+      }),
+    ).toThrow("가져온 JSON 형식이 올바르지 않습니다.");
+
+    expect(() =>
+      parseSessionImportPayload({
+        ...buildSession("session_invalid_time", "2026-03-12T12:00:00.000Z"),
+        updatedAt: "not-a-date",
+      }),
+    ).toThrow("가져온 JSON 형식이 올바르지 않습니다.");
   });
 
   it("builds a timestamped backup filename", () => {

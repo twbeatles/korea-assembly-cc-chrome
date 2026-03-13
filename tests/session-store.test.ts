@@ -1,12 +1,17 @@
 import type { SessionRecord } from "../src/core/subtitle-models";
+import { queueExitPersistRecord } from "../src/storage/persist-recovery";
 import {
+  buildSessionLibraryBackupExport,
   closeRunningSessionsOnStartup,
   deleteAllSessions,
   deleteSession,
   exportSessionData,
+  getSessionLibraryOverview,
   importSessionRecords,
   listSessions,
+  loadSessionsByIds,
   loadSession,
+  replayQueuedExitPersistRecords,
   resetSessionStoreForTests,
   saveSession,
   upsertSessionRecord,
@@ -129,12 +134,62 @@ describe("session store", () => {
     await updateRunningSession(buildSession("session_running_1", "running"));
     await saveSession(buildSession("session_saved_1", "saved"));
 
-    const closedCount = await closeRunningSessionsOnStartup();
+    const summary = await closeRunningSessionsOnStartup();
     const updated = await loadSession("session_running_1");
 
-    expect(closedCount).toBe(1);
+    expect(summary).toEqual({
+      detectedCount: 1,
+      closedCount: 1,
+      failedCount: 0,
+    });
     expect(updated?.status).toBe("stopped");
     expect(updated?.endedAt).toBe(updated?.updatedAt);
+  });
+
+  it("replays queued exit persist records once per session and keeps the latest stopped snapshot", async () => {
+    await queueExitPersistRecord(buildSession("session_replay", "stopped"));
+    await queueExitPersistRecord({
+      ...buildSession("session_replay", "stopped"),
+      title: "최신 종료 스냅샷",
+      updatedAt: "2026-03-10T09:00:10.000Z",
+      endedAt: "2026-03-10T09:00:10.000Z",
+    });
+
+    const summary = await replayQueuedExitPersistRecords();
+    const loaded = await loadSession("session_replay");
+
+    expect(summary).toEqual({
+      queuedCount: 1,
+      replayedCount: 1,
+      skippedCount: 0,
+      failedCount: 0,
+    });
+    expect(loaded?.title).toBe("최신 종료 스냅샷");
+  });
+
+  it("clears queued exit persist records when a newer saved record is already present", async () => {
+    await queueExitPersistRecord({
+      ...buildSession("session_replay_skip", "stopped"),
+      updatedAt: "2026-03-10T09:00:04.000Z",
+      endedAt: "2026-03-10T09:00:04.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_replay_skip", "saved"),
+      title: "이미 저장된 최신본",
+      updatedAt: "2026-03-10T09:00:09.000Z",
+      endedAt: "2026-03-10T09:00:09.000Z",
+    });
+
+    const summary = await replayQueuedExitPersistRecords();
+    const loaded = await loadSession("session_replay_skip");
+
+    expect(summary).toEqual({
+      queuedCount: 0,
+      replayedCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+    });
+    expect(loaded?.title).toBe("이미 저장된 최신본");
   });
 
   it("falls back when IndexedDB is unavailable", async () => {
@@ -354,6 +409,15 @@ describe("session store", () => {
     await expect(loadSession("session_import_fail")).resolves.toBeUndefined();
   });
 
+  it("loads only the requested session ids through the targeted helper", async () => {
+    await saveSession(buildSession("session_existing_a", "saved"));
+    await saveSession(buildSession("session_existing_b", "saved"));
+
+    const loaded = await loadSessionsByIds(["session_existing_a", "session_missing"]);
+
+    expect(loaded.map((session) => session.id)).toEqual(["session_existing_a"]);
+  });
+
   it("keeps starred sessions eligible even when a small limit is requested", async () => {
     await saveSession({
       ...buildSession("session_starred_old", "saved"),
@@ -495,8 +559,12 @@ describe("session store", () => {
 
     await updateRunningSession(buildSession("session_shared", "running"));
 
-    const closedCount = await closeRunningSessionsOnStartup();
-    expect(closedCount).toBe(3);
+    const summary = await closeRunningSessionsOnStartup();
+    expect(summary).toEqual({
+      detectedCount: 3,
+      closedCount: 3,
+      failedCount: 0,
+    });
 
     expect((await loadSession("session_idb_only"))?.status).toBe("stopped");
     expect((await loadSession("session_shared"))?.status).toBe("stopped");
@@ -515,6 +583,60 @@ describe("session store", () => {
         value: originalIndexedDb,
       });
     }
+  });
+
+  it("reports startup cleanup failures when IndexedDB running-session writes fail", async () => {
+    await updateRunningSession(buildSession("session_cleanup_fail", "running"));
+
+    const putSpy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementationOnce(() => {
+      throw new Error("Intentional cleanup write failure");
+    });
+    const summary = await closeRunningSessionsOnStartup();
+    putSpy.mockRestore();
+
+    expect(summary).toEqual({
+      detectedCount: 1,
+      closedCount: 0,
+      failedCount: 1,
+    });
+    expect((await loadSession("session_cleanup_fail"))?.status).toBe("running");
+  });
+
+  it("builds a session-library overview without preloading every record into the view layer", async () => {
+    await saveSession({
+      ...buildSession("session_overview_a", "saved"),
+      updatedAt: "2026-03-10T09:00:01.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_overview_b", "saved"),
+      updatedAt: "2026-03-10T09:00:02.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_overview_c", "saved"),
+      updatedAt: "2026-03-10T09:00:03.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_overview_d", "saved"),
+      updatedAt: "2026-03-10T09:00:04.000Z",
+    });
+
+    const overview = await getSessionLibraryOverview(3);
+
+    expect(overview.totalCount).toBe(4);
+    expect(overview.previewSessions).toHaveLength(3);
+    expect(overview.previewSessions[0]?.id).toBe("session_overview_d");
+  });
+
+  it("builds a full-library backup export payload", async () => {
+    await saveSession(buildSession("session_backup_a", "saved"));
+    await saveSession(buildSession("session_backup_b", "saved"));
+
+    const backup = await buildSessionLibraryBackupExport();
+    const parsed = JSON.parse(backup.payload.content) as { sessions: SessionRecord[] };
+
+    expect(backup.sessionCount).toBe(2);
+    expect(backup.payload.filename.endsWith(".json")).toBe(true);
+    expect(parsed.sessions).toHaveLength(2);
   });
 
   it("deletes all persisted sessions across IndexedDB and fallback storage", async () => {

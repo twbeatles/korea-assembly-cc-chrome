@@ -20,7 +20,7 @@ const PANEL_STYLE = `
   }
 
   .panel {
-    width: min(468px, calc(100vw - 24px));
+    width: min(560px, calc(100vw - 24px));
     height: calc(100vh - 24px);
     display: flex;
     flex-direction: column;
@@ -191,9 +191,9 @@ const PANEL_STYLE = `
   .hero-card {
     display: flex;
     flex-direction: column;
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     min-height: 0;
-    gap: 10px;
+    gap: 12px;
     overflow: hidden;
   }
 
@@ -210,7 +210,7 @@ const PANEL_STYLE = `
 
   .section-header.primary {
     align-items: flex-start;
-    gap: 10px;
+    gap: 12px;
   }
 
   .section-copy,
@@ -219,17 +219,17 @@ const PANEL_STYLE = `
   }
 
   .section-copy h2 {
-    font-size: 18px;
-    line-height: 1.15;
+    font-size: 22px;
+    line-height: 1.1;
   }
 
   .preview-copy h2 {
-    font-size: 15px;
+    font-size: 14px;
     line-height: 1.2;
   }
 
   .section-copy p {
-    max-width: 30ch;
+    max-width: 36ch;
   }
 
   .section-meta {
@@ -241,8 +241,8 @@ const PANEL_STYLE = `
   .preview-section {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 12px;
+    gap: 8px;
+    padding: 10px 12px 12px;
     border-radius: 18px;
     background: linear-gradient(180deg, rgba(242, 246, 251, 0.94), rgba(235, 242, 249, 0.82));
     border: 1px solid rgba(20, 54, 90, 0.06);
@@ -273,7 +273,7 @@ const PANEL_STYLE = `
   .preview-box {
     overflow: hidden;
     flex-shrink: 0;
-    height: 132px;
+    height: 96px;
     min-height: 0;
     opacity: 1;
     transition:
@@ -299,31 +299,32 @@ const PANEL_STYLE = `
     height: 100%;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
-    padding: 16px 18px;
-    font-size: 14px;
+    padding: 14px 16px;
+    font-size: 13px;
     font-weight: 500;
-    line-height: 1.6;
+    line-height: 1.55;
     white-space: pre-wrap;
     color: #18344f;
   }
 
   .live-row-list {
-    flex: 0 0 auto;
+    flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding: 12px;
+    gap: 12px;
+    padding: 14px;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
     min-height: 0;
-    max-height: min(42vh, 420px);
+    background: linear-gradient(180deg, #f8fbff, #edf4fb);
   }
 
   .live-row {
-    padding: 10px 12px;
-    border-radius: 12px;
+    padding: 14px 16px;
+    border-radius: 14px;
     background: #ffffff;
     border: 1px solid rgba(20, 54, 90, 0.08);
+    box-shadow: 0 10px 18px rgba(20, 54, 90, 0.06);
   }
 
   .live-row time {
@@ -333,12 +334,26 @@ const PANEL_STYLE = `
     font-size: 11px;
   }
 
-  .live-row p,
-  .empty-text {
+  .live-row p {
     margin: 0;
     color: #10263c;
-    font-weight: 500;
-    line-height: 1.6;
+    font-size: 17px;
+    font-weight: 600;
+    line-height: 1.7;
+  }
+
+  .empty-text {
+    margin: 0;
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 10px;
+    text-align: center;
+    color: #35536e;
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 1.7;
   }
 
   .section-count {
@@ -432,12 +447,12 @@ const PANEL_STYLE = `
     }
 
     .preview-box {
-      height: 112px;
+      height: 84px;
     }
 
     .preview-scroll {
-      font-size: 13px;
-      padding: 14px 16px;
+      font-size: 12px;
+      padding: 12px 14px;
     }
 
     .preview-header,
@@ -451,7 +466,12 @@ const PANEL_STYLE = `
     }
 
     .live-row-list {
-      max-height: min(40vh, 360px);
+      min-height: 220px;
+    }
+
+    .live-row p,
+    .empty-text {
+      font-size: 15px;
     }
   }
 `;
@@ -508,7 +528,7 @@ function formatCaptureMode(mode: CaptureMode): string {
     case "structured":
       return "수집된 자막";
     case "fallback":
-      return "자막 찾는 중";
+      return "실시간 자막";
     default:
       return "준비 중";
   }

@@ -131,7 +131,9 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - `offscreen`
 - `activeTab`
 - `scripting`
-- host permission: `https://assembly.webcast.go.kr/*`
+- host permission:
+  - `https://assembly.webcast.go.kr/*`
+  - `https://webcast.assembly.go.kr/*`
 
 ### 6.2 업로드 절차
 
@@ -173,21 +175,23 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 배포 후에는 아래를 다시 봅니다.
 
 1. service worker 가 정상 등록되는지
-2. content script 가 `https://assembly.webcast.go.kr/*` 에서 동작하는지
+2. content script 가 `https://assembly.webcast.go.kr/*` 와 `https://webcast.assembly.go.kr/*` 에서 동작하는지
 3. observer 실패 시 polling fallback 이 계속 동작하는지
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
-6. options 페이지 `수집 진단` 탭에 마지막 자동 저장 시각이 보이는지
+6. options 페이지 `수집 진단` 탭에 마지막 자동 저장 시각과 `저장 복구 상태`가 보이는지
 7. 브라우저/확장 재시작 뒤 남아 있던 `running` 세션이 `stopped`로 정리되는지
-8. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
-9. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하는지
-10. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
-11. 자막 보정 중에는 패널의 `실시간 내용`과 `화면 자막`이 바로 갱신되는지
-12. `화면 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
-13. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
-14. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
-15. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
-16. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
+8. 브라우저/확장 재시작 뒤 page-exit queued stopped snapshot replay가 cleanup보다 먼저 적용되는지
+9. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
+10. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하는지
+11. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
+12. 자막 보정 중에는 패널의 `실시간 내용`과 `화면 자막`이 바로 갱신되는지
+13. `화면 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
+14. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
+15. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
+16. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
+17. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
+18. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
 
 ## 9. 자주 발생하는 문제
 
@@ -195,7 +199,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 
 - 국회 페이지가 이미 열려 있었다면 새로고침이 필요할 수 있습니다.
 - 최신 빌드는 기존 탭에 content script 재주입을 먼저 시도합니다.
-- 대상 URL 이 `https://assembly.webcast.go.kr/*` 범위인지 확인합니다.
+- 대상 URL 이 `https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*` 범위인지 확인합니다.
 
 ### 9.2 zip 업로드가 실패함
 
@@ -263,9 +267,7 @@ Pre-release validation now assumes the addendum closure changes are present:
 
 Deployment documentation consistency sources:
 
-- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
-- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
-- `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`
+- `IMPLEMENTATION_RISK_REVIEW_2026-03-13.md`
 
 ## 2026-03-12 Deployment Consistency Update
 
@@ -278,3 +280,4 @@ Deployment documentation consistency sources:
   - history pagination and visible-only selection controls behave as expected
   - options page explains that `autoStartEnabled` defaults to `true`
   - startup cleanup restores persisted Blob download URL tracking safely
+  - options `저장 복구 상태` reflects replay / cleanup diagnostics from startup persistence maintenance

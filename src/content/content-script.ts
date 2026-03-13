@@ -82,6 +82,7 @@ import {
   saveSession,
   updateRunningSession,
 } from "../storage/session-store";
+import { queueExitPersistRecord } from "../storage/persist-recovery";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
 import { tryDomSubtitleActivation, waitForSubtitleLayer } from "./subtitle-layer";
@@ -611,6 +612,9 @@ function persistStoppedSnapshotForPageExit(now = Date.now()): void {
     return;
   }
 
+  void queueExitPersistRecord(record).catch((error: unknown) => {
+    console.warn("[assembly-subtitle] Failed to queue exit persist record", error);
+  });
   persistSessionRecordInBackground(record);
 }
 

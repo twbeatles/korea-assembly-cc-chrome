@@ -1,14 +1,17 @@
 import {
   cloneEntry,
   cloneSessionRecord,
+  type PersistedSessionStatus,
   type SessionBackupBundle,
   type SessionRecord,
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../core/subtitle-models";
+import { SESSION_RECORD_VERSION } from "../shared/constants";
 
 export const SESSION_BACKUP_KIND = "assembly-subtitle-session-backup";
 export const SESSION_BACKUP_VERSION = "1";
+const SUPPORTED_SESSION_BACKUP_VERSIONS = new Set([SESSION_BACKUP_VERSION]);
 
 export interface ParsedSessionImportPayload {
   records: StoredSessionRecord[];
@@ -20,37 +23,147 @@ function isRecordLike(value: unknown): value is Record<string, unknown> {
 }
 
 function isNumberArray(value: unknown): value is number[] {
-  return Array.isArray(value) && value.every((item) => typeof item === "number");
+  return Array.isArray(value) && value.every((item) => Number.isInteger(item));
 }
 
-function isSubtitleEntryLike(value: unknown): value is SubtitleEntry {
+function isValidDateString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function sanitizeOptionalString(value: unknown, fallback = ""): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function sanitizeOptionalNullableDateString(value: unknown): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  return isValidDateString(value) ? value : undefined;
+}
+
+function sanitizePersistedStatus(value: unknown): PersistedSessionStatus | undefined {
+  return value === "running" || value === "stopped" || value === "saved" ? value : undefined;
+}
+
+function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
   if (!isRecordLike(value)) {
-    return false;
+    return undefined;
   }
 
-  return (
-    typeof value.id === "string" &&
-      typeof value.text === "string" &&
-      typeof value.timestamp === "string" &&
-      typeof value.startTime === "string" &&
-      typeof value.endTime === "string" &&
-    (!("sourceFramePath" in value) ||
-      value.sourceFramePath === undefined ||
-      isNumberArray(value.sourceFramePath))
-  );
+  const id = sanitizeOptionalString(value.id);
+  const text = sanitizeOptionalString(value.text);
+  const timestamp = isValidDateString(value.timestamp) ? value.timestamp : undefined;
+  const startTime = isValidDateString(value.startTime) ? value.startTime : undefined;
+  const endTime = isValidDateString(value.endTime) ? value.endTime : undefined;
+  if (!id || timestamp === undefined || startTime === undefined || endTime === undefined) {
+    return undefined;
+  }
+
+  return {
+    id,
+    text,
+    timestamp,
+    startTime,
+    endTime,
+    sourceSelector:
+      "sourceSelector" in value ? sanitizeOptionalString(value.sourceSelector, "") || undefined : undefined,
+    sourceFramePath:
+      "sourceFramePath" in value && value.sourceFramePath !== undefined
+        ? isNumberArray(value.sourceFramePath)
+          ? [...value.sourceFramePath]
+          : undefined
+        : undefined,
+    sourceNodeKey:
+      "sourceNodeKey" in value ? sanitizeOptionalString(value.sourceNodeKey, "") || undefined : undefined,
+    speakerColor:
+      "speakerColor" in value ? sanitizeOptionalString(value.speakerColor, "") || undefined : undefined,
+    speakerChannel:
+      value.speakerChannel === "primary" ||
+      value.speakerChannel === "secondary" ||
+      value.speakerChannel === "unknown"
+        ? value.speakerChannel
+        : undefined,
+    speakerChanged:
+      typeof value.speakerChanged === "boolean" ? value.speakerChanged : undefined,
+  };
 }
 
-function isStoredSessionRecordLike(value: unknown): value is StoredSessionRecord {
+function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | undefined {
   if (!isRecordLike(value) || typeof value.id !== "string" || !Array.isArray(value.entries)) {
-    return false;
+    return undefined;
   }
 
-  return value.entries.every((entry) => isSubtitleEntryLike(entry));
+  const entries = value.entries.map((entry) => sanitizeSubtitleEntry(entry));
+  if (entries.some((entry) => entry === undefined)) {
+    return undefined;
+  }
+
+  const startedAt = isValidDateString(value.startedAt) ? value.startedAt : undefined;
+  const createdAt = isValidDateString(value.createdAt) ? value.createdAt : undefined;
+  const updatedAt = isValidDateString(value.updatedAt) ? value.updatedAt : undefined;
+  const endedAt = sanitizeOptionalNullableDateString(value.endedAt);
+  if (startedAt === undefined || createdAt === undefined || updatedAt === undefined) {
+    return undefined;
+  }
+  if ("endedAt" in value && endedAt === undefined) {
+    return undefined;
+  }
+
+  const status = sanitizePersistedStatus(value.status);
+  if ("status" in value && status === undefined) {
+    return undefined;
+  }
+
+  if ("pinnedAt" in value && sanitizeOptionalNullableDateString(value.pinnedAt) === undefined) {
+    return undefined;
+  }
+
+  return {
+    id: value.id,
+    version: typeof value.version === "string" && value.version ? value.version : SESSION_RECORD_VERSION,
+    title: sanitizeOptionalString(value.title, "국회 자막 세션"),
+    committeeName: sanitizeOptionalString(value.committeeName),
+    sourceUrl: sanitizeOptionalString(value.sourceUrl),
+    startedAt,
+    endedAt: endedAt ?? null,
+    createdAt,
+    updatedAt,
+    subtitleCount:
+      typeof value.subtitleCount === "number" && Number.isFinite(value.subtitleCount)
+        ? value.subtitleCount
+        : entries.length,
+    charCount:
+      typeof value.charCount === "number" && Number.isFinite(value.charCount)
+        ? value.charCount
+        : entries.reduce((sum, entry) => sum + entry!.text.length, 0),
+    status: status ?? "saved",
+    starred: typeof value.starred === "boolean" ? value.starred : undefined,
+    pinnedAt: sanitizeOptionalNullableDateString(value.pinnedAt) ?? undefined,
+    note: typeof value.note === "string" ? value.note : undefined,
+    entries: entries.map((entry) => cloneEntry(entry!)),
+  };
 }
 
 function cloneImportedRecord(record: StoredSessionRecord): StoredSessionRecord {
   return {
-    ...record,
+    id: record.id,
+    version: record.version,
+    title: record.title,
+    committeeName: record.committeeName,
+    sourceUrl: record.sourceUrl,
+    startedAt: record.startedAt,
+    endedAt: record.endedAt,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    subtitleCount: record.subtitleCount,
+    charCount: record.charCount,
+    status: record.status,
+    starred: record.starred,
+    pinnedAt: record.pinnedAt,
+    note: record.note,
     entries: record.entries.map((entry) => cloneEntry(entry)),
   };
 }
@@ -60,7 +173,9 @@ function normalizeImportList(value: unknown): ParsedSessionImportPayload {
     throw new Error("가져온 JSON 형식이 올바르지 않습니다.");
   }
 
-  const records = value.filter((item): item is StoredSessionRecord => isStoredSessionRecordLike(item));
+  const records = value
+    .map((item) => sanitizeStoredSessionRecord(item))
+    .filter((item): item is StoredSessionRecord => Boolean(item));
   return {
     records: records.map(cloneImportedRecord),
     invalidCount: value.length - records.length,
@@ -94,9 +209,10 @@ export function buildSessionBackupFilename(exportedAt = new Date()): string {
 }
 
 export function parseSessionImportPayload(value: unknown): ParsedSessionImportPayload {
-  if (isStoredSessionRecordLike(value)) {
+  const singleRecord = sanitizeStoredSessionRecord(value);
+  if (singleRecord) {
     return {
-      records: [cloneImportedRecord(value)],
+      records: [cloneImportedRecord(singleRecord)],
       invalidCount: 0,
     };
   }
@@ -105,7 +221,8 @@ export function parseSessionImportPayload(value: unknown): ParsedSessionImportPa
     isRecordLike(value) &&
     value.kind === SESSION_BACKUP_KIND &&
     typeof value.version === "string" &&
-    typeof value.exportedAt === "string"
+    SUPPORTED_SESSION_BACKUP_VERSIONS.has(value.version) &&
+    isValidDateString(value.exportedAt)
   ) {
     return normalizeImportList(value.sessions);
   }

@@ -1,15 +1,12 @@
 import { isSupportedAssemblyUrl, OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
+import { runStartupPersistenceMaintenance } from "./startup-persistence";
 import type {
   BackgroundCommandMessage,
   BackgroundCommandResponse,
   OffscreenDocumentMessage,
   OffscreenDocumentResponse,
 } from "../shared/message-types";
-import {
-  closeRunningSessionsOnStartup,
-  saveSession,
-  updateRunningSession,
-} from "../storage/session-store";
+import { saveSession, updateRunningSession } from "../storage/session-store";
 
 const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
@@ -367,12 +364,17 @@ async function handleMessage(
 async function runStartupSessionCleanup(): Promise<void> {
   await cleanupPersistedBlobDownloadUrls();
   try {
-    const closed = await closeRunningSessionsOnStartup();
-    if (closed > 0) {
-      console.info(`[service-worker] Closed ${closed} stale running session(s) on startup`);
+    const result = await runStartupPersistenceMaintenance();
+    if (result.replaySummary.replayedCount > 0 || result.cleanupSummary.closedCount > 0) {
+      console.info(
+        `[service-worker] Replayed ${result.replaySummary.replayedCount} queued exit record(s); closed ${result.cleanupSummary.closedCount} stale running session(s) on startup`,
+      );
+    }
+    if (result.diagnostics.lastError || result.replaySummary.failedCount > 0 || result.cleanupSummary.failedCount > 0) {
+      console.warn("[service-worker] Startup persistence maintenance finished with failures", result);
     }
   } catch (error) {
-    console.warn("[service-worker] Failed to close stale running sessions on startup", error);
+    console.warn("[service-worker] Failed to run startup persistence maintenance", error);
   }
 }
 

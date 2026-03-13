@@ -223,33 +223,45 @@ export default function App() {
   };
 
   const openHistory = async (): Promise<void> => {
-    const response = await sendRuntimeMessage({ type: "OPEN_HISTORY_PAGE" });
-    if (!response.ok) {
-      setStatusMessage(response.error);
-      return;
+    try {
+      const response = await sendRuntimeMessage({ type: "OPEN_HISTORY_PAGE" });
+      if (!response.ok) {
+        setStatusMessage(response.error);
+        return;
+      }
+      setStatusMessage("저장된 기록 화면을 열었습니다.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "저장된 기록 화면을 열지 못했습니다.");
     }
-    setStatusMessage("저장된 기록 화면을 열었습니다.");
   };
 
   const openOptions = async (): Promise<void> => {
-    const response = await sendRuntimeMessage({ type: "OPEN_OPTIONS_PAGE" });
-    if (!response.ok) {
-      setStatusMessage(response.error);
-      return;
+    try {
+      const response = await sendRuntimeMessage({ type: "OPEN_OPTIONS_PAGE" });
+      if (!response.ok) {
+        setStatusMessage(response.error);
+        return;
+      }
+      setStatusMessage("환경 설정 화면을 열었습니다.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "환경 설정 화면을 열지 못했습니다.");
     }
-    setStatusMessage("환경 설정 화면을 열었습니다.");
   };
 
   const openDiagnostics = async (): Promise<void> => {
-    const response = await sendRuntimeMessage({
-      type: "OPEN_DIAGNOSTICS_PAGE",
-      tabId: currentTabId ?? undefined,
-    });
-    if (!response.ok) {
-      setStatusMessage(response.error);
-      return;
+    try {
+      const response = await sendRuntimeMessage({
+        type: "OPEN_DIAGNOSTICS_PAGE",
+        tabId: currentTabId ?? undefined,
+      });
+      if (!response.ok) {
+        setStatusMessage(response.error);
+        return;
+      }
+      setStatusMessage("수집 진단 화면을 열었습니다.");
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "수집 진단 화면을 열지 못했습니다.");
     }
-    setStatusMessage("수집 진단 화면을 열었습니다.");
   };
 
   return (

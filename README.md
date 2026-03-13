@@ -164,10 +164,10 @@ npm run build
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
-10. 브라우저/확장을 다시 시작하면 남아 있던 `running` 세션은 자동으로 `stopped`로 정리된다
+10. 브라우저/확장을 다시 시작하면 먼저 page-exit 시점에 남겨둔 stopped 저장 replay queue를 복구하고, 그 다음 남아 있던 `running` 세션을 `stopped`로 정리한다
 11. history에서는 세션별 `즐겨찾기`, `메모 저장`, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 사용할 수 있다
-12. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있다
-13. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`을 빠르게 여는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭에서 확인한다
+12. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부한다
+13. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`을 빠르게 여는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭과 `저장 복구 상태` 섹션에서 확인한다
 
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
@@ -194,8 +194,8 @@ npm run build
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도합니다
-- 패널 notice는 `정상 수집 / fallback 수집 / reset 복구 중`을 구분해 표시합니다
-- 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
+- 패널 notice는 `정상 수집 / 자동 조정 중 수집 / reset 복구 중`을 구분해 표시하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 경고 문구 대신 중립 안내를 사용합니다
+- 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 
 ### injected observer
@@ -222,9 +222,11 @@ npm run build
 - `loadSession`/`listSessions`는 `IndexedDB`와 fallback 저장소를 함께 읽고, `updatedAt`이 더 최신인 레코드를 우선 사용합니다. 동률이면 `IndexedDB`를 우선합니다
 - 성공한 `IndexedDB` write/delete는 동일 id의 stale fallback copy를 best-effort로 정리합니다
 - 두 저장소가 모두 실패하는 극단적 상황에서는 현재 런타임 동안 메모리 fallback을 유지합니다
+- pagehide/beforeunload 직전 최종 stopped 스냅샷은 세션별 replay queue에도 함께 적재하고, background 저장이 성공하면 같은 세션의 stale queued snapshot을 즉시 정리합니다
+- 브라우저/확장 cold start 시에는 queued stopped snapshot replay를 먼저 수행한 뒤 남아 있던 `running` 세션 cleanup을 진행하고, replay/cleanup 결과는 `chrome.storage.local` diagnostics snapshot으로 남깁니다
+- JSON import는 허용 필드 재구성 기준으로 sanitize 하며, 지원하지 않는 backup wrapper version과 parse 불가능한 timestamp를 가져오기 단계에서 거부합니다
 - 설정은 `chrome.storage.local`
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
-- 브라우저/확장 cold start 시 남아 있던 `running` 세션은 `IndexedDB`와 fallback 양쪽을 함께 훑어 `stopped`로 자동 정리됩니다
 - 세션 레코드에는 `starred`, `pinnedAt`, `note` 메타데이터가 포함되며, history의 즐겨찾기/메모 기능과 JSON 백업/복원에서 함께 유지됩니다
 
 ### background
@@ -234,6 +236,7 @@ npm run build
 - content script 준비 여부 확인
 - 이미 열려 있던 탭에는 필요 시 content script 재주입 시도
 - frame forwarding nonce 발급
+- startup persistence maintenance에서 queued stopped snapshot replay -> stale running cleanup -> diagnostics snapshot 저장 순서를 유지합니다
 
 ## 알려진 한계
 
@@ -350,9 +353,25 @@ The functional-gap addendum items have been implemented and verified.
 
 Reference docs:
 
-- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
-- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
-- `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`
+- `IMPLEMENTATION_RISK_REVIEW_2026-03-13.md`
+
+## 2026-03-13 Sync Update
+
+This section tracks the latest storage recovery, validation, and UI consistency changes.
+
+- Persistence recovery hardening completed:
+  - page-exit stopped snapshots now enqueue per-session replay records before background save
+  - startup now replays queued stopped snapshots before stale running-session cleanup
+  - replay/cleanup summaries are persisted as diagnostics and exposed in options `저장 복구 상태`
+- Session import and bulk-operation hardening completed:
+  - JSON import now sanitizes allow-listed fields instead of spreading raw payloads
+  - unsupported backup wrapper versions and invalid timestamps are rejected during import
+  - history full-delete confirmation now uses exact count + preview, not full-library preload
+  - full-library JSON backup now uses store-level export helpers instead of view-layer preload
+- UI feedback consistency completed:
+  - history and popup async actions now surface user-facing error messages consistently
+  - options numeric fields now keep draft string state + inline validation and block invalid saves
+  - fallback/polling capture notices now use neutral “수집 중 + 자동 조정” copy when subtitles are still being collected
 
 ## 2026-03-12 Additional Sync Update
 

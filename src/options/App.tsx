@@ -9,11 +9,20 @@ import type {
   StatusSnapshot,
 } from "../shared/message-types";
 import { getCaptureStatusLabel, UI_TEXT } from "../shared/ui-labels";
+import {
+  createEmptyPersistReplayDiagnostics,
+  readPersistReplayDiagnostics,
+} from "../storage/persist-recovery";
 import { getSettings, resetSettings, saveSettings } from "../storage/settings-store";
-import type { ExtensionSettings } from "../storage/types";
+import type { ExtensionSettings, PersistReplayDiagnostics } from "../storage/types";
 import { ADVANCED_NUMBER_FIELDS, BASIC_NUMBER_FIELDS } from "./settings-fields";
 
 type OptionsView = "settings" | "diagnostics";
+type NumberField = (typeof BASIC_NUMBER_FIELDS)[number] | (typeof ADVANCED_NUMBER_FIELDS)[number];
+type NumberDraftState = Record<NumberField, string>;
+type NumberFieldErrorState = Partial<Record<NumberField, string>>;
+
+const NUMBER_FIELDS: NumberField[] = [...BASIC_NUMBER_FIELDS, ...ADVANCED_NUMBER_FIELDS];
 
 function getFieldLabel(field: keyof ExtensionSettings): string {
   switch (field) {
@@ -66,6 +75,34 @@ function getFieldMin(field: keyof ExtensionSettings): number {
     default:
       return 1;
   }
+}
+
+function buildNumberDraftState(settings: ExtensionSettings): NumberDraftState {
+  return NUMBER_FIELDS.reduce(
+    (drafts, field) => ({
+      ...drafts,
+      [field]: String(settings[field]),
+    }),
+    {} as NumberDraftState,
+  );
+}
+
+function validateNumberDraft(field: NumberField, value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "값을 입력하세요.";
+  }
+
+  const numericValue = Number(trimmed);
+  if (!Number.isFinite(numericValue)) {
+    return "숫자만 입력할 수 있습니다.";
+  }
+
+  if (numericValue < getFieldMin(field)) {
+    return `${getFieldMin(field)} 이상이어야 합니다.`;
+  }
+
+  return undefined;
 }
 
 function getInitialView(): OptionsView {
@@ -161,11 +198,16 @@ function mergeSnapshot(
 
 export default function App() {
   const [settings, setSettings] = useState<ExtensionSettings | null>(null);
+  const [numberDrafts, setNumberDrafts] = useState<NumberDraftState | null>(null);
+  const [numberFieldErrors, setNumberFieldErrors] = useState<NumberFieldErrorState>({});
   const [message, setMessage] = useState("설정을 불러오는 중입니다.");
   const [view, setView] = useState<OptionsView>(getInitialView);
   const [diagnosticsTabId] = useState<number | null>(getInitialDiagnosticsTabId);
   const [diagnosticsReloadToken, setDiagnosticsReloadToken] = useState(0);
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
+  const [persistReplayDiagnostics, setPersistReplayDiagnostics] = useState<PersistReplayDiagnostics>(
+    createEmptyPersistReplayDiagnostics(),
+  );
   const [diagnosticsMessage, setDiagnosticsMessage] = useState(
     "현재 탭의 수집 상태를 확인하고 있습니다.",
   );
@@ -177,12 +219,39 @@ export default function App() {
     void getSettings()
       .then((data) => {
         setSettings(data);
+        setNumberDrafts(buildNumberDraftState(data));
+        setNumberFieldErrors({});
         setMessage("필요한 값을 바꾼 뒤 저장하세요.");
       })
       .catch((error: unknown) => {
         setMessage(error instanceof Error ? error.message : "설정을 읽지 못했습니다.");
       });
   }, []);
+
+  useEffect(() => {
+    if (view !== "diagnostics") {
+      return;
+    }
+
+    let active = true;
+    void readPersistReplayDiagnostics()
+      .then((diagnostics) => {
+        if (!active) {
+          return;
+        }
+        setPersistReplayDiagnostics(diagnostics);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+        setPersistReplayDiagnostics(createEmptyPersistReplayDiagnostics());
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [diagnosticsReloadToken, view]);
 
   useEffect(() => {
     if (view !== "diagnostics") {
@@ -342,18 +411,53 @@ export default function App() {
     };
   }, [diagnosticsReloadToken, diagnosticsTabId, view]);
 
+  const hasNumberFieldErrors = Object.values(numberFieldErrors).some(Boolean);
+
   const updateField = <K extends keyof ExtensionSettings>(key: K, value: ExtensionSettings[K]): void => {
     setSettings((current) => (current ? { ...current, [key]: value } : current));
   };
 
+  const handleNumberDraftChange = (field: NumberField, value: string): void => {
+    setNumberDrafts((current) =>
+      current
+        ? {
+            ...current,
+            [field]: value,
+          }
+        : current,
+    );
+
+    const nextError = validateNumberDraft(field, value);
+    setNumberFieldErrors((current) => {
+      if (!nextError) {
+        const nextState = { ...current };
+        delete nextState[field];
+        return nextState;
+      }
+      return {
+        ...current,
+        [field]: nextError,
+      };
+    });
+
+    if (!nextError) {
+      updateField(field, Number(value) as ExtensionSettings[typeof field]);
+    }
+  };
+
   const handleSave = async (): Promise<void> => {
-    if (!settings) {
+    if (!settings || hasNumberFieldErrors) {
+      if (hasNumberFieldErrors) {
+        setMessage("잘못된 숫자 입력을 먼저 고쳐주세요.");
+      }
       return;
     }
 
     try {
       const next = await saveSettings(settings);
       setSettings(next);
+      setNumberDrafts(buildNumberDraftState(next));
+      setNumberFieldErrors({});
       setMessage("설정을 저장했습니다.");
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : "설정을 저장하지 못했습니다.");
@@ -364,6 +468,8 @@ export default function App() {
     try {
       const next = await resetSettings();
       setSettings(next);
+      setNumberDrafts(buildNumberDraftState(next));
+      setNumberFieldErrors({});
       setMessage("기본값으로 되돌렸습니다.");
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : "기본값으로 되돌리지 못했습니다.");
@@ -384,7 +490,7 @@ export default function App() {
     setDiagnosticsReloadToken((current) => current + 1);
   };
 
-  if (!settings) {
+  if (!settings || !numberDrafts) {
     return <main className="options-shell">설정을 불러오는 중입니다.</main>;
   }
 
@@ -474,19 +580,26 @@ export default function App() {
             </label>
 
             {BASIC_NUMBER_FIELDS.map((field) => (
-              <label className="setting-card input-card" key={field}>
+              <label
+                className={`setting-card input-card ${numberFieldErrors[field] ? "has-error" : ""}`}
+                key={field}
+              >
                 <div>
                   <strong>{getFieldLabel(field)}</strong>
                   <span>{getFieldDescription(field)}</span>
                 </div>
-                <input
-                  type="number"
-                  min={getFieldMin(field)}
-                  value={String(settings[field])}
-                  onChange={(event) =>
-                    updateField(field, Number(event.target.value) as ExtensionSettings[typeof field])
-                  }
-                />
+                <div className="number-input-group">
+                  <input
+                    type="number"
+                    min={getFieldMin(field)}
+                    value={numberDrafts[field]}
+                    aria-invalid={Boolean(numberFieldErrors[field])}
+                    onChange={(event) => handleNumberDraftChange(field, event.target.value)}
+                  />
+                  {numberFieldErrors[field] ? (
+                    <span className="field-error">{numberFieldErrors[field]}</span>
+                  ) : null}
+                </div>
               </label>
             ))}
 
@@ -532,22 +645,26 @@ export default function App() {
                 </label>
 
                 {ADVANCED_NUMBER_FIELDS.map((field) => (
-                  <label className="setting-card input-card" key={field}>
+                  <label
+                    className={`setting-card input-card ${numberFieldErrors[field] ? "has-error" : ""}`}
+                    key={field}
+                  >
                     <div>
                       <strong>{getFieldLabel(field)}</strong>
                       <span>{getFieldDescription(field)}</span>
                     </div>
-                    <input
-                      type="number"
-                      min={getFieldMin(field)}
-                      value={String(settings[field])}
-                      onChange={(event) =>
-                        updateField(
-                          field,
-                          Number(event.target.value) as ExtensionSettings[typeof field],
-                        )
-                      }
-                    />
+                    <div className="number-input-group">
+                      <input
+                        type="number"
+                        min={getFieldMin(field)}
+                        value={numberDrafts[field]}
+                        aria-invalid={Boolean(numberFieldErrors[field])}
+                        onChange={(event) => handleNumberDraftChange(field, event.target.value)}
+                      />
+                      {numberFieldErrors[field] ? (
+                        <span className="field-error">{numberFieldErrors[field]}</span>
+                      ) : null}
+                    </div>
                   </label>
                 ))}
               </div>
@@ -555,7 +672,9 @@ export default function App() {
           </section>
 
           <footer className="actions">
-            <button onClick={handleSave}>저장</button>
+            <button onClick={handleSave} disabled={hasNumberFieldErrors}>
+              저장
+            </button>
             <button className="secondary" onClick={handleReset}>
               기본값으로 되돌리기
             </button>
@@ -609,6 +728,47 @@ export default function App() {
               <strong>{snapshot?.lastPersistedAt ? new Date(snapshot.lastPersistedAt).toLocaleString("ko-KR") : "-"}</strong>
             </div>
           </div>
+
+          <section className="diagnostics-subsection">
+            <div className="subsection-header">
+              <h3>저장 복구 상태</h3>
+              <p>브라우저 시작 시 종료 직전 저장 replay와 stale running cleanup 결과입니다.</p>
+            </div>
+            <div className="meta-grid">
+              <div className="meta-row">
+                <span>마지막 replay</span>
+                <strong>
+                  {persistReplayDiagnostics.lastReplayAt
+                    ? new Date(persistReplayDiagnostics.lastReplayAt).toLocaleString("ko-KR")
+                    : "-"}
+                </strong>
+              </div>
+              <div className="meta-row">
+                <span>replay 성공/실패</span>
+                <strong>
+                  {persistReplayDiagnostics.lastReplayReplayedCount} / {persistReplayDiagnostics.lastReplayFailedCount}
+                </strong>
+              </div>
+              <div className="meta-row">
+                <span>replay 건너뜀</span>
+                <strong>{persistReplayDiagnostics.lastReplaySkippedCount}</strong>
+              </div>
+              <div className="meta-row">
+                <span>startup cleanup 성공/실패</span>
+                <strong>
+                  {persistReplayDiagnostics.lastCleanupClosedCount} / {persistReplayDiagnostics.lastCleanupFailedCount}
+                </strong>
+              </div>
+              <div className="meta-row">
+                <span>startup cleanup 감지</span>
+                <strong>{persistReplayDiagnostics.lastCleanupDetectedCount}</strong>
+              </div>
+              <div className="meta-row">
+                <span>마지막 오류</span>
+                <strong>{persistReplayDiagnostics.lastError || "-"}</strong>
+              </div>
+            </div>
+          </section>
 
           {requiresReload ? (
             <div className="warning-box">

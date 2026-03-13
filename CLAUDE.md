@@ -143,6 +143,10 @@ offscreen.html
 - `upsertSessionRecord`
 - `importSessionRecords`
 - `exportSessionData`
+- `loadSessionsByIds`
+- `getSessionLibraryOverview`
+- `buildSessionLibraryBackupExport`
+- `replayQueuedExitPersistRecords`
 - `closeRunningSessionsOnStartup`
 
 위 CRUD 흐름과 startup cleanup 의미론은 유지해야 합니다.
@@ -152,7 +156,11 @@ offscreen.html
 - `loadSession`/`listSessions` 는 IndexedDB + fallback 을 함께 읽고 `updatedAt` 기준으로 더 최신 레코드를 고릅니다. 동률이면 IndexedDB 를 우선합니다.
 - 개별 IndexedDB transaction/read/write 실패는 현재 연산만 fallback 으로 우회하고, 런타임 전체 disable 은 open/capability failure 에만 허용됩니다.
 - 성공한 IndexedDB write/delete 는 동일 id fallback copy 를 best-effort 로 정리합니다.
-- `closeRunningSessionsOnStartup` 는 IndexedDB 와 fallback 양쪽의 persisted running 세션을 닫고 중복 id 는 1건으로 count 합니다.
+- page-exit 시점의 stopped 스냅샷은 세션별 replay queue 에 함께 적재되고, background 저장 성공 시 해당 세션의 stale queued snapshot 을 정리합니다.
+- startup 에서는 queued stopped snapshot replay 를 먼저 수행하고, 그 다음 persisted running session cleanup 을 수행합니다.
+- replay / cleanup 결과는 `chrome.storage.local` diagnostics snapshot 으로 저장되며 options `저장 복구 상태`에 노출됩니다.
+- `closeRunningSessionsOnStartup` 는 숫자 하나가 아니라 `detected / closed / failed` 요약을 반환해야 합니다.
+- JSON import 는 raw session spread 가 아니라 allow-list sanitize 후 normalize 순서를 유지해야 하며, unsupported wrapper version 과 invalid timestamp 는 reject 해야 합니다.
 
 ### 7.3 UX 보강 규칙
 
@@ -170,12 +178,14 @@ offscreen.html
 - history 는 session-level `즐겨찾기`, `메모`, `즐겨찾기만 보기` 필터를 제공하고, 이 메타데이터는 persistence 및 JSON 백업/복원에서 함께 보존되어야 합니다.
 - history detail 은 entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
 - history 상단은 전체 저장소 기준 `JSON 백업` 과 단일 세션/번들 `JSON 가져오기` 를 지원하며, 가져오기는 같은 `id` 충돌 시 더 최신 `updatedAt` 레코드를 유지합니다.
+- history 의 전체 삭제 확인은 전체 세션 preload 가 아니라 `정확한 총 건수 + 최대 3건 preview` 기준으로 보여 줘야 합니다.
+- history 의 전체 JSON 백업은 view layer preload 가 아니라 store helper export payload 를 사용해야 합니다.
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `화면 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
-- capture notice 는 `정상 수집`, `fallback 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 합니다.
-- 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각은 options 페이지의 `수집 진단` 탭에서 표시합니다.
-- 브라우저/확장 cold start 시 남아 있던 persisted `running` 세션은 `stopped` 로 자동 정리됩니다.
+- capture notice 는 `정상 수집`, `자동 조정 중 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
+- 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다.
+- options 숫자 필드는 canonical number state 와 별도 draft string state 를 유지하고, invalid draft 는 inline field error 로 표시하며 저장을 막아야 합니다.
 
 ## 8. 작업 시 주의사항
 
@@ -207,6 +217,17 @@ When editing this repository, align with the newly implemented behavior below.
 - Panel and popup now expose runtime capture diagnostics (mode, observer, selector, frame path).
 - Local polling change-detection work stays test-first; use the regression scaffold before broadening heuristics.
 
+## Sync Delta (2026-03-13)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- page-exit stopped snapshots now enqueue replay records, and startup replays them before stale running cleanup.
+- replay / cleanup summaries are persisted as diagnostics and surfaced in options `저장 복구 상태`.
+- session import now sanitizes allow-listed fields and rejects unsupported wrapper versions or invalid timestamps.
+- history full-delete confirmation now uses count + preview, and full-library JSON backup uses store-level export helpers.
+- popup / history async actions must always leave a user-facing error message when they fail.
+- options numeric settings now use draft-string validation rather than mutating canonical numbers on every keystroke.
+
 ## Sync Delta (2026-03-11)
 
 When editing this repository, align with the current implemented behavior below.
@@ -228,9 +249,7 @@ When editing this repository, align with the current implemented behavior below.
 
 Cross-document alignment note:
 
-- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md` is the baseline index.
-- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md` tracks addendum findings and closure mapping.
-- `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md` tracks build/runtime validation state.
+- `IMPLEMENTATION_RISK_REVIEW_2026-03-13.md` tracks the 2026-03-13 hardening round and remaining residual risk.
 
 Current closure status:
 

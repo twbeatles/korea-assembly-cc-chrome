@@ -155,6 +155,10 @@ npm run build
 - `upsertSessionRecord`
 - `importSessionRecords`
 - `exportSessionData`
+- `loadSessionsByIds`
+- `getSessionLibraryOverview`
+- `buildSessionLibraryBackupExport`
+- `replayQueuedExitPersistRecords`
 - `closeRunningSessionsOnStartup`
 
 추가 UX 규칙:
@@ -169,11 +173,18 @@ npm run build
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
 - session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
 - history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
+- history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함
+- 전체 JSON 백업은 view-layer preload 대신 store helper export payload 를 사용해야 함
 - `autoScroll` 이 꺼지면 `실시간 내용` / `화면 자막` 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
 - stopped 세션 최종 저장 실패 시 다음 시작/비우기 전에 1회 재시도 후, 계속 실패하면 폐기 확인
-- 패널과 popup 은 `수집 진단` 화면 진입을 제공하고, capture mode, observer, selector, frame path, 최근 저장 시각은 options 의 `수집 진단` 탭에서 표시
-- browser/extension cold start 시 남아 있던 `running` 세션은 두 backend를 함께 정리해 `stopped` 로 정리
+- page-exit stopped snapshot 은 replay queue 에 함께 적재되고, background 저장 성공 시 stale queued snapshot 을 정리해야 함
+- startup 에서는 queued stopped snapshot replay -> stale running cleanup 순서를 유지해야 함
+- replay / cleanup diagnostics 는 options `저장 복구 상태`에 노출됨
+- session import 는 allow-list sanitize 후 normalize 해야 하며, unsupported wrapper version / invalid timestamp 는 reject 해야 함
+- 패널과 popup 은 `수집 진단` 화면 진입을 제공하고, capture mode, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 의 `수집 진단` 탭에서 표시
+- fallback/polling capture notice 는 실제 수집이 이어질 때 중립적 “수집 중 + 자동 조정” 톤을 유지해야 함
+- options 숫자 필드는 draft string + inline validation 패턴을 유지해야 함
 
 ## 8. exporter 규칙
 
@@ -210,6 +221,17 @@ Use this delta as the current operational baseline.
 - History now supports favorites, notes, partial copy/export, and full JSON backup/import.
 - Panel and popup now surface runtime capture diagnostics.
 
+## Sync Delta (2026-03-13)
+
+Use this delta as the current operational baseline.
+
+- page-exit stopped snapshots now enqueue replay records, and startup replays them before stale running cleanup.
+- replay / cleanup summaries are stored as diagnostics and surfaced in options `저장 복구 상태`.
+- session import now sanitizes allow-listed fields and rejects unsupported wrapper versions or invalid timestamps.
+- history full-delete confirmation now uses count + preview, and full-library JSON backup uses store-level export helpers.
+- popup / history async actions must always leave a user-facing error message when they fail.
+- options numeric settings now use draft-string validation instead of mutating canonical numbers on every keystroke.
+
 ## Sync Delta (2026-03-11)
 
 Use this delta as the current operational baseline.
@@ -240,9 +262,7 @@ Keep this file aligned with the implementation closure below:
 
 Reference consistency set:
 
-- `FUNCTIONAL_GAP_REVIEW_2026-03-11.md`
-- `FUNCTIONAL_GAP_REVIEW_ADDENDUM_2026-03-11.md`
-- `BUILD_ENV_FEATURE_REVIEW_2026-03-11.md`
+- `IMPLEMENTATION_RISK_REVIEW_2026-03-13.md`
 
 ## 2026-03-12 Additional Sync Update
 

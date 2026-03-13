@@ -146,6 +146,25 @@ input[type="number"]:focus {
   align-items: flex-start;
 }
 
+.has-error {
+  border-color: rgba(155, 33, 27, 0.18);
+}
+
+.number-input-group {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.field-error {
+  max-width: 220px;
+  color: #a02a24;
+  font-size: 12px;
+  font-weight: 600;
+  text-align: right;
+}
+
 .full-width {
   grid-column: 1 / -1;
 }
@@ -191,6 +210,24 @@ input[type="number"]:focus {
 
 .diagnostics-header h2 {
   margin: 0;
+}
+
+.diagnostics-subsection {
+  margin-top: 18px;
+}
+
+.subsection-header {
+  margin-bottom: 12px;
+}
+
+.subsection-header h3 {
+  margin: 0;
+}
+
+.subsection-header p {
+  margin: 6px 0 0;
+  color: #4e667c;
+  line-height: 1.5;
 }
 
 .status-badge {

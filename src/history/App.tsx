@@ -4,19 +4,18 @@ import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
 import { DEFAULT_EXTENSION_SETTINGS, EXTENSION_STORAGE_KEY } from "../shared/constants";
+import { parseSessionImportPayload } from "../storage/session-backup";
 import {
-  buildSessionBackupBundle,
-  buildSessionBackupFilename,
-  parseSessionImportPayload,
-} from "../storage/session-backup";
-import {
+  buildSessionLibraryBackupExport,
   deleteAllSessions,
   deleteSession,
   exportSessionData,
+  getSessionLibraryOverview,
   importSessionRecords,
   listSessions,
   upsertSessionRecord,
 } from "../storage/session-store";
+import type { SessionLibraryPreview } from "../storage/types";
 import { getSettings } from "../storage/settings-store";
 import { getExportFormatLabel, getPersistedStatusLabel } from "../shared/ui-labels";
 import {
@@ -80,6 +79,34 @@ function confirmDeleteSessions(
   );
 }
 
+function confirmDeleteSessionLibrary(
+  overview: {
+    totalCount: number;
+    previewSessions: SessionLibraryPreview[];
+  },
+  extraNotice?: string,
+): boolean {
+  if (!overview.totalCount) {
+    return false;
+  }
+
+  if (typeof window === "undefined" || typeof window.confirm !== "function") {
+    return true;
+  }
+
+  const previewTitles = overview.previewSessions
+    .map((target) => `- ${target.committeeName || target.title}`)
+    .join("\n");
+  const moreLabel =
+    overview.totalCount > overview.previewSessions.length
+      ? `\n외 ${overview.totalCount - overview.previewSessions.length}건`
+      : "";
+
+  return window.confirm(
+    `전체 기록 ${overview.totalCount}건을 삭제할까요?\n\n${previewTitles}${moreLabel}${extraNotice ? `\n\n${extraNotice}` : ""}`,
+  );
+}
+
 function confirmDiscardUnsavedNote(actionLabel: string): boolean {
   if (typeof window === "undefined" || typeof window.confirm !== "function") {
     return true;
@@ -137,6 +164,12 @@ export default function App() {
     filteredEntries.every((entry) => checkedEntryIdSet.has(entry.id));
   const hasUnsavedNote =
     selectedSession ? noteDraft !== selectedSession.note : noteDraft.trim().length > 0;
+
+  const runHistoryAction = (action: () => Promise<void>, fallbackMessage: string): void => {
+    void action().catch((error: unknown) => {
+      setMessage(error instanceof Error ? error.message : fallbackMessage);
+    });
+  };
 
   const refresh = async (messageOnSuccess?: string): Promise<SessionRecord[]> => {
     const nextSessions = await listSessions({ limit: HISTORY_PAGE_SESSION_LIMIT });
@@ -291,15 +324,14 @@ export default function App() {
 
   const handleDeleteAll = async (): Promise<void> => {
     try {
-      const storedSessions = await listSessions({ limit: Number.MAX_SAFE_INTEGER });
-      if (!storedSessions.length) {
+      const overview = await getSessionLibraryOverview();
+      if (!overview.totalCount) {
         await refresh();
         return;
       }
       if (
-        !confirmDeleteSessions(
-          storedSessions,
-          "전체",
+        !confirmDeleteSessionLibrary(
+          overview,
           "이 확인 이후에 새로 저장된 기록도 함께 삭제될 수 있습니다.",
         )
       ) {
@@ -311,7 +343,7 @@ export default function App() {
       setSearchQuery("");
       setCheckedIds([]);
       setCheckedEntryIds([]);
-      await refresh(buildDeleteAllSuccessMessage(storedSessions.length));
+      await refresh(buildDeleteAllSuccessMessage(overview.totalCount));
     } catch (error) {
       try {
         await refresh(
@@ -374,8 +406,13 @@ export default function App() {
     if (!selectedSession?.sourceUrl) {
       return;
     }
-    await createTab(selectedSession.sourceUrl);
-    setMessage("원본 의사중계 페이지를 새 탭으로 열었습니다.");
+
+    try {
+      await createTab(selectedSession.sourceUrl);
+      setMessage("원본 의사중계 페이지를 새 탭으로 열었습니다.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "원본 페이지를 열지 못했습니다.");
+    }
   };
 
   const handleExport = async (
@@ -386,26 +423,30 @@ export default function App() {
       return;
     }
 
-    const payload = await exportSessionData(selectedSession, format, filenamePattern, entries);
-    const response = await sendRuntimeMessage({
-      type: "DOWNLOAD_REQUEST",
-      filename: payload.filename,
-      content: payload.content,
-      mimeType: payload.mimeType,
-    });
-    if (!response.ok) {
-      setMessage(response.error);
-      return;
-    }
+    try {
+      const payload = await exportSessionData(selectedSession, format, filenamePattern, entries);
+      const response = await sendRuntimeMessage({
+        type: "DOWNLOAD_REQUEST",
+        filename: payload.filename,
+        content: payload.content,
+        mimeType: payload.mimeType,
+      });
+      if (!response.ok) {
+        setMessage(response.error);
+        return;
+      }
 
-    if (entries?.length) {
-      setMessage(
-        `선택한 ${entries.length}줄 ${getExportFormatLabel(format)} 저장을 시작했습니다.`,
-      );
-      return;
-    }
+      if (entries?.length) {
+        setMessage(
+          `선택한 ${entries.length}줄 ${getExportFormatLabel(format)} 저장을 시작했습니다.`,
+        );
+        return;
+      }
 
-    setMessage(`${getExportFormatLabel(format)} 파일 저장을 시작했습니다.`);
+      setMessage(`${getExportFormatLabel(format)} 파일 저장을 시작했습니다.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "파일 저장을 시작하지 못했습니다.");
+    }
   };
 
   const handleCopy = async (text: string, label: string): Promise<void> => {
@@ -453,26 +494,24 @@ export default function App() {
 
   const handleBackupAll = async (): Promise<void> => {
     try {
-      const storedSessions = await listSessions({ limit: Number.MAX_SAFE_INTEGER });
-      if (!storedSessions.length) {
+      const backupExport = await buildSessionLibraryBackupExport();
+      if (!backupExport.sessionCount) {
         setMessage("백업할 기록이 없습니다.");
         return;
       }
 
-      const now = new Date();
-      const backup = buildSessionBackupBundle(storedSessions, now.toISOString());
       const response = await sendRuntimeMessage({
         type: "DOWNLOAD_REQUEST",
-        filename: buildSessionBackupFilename(now),
-        content: JSON.stringify(backup, null, 2),
-        mimeType: "application/json;charset=utf-8",
+        filename: backupExport.payload.filename,
+        content: backupExport.payload.content,
+        mimeType: backupExport.payload.mimeType,
       });
       if (!response.ok) {
         setMessage(response.error);
         return;
       }
 
-      setMessage(`저장된 기록 ${storedSessions.length}건의 JSON 백업을 시작했습니다.`);
+      setMessage(`저장된 기록 ${backupExport.sessionCount}건의 JSON 백업을 시작했습니다.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "전체 JSON 백업에 실패했습니다.");
     }
@@ -519,7 +558,11 @@ export default function App() {
           <h1>저장된 자막 기록</h1>
         </div>
         <div className="hero-actions">
-          <button onClick={() => void handleRefreshClick()}>목록 새로고침</button>
+          <button
+            onClick={() => runHistoryAction(handleRefreshClick, "기록 목록을 다시 읽지 못했습니다.")}
+          >
+            목록 새로고침
+          </button>
           <button
             className={`secondary ${showStarredOnly ? "active-toggle" : ""}`}
             onClick={() => {
@@ -532,7 +575,10 @@ export default function App() {
           >
             {showStarredOnly ? "전체 보기" : "즐겨찾기만 보기"}
           </button>
-          <button className="secondary" onClick={() => void handleBackupAll()}>
+          <button
+            className="secondary"
+            onClick={() => runHistoryAction(handleBackupAll, "전체 JSON 백업에 실패했습니다.")}
+          >
             전체 JSON 백업
           </button>
           <button className="secondary" onClick={handleImportClick}>
@@ -559,10 +605,18 @@ export default function App() {
               <button className="secondary" onClick={handleToggleCheckAll} disabled={!sessions.length}>
                 {currentPageSessionsChecked ? "현재 페이지 선택 해제" : "현재 페이지 전체 선택"}
               </button>
-              <button className="secondary" onClick={() => void handleDeleteChecked()} disabled={!checkedIds.length}>
+              <button
+                className="secondary"
+                onClick={() => runHistoryAction(handleDeleteChecked, "선택 삭제에 실패했습니다.")}
+                disabled={!checkedIds.length}
+              >
                 선택 삭제
               </button>
-              <button className="secondary" onClick={() => void handleDeleteAll()} disabled={!allSessions.length}>
+              <button
+                className="secondary"
+                onClick={() => runHistoryAction(handleDeleteAll, "전체 삭제에 실패했습니다.")}
+                disabled={!allSessions.length}
+              >
                 전체 삭제
               </button>
             </div>
@@ -649,7 +703,10 @@ export default function App() {
                   >
                     {selectedSession.starred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
                   </button>
-                  <button onClick={handleReopen} disabled={!selectedSession.sourceUrl}>
+                  <button
+                    onClick={() => runHistoryAction(handleReopen, "원본 페이지를 열지 못했습니다.")}
+                    disabled={!selectedSession.sourceUrl}
+                  >
                     원본 페이지 열기
                   </button>
                   <button className="secondary" onClick={handleDelete}>
@@ -696,7 +753,7 @@ export default function App() {
                 />
                 <div className="note-actions">
                   <button
-                    onClick={() => void handleSaveNote()}
+                    onClick={() => runHistoryAction(handleSaveNote, "메모 저장에 실패했습니다.")}
                     disabled={noteDraft === selectedSession.note}
                   >
                     메모 저장
@@ -761,7 +818,15 @@ export default function App() {
 
               <div className="export-row">
                 {EXPORT_FORMATS.map((format) => (
-                  <button key={format} onClick={() => void handleExport(format)}>
+                  <button
+                    key={format}
+                    onClick={() =>
+                      runHistoryAction(
+                        () => handleExport(format),
+                        `${getExportFormatLabel(format)} 저장을 시작하지 못했습니다.`,
+                      )
+                    }
+                  >
                     {getExportFormatLabel(format)}
                   </button>
                 ))}
@@ -772,7 +837,12 @@ export default function App() {
                   <button
                     key={`selected_${format}`}
                     className="secondary"
-                    onClick={() => void handleExport(format, selectedEntries)}
+                    onClick={() =>
+                      runHistoryAction(
+                        () => handleExport(format, selectedEntries),
+                        `선택 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
+                      )
+                    }
                     disabled={!selectedEntries.length}
                   >
                     선택 {format.toUpperCase()}

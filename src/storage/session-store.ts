@@ -14,12 +14,31 @@ import {
 } from "../core/subtitle-models";
 import { buildExportFilename } from "../core/timeline";
 import {
+  clearQueuedExitPersistRecord,
+  clearQueuedExitPersistRecordsUpTo,
+  listQueuedExitPersistRecords,
+  resetPersistRecoveryStateForTests,
+} from "./persist-recovery";
+import {
+  buildSessionBackupBundle,
+  buildSessionBackupFilename,
+} from "./session-backup";
+import {
   SESSION_DB_SCHEMA_VERSION,
   SESSION_DB_NAME,
   SESSION_RECORD_VERSION,
   SESSION_STORE_NAME,
 } from "../shared/constants";
-import type { ExportPayload, SessionImportSummary, SessionListOptions } from "./types";
+import type {
+  ExportPayload,
+  LibraryBackupExport,
+  PersistReplaySummary,
+  SessionImportSummary,
+  SessionLibraryOverview,
+  SessionLibraryPreview,
+  SessionListOptions,
+  StartupCleanupSummary,
+} from "./types";
 
 const LEGACY_FALLBACK_STORAGE_KEY = "assembly-subtitle-session-fallback";
 const FALLBACK_INDEX_STORAGE_KEY = "assembly-subtitle-session-fallback:index";
@@ -254,14 +273,15 @@ function normalizeSessionRecord(
       : session.endedAt ?? updatedAt;
 
   return {
-    ...session,
+    id: session.id,
     version: SESSION_RECORD_VERSION,
     title: session.title || "국회 자막 세션",
     committeeName: session.committeeName || "",
-    createdAt,
+    sourceUrl: typeof session.sourceUrl === "string" ? session.sourceUrl : "",
     startedAt,
-    updatedAt,
     endedAt,
+    createdAt,
+    updatedAt,
     subtitleCount: entries.length,
     charCount: getSessionCharCount(entries),
     status,
@@ -644,6 +664,40 @@ async function listIndexedDbSessions(options: SessionListOptions = {}): Promise<
   });
 }
 
+async function listAllIndexedDbSessions(): Promise<SessionRecord[]> {
+  return withTransaction("readonly", async (store) => {
+    const all = await withRequest(store.getAll());
+    return all as SessionRecord[];
+  });
+}
+
+async function listIndexedDbSessionIds(): Promise<string[]> {
+  return withTransaction("readonly", async (store) => {
+    const storeWithGetAllKeys = store as IDBObjectStore & {
+      getAllKeys?: () => IDBRequest<IDBValidKey[]>;
+    };
+
+    if (typeof storeWithGetAllKeys.getAllKeys === "function") {
+      const keys = await withRequest(storeWithGetAllKeys.getAllKeys());
+      return keys.filter((key): key is string => typeof key === "string");
+    }
+
+    const records = await withRequest(store.getAll() as IDBRequest<Array<{ id?: unknown }>>);
+    return (records as Array<{ id?: unknown }>)
+      .map((record) => record.id)
+      .filter((id): id is string => typeof id === "string");
+  });
+}
+
+async function listFallbackSessionIds(): Promise<string[]> {
+  const index = await readChromeFallbackIndex();
+  if (index) {
+    return [...index];
+  }
+
+  return [...memoryFallbackStore.keys()];
+}
+
 async function saveFallbackRecord(session: SessionRecord): Promise<SessionRecord> {
   const record = cloneSessionRecord(session);
   memoryFallbackStore.set(record.id, cloneSessionRecord(record));
@@ -770,6 +824,7 @@ async function writeSessionRecord(
 
   if (indexedDbResult.ok && indexedDbResult.value) {
     await bestEffortDeleteFallbackRecord(record.id);
+    await clearQueuedExitPersistRecordsUpTo(record.id, record.updatedAt);
     return cloneSessionRecord(indexedDbResult.value);
   }
 
@@ -779,7 +834,9 @@ async function writeSessionRecord(
       : new Error("IndexedDB session write failed");
   }
 
-  return saveFallbackRecord(record);
+  const savedFallbackRecord = await saveFallbackRecord(record);
+  await clearQueuedExitPersistRecordsUpTo(savedFallbackRecord.id, savedFallbackRecord.updatedAt);
+  return savedFallbackRecord;
 }
 
 export async function saveSession(session: SessionRecord): Promise<SessionRecord> {
@@ -834,6 +891,77 @@ export async function loadSession(id: string): Promise<SessionRecord | undefined
   );
 
   return merged[0] ? cloneSessionRecord(merged[0]) : undefined;
+}
+
+export async function loadSessionsByIds(ids: string[]): Promise<SessionRecord[]> {
+  const uniqueIds = [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];
+  const sessions = await Promise.all(uniqueIds.map((id) => loadSession(id)));
+  return sessions.filter((session): session is SessionRecord => Boolean(session));
+}
+
+async function listAllSessions(): Promise<SessionRecord[]> {
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listAllIndexedDbSessions()),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+
+  return sortSessions(
+    mergeSessionCollections(
+      indexedDbResult.ok && indexedDbResult.value
+        ? indexedDbResult.value.map((record) =>
+            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+          )
+        : [],
+      fallbackRecords.map((record) =>
+        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+      ),
+    ),
+    { limit: Number.MAX_SAFE_INTEGER },
+  );
+}
+
+function toSessionLibraryPreview(record: SessionRecord): SessionLibraryPreview {
+  return {
+    id: record.id,
+    title: record.title,
+    committeeName: record.committeeName,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export async function getSessionLibraryOverview(
+  previewLimit = 3,
+): Promise<SessionLibraryOverview> {
+  const safePreviewLimit = Math.max(0, previewLimit);
+  const [indexedDbIdsResult, fallbackIds, previewSessions] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbSessionIds()),
+    listFallbackSessionIds(),
+    safePreviewLimit > 0 ? listSessions({ limit: safePreviewLimit }) : Promise.resolve([]),
+  ]);
+  const uniqueIds = new Set<string>(fallbackIds);
+  if (indexedDbIdsResult.ok && indexedDbIdsResult.value) {
+    indexedDbIdsResult.value.forEach((id) => uniqueIds.add(id));
+  }
+
+  return {
+    totalCount: uniqueIds.size,
+    previewSessions: previewSessions.slice(0, safePreviewLimit).map(toSessionLibraryPreview),
+  };
+}
+
+export async function buildSessionLibraryBackupExport(): Promise<LibraryBackupExport> {
+  const sessions = await listAllSessions();
+  const now = new Date();
+  const backup = buildSessionBackupBundle(sessions, now.toISOString());
+  return {
+    sessionCount: sessions.length,
+    payload: {
+      filename: buildSessionBackupFilename(now),
+      format: "json",
+      mimeType: "application/json;charset=utf-8",
+      content: JSON.stringify(backup, null, 2),
+    },
+  };
 }
 
 export async function listSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
@@ -903,8 +1031,6 @@ export async function deleteAllSessions(): Promise<void> {
 export async function importSessionRecords(
   sessions: StoredSessionRecord[],
 ): Promise<SessionImportSummary> {
-  const existingSessions = await listSessions({ limit: Number.MAX_SAFE_INTEGER });
-  const existingById = new Map(existingSessions.map((session) => [session.id, session]));
   const importedById = new Map<string, SessionRecord>();
 
   sessions.forEach((session) => {
@@ -917,6 +1043,9 @@ export async function importSessionRecords(
       importedById.set(normalized.id, normalized);
     }
   });
+
+  const existingSessions = await loadSessionsByIds([...importedById.keys()]);
+  const existingById = new Map(existingSessions.map((session) => [session.id, session]));
 
   let addedCount = 0;
   let updatedCount = 0;
@@ -966,14 +1095,46 @@ export async function exportSessionData(
   return toExportPayload(session, format, filenamePattern, entries);
 }
 
-export async function closeRunningSessionsOnStartup(): Promise<number> {
+export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySummary> {
+  const queuedRecords = (await listQueuedExitPersistRecords()).sort((left, right) =>
+    left.record.updatedAt.localeCompare(right.record.updatedAt),
+  );
+  let replayedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+
+  for (const queuedRecord of queuedRecords) {
+    try {
+      const existingRecord = await loadSession(queuedRecord.sessionId);
+      if (
+        existingRecord &&
+        existingRecord.updatedAt.localeCompare(queuedRecord.record.updatedAt) >= 0
+      ) {
+        skippedCount += 1;
+        await clearQueuedExitPersistRecord(queuedRecord.sessionId);
+        continue;
+      }
+
+      await saveSession(queuedRecord.record);
+      replayedCount += 1;
+      await clearQueuedExitPersistRecord(queuedRecord.sessionId);
+    } catch (error) {
+      failedCount += 1;
+      logStoreError(`Failed to replay queued exit persist record for ${queuedRecord.sessionId}`, error);
+    }
+  }
+
+  return {
+    queuedCount: queuedRecords.length,
+    replayedCount,
+    skippedCount,
+    failedCount,
+  };
+}
+
+export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSummary> {
   const [indexedDbRecords, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () =>
-      withTransaction("readonly", async (store) => {
-        const all = await withRequest(store.getAll());
-        return all as SessionRecord[];
-      }),
-    ),
+    tryIndexedDb(async () => listAllIndexedDbSessions()),
     listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
 
@@ -982,12 +1143,36 @@ export async function closeRunningSessionsOnStartup(): Promise<number> {
       ? indexedDbRecords.value.filter((record) => record.status === "running")
       : [];
   const fallbackRunning = fallbackRecords.filter((record) => record.status === "running");
-  const uniqueRunningIds = new Set(
-    [...indexedDbRunning, ...fallbackRunning].map((record) => record.id),
-  );
+  const statusById = new Map<
+    string,
+    {
+      indexedDbRequired: boolean;
+      fallbackRequired: boolean;
+      indexedDbClosed: boolean;
+      fallbackClosed: boolean;
+    }
+  >();
+
+  indexedDbRunning.forEach((record) => {
+    statusById.set(record.id, {
+      indexedDbRequired: true,
+      fallbackRequired: statusById.get(record.id)?.fallbackRequired ?? false,
+      indexedDbClosed: false,
+      fallbackClosed: statusById.get(record.id)?.fallbackClosed ?? false,
+    });
+  });
+  fallbackRunning.forEach((record) => {
+    const current = statusById.get(record.id);
+    statusById.set(record.id, {
+      indexedDbRequired: current?.indexedDbRequired ?? false,
+      fallbackRequired: true,
+      indexedDbClosed: current?.indexedDbClosed ?? false,
+      fallbackClosed: false,
+    });
+  });
 
   if (indexedDbRunning.length) {
-    await tryIndexedDb(async () =>
+    const indexedDbWriteResult = await tryIndexedDb(async () =>
       withTransaction("readwrite", async (store) => {
         await Promise.all(
           indexedDbRunning.map((record) =>
@@ -996,15 +1181,50 @@ export async function closeRunningSessionsOnStartup(): Promise<number> {
         );
       }),
     );
+    if (indexedDbWriteResult.ok) {
+      indexedDbRunning.forEach((record) => {
+        const current = statusById.get(record.id);
+        if (current) {
+          current.indexedDbClosed = true;
+        }
+      });
+    }
   }
 
-  await Promise.all(fallbackRunning.map((record) => saveFallbackRecord(stopRunningRecord(record))));
-  return uniqueRunningIds.size;
+  const fallbackResults = await Promise.allSettled(
+    fallbackRunning.map(async (record) => {
+      await saveFallbackRecord(stopRunningRecord(record));
+      return record.id;
+    }),
+  );
+  fallbackResults.forEach((result, index) => {
+    if (result.status !== "fulfilled") {
+      logStoreError(`Failed to close fallback running session ${fallbackRunning[index]?.id}`, result.reason);
+      return;
+    }
+    const current = statusById.get(result.value);
+    if (current) {
+      current.fallbackClosed = true;
+    }
+  });
+
+  const detectedCount = statusById.size;
+  const closedCount = [...statusById.values()].filter((status) => {
+    const indexedDbDone = status.indexedDbRequired ? status.indexedDbClosed : true;
+    const fallbackDone = status.fallbackRequired ? status.fallbackClosed : true;
+    return indexedDbDone && fallbackDone;
+  }).length;
+  return {
+    detectedCount,
+    closedCount,
+    failedCount: detectedCount - closedCount,
+  };
 }
 
 export async function resetSessionStoreForTests(): Promise<void> {
   memoryFallbackStore.clear();
   await clearChromeFallbackRecordsForTests();
+  await resetPersistRecoveryStateForTests();
   indexedDbAvailable = true;
 
   if (dbPromise) {
