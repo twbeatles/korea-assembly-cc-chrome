@@ -271,3 +271,17 @@ Reference consistency set:
 - session import summaries now include `failedCount`.
 - supported hosts are fixed to both `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
 - options field exposure is now declared in code and covered by regression tests.
+
+## Sync Delta (2026-03-14)
+
+Use this delta as the current operational baseline.
+
+- `startCapture()` must not create an empty persisted `running` session.
+- If the current session has no persistable content, `stopCapture()` and reset-before-preserve flows must explicitly remove any existing persisted record for that session id.
+- `saveSession()` and `updateRunningSession()` must preserve stored `starred`, `pinnedAt`, and `note` metadata. Only `upsertSessionRecord()` is the explicit overwrite path for those fields.
+- page-exit stopped persistence must queue replay state before the background persist request is sent.
+- `importSessionRecords()` now follows the same transient IndexedDB fallback policy as normal writes.
+- History must use store-level paging through `listSessionsPage({ page, pageSize, starredOnly })`; do not reintroduce capped full-library preload behavior.
+- Session-library writes now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
+- Same-session history refreshes must not clobber a dirty note draft.
+- `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.

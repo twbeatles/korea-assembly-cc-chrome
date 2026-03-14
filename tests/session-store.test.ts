@@ -9,6 +9,7 @@ import {
   getSessionLibraryOverview,
   importSessionRecords,
   listSessions,
+  listSessionsPage,
   loadSessionsByIds,
   loadSession,
   replayQueuedExitPersistRecords,
@@ -93,6 +94,73 @@ describe("session store", () => {
     expect(loaded?.starred).toBe(true);
     expect(loaded?.pinnedAt).toBe("2026-03-10T09:30:00.000Z");
     expect(loaded?.note).toBe("중요 메모");
+  });
+
+  it("preserves favorite metadata while autosaving and finalizing an existing session", async () => {
+    await upsertSessionRecord({
+      ...buildSession("session_metadata", "saved"),
+      starred: true,
+      pinnedAt: "2026-03-10T09:30:00.000Z",
+      note: "keep this note",
+    });
+
+    await updateRunningSession({
+      ...buildSession("session_metadata", "running"),
+      starred: false,
+      pinnedAt: null,
+      note: "",
+      updatedAt: "2026-03-10T09:35:00.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_metadata", "saved"),
+      starred: false,
+      pinnedAt: null,
+      note: "",
+      updatedAt: "2026-03-10T09:40:00.000Z",
+    });
+
+    const loaded = await loadSession("session_metadata");
+
+    expect(loaded?.starred).toBe(true);
+    expect(loaded?.pinnedAt).toBe("2026-03-10T09:30:00.000Z");
+    expect(loaded?.note).toBe("keep this note");
+    expect(loaded?.status).toBe("saved");
+  });
+
+  it("lists paged sessions without preloading the full library into the caller", async () => {
+    await saveSession({
+      ...buildSession("session_page_1", "saved"),
+      updatedAt: "2026-03-10T09:00:01.000Z",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await saveSession({
+      ...buildSession("session_page_2", "saved"),
+      updatedAt: "2026-03-10T09:00:02.000Z",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    await saveSession({
+      ...buildSession("session_page_3", "saved"),
+      starred: true,
+      pinnedAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:00:03.000Z",
+    });
+
+    const firstPage = await listSessionsPage({ page: 1, pageSize: 2 });
+    const secondPage = await listSessionsPage({ page: 2, pageSize: 2 });
+    const starredOnlyPage = await listSessionsPage({
+      page: 1,
+      pageSize: 10,
+      starredOnly: true,
+    });
+
+    expect(firstPage.totalCount).toBe(3);
+    expect(firstPage.sessions.map((session) => session.id)).toEqual([
+      "session_page_3",
+      "session_page_2",
+    ]);
+    expect(secondPage.sessions.map((session) => session.id)).toEqual(["session_page_1"]);
+    expect(starredOnlyPage.totalCount).toBe(1);
+    expect(starredOnlyPage.sessions.map((session) => session.id)).toEqual(["session_page_3"]);
   });
 
   it("fills default favorite and note fields for imported legacy records", async () => {
@@ -379,7 +447,7 @@ describe("session store", () => {
     }
   });
 
-  it("reports partial import failures without aborting the remaining records", async () => {
+  it("falls back during import when a transient IndexedDB write fails", async () => {
     const originalPut = IDBObjectStore.prototype.put;
     const putSpy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
       this: IDBObjectStore,
@@ -400,13 +468,13 @@ describe("session store", () => {
     putSpy.mockRestore();
 
     expect(summary).toEqual({
-      addedCount: 1,
+      addedCount: 2,
       updatedCount: 0,
       keptCount: 0,
-      failedCount: 1,
+      failedCount: 0,
     });
     expect((await loadSession("session_import_ok"))?.id).toBe("session_import_ok");
-    await expect(loadSession("session_import_fail")).resolves.toBeUndefined();
+    expect((await loadSession("session_import_fail"))?.id).toBe("session_import_fail");
   });
 
   it("loads only the requested session ids through the targeted helper", async () => {

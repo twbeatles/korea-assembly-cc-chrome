@@ -32,6 +32,19 @@ export interface SessionListOptions {
   limit?: number;
 }
 
+export interface SessionPageOptions {
+  page: number;
+  pageSize: number;
+  starredOnly?: boolean;
+}
+
+export interface SessionPageResult {
+  sessions: SessionRecord[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface SessionExportOptions {
   filenamePattern?: string;
   entries?: SubtitleEntry[];
@@ -99,6 +112,7 @@ export interface SessionStoreApi {
   loadSession: (id: string) => Promise<SessionRecord | undefined>;
   loadSessionsByIds: (ids: string[]) => Promise<SessionRecord[]>;
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;
+  listSessionsPage: (options: SessionPageOptions) => Promise<SessionPageResult>;
   getSessionLibraryOverview: (previewLimit?: number) => Promise<SessionLibraryOverview>;
   buildSessionLibraryBackupExport: () => Promise<LibraryBackupExport>;
   deleteSession: (id: string) => Promise<void>;

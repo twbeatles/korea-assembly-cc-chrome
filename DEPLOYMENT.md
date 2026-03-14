@@ -281,3 +281,12 @@ Deployment documentation consistency sources:
   - options page explains that `autoStartEnabled` defaults to `true`
   - startup cleanup restores persisted Blob download URL tracking safely
   - options `저장 복구 상태` reflects replay / cleanup diagnostics from startup persistence maintenance
+
+## 2026-03-14 Deployment Consistency Update
+
+- Release verification should confirm that a fresh `start -> stop` cycle with no captured rows does not leave an orphan persisted `running` session.
+- Release verification should confirm that favorited / noted sessions keep `starred`, `pinnedAt`, and `note` metadata after autosave, page-exit persistence, and final stop-save flows.
+- page-exit persistence is now ordered as `queue replay record -> background persist request`; regression coverage for that ordering is part of release confidence.
+- History validation should cover store-level paging, live refresh via `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and note-draft preservation during same-session refreshes.
+- Popup and options initial render should be validated from `CAPTURE_STATUS` alone, including subtitle count, char count, preview text, and recent entry hydration.
+- The current pre-release gate remains `npm run verify`.

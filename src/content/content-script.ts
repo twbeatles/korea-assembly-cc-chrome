@@ -97,6 +97,7 @@ import {
   isObserverBridgeEventMessage,
   resolveTopFallbackDelayMs,
 } from "./frame-coordinator";
+import { persistQueuedPageExitRecord } from "./page-exit-persist";
 import {
   buildPreparedSessionRecord as prepareSessionRecord,
   buildPreparedSessionState as prepareSessionState,
@@ -508,6 +509,13 @@ function scheduleRunningPersist(): void {
 
 async function persistStoppedSession(record: SessionRecord): Promise<void> {
   if (!shouldPersistFinalSession(isTopFrame, record.entries.length)) {
+    try {
+      await deleteSession(record.id);
+      failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
+      state.lastPersistedAt = null;
+    } catch (error) {
+      reportRuntimeError("빈 종료 세션 정리에 실패했습니다.", error);
+    }
     return;
   }
 
@@ -612,10 +620,15 @@ function persistStoppedSnapshotForPageExit(now = Date.now()): void {
     return;
   }
 
-  void queueExitPersistRecord(record).catch((error: unknown) => {
-    console.warn("[assembly-subtitle] Failed to queue exit persist record", error);
+  void persistQueuedPageExitRecord(record, {
+    queueRecord: queueExitPersistRecord,
+    persistRecordInBackground: (queuedRecord) => {
+      persistSessionRecordInBackground(queuedRecord);
+    },
+    onQueueError: (error) => {
+      console.warn("[assembly-subtitle] Failed to queue exit persist record", error);
+    },
   });
-  persistSessionRecordInBackground(record);
 }
 
 async function saveCurrentSessionSnapshot(): Promise<void> {
@@ -1076,14 +1089,6 @@ async function startCapture(): Promise<void> {
     setPanelNotice("자막 모으기를 시작했습니다. 페이지에서 'AI 자막보기'를 한 번 눌러주세요.");
   }
 
-  if (settings.runningAutoSaveEnabled) {
-    try {
-      const saved = await updateRunningSession(toSessionRecord(state, "running"));
-      state = applyPersistSuccess(state, saved.updatedAt);
-    } catch (error) {
-      reportRuntimeError("수집 중 세션 초기 저장에 실패했습니다.", error);
-    }
-  }
   syncUserInterfaces();
 }
 

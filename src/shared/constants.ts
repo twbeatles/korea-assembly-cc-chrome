@@ -1,6 +1,7 @@
 import type { ExtensionSettings } from "../storage/types";
 
 export const EXTENSION_STORAGE_KEY = "assembly-extension-settings";
+export const SESSION_LIBRARY_REVISION_STORAGE_KEY = "assembly-subtitle-session-library-revision";
 export const SESSION_DB_NAME = "assembly-subtitle-sessions";
 export const SESSION_STORE_NAME = "sessions";
 export const SESSION_RECORD_VERSION = "3";

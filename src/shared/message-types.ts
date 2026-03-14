@@ -53,6 +53,10 @@ export interface CaptureStatusPayload {
   title: string;
   committeeName: string;
   sourceUrl: string;
+  subtitleCount: number;
+  charCount: number;
+  previewText: string;
+  recentEntries: SubtitleEntry[];
   startedAt: string | null;
   endedAt: string | null;
   updatedAt: string | null;

@@ -3,7 +3,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
-import { DEFAULT_EXTENSION_SETTINGS, EXTENSION_STORAGE_KEY } from "../shared/constants";
+import {
+  DEFAULT_EXTENSION_SETTINGS,
+  EXTENSION_STORAGE_KEY,
+  SESSION_LIBRARY_REVISION_STORAGE_KEY,
+} from "../shared/constants";
 import { parseSessionImportPayload } from "../storage/session-backup";
 import {
   buildSessionLibraryBackupExport,
@@ -12,7 +16,9 @@ import {
   exportSessionData,
   getSessionLibraryOverview,
   importSessionRecords,
-  listSessions,
+  listSessionsPage,
+  loadSession,
+  loadSessionsByIds,
   upsertSessionRecord,
 } from "../storage/session-store";
 import type { SessionLibraryPreview } from "../storage/types";
@@ -26,8 +32,6 @@ import {
   buildSessionImportMessage,
   extractHistoryViewSettings,
   resolveSelectedEntryIds,
-  resolveSelectedSessionIds,
-  resolveSelectedSessionId,
   selectAllEntryIds,
   selectAllSessionIds,
   selectHistoryViewSettings,
@@ -36,7 +40,6 @@ import {
 } from "./history-view-state";
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
-const HISTORY_PAGE_SESSION_LIMIT = 1000;
 const HISTORY_PAGE_SIZE = 200;
 
 function formatDate(value: string | null): string {
@@ -117,7 +120,15 @@ function confirmDiscardUnsavedNote(actionLabel: string): boolean {
 
 export default function App() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
-  const [allSessions, setAllSessions] = useState<SessionRecord[]>([]);
+  const refreshMessageRef = useRef<string | undefined>(undefined);
+  const preserveMessageOnRefreshRef = useRef(false);
+  const selectedIdRef = useRef("");
+  const checkedIdsRef = useRef<string[]>([]);
+  const noteDraftRef = useRef("");
+  const previousSelectedSessionRef = useRef<SessionRecord | null>(null);
+  const [pageSessions, setPageSessions] = useState<SessionRecord[]>([]);
+  const [totalSessionCount, setTotalSessionCount] = useState(0);
+  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const [checkedEntryIds, setCheckedEntryIds] = useState<string[]>([]);
@@ -128,37 +139,22 @@ export default function App() {
   const [sessionPage, setSessionPage] = useState(1);
   const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
   const [filenamePattern, setFilenamePattern] = useState(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const sessions = useMemo(
-    () => (showStarredOnly ? allSessions.filter((session) => session.starred) : allSessions),
-    [allSessions, showStarredOnly],
-  );
-  const selectedSession = useMemo(
-    () => sessions.find((session) => session.id === selectedId) ?? sessions[0],
-    [sessions, selectedId],
-  );
   const filteredEntries = useMemo(
     () => filterEntriesByQuery(selectedSession?.entries ?? [], searchQuery),
     [searchQuery, selectedSession],
   );
   const checkedIdSet = useMemo(() => new Set(checkedIds), [checkedIds]);
   const checkedEntryIdSet = useMemo(() => new Set(checkedEntryIds), [checkedEntryIds]);
-  const checkedSessions = useMemo(
-    () => sessions.filter((session) => checkedIdSet.has(session.id)),
-    [checkedIdSet, sessions],
-  );
-  const pageCount = Math.max(1, Math.ceil(sessions.length / HISTORY_PAGE_SIZE));
-  const pagedSessions = useMemo(() => {
-    const start = (sessionPage - 1) * HISTORY_PAGE_SIZE;
-    return sessions.slice(start, start + HISTORY_PAGE_SIZE);
-  }, [sessionPage, sessions]);
+  const pageCount = Math.max(1, Math.ceil(totalSessionCount / HISTORY_PAGE_SIZE));
   const selectedEntries = useMemo(
     () =>
       selectedSession?.entries.filter((entry) => checkedEntryIdSet.has(entry.id)) ?? [],
     [checkedEntryIdSet, selectedSession],
   );
   const currentPageSessionsChecked =
-    pagedSessions.length > 0 && pagedSessions.every((session) => checkedIdSet.has(session.id));
+    pageSessions.length > 0 && pageSessions.every((session) => checkedIdSet.has(session.id));
   const allVisibleEntriesChecked =
     filteredEntries.length > 0 &&
     filteredEntries.every((entry) => checkedEntryIdSet.has(entry.id));
@@ -171,31 +167,122 @@ export default function App() {
     });
   };
 
-  const refresh = async (messageOnSuccess?: string): Promise<SessionRecord[]> => {
-    const nextSessions = await listSessions({ limit: HISTORY_PAGE_SESSION_LIMIT });
-    setAllSessions(nextSessions);
-    setMessage(messageOnSuccess ?? buildHistoryRefreshMessage(nextSessions.length));
-    return nextSessions;
+  const requestRefresh = (
+    messageOnSuccess?: string,
+    options: {
+      preserveMessage?: boolean;
+    } = {},
+  ): void => {
+    refreshMessageRef.current = messageOnSuccess;
+    preserveMessageOnRefreshRef.current = options.preserveMessage ?? false;
+    setReloadKey((current) => current + 1);
   };
 
   useEffect(() => {
-    void refresh().catch((error: unknown) => {
-      setMessage(error instanceof Error ? error.message : "기록 목록을 읽지 못했습니다.");
-    });
-  }, []);
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   useEffect(() => {
-    setSelectedId((current) => resolveSelectedSessionId(current, sessions));
-    setCheckedIds((current) => resolveSelectedSessionIds(current, sessions));
-    setSessionPage((current) => Math.min(current, Math.max(1, Math.ceil(sessions.length / HISTORY_PAGE_SIZE))));
-  }, [sessions]);
+    checkedIdsRef.current = checkedIds;
+  }, [checkedIds]);
 
   useEffect(() => {
-    setNoteDraft(selectedSession?.note ?? "");
+    noteDraftRef.current = noteDraft;
+  }, [noteDraft]);
+
+  useEffect(() => {
+    const previousSelectedSession = previousSelectedSessionRef.current;
+    const selectedSessionIdChanged = previousSelectedSession?.id !== selectedSession?.id;
+
+    if (selectedSessionIdChanged) {
+      setNoteDraft(selectedSession?.note ?? "");
+    } else if (
+      previousSelectedSession &&
+      selectedSession &&
+      noteDraftRef.current === previousSelectedSession.note
+    ) {
+      setNoteDraft(selectedSession.note);
+    }
+
     setCheckedEntryIds((current) =>
       resolveSelectedEntryIds(current, selectedSession?.entries ?? []),
     );
+    previousSelectedSessionRef.current = selectedSession;
   }, [selectedSession]);
+
+  useEffect(() => {
+    let active = true;
+    const messageOnSuccess = refreshMessageRef.current;
+    const preserveMessage = preserveMessageOnRefreshRef.current;
+    refreshMessageRef.current = undefined;
+    preserveMessageOnRefreshRef.current = false;
+
+    void (async () => {
+      try {
+        const pageResult = await listSessionsPage({
+          page: sessionPage,
+          pageSize: HISTORY_PAGE_SIZE,
+          starredOnly: showStarredOnly,
+        });
+        if (!active) {
+          return;
+        }
+
+        setPageSessions(pageResult.sessions);
+        setTotalSessionCount(pageResult.totalCount);
+        if (pageResult.page !== sessionPage) {
+          setSessionPage(pageResult.page);
+        }
+
+        if (checkedIdsRef.current.length > 0) {
+          const existingCheckedSessions = await loadSessionsByIds(checkedIdsRef.current);
+          if (!active) {
+            return;
+          }
+          setCheckedIds(existingCheckedSessions.map((session) => session.id));
+        }
+
+        let nextSelectedId = selectedIdRef.current || pageResult.sessions[0]?.id || "";
+        let nextSelectedSession =
+          pageResult.sessions.find((session) => session.id === nextSelectedId) ?? null;
+
+        if (!nextSelectedSession && nextSelectedId) {
+          const loadedSelectedSession = await loadSession(nextSelectedId);
+          if (!active) {
+            return;
+          }
+          if (loadedSelectedSession && (!showStarredOnly || loadedSelectedSession.starred)) {
+            nextSelectedSession = loadedSelectedSession;
+          }
+        }
+
+        if (!nextSelectedSession && pageResult.sessions.length > 0) {
+          nextSelectedSession = pageResult.sessions[0];
+          nextSelectedId = nextSelectedSession.id;
+        }
+
+        if (!nextSelectedSession) {
+          nextSelectedId = "";
+        }
+
+        setSelectedId(nextSelectedId);
+        setSelectedSession(nextSelectedSession);
+
+        if (!preserveMessage) {
+          setMessage(messageOnSuccess ?? buildHistoryRefreshMessage(pageResult.totalCount));
+        }
+      } catch (error: unknown) {
+        if (!active) {
+          return;
+        }
+        setMessage(error instanceof Error ? error.message : "기록 목록을 읽지 못했습니다.");
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [reloadKey, sessionPage, showStarredOnly]);
 
   useEffect(() => {
     const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
@@ -237,13 +324,20 @@ export default function App() {
       changes: Record<string, chrome.storage.StorageChange>,
       areaName: string,
     ): void => {
-      if (!active || areaName !== "local" || !changes[EXTENSION_STORAGE_KEY]) {
+      if (!active || areaName !== "local") {
         return;
       }
 
-      const nextSettings = extractHistoryViewSettings(changes[EXTENSION_STORAGE_KEY].newValue);
-      setRecentCopyLineCount(nextSettings.recentCopyLineCount);
-      setFilenamePattern(nextSettings.filenamePattern);
+      if (changes[EXTENSION_STORAGE_KEY]) {
+        const nextSettings = extractHistoryViewSettings(changes[EXTENSION_STORAGE_KEY].newValue);
+        setRecentCopyLineCount(nextSettings.recentCopyLineCount);
+        setFilenamePattern(nextSettings.filenamePattern);
+      }
+
+      if (changes[SESSION_LIBRARY_REVISION_STORAGE_KEY]) {
+        preserveMessageOnRefreshRef.current = true;
+        setReloadKey((current) => current + 1);
+      }
     };
 
     chrome.storage.onChanged.addListener(handleStorageChange);
@@ -259,7 +353,7 @@ export default function App() {
       return;
     }
 
-    await refresh();
+    requestRefresh();
   };
 
   const handleDelete = async (): Promise<void> => {
@@ -273,7 +367,7 @@ export default function App() {
 
     try {
       await deleteSession(selectedSession.id);
-      await refresh("선택한 기록을 삭제했습니다.");
+      requestRefresh("선택한 기록을 삭제했습니다.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "기록 삭제에 실패했습니다.");
     }
@@ -299,20 +393,28 @@ export default function App() {
   };
 
   const handleDeleteChecked = async (): Promise<void> => {
-    if (!checkedSessions.length) {
+    if (!checkedIds.length) {
       return;
     }
-    if (!confirmDeleteSessions(checkedSessions, "선택한")) {
+
+    const targetSessions = await loadSessionsByIds(checkedIds);
+    if (!targetSessions.length) {
+      setCheckedIds([]);
+      requestRefresh(undefined, { preserveMessage: true });
+      return;
+    }
+
+    if (!confirmDeleteSessions(targetSessions, "선택한")) {
       setMessage("선택 삭제를 취소했습니다.");
       return;
     }
 
     try {
-      const result = await deleteSessionIds(checkedSessions.map((session) => session.id));
+      const result = await deleteSessionIds(targetSessions.map((session) => session.id));
       setCheckedIds([]);
-      await refresh(
+      requestRefresh(
         buildSelectedDeleteMessage(
-          checkedSessions.length,
+          targetSessions.length,
           result.deletedCount,
           result.failedCount,
         ),
@@ -326,7 +428,7 @@ export default function App() {
     try {
       const overview = await getSessionLibraryOverview();
       if (!overview.totalCount) {
-        await refresh();
+        requestRefresh();
         return;
       }
       if (
@@ -343,21 +445,13 @@ export default function App() {
       setSearchQuery("");
       setCheckedIds([]);
       setCheckedEntryIds([]);
-      await refresh(buildDeleteAllSuccessMessage(overview.totalCount));
+      requestRefresh(buildDeleteAllSuccessMessage(overview.totalCount));
     } catch (error) {
-      try {
-        await refresh(
-          buildDeleteAllFailureMessage(
-            error instanceof Error ? `(${error.message})` : undefined,
-          ),
-        );
-      } catch (refreshError) {
-        setMessage(
-          refreshError instanceof Error
-            ? refreshError.message
-            : "저장된 기록 목록을 다시 불러오지 못했습니다.",
-        );
-      }
+      requestRefresh(
+        buildDeleteAllFailureMessage(
+          error instanceof Error ? `(${error.message})` : undefined,
+        ),
+      );
     }
   };
 
@@ -368,8 +462,8 @@ export default function App() {
   const handleToggleCheckAll = (): void => {
     setCheckedIds((current) =>
       currentPageSessionsChecked
-        ? current.filter((id) => !pagedSessions.some((session) => session.id === id))
-        : [...new Set([...current, ...selectAllSessionIds(pagedSessions)])],
+        ? current.filter((id) => !pageSessions.some((session) => session.id === id))
+        : [...new Set([...current, ...selectAllSessionIds(pageSessions)])],
     );
   };
 
@@ -380,7 +474,9 @@ export default function App() {
         starred: !session.starred,
         pinnedAt: session.starred ? null : new Date().toISOString(),
       });
-      await refresh(session.starred ? "즐겨찾기를 해제했습니다." : "즐겨찾기에 추가했습니다.");
+      requestRefresh(
+        session.starred ? "즐겨찾기를 해제했습니다." : "즐겨찾기에 추가했습니다.",
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "즐겨찾기 저장에 실패했습니다.");
     }
@@ -396,7 +492,7 @@ export default function App() {
         ...selectedSession,
         note: noteDraft,
       });
-      await refresh(noteDraft.trim() ? "메모를 저장했습니다." : "메모를 비웠습니다.");
+      requestRefresh(noteDraft.trim() ? "메모를 저장했습니다." : "메모를 비웠습니다.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "메모 저장에 실패했습니다.");
     }
@@ -481,11 +577,9 @@ export default function App() {
       return;
     }
 
-    const nextIndex = sessions.findIndex((session) => session.id === sessionId);
-    if (nextIndex >= 0) {
-      setSessionPage(Math.floor(nextIndex / HISTORY_PAGE_SIZE) + 1);
-    }
+    const nextSelectedSession = pageSessions.find((session) => session.id === sessionId) ?? null;
     setSelectedId(sessionId);
+    setSelectedSession(nextSelectedSession);
   };
 
   const handleToggleEntryChecked = (entryId: string): void => {
@@ -539,7 +633,7 @@ export default function App() {
       }
 
       const summary = await importSessionRecords(importPayload.records);
-      await refresh(
+      requestRefresh(
         buildSessionImportMessage({
           ...summary,
           invalidCount: importPayload.invalidCount,
@@ -599,10 +693,10 @@ export default function App() {
         <aside className="session-list">
           <div className="session-list-toolbar">
             <span>
-              전체 {allSessions.length}개 / 표시 {sessions.length}개 / 현재 페이지 {pagedSessions.length}개 / 선택 {checkedIds.length}개
+              현재 필터 {totalSessionCount}개 / 현재 페이지 {pageSessions.length}개 / 선택 {checkedIds.length}개
             </span>
             <div className="session-list-actions">
-              <button className="secondary" onClick={handleToggleCheckAll} disabled={!sessions.length}>
+              <button className="secondary" onClick={handleToggleCheckAll} disabled={!pageSessions.length}>
                 {currentPageSessionsChecked ? "현재 페이지 선택 해제" : "현재 페이지 전체 선택"}
               </button>
               <button
@@ -615,14 +709,14 @@ export default function App() {
               <button
                 className="secondary"
                 onClick={() => runHistoryAction(handleDeleteAll, "전체 삭제에 실패했습니다.")}
-                disabled={!allSessions.length}
+                disabled={!totalSessionCount}
               >
                 전체 삭제
               </button>
             </div>
           </div>
-          {sessions.length ? (
-            pagedSessions.map((session) => (
+          {pageSessions.length ? (
+            pageSessions.map((session) => (
               <div key={session.id} className="session-item-row">
                 <label className="session-check">
                   <input
@@ -665,7 +759,7 @@ export default function App() {
                 : "아직 저장해 둔 기록이 없습니다."}
             </div>
           )}
-          {sessions.length > HISTORY_PAGE_SIZE ? (
+          {totalSessionCount > HISTORY_PAGE_SIZE ? (
             <div className="session-pagination">
               <button
                 className="secondary"
@@ -914,7 +1008,7 @@ export default function App() {
             </>
           ) : (
             <div className="empty-card">
-              {allSessions.length && showStarredOnly
+              {totalSessionCount > 0 && showStarredOnly
                 ? "즐겨찾기 목록에서 기록을 선택하세요."
                 : "왼쪽에서 기록을 선택하세요."}
             </div>

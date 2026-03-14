@@ -269,3 +269,17 @@ Current closure status:
 - session import summaries now include `failedCount`.
 - supported hosts are fixed to both `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
 - options field exposure is now declared in `settings-fields.ts` and covered by regression tests.
+
+## 2026-03-14 Sync Update
+
+When editing this repository, align with the newly implemented behavior below.
+
+- `startCapture()` must not create an empty persisted `running` session.
+- If the current session has no persistable content, `stopCapture()` and reset-before-preserve flows must explicitly remove any existing persisted record for that session id.
+- `saveSession()` and `updateRunningSession()` must preserve stored `starred`, `pinnedAt`, and `note` metadata. Only `upsertSessionRecord()` is the explicit overwrite path for those fields.
+- page-exit stopped persistence must always queue replay state before sending the background persist request.
+- `importSessionRecords()` now follows the same transient IndexedDB fallback policy as normal writes.
+- History must use store-level paging through `listSessionsPage({ page, pageSize, starredOnly })`; do not reintroduce full-library preload with an arbitrary cap.
+- Session-library writes/deletes/imports/startup cleanup now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
+- History detail may load a selected session outside the current page, and same-session refreshes must not clobber a dirty note draft.
+- `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.

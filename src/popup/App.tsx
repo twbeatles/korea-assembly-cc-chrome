@@ -111,7 +111,7 @@ export default function App() {
 
           switch (message.type) {
             case "CAPTURE_STATUS":
-              setSnapshot((current) => ({
+              setSnapshot(() => ({
                 connected: message.payload.connected,
                 requiresReload: message.payload.requiresReload,
                 status: message.payload.status,
@@ -119,10 +119,10 @@ export default function App() {
                 title: message.payload.title,
                 committeeName: message.payload.committeeName,
                 sourceUrl: message.payload.sourceUrl,
-                subtitleCount: current?.subtitleCount ?? 0,
-                charCount: current?.charCount ?? 0,
-                previewText: current?.previewText ?? "",
-                recentEntries: current?.recentEntries ?? [],
+                subtitleCount: message.payload.subtitleCount,
+                charCount: message.payload.charCount,
+                previewText: message.payload.previewText,
+                recentEntries: message.payload.recentEntries,
                 startedAt: message.payload.startedAt,
                 endedAt: message.payload.endedAt,
                 updatedAt: message.payload.updatedAt,

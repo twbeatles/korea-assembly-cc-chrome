@@ -1,5 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { SESSION_LIBRARY_REVISION_STORAGE_KEY } from "../src/shared/constants";
 
 const chromeApiMocks = vi.hoisted(() => ({
   createTab: vi.fn(),
@@ -17,7 +19,9 @@ const sessionStoreMocks = vi.hoisted(() => ({
   exportSessionData: vi.fn(),
   getSessionLibraryOverview: vi.fn(),
   importSessionRecords: vi.fn(),
-  listSessions: vi.fn(),
+  listSessionsPage: vi.fn(),
+  loadSession: vi.fn(),
+  loadSessionsByIds: vi.fn(),
   upsertSessionRecord: vi.fn(),
 }));
 
@@ -27,7 +31,14 @@ vi.mock("../src/storage/session-store", () => sessionStoreMocks);
 
 import App from "../src/history/App";
 
-function buildSession() {
+function buildSession(overrides: Partial<ReturnType<typeof buildSessionBase>> = {}) {
+  return {
+    ...buildSessionBase(),
+    ...overrides,
+  };
+}
+
+function buildSessionBase() {
   return {
     id: "session_history_1",
     version: "3",
@@ -57,19 +68,33 @@ function buildSession() {
 }
 
 describe("history app", () => {
+  const storageListeners: Array<
+    (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void
+  > = [];
+
   beforeEach(() => {
     vi.clearAllMocks();
+    storageListeners.length = 0;
+
     Object.defineProperty(globalThis, "chrome", {
       configurable: true,
       value: {
         storage: {
           onChanged: {
-            addListener: vi.fn(),
-            removeListener: vi.fn(),
+            addListener: vi.fn((listener) => {
+              storageListeners.push(listener);
+            }),
+            removeListener: vi.fn((listener) => {
+              const index = storageListeners.indexOf(listener);
+              if (index >= 0) {
+                storageListeners.splice(index, 1);
+              }
+            }),
           },
         },
       },
     });
+
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
     settingsStoreMocks.getSettings.mockResolvedValue({
@@ -87,15 +112,26 @@ describe("history app", () => {
       autoStartEnabled: true,
       filterUnconfirmedEnabled: true,
     });
-    sessionStoreMocks.listSessions.mockResolvedValue([buildSession()]);
+
+    const session = buildSession();
+    sessionStoreMocks.listSessionsPage.mockResolvedValue({
+      sessions: [session],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValue(session);
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
+      ids.includes(session.id) ? [session] : [],
+    );
     sessionStoreMocks.getSessionLibraryOverview.mockResolvedValue({
       totalCount: 1,
       previewSessions: [
         {
-          id: "session_history_1",
-          title: "정무위",
-          committeeName: "정무위원회",
-          updatedAt: "2026-03-10T09:00:03.000Z",
+          id: session.id,
+          title: session.title,
+          committeeName: session.committeeName,
+          updatedAt: session.updatedAt,
         },
       ],
     });
@@ -109,6 +145,7 @@ describe("history app", () => {
         content: "{}",
       },
     });
+    sessionStoreMocks.upsertSessionRecord.mockResolvedValue(session);
     chromeApiMocks.sendRuntimeMessage.mockResolvedValue({ ok: true });
   });
 
@@ -145,11 +182,6 @@ describe("history app", () => {
       expect(sessionStoreMocks.getSessionLibraryOverview).toHaveBeenCalled();
       expect(sessionStoreMocks.deleteAllSessions).toHaveBeenCalled();
     });
-    expect(
-      sessionStoreMocks.listSessions.mock.calls.some(
-        ([arg]) => arg?.limit === Number.MAX_SAFE_INTEGER,
-      ),
-    ).toBe(false);
   });
 
   it("uses the backup export helper for full-library JSON backup", async () => {
@@ -165,5 +197,40 @@ describe("history app", () => {
         }),
       );
     });
+  });
+
+  it("keeps a dirty note draft when the session library revision refreshes the same selection", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "원본 페이지 열기" });
+
+    const noteInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(noteInput).not.toBeNull();
+    fireEvent.change(noteInput!, { target: { value: "draft note" } });
+
+    sessionStoreMocks.loadSession.mockResolvedValueOnce(
+      buildSession({
+        note: "saved note",
+        updatedAt: "2026-03-10T09:00:10.000Z",
+      }),
+    );
+
+    act(() => {
+      storageListeners.forEach((listener) =>
+        listener(
+          {
+            [SESSION_LIBRARY_REVISION_STORAGE_KEY]: {
+              oldValue: "old",
+              newValue: "new",
+            },
+          },
+          "local",
+        ),
+      );
+    });
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.listSessionsPage).toHaveBeenCalledTimes(2);
+    });
+    expect(noteInput?.value).toBe("draft note");
   });
 });

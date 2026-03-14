@@ -380,3 +380,26 @@ This section tracks the latest storage recovery, validation, and UI consistency 
 - supported host matching is fixed to `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
 - options field exposure is declared in code and regression-tested.
 - the foreign-language/CJK review item remains intentionally excluded by product policy.
+
+## 2026-03-14 Sync Update
+
+This section tracks the latest capture-persistence and history-consistency hardening.
+
+- Empty running-session handling completed:
+  - `startCapture()` no longer persists an empty `running` record immediately.
+  - `stopCapture()` and reset-before-preserve now explicitly remove an existing persisted record when the current session has no persistable content.
+- Session metadata preservation completed:
+  - `saveSession()` and `updateRunningSession()` now preserve `starred`, `pinnedAt`, and `note` from the existing stored record.
+  - `upsertSessionRecord()` remains the explicit overwrite path for history edits.
+- Page-exit ordering completed:
+  - page-exit stopped snapshots now queue replay state before the background persist request is sent.
+  - the ordering logic is isolated in `src/content/page-exit-persist.ts` and regression-tested.
+- Import/fallback consistency completed:
+  - `importSessionRecords()` now allows the same transient IndexedDB fallback behavior as normal writes.
+- History pagination/live refresh completed:
+  - history now uses store-level `listSessionsPage({ page, pageSize, starredOnly })` instead of preloading a capped session list.
+  - session library writes bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page live-refreshes on that signal.
+  - selected-session detail can now load outside the current page, and dirty note drafts are preserved across same-session refreshes.
+- Popup/options initial snapshot consistency completed:
+  - `CAPTURE_STATUS` now includes `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
+  - popup/options can fully hydrate their initial state from `CAPTURE_STATUS` alone, while `PREVIEW_UPDATE` and `SESSION_STATS` remain incremental updates.

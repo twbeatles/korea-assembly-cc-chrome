@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const chromeApiMocks = vi.hoisted(() => ({
@@ -122,5 +122,83 @@ describe("options app", () => {
     expect(screen.getByText("Replay failed once")).toBeTruthy();
     expect(screen.getByText("1 / 0")).toBeTruthy();
     expect(screen.getByText("2 / 1")).toBeTruthy();
+  });
+
+  it("hydrates diagnostics counts from the initial capture status payload", async () => {
+    const messageListeners: Array<(message: unknown) => void> = [];
+    const port = {
+      onMessage: {
+        addListener: vi.fn((listener: (message: unknown) => void) => {
+          messageListeners.push(listener);
+        }),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+
+    window.history.replaceState({}, "", "/options.html?view=diagnostics");
+    chromeApiMocks.queryTabs.mockResolvedValue([
+      {
+        id: 1,
+        url: "https://assembly.webcast.go.kr/main/player.asp",
+        lastAccessed: Date.now(),
+      },
+    ]);
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValue({
+      ok: true,
+      ready: true,
+      requiresReload: false,
+    });
+    chromeApiMocks.connectToTab.mockReturnValue(port);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalled();
+    });
+
+    act(() => {
+      messageListeners.forEach((listener) =>
+        listener({
+          type: "CAPTURE_STATUS",
+          payload: {
+            connected: true,
+            requiresReload: false,
+            status: "running",
+            sessionId: "session_options",
+            title: "정무위",
+            committeeName: "정무위원회",
+            sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+            subtitleCount: 4,
+            charCount: 24,
+            previewText: "실시간 미리보기",
+            recentEntries: [],
+            startedAt: "2026-03-10T09:00:00.000Z",
+            endedAt: null,
+            updatedAt: "2026-03-10T09:00:03.000Z",
+            lastPersistedAt: "2026-03-10T09:00:03.000Z",
+            observerActive: true,
+            currentSelector: "#viewSubtit",
+            currentFramePath: [],
+            diagnostics: {
+              captureMode: "dom-observer",
+              observerActive: true,
+              currentSelector: "#viewSubtit",
+              currentFramePath: [],
+              sourceLabel: "DOM observer",
+            },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("4문장")).toBeTruthy();
+      expect(screen.getByText("DOM observer")).toBeTruthy();
+    });
+    expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_STATUS" });
   });
 });

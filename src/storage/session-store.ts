@@ -27,6 +27,7 @@ import {
   SESSION_DB_SCHEMA_VERSION,
   SESSION_DB_NAME,
   SESSION_RECORD_VERSION,
+  SESSION_LIBRARY_REVISION_STORAGE_KEY,
   SESSION_STORE_NAME,
 } from "../shared/constants";
 import type {
@@ -37,6 +38,8 @@ import type {
   SessionLibraryOverview,
   SessionLibraryPreview,
   SessionListOptions,
+  SessionPageOptions,
+  SessionPageResult,
   StartupCleanupSummary,
 } from "./types";
 
@@ -290,6 +293,36 @@ function normalizeSessionRecord(
     note,
     entries,
   };
+}
+
+function mergeEditableSessionMetadata(
+  record: SessionRecord,
+  existingRecord?: SessionRecord,
+): SessionRecord {
+  if (!existingRecord) {
+    return cloneSessionRecord(record);
+  }
+
+  return {
+    ...cloneSessionRecord(record),
+    starred: existingRecord.starred,
+    pinnedAt: existingRecord.pinnedAt,
+    note: existingRecord.note,
+  };
+}
+
+async function bumpSessionLibraryRevision(): Promise<void> {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) {
+    return;
+  }
+
+  try {
+    await chrome.storage.local.set({
+      [SESSION_LIBRARY_REVISION_STORAGE_KEY]: `${Date.now()}:${Math.random().toString(16).slice(2)}`,
+    });
+  } catch (error) {
+    logStoreError("Failed to bump session library revision", error);
+  }
 }
 
 function sortSessions(records: SessionRecord[], options: SessionListOptions = {}): SessionRecord[] {
@@ -807,13 +840,20 @@ function stopRunningRecord(record: SessionRecord): SessionRecord {
   };
 }
 
+async function preserveStoredSessionMetadata(record: SessionRecord): Promise<SessionRecord> {
+  const existingRecord = await loadSession(record.id);
+  return mergeEditableSessionMetadata(record, existingRecord);
+}
+
 async function writeSessionRecord(
   record: SessionRecord,
   options: {
     allowFallbackOnIndexedDbError?: boolean;
+    notifyRevision?: boolean;
   } = {},
 ): Promise<SessionRecord> {
   const allowFallbackOnIndexedDbError = options.allowFallbackOnIndexedDbError !== false;
+  const notifyRevision = options.notifyRevision !== false;
   const indexedDbResult = await tryIndexedDb(async () => {
     await withTransaction("readwrite", async (store) => {
       await withRequest(store.put(toIndexedDbRecord(record)));
@@ -825,6 +865,9 @@ async function writeSessionRecord(
   if (indexedDbResult.ok && indexedDbResult.value) {
     await bestEffortDeleteFallbackRecord(record.id);
     await clearQueuedExitPersistRecordsUpTo(record.id, record.updatedAt);
+    if (notifyRevision) {
+      await bumpSessionLibraryRevision();
+    }
     return cloneSessionRecord(indexedDbResult.value);
   }
 
@@ -836,26 +879,39 @@ async function writeSessionRecord(
 
   const savedFallbackRecord = await saveFallbackRecord(record);
   await clearQueuedExitPersistRecordsUpTo(savedFallbackRecord.id, savedFallbackRecord.updatedAt);
+  if (notifyRevision) {
+    await bumpSessionLibraryRevision();
+  }
   return savedFallbackRecord;
 }
 
 export async function saveSession(session: SessionRecord): Promise<SessionRecord> {
-  const record = normalizeSessionRecord({
-    ...session,
-    status: session.status === "running" ? "saved" : session.status,
-  }, {
-    forceStatus: session.status === "running" ? "saved" : session.status,
-  });
+  const record = await preserveStoredSessionMetadata(
+    normalizeSessionRecord(
+      {
+        ...session,
+        status: session.status === "running" ? "saved" : session.status,
+      },
+      {
+        forceStatus: session.status === "running" ? "saved" : session.status,
+      },
+    ),
+  );
   return writeSessionRecord(record);
 }
 
 export async function updateRunningSession(session: SessionRecord): Promise<SessionRecord> {
-  const record = normalizeSessionRecord({
-    ...session,
-    status: "running",
-  }, {
-    forceStatus: "running",
-  });
+  const record = await preserveStoredSessionMetadata(
+    normalizeSessionRecord(
+      {
+        ...session,
+        status: "running",
+      },
+      {
+        forceStatus: "running",
+      },
+    ),
+  );
   return writeSessionRecord(record);
 }
 
@@ -985,6 +1041,27 @@ export async function listSessions(options: SessionListOptions = {}): Promise<Se
   );
 }
 
+export async function listSessionsPage(
+  options: SessionPageOptions,
+): Promise<SessionPageResult> {
+  const allSessions = await listAllSessions();
+  const filteredSessions = options.starredOnly
+    ? allSessions.filter((session) => session.starred)
+    : allSessions;
+  const pageSize = Math.max(1, options.pageSize);
+  const totalCount = filteredSessions.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, options.page), pageCount);
+  const start = (page - 1) * pageSize;
+
+  return {
+    sessions: filteredSessions.slice(start, start + pageSize).map(cloneSessionRecord),
+    totalCount,
+    page,
+    pageSize,
+  };
+}
+
 export async function deleteSession(id: string): Promise<void> {
   if (!id) {
     return;
@@ -999,10 +1076,12 @@ export async function deleteSession(id: string): Promise<void> {
 
   if (indexedDbResult.ok && indexedDbResult.value) {
     await bestEffortDeleteFallbackRecord(id);
+    await bumpSessionLibraryRevision();
     return;
   }
 
   await deleteFallbackRecord(id);
+  await bumpSessionLibraryRevision();
 }
 
 export async function deleteAllSessions(): Promise<void> {
@@ -1015,6 +1094,7 @@ export async function deleteAllSessions(): Promise<void> {
 
   if (indexedDbResult.ok && indexedDbResult.value) {
     await clearFallbackRecords("전체 세션 삭제");
+    await bumpSessionLibraryRevision();
     return;
   }
 
@@ -1026,6 +1106,7 @@ export async function deleteAllSessions(): Promise<void> {
   }
 
   await clearFallbackRecords("전체 세션 삭제");
+  await bumpSessionLibraryRevision();
 }
 
 export async function importSessionRecords(
@@ -1057,7 +1138,7 @@ export async function importSessionRecords(
       const existing = existingById.get(record.id);
       if (!existing) {
         await writeSessionRecord(record, {
-          allowFallbackOnIndexedDbError: false,
+          notifyRevision: false,
         });
         addedCount += 1;
         continue;
@@ -1065,7 +1146,7 @@ export async function importSessionRecords(
 
       if (record.updatedAt.localeCompare(existing.updatedAt) > 0) {
         await writeSessionRecord(record, {
-          allowFallbackOnIndexedDbError: false,
+          notifyRevision: false,
         });
         updatedCount += 1;
         continue;
@@ -1076,6 +1157,10 @@ export async function importSessionRecords(
       failedCount += 1;
       logStoreError(`Failed to import session ${record.id}`, error);
     }
+  }
+
+  if (addedCount > 0 || updatedCount > 0) {
+    await bumpSessionLibraryRevision();
   }
 
   return {
@@ -1214,6 +1299,9 @@ export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSum
     const fallbackDone = status.fallbackRequired ? status.fallbackClosed : true;
     return indexedDbDone && fallbackDone;
   }).length;
+  if (closedCount > 0) {
+    await bumpSessionLibraryRevision();
+  }
   return {
     detectedCount,
     closedCount,
@@ -1225,6 +1313,9 @@ export async function resetSessionStoreForTests(): Promise<void> {
   memoryFallbackStore.clear();
   await clearChromeFallbackRecordsForTests();
   await resetPersistRecoveryStateForTests();
+  if (typeof chrome !== "undefined" && chrome.storage?.local) {
+    await chrome.storage.local.remove(SESSION_LIBRARY_REVISION_STORAGE_KEY);
+  }
   indexedDbAvailable = true;
 
   if (dbPromise) {
