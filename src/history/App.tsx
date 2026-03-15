@@ -678,8 +678,8 @@ export default function App() {
           <button className="secondary" onClick={handleImportClick}>
             JSON 가져오기
           </button>
-          <span>{message}</span>
         </div>
+        {message ? <div className="hero-status">{message}</div> : null}
         <input
           ref={importInputRef}
           className="hidden-file-input"
@@ -910,40 +910,44 @@ export default function App() {
                 </div>
               </div>
 
-              <div className="export-row">
-                {EXPORT_FORMATS.map((format) => (
-                  <button
-                    key={format}
-                    onClick={() =>
-                      runHistoryAction(
-                        () => handleExport(format),
-                        `${getExportFormatLabel(format)} 저장을 시작하지 못했습니다.`,
-                      )
-                    }
-                  >
-                    {getExportFormatLabel(format)}
-                  </button>
-                ))}
+              <p className="section-heading">내보내기</p>
+              <div className="export-group">
+                <div className="export-row">
+                  {EXPORT_FORMATS.map((format) => (
+                    <button
+                      key={format}
+                      onClick={() =>
+                        runHistoryAction(
+                          () => handleExport(format),
+                          `${getExportFormatLabel(format)} 저장을 시작하지 못했습니다.`,
+                        )
+                      }
+                    >
+                      {getExportFormatLabel(format)}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="export-row partial-export-row">
+                  {EXPORT_FORMATS.map((format) => (
+                    <button
+                      key={`selected_${format}`}
+                      className="secondary"
+                      onClick={() =>
+                        runHistoryAction(
+                          () => handleExport(format, selectedEntries),
+                          `선택 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
+                        )
+                      }
+                      disabled={!selectedEntries.length}
+                    >
+                      선택 {format.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              <div className="export-row partial-export-row">
-                {EXPORT_FORMATS.map((format) => (
-                  <button
-                    key={`selected_${format}`}
-                    className="secondary"
-                    onClick={() =>
-                      runHistoryAction(
-                        () => handleExport(format, selectedEntries),
-                        `선택 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
-                      )
-                    }
-                    disabled={!selectedEntries.length}
-                  >
-                    선택 {format.toUpperCase()}
-                  </button>
-                ))}
-              </div>
-
+              <p className="section-heading">복사</p>
               <div className="copy-row">
                 <button
                   onClick={() =>
@@ -981,6 +985,9 @@ export default function App() {
                 </button>
               </div>
 
+              <p className="section-heading">
+                자막 항목 {filteredEntries.length} / {selectedSession.entries.length}개
+              </p>
               <div className="entries">
                 {filteredEntries.length ? (
                   filteredEntries.map((entry) => (

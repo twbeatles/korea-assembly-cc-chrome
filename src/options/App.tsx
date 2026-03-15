@@ -527,6 +527,8 @@ export default function App() {
       {view === "settings" ? (
         <>
           <section className="settings-grid">
+            <p className="settings-section-heading">수집 동작</p>
+
             <label className="setting-card">
               <div>
                 <strong>자동으로 따라가기</strong>
@@ -578,6 +580,8 @@ export default function App() {
                 onChange={(event) => updateField("filterUnconfirmedEnabled", event.target.checked)}
               />
             </label>
+
+            <p className="settings-section-heading">복사 / 저장</p>
 
             {BASIC_NUMBER_FIELDS.map((field) => (
               <label

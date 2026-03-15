@@ -299,12 +299,19 @@ export default function App() {
             확장 설치 전부터 열려 있던 탭이면 새로고침이 필요할 수 있습니다.
           </div>
         ) : null}
+        {snapshot?.previewText ? (
+          <div className="preview-block">
+            <span className="preview-label">최근 자막</span>
+            <p className="preview-text">{snapshot.previewText}</p>
+          </div>
+        ) : null}
       </section>
 
       <section className="panel">
-        <div className="actions-stack">
+        <div className="capture-actions">
           {snapshot?.status === "running" ? (
             <button
+              className="capture-btn stop"
               onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 멈춥니다.")}
               disabled={!tabReady}
             >
@@ -312,25 +319,31 @@ export default function App() {
             </button>
           ) : (
             <button
+              className="capture-btn"
               onClick={() => sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")}
               disabled={!tabReady}
             >
               {UI_TEXT.startCapture}
             </button>
           )}
-          <button
-            className="secondary"
-            onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
-            disabled={!tabReady}
-          >
-            {UI_TEXT.saveSession}
-          </button>
-          <button
-            onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
-            disabled={!tabReady}
-          >
-            {UI_TEXT.openPanel}
-          </button>
+          <div className="save-open-row">
+            <button
+              className="secondary"
+              onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
+              disabled={!tabReady}
+            >
+              {UI_TEXT.saveSession}
+            </button>
+            <button
+              className="secondary"
+              onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
+              disabled={!tabReady}
+            >
+              {UI_TEXT.openPanel}
+            </button>
+          </div>
+        </div>
+        <div className="nav-actions">
           <button className="secondary" onClick={() => void openHistory()}>
             {UI_TEXT.openHistory}
           </button>
