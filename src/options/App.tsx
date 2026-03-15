@@ -27,17 +27,17 @@ const NUMBER_FIELDS: NumberField[] = [...BASIC_NUMBER_FIELDS, ...ADVANCED_NUMBER
 function getFieldLabel(field: keyof ExtensionSettings): string {
   switch (field) {
     case "runningAutoSaveDebounceMs":
-      return "자동 저장 간격(ms)";
+      return "자동 저장 간격";
     case "recentCopyLineCount":
-      return "방금 복사 줄 수";
+      return "최근 복사 줄 수";
     case "keepaliveIntervalMs":
-      return "같은 자막 유지 확인 간격(ms)";
+      return "자막 유지 확인 주기";
     case "pollingFallbackIntervalMs":
-      return "보조 확인 간격(ms)";
+      return "대체 확인 주기";
     case "maxBufferLength":
-      return "최대 기억 길이";
+      return "중복 비교 버퍼 길이";
     case "recentDuplicateMinLength":
-      return "중복 차단 최소 길이";
+      return "중복 판정 최소 글자 수";
     default:
       return field;
   }
@@ -46,17 +46,33 @@ function getFieldLabel(field: keyof ExtensionSettings): string {
 function getFieldDescription(field: keyof ExtensionSettings): string {
   switch (field) {
     case "runningAutoSaveDebounceMs":
-      return "수집 중 저장을 너무 자주 하지 않도록 간격을 둡니다.";
+      return "수집 중 자동 저장을 몇 ms 간격으로 묶어서 실행할지 정합니다.";
     case "recentCopyLineCount":
-      return "최근 내용 복사 버튼에 포함할 문장 수입니다.";
+      return "최근 복사 버튼에 포함할 최신 문장 수입니다.";
     case "keepaliveIntervalMs":
-      return "같은 자막이 이어질 때 종료 시각을 얼마나 자주 늘릴지 정합니다.";
+      return "같은 자막이 계속 보일 때 종료 시각을 갱신하는 간격입니다.";
     case "pollingFallbackIntervalMs":
-      return "자동 감시가 약할 때 페이지를 다시 읽는 간격입니다.";
+      return "자동 감시가 놓칠 때 화면을 다시 확인하는 주기입니다.";
     case "maxBufferLength":
-      return "중복 확인에 쓰는 내부 기억 길이입니다.";
+      return "중복 비교를 위해 잠시 기억해 둘 텍스트 길이입니다.";
     case "recentDuplicateMinLength":
-      return "최근 자막 tail과 비교해 중복으로 무시할 최소 compact 길이입니다.";
+      return "최근 자막과 비교할 때 중복으로 판단할 최소 글자 수입니다.";
+    default:
+      return "";
+  }
+}
+
+function getFieldUnit(field: keyof ExtensionSettings): string {
+  switch (field) {
+    case "runningAutoSaveDebounceMs":
+    case "keepaliveIntervalMs":
+    case "pollingFallbackIntervalMs":
+      return "ms";
+    case "recentCopyLineCount":
+      return "줄";
+    case "maxBufferLength":
+    case "recentDuplicateMinLength":
+      return "자";
     default:
       return "";
   }
@@ -582,35 +598,44 @@ export default function App() {
             </label>
 
             <p className="settings-section-heading">복사 / 저장</p>
+            <p className="settings-section-note">
+              최근 복사 버튼과 수집 중 자동 저장 타이밍을 여기에서 조정할 수 있습니다.
+            </p>
 
-            {BASIC_NUMBER_FIELDS.map((field) => (
-              <label
-                className={`setting-card input-card ${numberFieldErrors[field] ? "has-error" : ""}`}
-                key={field}
-              >
-                <div>
-                  <strong>{getFieldLabel(field)}</strong>
-                  <span>{getFieldDescription(field)}</span>
-                </div>
-                <div className="number-input-group">
-                  <input
-                    type="number"
-                    min={getFieldMin(field)}
-                    value={numberDrafts[field]}
-                    aria-invalid={Boolean(numberFieldErrors[field])}
-                    onChange={(event) => handleNumberDraftChange(field, event.target.value)}
-                  />
-                  {numberFieldErrors[field] ? (
-                    <span className="field-error">{numberFieldErrors[field]}</span>
-                  ) : null}
-                </div>
-              </label>
-            ))}
+            {BASIC_NUMBER_FIELDS.map((field) => {
+              const fieldUnit = getFieldUnit(field);
+              return (
+                <label
+                  className={`setting-card input-card ${numberFieldErrors[field] ? "has-error" : ""}`}
+                  key={field}
+                >
+                  <div>
+                    <strong>{getFieldLabel(field)}</strong>
+                    <span>{getFieldDescription(field)}</span>
+                  </div>
+                  <div className="number-input-group">
+                    <div className="number-input-row">
+                      <input
+                        type="number"
+                        min={getFieldMin(field)}
+                        value={numberDrafts[field]}
+                        aria-invalid={Boolean(numberFieldErrors[field])}
+                        onChange={(event) => handleNumberDraftChange(field, event.target.value)}
+                      />
+                      {fieldUnit ? <span className="input-suffix">{fieldUnit}</span> : null}
+                    </div>
+                    {numberFieldErrors[field] ? (
+                      <span className="field-error">{numberFieldErrors[field]}</span>
+                    ) : null}
+                  </div>
+                </label>
+              );
+            })}
 
             <label className="setting-card input-card full-width">
               <div>
-                <strong>파일 이름 규칙</strong>
-                <span>{`쓸 수 있는 값: {date}, {committee}, {time}`}</span>
+                <strong>저장 파일 이름 규칙</strong>
+                <span>{`사용 가능한 값: {date}, {committee}, {time}`}</span>
               </div>
               <input
                 type="text"
@@ -620,13 +645,18 @@ export default function App() {
             </label>
 
             <details className="advanced-card full-width">
-              <summary>고급 설정 보기</summary>
+              <summary>
+                <span className="advanced-summary-title">고급 설정</span>
+                <span className="advanced-summary-description">
+                  필터와 내부 확인 주기를 세밀하게 조정합니다. 특별한 이유가 없다면 기본값을 그대로 두세요.
+                </span>
+              </summary>
               <div className="advanced-grid">
                 <label className="setting-card">
                   <div>
-                    <strong>불필요한 자막 걸러내기</strong>
+                    <strong>불필요한 자막 자동 제외</strong>
                     <span>
-                      숫자만 있거나 기호만 있는 자막을 자동으로 제외합니다. 끄면 원문을 최대한 남깁니다.
+                      숫자나 기호만 있는 자막은 저장하지 않습니다. 원문을 최대한 남기려면 이 옵션을 끄세요.
                     </span>
                   </div>
                   <input
@@ -638,8 +668,8 @@ export default function App() {
 
                 <label className="setting-card">
                   <div>
-                    <strong>개발용 자세한 기록</strong>
-                    <span>문제가 있을 때 브라우저 콘솔에 더 많은 정보를 남깁니다.</span>
+                    <strong>문제 해결용 자세한 기록</strong>
+                    <span>이상 현상을 확인할 때 브라우저 콘솔에 더 자세한 로그를 남깁니다.</span>
                   </div>
                   <input
                     type="checkbox"
@@ -648,29 +678,35 @@ export default function App() {
                   />
                 </label>
 
-                {ADVANCED_NUMBER_FIELDS.map((field) => (
-                  <label
-                    className={`setting-card input-card ${numberFieldErrors[field] ? "has-error" : ""}`}
-                    key={field}
-                  >
-                    <div>
-                      <strong>{getFieldLabel(field)}</strong>
-                      <span>{getFieldDescription(field)}</span>
-                    </div>
-                    <div className="number-input-group">
-                      <input
-                        type="number"
-                        min={getFieldMin(field)}
-                        value={numberDrafts[field]}
-                        aria-invalid={Boolean(numberFieldErrors[field])}
-                        onChange={(event) => handleNumberDraftChange(field, event.target.value)}
-                      />
-                      {numberFieldErrors[field] ? (
-                        <span className="field-error">{numberFieldErrors[field]}</span>
-                      ) : null}
-                    </div>
-                  </label>
-                ))}
+                {ADVANCED_NUMBER_FIELDS.map((field) => {
+                  const fieldUnit = getFieldUnit(field);
+                  return (
+                    <label
+                      className={`setting-card input-card ${numberFieldErrors[field] ? "has-error" : ""}`}
+                      key={field}
+                    >
+                      <div>
+                        <strong>{getFieldLabel(field)}</strong>
+                        <span>{getFieldDescription(field)}</span>
+                      </div>
+                      <div className="number-input-group">
+                        <div className="number-input-row">
+                          <input
+                            type="number"
+                            min={getFieldMin(field)}
+                            value={numberDrafts[field]}
+                            aria-invalid={Boolean(numberFieldErrors[field])}
+                            onChange={(event) => handleNumberDraftChange(field, event.target.value)}
+                          />
+                          {fieldUnit ? <span className="input-suffix">{fieldUnit}</span> : null}
+                        </div>
+                        {numberFieldErrors[field] ? (
+                          <span className="field-error">{numberFieldErrors[field]}</span>
+                        ) : null}
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </details>
           </section>

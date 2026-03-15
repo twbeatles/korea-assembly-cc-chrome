@@ -51,12 +51,13 @@ button.secondary:hover:not(:disabled) {
 
 input[type="text"],
 input[type="number"] {
-  width: 200px;
+  width: 100%;
   border: 1px solid rgba(12, 55, 84, 0.15);
   border-radius: 10px;
   padding: 9px 11px;
   transition: all 0.18s ease;
   background: rgba(255, 255, 255, 0.9);
+  box-sizing: border-box;
 }
 
 input[type="text"]:focus,
@@ -135,6 +136,14 @@ input[type="number"]:focus {
   margin-top: 0;
 }
 
+.settings-section-note {
+  grid-column: 1 / -1;
+  margin: -2px 0 8px;
+  color: #4e667c;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
 /* ── Settings grid ───────────────────────────── */
 
 .settings-grid {
@@ -164,6 +173,11 @@ input[type="number"]:focus {
   box-shadow: 0 18px 48px rgba(17, 51, 83, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
+.setting-card > div:first-child {
+  flex: 1;
+  min-width: 0;
+}
+
 .setting-card strong,
 .setting-card span {
   display: block;
@@ -177,7 +191,8 @@ input[type="number"]:focus {
 }
 
 .input-card {
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: stretch;
 }
 
 .has-error {
@@ -188,16 +203,34 @@ input[type="number"]:focus {
 .number-input-group {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
+.number-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+
+.input-suffix {
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: rgba(13, 91, 114, 0.08);
+  color: #254a62;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .field-error {
-  max-width: 200px;
+  max-width: none;
   color: #a02a24;
   font-size: 11px;
   font-weight: 600;
-  text-align: right;
+  text-align: left;
 }
 
 .full-width {
@@ -228,22 +261,39 @@ input[type="number"]:focus {
 }
 
 .advanced-card summary {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   cursor: pointer;
-  font-weight: 700;
-  font-size: 13px;
   color: #254a62;
-  padding: 2px 0;
+  padding: 2px 0 2px 18px;
   list-style: none;
 }
 
 .advanced-card summary::before {
-  content: "▸ ";
+  content: "▸";
+  position: absolute;
+  left: 0;
+  top: 5px;
   font-size: 11px;
   opacity: 0.7;
 }
 
 .advanced-card[open] summary::before {
-  content: "▾ ";
+  content: "▾";
+}
+
+.advanced-summary-title {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.advanced-summary-description {
+  color: #4e667c;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .advanced-grid {
