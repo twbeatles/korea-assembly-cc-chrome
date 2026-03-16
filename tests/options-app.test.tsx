@@ -78,13 +78,11 @@ describe("options app", () => {
     render(<App />);
     await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
 
-    const debounceInput = screen
-      .getByText("자동 저장 간격(ms)")
-      .closest("label")
-      ?.querySelector("input[type='number']") as HTMLInputElement | null;
-    expect(debounceInput).not.toBeNull();
+    const debounceInput = screen.getByRole("spinbutton", {
+      name: "자동 저장 간격",
+    }) as HTMLInputElement;
 
-    fireEvent.change(debounceInput!, { target: { value: "100" } });
+    fireEvent.change(debounceInput, { target: { value: "100" } });
 
     await waitFor(() => {
       expect(screen.getByText("250 이상이어야 합니다.")).toBeTruthy();
@@ -96,13 +94,11 @@ describe("options app", () => {
     render(<App />);
     await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
 
-    const debounceInput = screen
-      .getByText("자동 저장 간격(ms)")
-      .closest("label")
-      ?.querySelector("input[type='number']") as HTMLInputElement | null;
-    expect(debounceInput).not.toBeNull();
+    const debounceInput = screen.getByRole("spinbutton", {
+      name: "자동 저장 간격",
+    }) as HTMLInputElement;
 
-    fireEvent.change(debounceInput!, { target: { value: "" } });
+    fireEvent.change(debounceInput, { target: { value: "" } });
     await screen.findByText("값을 입력하세요.");
 
     fireEvent.click(screen.getByRole("button", { name: "기본값으로 되돌리기" }));
@@ -110,7 +106,22 @@ describe("options app", () => {
     await waitFor(() => {
       expect(screen.queryByText("값을 입력하세요.")).toBeNull();
     });
-    expect(debounceInput?.value).toBe("800");
+    expect(debounceInput.value).toBe("800");
+  });
+
+  it("blocks save and shows a field error for an invalid filename pattern", async () => {
+    render(<App />);
+    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+
+    const filenameInput = screen.getByRole("textbox", {
+      name: "저장 파일 이름 규칙",
+    });
+    fireEvent.change(filenameInput, { target: { value: "{date}/invalid" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("파일 이름에 사용할 수 없는 문자가 포함되어 있습니다.")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: "저장" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("renders persist replay diagnostics in diagnostics view", async () => {

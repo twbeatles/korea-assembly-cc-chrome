@@ -23,6 +23,7 @@ describe("settings store", () => {
       runningAutoSaveDebounceMs: -10,
       recentCopyLineCount: 0,
       recentDuplicateMinLength: 0,
+      filenamePattern: "{date}/bad",
     });
 
     expect(sanitized.runningAutoSaveEnabled).toBe(
@@ -37,6 +38,7 @@ describe("settings store", () => {
     expect(sanitized.recentDuplicateMinLength).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
     );
+    expect(sanitized.filenamePattern).toBe(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
     expect(sanitized.filterUnconfirmedEnabled).toBe(
       DEFAULT_EXTENSION_SETTINGS.filterUnconfirmedEnabled,
     );

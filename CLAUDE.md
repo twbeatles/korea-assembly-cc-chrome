@@ -283,3 +283,15 @@ When editing this repository, align with the newly implemented behavior below.
 - Session-library writes/deletes/imports/startup cleanup now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
 - History detail may load a selected session outside the current page, and same-session refreshes must not clobber a dirty note draft.
 - `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
+
+## 2026-03-16 Sync Update
+
+When editing this repository, align with the newly implemented behavior below.
+
+- `listSessionsPage({ page, pageSize, starredOnly })` now uses store-level paging semantics. When fallback records are absent, the primary path is IndexedDB paging/index based; when fallback records exist, keep correctness-first merged paging behavior.
+- Session ordering semantics remain fixed as `starred first -> pinnedAt || updatedAt desc -> updatedAt desc -> id`.
+- `deleteAllSessions()` now attempts IndexedDB and fallback cleanup independently and may report partial-failure detail even when one backend was cleared successfully.
+- `filenamePattern` validation is now strict: only `{date}`, `{time}`, `{committee}` placeholders are supported, forbidden filename characters are rejected in options, invalid stored values sanitize back to default, and export filename generation performs a final safety sanitize.
+- In-page `최근 N줄 복사` must now match history semantics and copy from the prepared cumulative session snapshot, not temporary live-row timestamps.
+- History long-running actions now use a busy lock to prevent duplicate execution while backup/import/delete/export/reopen/favorite/note actions are in flight.
+- Options numeric-field tests now query accessible field names instead of concatenated label+unit strings.

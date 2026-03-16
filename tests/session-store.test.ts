@@ -745,7 +745,7 @@ describe("session store", () => {
     }
   });
 
-  it("does not clear fallback storage when IndexedDB delete-all fails with an actual error", async () => {
+  it("still clears fallback storage when IndexedDB delete-all fails with an actual error", async () => {
     await saveSession(buildSession("session_idb_saved", "saved"));
 
     const originalIndexedDb = globalThis.indexedDB;
@@ -767,7 +767,7 @@ describe("session store", () => {
       throw new Error("Intentional clear failure");
     });
 
-    await expect(deleteAllSessions()).rejects.toThrow("IndexedDB 정리에 실패했습니다");
+    await expect(deleteAllSessions()).rejects.toThrow("IndexedDB 정리 실패:");
     clearSpy.mockRestore();
 
     Object.defineProperty(globalThis, "indexedDB", {
@@ -776,7 +776,7 @@ describe("session store", () => {
     });
 
     try {
-      expect((await loadSession("session_fallback_saved"))?.id).toBe("session_fallback_saved");
+      await expect(loadSession("session_fallback_saved")).resolves.toBeUndefined();
     } finally {
       Object.defineProperty(globalThis, "indexedDB", {
         configurable: true,

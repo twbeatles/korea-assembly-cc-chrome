@@ -3,6 +3,7 @@ import {
   buildCopyText,
   copyTextToClipboard,
   filterEntriesByQuery,
+  selectCopyEntries,
 } from "../src/shared/copy-utils";
 
 function buildEntry(id: string, text: string, time: string): SubtitleEntry {
@@ -55,6 +56,15 @@ describe("copy utils", () => {
 
   it("returns an empty string when no entry matches", () => {
     expect(buildCopyText(entries, { query: "없는 문장" })).toBe("");
+  });
+
+  it("selects only the most recent matched entries before formatting", () => {
+    expect(
+      selectCopyEntries(entries, {
+        selectedIds: ["2", "4", "6"],
+        limit: 2,
+      }).map((entry) => entry.id),
+    ).toEqual(["4", "6"]);
   });
 
   it("copies text through navigator.clipboard when available", async () => {

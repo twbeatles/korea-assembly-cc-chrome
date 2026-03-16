@@ -1,4 +1,8 @@
 import { DEFAULT_EXTENSION_SETTINGS, EXTENSION_STORAGE_KEY } from "../shared/constants";
+import {
+  sanitizeFilenamePattern,
+  validateFilenamePattern,
+} from "../shared/filename-pattern";
 import type { ExtensionSettings } from "./types";
 
 let memorySettings: ExtensionSettings = { ...DEFAULT_EXTENSION_SETTINGS };
@@ -54,10 +58,7 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
       1,
     ),
-    filenamePattern:
-      typeof settings.filenamePattern === "string" && settings.filenamePattern.trim()
-        ? settings.filenamePattern.trim()
-        : DEFAULT_EXTENSION_SETTINGS.filenamePattern,
+    filenamePattern: sanitizeFilenamePattern(settings.filenamePattern),
     runningAutoSaveEnabled:
       typeof settings.runningAutoSaveEnabled === "boolean"
         ? settings.runningAutoSaveEnabled
@@ -107,6 +108,14 @@ export { sanitizeSettings };
 export async function saveSettings(
   partial: Partial<ExtensionSettings>,
 ): Promise<ExtensionSettings> {
+  const filenamePatternError =
+    typeof partial.filenamePattern === "string"
+      ? validateFilenamePattern(partial.filenamePattern)
+      : undefined;
+  if (filenamePatternError) {
+    throw new Error(filenamePatternError);
+  }
+
   const next = sanitizeSettings({
     ...(await getSettings()),
     ...partial,

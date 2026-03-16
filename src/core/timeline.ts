@@ -1,4 +1,5 @@
 import type { ExportFormat, SessionRecord, SubtitleEntry } from "./subtitle-models";
+import { sanitizeFilenameBasename } from "../shared/filename-pattern";
 
 function pad(value: number, length = 2): string {
   return String(value).padStart(length, "0");
@@ -68,9 +69,7 @@ export function bucketBySeconds(value: string | number | Date, bucketSeconds: nu
 }
 
 export function sanitizeFilenamePart(value: string): string {
-  const normalized = String(value ?? "")
-    .replace(/[\\/*?:"<>|]/g, "")
-    .trim();
+  const normalized = sanitizeFilenameBasename(String(value ?? ""));
   return normalized || "assembly_subtitles";
 }
 
@@ -85,11 +84,13 @@ export function buildExportFilename(
   const committee = sanitizeFilenamePart(
     session.committeeName || session.title || "assembly_subtitles",
   );
-  const basename = (filenamePattern || "{date}_{committee}_{time}")
+  const basename = sanitizeFilenameBasename(
+    (filenamePattern || "{date}_{committee}_{time}")
     .replaceAll("{date}", date)
     .replaceAll("{time}", time)
     .replaceAll("{committee}", committee)
-    .trim();
+    .trim(),
+  );
 
   return `${basename || `${date}_${committee}_${time}`}.${format}`;
 }

@@ -140,6 +140,7 @@ export default function App() {
   const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
   const [filenamePattern, setFilenamePattern] = useState(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
   const [reloadKey, setReloadKey] = useState(0);
+  const [busyAction, setBusyAction] = useState<string | null>(null);
 
   const filteredEntries = useMemo(
     () => filterEntriesByQuery(selectedSession?.entries ?? [], searchQuery),
@@ -160,11 +161,30 @@ export default function App() {
     filteredEntries.every((entry) => checkedEntryIdSet.has(entry.id));
   const hasUnsavedNote =
     selectedSession ? noteDraft !== selectedSession.note : noteDraft.trim().length > 0;
+  const actionButtonsDisabled = busyAction !== null;
 
-  const runHistoryAction = (action: () => Promise<void>, fallbackMessage: string): void => {
-    void action().catch((error: unknown) => {
-      setMessage(error instanceof Error ? error.message : fallbackMessage);
-    });
+  const runBusyHistoryAction = (
+    actionLabel: string,
+    action: () => Promise<void>,
+    fallbackMessage: string,
+    pendingMessage?: string,
+  ): void => {
+    if (busyAction) {
+      return;
+    }
+
+    setBusyAction(actionLabel);
+    if (pendingMessage) {
+      setMessage(pendingMessage);
+    }
+
+    void action()
+      .catch((error: unknown) => {
+        setMessage(error instanceof Error ? error.message : fallbackMessage);
+      })
+      .finally(() => {
+        setBusyAction((current) => (current === actionLabel ? null : current));
+      });
   };
 
   const requestRefresh = (
@@ -620,9 +640,12 @@ export default function App() {
   ): Promise<void> => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file) {
+    if (!file || busyAction) {
       return;
     }
+
+    setBusyAction("import_json");
+    setMessage("JSON 가져오기를 진행하고 있습니다.");
 
     try {
       const parsed = JSON.parse(await file.text()) as unknown;
@@ -641,6 +664,8 @@ export default function App() {
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "JSON 가져오기에 실패했습니다.");
+    } finally {
+      setBusyAction((current) => (current === "import_json" ? null : current));
     }
   };
 
@@ -653,7 +678,15 @@ export default function App() {
         </div>
         <div className="hero-actions">
           <button
-            onClick={() => runHistoryAction(handleRefreshClick, "기록 목록을 다시 읽지 못했습니다.")}
+            onClick={() =>
+              runBusyHistoryAction(
+                "refresh",
+                handleRefreshClick,
+                "기록 목록을 다시 읽지 못했습니다.",
+                "기록 목록을 다시 불러오고 있습니다.",
+              )
+            }
+            disabled={actionButtonsDisabled}
           >
             목록 새로고침
           </button>
@@ -666,16 +699,29 @@ export default function App() {
               }
               setShowStarredOnly((current) => !current);
             }}
+            disabled={actionButtonsDisabled}
           >
             {showStarredOnly ? "전체 보기" : "즐겨찾기만 보기"}
           </button>
           <button
             className="secondary"
-            onClick={() => runHistoryAction(handleBackupAll, "전체 JSON 백업에 실패했습니다.")}
+            onClick={() =>
+              runBusyHistoryAction(
+                "backup_all",
+                handleBackupAll,
+                "전체 JSON 백업에 실패했습니다.",
+                "전체 JSON 백업을 준비하고 있습니다.",
+              )
+            }
+            disabled={actionButtonsDisabled}
           >
             전체 JSON 백업
           </button>
-          <button className="secondary" onClick={handleImportClick}>
+          <button
+            className="secondary"
+            onClick={handleImportClick}
+            disabled={actionButtonsDisabled}
+          >
             JSON 가져오기
           </button>
         </div>
@@ -685,6 +731,7 @@ export default function App() {
           className="hidden-file-input"
           type="file"
           accept=".json,application/json"
+          disabled={actionButtonsDisabled}
           onChange={(event) => void handleImportChange(event)}
         />
       </header>
@@ -696,20 +743,38 @@ export default function App() {
               현재 필터 {totalSessionCount}개 / 현재 페이지 {pageSessions.length}개 / 선택 {checkedIds.length}개
             </span>
             <div className="session-list-actions">
-              <button className="secondary" onClick={handleToggleCheckAll} disabled={!pageSessions.length}>
+              <button
+                className="secondary"
+                onClick={handleToggleCheckAll}
+                disabled={actionButtonsDisabled || !pageSessions.length}
+              >
                 {currentPageSessionsChecked ? "현재 페이지 선택 해제" : "현재 페이지 전체 선택"}
               </button>
               <button
                 className="secondary"
-                onClick={() => runHistoryAction(handleDeleteChecked, "선택 삭제에 실패했습니다.")}
-                disabled={!checkedIds.length}
+                onClick={() =>
+                  runBusyHistoryAction(
+                    "delete_checked",
+                    handleDeleteChecked,
+                    "선택 삭제에 실패했습니다.",
+                    "선택한 기록을 삭제하고 있습니다.",
+                  )
+                }
+                disabled={actionButtonsDisabled || !checkedIds.length}
               >
                 선택 삭제
               </button>
               <button
                 className="secondary"
-                onClick={() => runHistoryAction(handleDeleteAll, "전체 삭제에 실패했습니다.")}
-                disabled={!totalSessionCount}
+                onClick={() =>
+                  runBusyHistoryAction(
+                    "delete_all",
+                    handleDeleteAll,
+                    "전체 삭제에 실패했습니다.",
+                    "저장된 기록 전체 삭제를 진행하고 있습니다.",
+                  )
+                }
+                disabled={actionButtonsDisabled || !totalSessionCount}
               >
                 전체 삭제
               </button>
@@ -723,13 +788,24 @@ export default function App() {
                     type="checkbox"
                     checked={checkedIdSet.has(session.id)}
                     onChange={() => handleToggleChecked(session.id)}
+                    disabled={actionButtonsDisabled}
                     aria-label={`${session.committeeName || session.title} 선택`}
                   />
                 </label>
                 <button
                   type="button"
                   className={`favorite-toggle ${session.starred ? "active" : ""}`}
-                  onClick={() => void handleToggleFavorite(session)}
+                  onClick={() =>
+                    runBusyHistoryAction(
+                      `favorite_${session.id}`,
+                      () => handleToggleFavorite(session),
+                      "즐겨찾기 저장에 실패했습니다.",
+                      session.starred
+                        ? "즐겨찾기 해제를 저장하고 있습니다."
+                        : "즐겨찾기를 저장하고 있습니다.",
+                    )
+                  }
+                  disabled={actionButtonsDisabled}
                   aria-label={
                     session.starred
                       ? `${session.committeeName || session.title} 즐겨찾기 해제`
@@ -741,6 +817,7 @@ export default function App() {
                 <button
                   className={`session-item ${selectedSession?.id === session.id ? "active" : ""}`}
                   onClick={() => handleSelectSession(session.id)}
+                  disabled={actionButtonsDisabled}
                 >
                   <strong>{session.committeeName || session.title}</strong>
                   <span>{formatDate(session.startedAt)}</span>
@@ -764,7 +841,7 @@ export default function App() {
               <button
                 className="secondary"
                 onClick={() => setSessionPage((current) => Math.max(1, current - 1))}
-                disabled={sessionPage <= 1}
+                disabled={actionButtonsDisabled || sessionPage <= 1}
               >
                 이전 페이지
               </button>
@@ -774,7 +851,7 @@ export default function App() {
               <button
                 className="secondary"
                 onClick={() => setSessionPage((current) => Math.min(pageCount, current + 1))}
-                disabled={sessionPage >= pageCount}
+                disabled={actionButtonsDisabled || sessionPage >= pageCount}
               >
                 다음 페이지
               </button>
@@ -793,17 +870,45 @@ export default function App() {
                 <div className="detail-actions">
                   <button
                     className="secondary"
-                    onClick={() => void handleToggleFavorite(selectedSession)}
+                    onClick={() =>
+                      runBusyHistoryAction(
+                        `favorite_${selectedSession.id}`,
+                        () => handleToggleFavorite(selectedSession),
+                        "즐겨찾기 저장에 실패했습니다.",
+                        selectedSession.starred
+                          ? "즐겨찾기 해제를 저장하고 있습니다."
+                          : "즐겨찾기를 저장하고 있습니다.",
+                      )
+                    }
+                    disabled={actionButtonsDisabled}
                   >
                     {selectedSession.starred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
                   </button>
                   <button
-                    onClick={() => runHistoryAction(handleReopen, "원본 페이지를 열지 못했습니다.")}
-                    disabled={!selectedSession.sourceUrl}
+                    onClick={() =>
+                      runBusyHistoryAction(
+                        "reopen_source",
+                        handleReopen,
+                        "원본 페이지를 열지 못했습니다.",
+                        "원본 의사중계 페이지를 열고 있습니다.",
+                      )
+                    }
+                    disabled={actionButtonsDisabled || !selectedSession.sourceUrl}
                   >
                     원본 페이지 열기
                   </button>
-                  <button className="secondary" onClick={handleDelete}>
+                  <button
+                    className="secondary"
+                    onClick={() =>
+                      runBusyHistoryAction(
+                        "delete_single",
+                        handleDelete,
+                        "기록 삭제에 실패했습니다.",
+                        "선택한 기록을 삭제하고 있습니다.",
+                      )
+                    }
+                    disabled={actionButtonsDisabled}
+                  >
                     삭제
                   </button>
                 </div>
@@ -847,15 +952,22 @@ export default function App() {
                 />
                 <div className="note-actions">
                   <button
-                    onClick={() => runHistoryAction(handleSaveNote, "메모 저장에 실패했습니다.")}
-                    disabled={noteDraft === selectedSession.note}
+                    onClick={() =>
+                      runBusyHistoryAction(
+                        "save_note",
+                        handleSaveNote,
+                        "메모 저장에 실패했습니다.",
+                        "메모를 저장하고 있습니다.",
+                      )
+                    }
+                    disabled={actionButtonsDisabled || noteDraft === selectedSession.note}
                   >
                     메모 저장
                   </button>
                   <button
                     className="secondary"
                     onClick={() => setNoteDraft("")}
-                    disabled={!noteDraft}
+                    disabled={actionButtonsDisabled || !noteDraft}
                   >
                     입력 비우기
                   </button>
@@ -883,14 +995,14 @@ export default function App() {
                   <button
                     className="secondary"
                     onClick={handleToggleVisibleEntries}
-                    disabled={!filteredEntries.length}
+                    disabled={actionButtonsDisabled || !filteredEntries.length}
                   >
                     {allVisibleEntriesChecked ? "보이는 항목 선택 해제" : "보이는 항목 전체 선택"}
                   </button>
                   <button
                     className="secondary"
                     onClick={() => setCheckedEntryIds([])}
-                    disabled={!checkedEntryIds.length}
+                    disabled={actionButtonsDisabled || !checkedEntryIds.length}
                   >
                     전체 선택 해제
                   </button>
@@ -903,7 +1015,7 @@ export default function App() {
                         `선택한 ${selectedEntries.length}줄을 복사했습니다.`,
                       )
                     }
-                    disabled={!selectedEntries.length}
+                    disabled={actionButtonsDisabled || !selectedEntries.length}
                   >
                     선택한 항목 복사
                   </button>
@@ -917,11 +1029,14 @@ export default function App() {
                     <button
                       key={format}
                       onClick={() =>
-                        runHistoryAction(
+                        runBusyHistoryAction(
+                          `export_${format}`,
                           () => handleExport(format),
                           `${getExportFormatLabel(format)} 저장을 시작하지 못했습니다.`,
+                          `${getExportFormatLabel(format)} 저장을 준비하고 있습니다.`,
                         )
                       }
+                      disabled={actionButtonsDisabled}
                     >
                       {getExportFormatLabel(format)}
                     </button>
@@ -934,12 +1049,14 @@ export default function App() {
                       key={`selected_${format}`}
                       className="secondary"
                       onClick={() =>
-                        runHistoryAction(
+                        runBusyHistoryAction(
+                          `export_selected_${format}`,
                           () => handleExport(format, selectedEntries),
                           `선택 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
+                          `선택 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
                         )
                       }
-                      disabled={!selectedEntries.length}
+                      disabled={actionButtonsDisabled || !selectedEntries.length}
                     >
                       선택 {format.toUpperCase()}
                     </button>
@@ -956,7 +1073,7 @@ export default function App() {
                       `최근 ${recentCopyLineCount}줄을 복사했습니다.`,
                     )
                   }
-                  disabled={!selectedSession.entries.length}
+                  disabled={actionButtonsDisabled || !selectedSession.entries.length}
                 >
                   최근 {recentCopyLineCount}줄 복사
                 </button>
@@ -967,7 +1084,7 @@ export default function App() {
                       "찾은 내용을 복사했습니다.",
                     )
                   }
-                  disabled={!filteredEntries.length}
+                  disabled={actionButtonsDisabled || !filteredEntries.length}
                 >
                   찾은 내용 복사
                 </button>
@@ -979,7 +1096,7 @@ export default function App() {
                       "전체 내용을 복사했습니다.",
                     )
                   }
-                  disabled={!selectedSession.entries.length}
+                  disabled={actionButtonsDisabled || !selectedSession.entries.length}
                 >
                   전체 내용 복사
                 </button>
@@ -997,6 +1114,7 @@ export default function App() {
                           type="checkbox"
                           checked={checkedEntryIdSet.has(entry.id)}
                           onChange={() => handleToggleEntryChecked(entry.id)}
+                          disabled={actionButtonsDisabled}
                           aria-label={`${entry.text.slice(0, 30)} 항목 선택`}
                         />
                       </label>

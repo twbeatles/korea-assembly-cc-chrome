@@ -39,18 +39,22 @@ function formatCopyLine(entry: SubtitleEntry): string {
   return `[${timestamp}] ${entry.text}`;
 }
 
+export function selectCopyEntries(
+  entries: SubtitleEntry[],
+  options: BuildCopyTextOptions = {},
+): SubtitleEntry[] {
+  const selectedEntries = filterEntriesByIds(entries, options.selectedIds);
+  const filteredEntries = filterEntriesByQuery(selectedEntries, options.query);
+  return typeof options.limit === "number" && options.limit > 0
+    ? filteredEntries.slice(-options.limit)
+    : filteredEntries;
+}
+
 export function buildCopyText(
   entries: SubtitleEntry[],
   options: BuildCopyTextOptions = {},
 ): string {
-  const selectedEntries = filterEntriesByIds(entries, options.selectedIds);
-  const filteredEntries = filterEntriesByQuery(selectedEntries, options.query);
-  const limitedEntries =
-    typeof options.limit === "number" && options.limit > 0
-      ? filteredEntries.slice(-options.limit)
-      : filteredEntries;
-
-  return limitedEntries.map(formatCopyLine).join("\n").trim();
+  return selectCopyEntries(entries, options).map(formatCopyLine).join("\n").trim();
 }
 
 export async function copyTextToClipboard(text: string): Promise<void> {

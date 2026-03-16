@@ -67,6 +67,7 @@ interface SourcedSessionRecord {
 
 interface IndexedDbSessionRecord extends SessionRecord {
   starredIndexKey: 0 | 1;
+  sortKey: string;
 }
 
 function logStoreError(message: string, error?: unknown): void {
@@ -77,7 +78,17 @@ function toIndexedDbRecord(record: SessionRecord): IndexedDbSessionRecord {
   return {
     ...cloneSessionRecord(record),
     starredIndexKey: record.starred ? 1 : 0,
+    sortKey: buildSessionSortKey(record),
   };
+}
+
+function buildSessionSortKey(
+  record: Pick<SessionRecord, "id" | "starred" | "pinnedAt" | "updatedAt">,
+): string {
+  const starredFlag = record.starred ? "1" : "0";
+  const primaryTimestamp =
+    record.starred && record.pinnedAt ? record.pinnedAt : record.updatedAt;
+  return `${starredFlag}|${primaryTimestamp}|${record.updatedAt}|${record.id}`;
 }
 
 function withRequest<T>(request: IDBRequest<T>): Promise<T> {
@@ -196,6 +207,9 @@ function openDb(): Promise<IDBDatabase> {
         if (!store.indexNames.contains("starred")) {
           store.createIndex("starred", "starredIndexKey");
         }
+        if (!store.indexNames.contains("paging")) {
+          store.createIndex("paging", "sortKey");
+        }
 
         const cursorRequest = store.openCursor();
         cursorRequest.onsuccess = () => {
@@ -206,10 +220,23 @@ function openDb(): Promise<IDBDatabase> {
 
           const value = cursor.value as Partial<IndexedDbSessionRecord>;
           const expectedStarredIndexKey = value.starred ? 1 : 0;
-          if (value.starredIndexKey !== expectedStarredIndexKey) {
+          const expectedSortKey =
+            typeof value.id === "string" && typeof value.updatedAt === "string"
+              ? buildSessionSortKey({
+                  id: value.id,
+                  starred: Boolean(value.starred),
+                  pinnedAt: typeof value.pinnedAt === "string" ? value.pinnedAt : null,
+                  updatedAt: value.updatedAt,
+                })
+              : "";
+          if (
+            value.starredIndexKey !== expectedStarredIndexKey ||
+            value.sortKey !== expectedSortKey
+          ) {
             cursor.update({
               ...value,
               starredIndexKey: expectedStarredIndexKey,
+              sortKey: expectedSortKey,
             });
           }
           cursor.continue();
@@ -328,20 +355,7 @@ async function bumpSessionLibraryRevision(): Promise<void> {
 function sortSessions(records: SessionRecord[], options: SessionListOptions = {}): SessionRecord[] {
   const limit = Math.max(1, options.limit ?? 100);
   return [...records]
-    .sort((left, right) => {
-      if (left.starred !== right.starred) {
-        return left.starred ? -1 : 1;
-      }
-
-      const leftPinnedAt = left.starred ? left.pinnedAt || left.updatedAt : "";
-      const rightPinnedAt = right.starred ? right.pinnedAt || right.updatedAt : "";
-      const pinnedCompare = rightPinnedAt.localeCompare(leftPinnedAt);
-      if (pinnedCompare !== 0) {
-        return pinnedCompare;
-      }
-
-      return right.updatedAt.localeCompare(left.updatedAt);
-    })
+    .sort((left, right) => buildSessionSortKey(right).localeCompare(buildSessionSortKey(left)))
     .slice(0, limit)
     .map(cloneSessionRecord);
 }
@@ -635,21 +649,30 @@ function readCursorRecords(
   options: {
     direction?: IDBCursorDirection;
     limit?: number;
+    offset?: number;
     query?: IDBValidKey | IDBKeyRange | null;
   } = {},
 ): Promise<SessionRecord[]> {
   const direction = options.direction ?? "next";
   const limit = Math.max(1, options.limit ?? Number.MAX_SAFE_INTEGER);
+  const offset = Math.max(0, options.offset ?? 0);
   const query = options.query ?? null;
 
   return new Promise<SessionRecord[]>((resolve, reject) => {
     const records: SessionRecord[] = [];
     const request = source.openCursor(query, direction);
+    let skipped = false;
 
     request.onsuccess = () => {
       const cursor = request.result;
       if (!cursor || records.length >= limit) {
         resolve(records);
+        return;
+      }
+
+      if (offset > 0 && !skipped) {
+        skipped = true;
+        cursor.advance(offset);
         return;
       }
 
@@ -666,34 +689,71 @@ function readCursorRecords(
 
 async function listIndexedDbSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
   return withTransaction("readonly", async (store) => {
-    const updatedAtIndex = store.index("updatedAt");
     const limit = Math.max(1, options.limit ?? 100);
-
-    if (!store.indexNames.contains("starred")) {
-      return readCursorRecords(updatedAtIndex, {
+    if (store.indexNames.contains("paging")) {
+      return readCursorRecords(store.index("paging"), {
         direction: "prev",
         limit,
       });
     }
 
-    const starredRecordsPromise = readCursorRecords(store.index("starred"), {
-      query: IDBKeyRange.only(1),
-    });
-    const recentRecordsPromise = readCursorRecords(updatedAtIndex, {
+    return readCursorRecords(store.index("updatedAt"), {
       direction: "prev",
       limit,
     });
-    const [starredRecords, recentRecords] = await Promise.all([
-      starredRecordsPromise,
-      recentRecordsPromise,
-    ]);
-    const merged = new Map<string, SessionRecord>();
+  });
+}
 
-    [...starredRecords, ...recentRecords].forEach((record) => {
-      merged.set(record.id, record);
-    });
+async function listIndexedDbSessionPage(
+  options: SessionPageOptions,
+): Promise<SessionPageResult> {
+  return withTransaction("readonly", async (store) => {
+    const pageSize = Math.max(1, options.pageSize);
+    if (!store.indexNames.contains("paging")) {
+      const allSessions = sortSessions(
+        (await withRequest(store.getAll())) as SessionRecord[],
+        { limit: Number.MAX_SAFE_INTEGER },
+      );
+      const filteredSessions = options.starredOnly
+        ? allSessions.filter((session) => session.starred)
+        : allSessions;
+      const totalCount = filteredSessions.length;
+      const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+      const page = Math.min(Math.max(1, options.page), pageCount);
+      const start = (page - 1) * pageSize;
 
-    return [...merged.values()];
+      return {
+        sessions: filteredSessions.slice(start, start + pageSize).map(cloneSessionRecord),
+        totalCount,
+        page,
+        pageSize,
+      };
+    }
+
+    const pagingIndex = store.index("paging");
+    const query = options.starredOnly
+      ? IDBKeyRange.bound("1|", "1|\uffff")
+      : null;
+    const totalCount = await withRequest(pagingIndex.count(query ?? undefined));
+    const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+    const page = Math.min(Math.max(1, options.page), pageCount);
+    const start = (page - 1) * pageSize;
+    const sessions =
+      totalCount > 0
+        ? await readCursorRecords(pagingIndex, {
+            direction: "prev",
+            query,
+            offset: start,
+            limit: pageSize,
+          })
+        : [];
+
+    return {
+      sessions: sessions.map(cloneSessionRecord),
+      totalCount,
+      page,
+      pageSize,
+    };
   });
 }
 
@@ -989,12 +1049,29 @@ export async function getSessionLibraryOverview(
   previewLimit = 3,
 ): Promise<SessionLibraryOverview> {
   const safePreviewLimit = Math.max(0, previewLimit);
-  const [indexedDbIdsResult, fallbackIds, previewSessions] = await Promise.all([
+  const fallbackSessionIds = await listFallbackSessionIds();
+  if (!fallbackSessionIds.length) {
+    const indexedDbResult = await tryIndexedDb(async () =>
+      listIndexedDbSessionPage({
+        page: 1,
+        pageSize: Math.max(1, safePreviewLimit || 1),
+      }),
+    );
+    if (indexedDbResult.ok && indexedDbResult.value) {
+      return {
+        totalCount: indexedDbResult.value.totalCount,
+        previewSessions: indexedDbResult.value.sessions
+          .slice(0, safePreviewLimit)
+          .map(toSessionLibraryPreview),
+      };
+    }
+  }
+
+  const [indexedDbIdsResult, previewSessions] = await Promise.all([
     tryIndexedDb(async () => listIndexedDbSessionIds()),
-    listFallbackSessionIds(),
     safePreviewLimit > 0 ? listSessions({ limit: safePreviewLimit }) : Promise.resolve([]),
   ]);
-  const uniqueIds = new Set<string>(fallbackIds);
+  const uniqueIds = new Set<string>(fallbackSessionIds);
   if (indexedDbIdsResult.ok && indexedDbIdsResult.value) {
     indexedDbIdsResult.value.forEach((id) => uniqueIds.add(id));
   }
@@ -1044,6 +1121,14 @@ export async function listSessions(options: SessionListOptions = {}): Promise<Se
 export async function listSessionsPage(
   options: SessionPageOptions,
 ): Promise<SessionPageResult> {
+  const fallbackIds = await listFallbackSessionIds();
+  if (!fallbackIds.length) {
+    const indexedDbResult = await tryIndexedDb(async () => listIndexedDbSessionPage(options));
+    if (indexedDbResult.ok && indexedDbResult.value) {
+      return indexedDbResult.value;
+    }
+  }
+
   const allSessions = await listAllSessions();
   const filteredSessions = options.starredOnly
     ? allSessions.filter((session) => session.starred)
@@ -1085,6 +1170,8 @@ export async function deleteSession(id: string): Promise<void> {
 }
 
 export async function deleteAllSessions(): Promise<void> {
+  const errors: string[] = [];
+  let clearedAnyStore = false;
   const indexedDbResult = await tryIndexedDb(async () => {
     await withTransaction("readwrite", async (store) => {
       await withRequest(store.clear());
@@ -1093,20 +1180,30 @@ export async function deleteAllSessions(): Promise<void> {
   });
 
   if (indexedDbResult.ok && indexedDbResult.value) {
+    clearedAnyStore = true;
+  } else if (indexedDbResult.error) {
+    const message =
+      indexedDbResult.error instanceof Error
+        ? indexedDbResult.error.message
+        : "알 수 없는 오류";
+    errors.push(`IndexedDB 정리 실패: ${message}`);
+  }
+
+  try {
     await clearFallbackRecords("전체 세션 삭제");
+    clearedAnyStore = true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류";
+    errors.push(`fallback 저장소 정리 실패: ${message}`);
+  }
+
+  if (clearedAnyStore) {
     await bumpSessionLibraryRevision();
-    return;
   }
-
-  if (!indexedDbResult.ok && indexedDbResult.error) {
-    if (indexedDbResult.error instanceof Error) {
-      throw new Error(`저장된 기록 전체 삭제 중 IndexedDB 정리에 실패했습니다: ${indexedDbResult.error.message}`);
-    }
-    throw new Error("저장된 기록 전체 삭제 중 IndexedDB 정리에 실패했습니다.");
+  if (errors.length > 0) {
+    const partialSuccessLabel = clearedAnyStore ? " 다른 저장소 정리는 완료했습니다." : "";
+    throw new Error(`${errors.join(" / ")}.${partialSuccessLabel}`);
   }
-
-  await clearFallbackRecords("전체 세션 삭제");
-  await bumpSessionLibraryRevision();
 }
 
 export async function importSessionRecords(

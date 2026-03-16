@@ -60,10 +60,11 @@ npm run build
 - preview-only 자막만 남은 시점에도 저장/export/pagehide에서 내용이 유실되지 않는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
+- 페이지 패널의 `최근 N줄 복사`가 현재 화면 row가 아니라 누적 세션 기준으로 history와 같은 결과를 주는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
-- options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이 설정 변경 확인
+- options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이, 저장 파일 이름 규칙 검증 확인
 - stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
 - popup / 패널의 `수집 진단` 버튼이 options 페이지의 `수집 진단` 탭으로 연결되고, 그 탭에서 수집 방식, observer, selector, frame path 진단이 현재 상태와 맞는지 확인
 
@@ -169,6 +170,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - history 즐겨찾기/메모 persistence 확인
 - 부분 선택 export 및 JSON 백업/복원 확인
 - options 페이지 `수집 진단` 탭 정보 확인
+- options `저장 파일 이름 규칙`에 금지 문자 또는 지원하지 않는 placeholder 입력 시 저장 차단 확인
 
 ## 8. 배포 후 확인 항목
 
@@ -192,6 +194,8 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 16. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
 17. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
 18. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
+19. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
+20. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
 
 ## 9. 자주 발생하는 문제
 

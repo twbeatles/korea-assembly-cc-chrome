@@ -48,7 +48,11 @@ import {
 } from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCaptureDiagnostics } from "../shared/capture-diagnostics";
-import { buildCopyText, copyTextToClipboard } from "../shared/copy-utils";
+import {
+  buildCopyText,
+  copyTextToClipboard,
+  selectCopyEntries,
+} from "../shared/copy-utils";
 import type {
   BackgroundCommandResponse,
   FrameForwardMessage,
@@ -1126,20 +1130,11 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
 }
 
 async function copyRecentSessionLines(): Promise<void> {
-  const liveRows = getPanelLiveRows();
-  const visibleEntries = liveRows.map((row) => {
-    const timestamp = new Date(row.updatedAt).toISOString();
-    return {
-      id: row.key,
-      text: row.text,
-      timestamp,
-      startTime: timestamp,
-      endTime: timestamp,
-    };
-  });
   const prepared = buildPreparedSessionState();
-  const sourceEntries = visibleEntries.length ? visibleEntries : prepared.entries;
-  const copyText = buildCopyText(sourceEntries, {
+  const copiedEntries = selectCopyEntries(prepared.entries, {
+    limit: settings.recentCopyLineCount,
+  });
+  const copyText = buildCopyText(prepared.entries, {
     limit: settings.recentCopyLineCount,
   });
 
@@ -1151,9 +1146,7 @@ async function copyRecentSessionLines(): Promise<void> {
 
   await copyTextToClipboard(copyText);
   setPanelNotice(
-    visibleEntries.length
-      ? `수집된 자막 ${Math.min(visibleEntries.length, settings.recentCopyLineCount)}줄을 복사했습니다.`
-      : `최근 ${settings.recentCopyLineCount}줄을 복사했습니다.`,
+    `최근 ${copiedEntries.length}줄을 복사했습니다.`,
   );
   syncUserInterfaces();
 }

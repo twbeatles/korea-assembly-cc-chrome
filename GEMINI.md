@@ -249,6 +249,18 @@ Use this delta as the current operational baseline.
 
 ## Addendum Closure (2026-03-11)
 
+## Sync Delta (2026-03-16)
+
+Use this delta as the current operational baseline.
+
+- `listSessionsPage({ page, pageSize, starredOnly })` now uses IndexedDB-level paging when fallback session records are absent, but must preserve the existing merged path when fallback records exist.
+- Session ordering remains `starred` first, then `pinnedAt || updatedAt` descending for starred sessions, then `updatedAt` descending, then `id`.
+- `deleteAllSessions()` must attempt IndexedDB and fallback cleanup independently and surface partial-failure detail when only one store fails.
+- `filenamePattern` now rejects forbidden path characters and unsupported placeholders, and invalid stored values are sanitized back to the default pattern.
+- The in-page `최근 N줄 복사` action now uses the prepared cumulative session snapshot instead of transient live rows, so it matches history semantics.
+- History long-running actions lock related controls through a shared busy state while preserving search and note editing.
+- Options tests and inputs now rely on accessible field labels instead of display-text-only selectors.
+
 Keep this file aligned with the implementation closure below:
 
 - Observer bridge message token verification: completed.

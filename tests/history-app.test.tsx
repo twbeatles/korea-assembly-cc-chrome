@@ -31,6 +31,20 @@ vi.mock("../src/storage/session-store", () => sessionStoreMocks);
 
 import App from "../src/history/App";
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+  return {
+    promise,
+    resolve,
+    reject,
+  };
+}
+
 function buildSession(overrides: Partial<ReturnType<typeof buildSessionBase>> = {}) {
   return {
     ...buildSessionBase(),
@@ -196,6 +210,46 @@ describe("history app", () => {
           filename: "backup.json",
         }),
       );
+    });
+  });
+
+  it("disables long-running action buttons while a backup is in progress", async () => {
+    const deferred = createDeferred<{
+      sessionCount: number;
+      payload: {
+        filename: string;
+        format: "json";
+        mimeType: string;
+        content: string;
+      };
+    }>();
+    sessionStoreMocks.buildSessionLibraryBackupExport.mockReturnValueOnce(deferred.promise);
+
+    render(<App />);
+    const backupButton = await screen.findByRole("button", { name: "전체 JSON 백업" });
+    const deleteAllButton = screen.getByRole("button", { name: "전체 삭제" });
+
+    fireEvent.click(backupButton);
+
+    await waitFor(() => {
+      expect(backupButton.hasAttribute("disabled")).toBe(true);
+      expect(deleteAllButton.hasAttribute("disabled")).toBe(true);
+      expect(screen.getByText("전체 JSON 백업을 준비하고 있습니다.")).toBeTruthy();
+    });
+
+    deferred.resolve({
+      sessionCount: 1,
+      payload: {
+        filename: "backup.json",
+        format: "json",
+        mimeType: "application/json;charset=utf-8",
+        content: "{}",
+      },
+    });
+
+    await waitFor(() => {
+      expect(backupButton.hasAttribute("disabled")).toBe(false);
+      expect(deleteAllButton.hasAttribute("disabled")).toBe(false);
     });
   });
 

@@ -6,9 +6,6 @@
 
 기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON`으로 저장하는 최소 실용 버전을 제공하는 것입니다.
 
-## 왜 데스크톱 앱에서 크롬 확장으로 바꿨나
-
-Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `0.2초 폴링`, WebDriver 상태 불안정, 데스크톱 GUI/스레드 수명주기 관리 비용이 컸습니다. 이번 전환에서는 브라우저 DOM에 직접 접근하는 MV3 확장 구조로 바꿔서 `MutationObserver 우선 + polling fallback`, popup 종료와 무관한 content script 수집, IndexedDB 기반 세션 저장으로 구조를 단순화했습니다.
 
 ## 기술 선택
 
@@ -36,11 +33,14 @@ Selenium 기반 데스크톱 앱은 브라우저를 간접 제어해야 해서 `
 - 사이트 안 우측 패널에서 실시간 자막 확인
 - 수집 시작 시 AI 자막 레이어 자동 활성화 시도
 - 페이지 패널 / history에서 최근 `N`줄 복사
+- 페이지 패널의 `최근 N줄 복사`는 history와 같은 의미로 현재 세션에 누적된 최근 `N`줄을 기준으로 동작
 - `autoScroll`, 중복 차단 최소 길이, noise filter 토글 등 옵션 반영
 - popup 보조 화면
 - history 기록 내부 검색 / 복사 / 즐겨찾기 / 세션 메모
 - history 상세 entry 체크박스 기반 부분 선택 복사 / 부분 export
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
+- history는 store-level 페이지네이션을 사용하며, 대용량 작업 중에는 관련 버튼을 잠가 중복 실행을 막습니다
+- options의 저장 파일 이름 규칙은 금지 문자와 지원하지 않는 placeholder를 저장 전에 검증합니다
 - 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각 확인
 - 패널 / popup 에서 수집 진단 화면 진입
 - 페이지 패널 / options / history UI
@@ -161,7 +161,7 @@ npm run build
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 실패하면 패널 notice 로 수동 클릭 안내를 표시한다
 5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `화면 자막`에서 최근 화면 자막이 누적되는 목록을 본다
 6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 이때 아직 확정되지 않은 preview-only 자막도 저장 후보에 포함된다
-7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다
+7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
 10. 브라우저/확장을 다시 시작하면 먼저 page-exit 시점에 남겨둔 stopped 저장 replay queue를 복구하고, 그 다음 남아 있던 `running` 세션을 `stopped`로 정리한다
@@ -226,8 +226,10 @@ npm run build
 - 브라우저/확장 cold start 시에는 queued stopped snapshot replay를 먼저 수행한 뒤 남아 있던 `running` 세션 cleanup을 진행하고, replay/cleanup 결과는 `chrome.storage.local` diagnostics snapshot으로 남깁니다
 - JSON import는 허용 필드 재구성 기준으로 sanitize 하며, 지원하지 않는 backup wrapper version과 parse 불가능한 timestamp를 가져오기 단계에서 거부합니다
 - 설정은 `chrome.storage.local`
+- `filenamePattern` 은 `{date}`, `{committee}`, `{time}` 만 허용하며, 금지 문자가 있으면 options에서 저장을 막고 export 직전에도 한 번 더 안전하게 정리합니다
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
 - 세션 레코드에는 `starred`, `pinnedAt`, `note` 메타데이터가 포함되며, history의 즐겨찾기/메모 기능과 JSON 백업/복원에서 함께 유지됩니다
+- fallback 레코드가 없을 때 history paging/count 는 IndexedDB index 기반으로 처리해 전체 preload 비용을 줄입니다
 
 ### background
 
@@ -258,16 +260,6 @@ npm run build
 - 중요 표시 / 발언자 편집
 - 브라우저 E2E 테스트 추가
 
-## 스토어 배포 (Publishing) 가이드
-
-크롬 웹스토어에 정식 출시하기 위해서는 다음 과정을 거칩니다:
-
-1. **프로덕션 빌드**: `npm run build` 명령을 통해 `dist/` 디렉터리에 배포용 에셋을 생성합니다. (아이콘 등 에셋 포함)
-2. **압축(Zip)**: 생성된 `dist/` 폴더 내부의 모든 파일(디렉터리 포함)을 `extension.zip` 형태로 압축합니다. 폴더 자체를 압축하지 않고 내부 에셋들을 압축해야 합니다.
-3. **스토어 등록**: 
-   - [Chrome 웹 스토어 개발자 대시보드](https://chrome.google.com/webstore/devconsole)에 로그인합니다.
-   - 우측 상단 `새 항목(New Item)`을 클릭하고 `extension.zip`을 업로드합니다.
-4. **리뷰 요청**: 정보(설명, 스토어 아이콘, 스크린샷 등)를 기입한 뒤 검토(Review)를 요청합니다.
 
 ## 검증 기준
 
@@ -280,126 +272,8 @@ npm run test
 npm run build
 ```
 
-## 2026-03-12 Sync Update
+전체 검증을 한 번에 실행하려면 아래 명령도 사용할 수 있습니다.
 
-This section tracks the latest persistence and runtime consistency changes.
-
-- Persistence consistency completed:
-  - preview-only subtitles are now preserved in save/export/pagehide/beforeunload/stop snapshots
-  - stopped-session final save failures are retried before `start`/`clear`, with explicit discard confirmation only after the retry fails
-- Session store hardening completed:
-  - session record version and IndexedDB schema version are separated
-  - transient IndexedDB operation failures no longer disable IndexedDB for the whole runtime
-  - `loadSession`/`listSessions` now merge IndexedDB and fallback records and prefer the freshest copy
-  - startup cleanup now closes running sessions across both backends with duplicate id dedupe
-- History/settings consistency completed:
-  - history view now live-syncs `recentCopyLineCount` and `filenamePattern` through `chrome.storage.onChanged`
-- History workspace expansion completed:
-  - session favorites and session notes are now stored with the session record
-  - history detail now supports entry checkbox-based partial copy and partial `TXT / SRT / VTT / JSON` export
-  - history now supports full-library JSON backup and JSON import for both single-session and bundle payloads
-- Runtime diagnostics completed:
-  - in-page panel and popup now expose capture mode, observer state, selector, and frame path
-- Panel readability update completed:
-  - `화면 자막` now keeps recent live rows accumulated instead of only rendering the currently active row set
-  - preview-only updates no longer reset the `화면 자막` list scroll position
-- Local polling deferred item status:
-  - added regression scaffolding for probe signature changes
-  - heuristic broadening was intentionally deferred until a reproducible miss case exists
-
-## 2026-03-11 Sync Update
-
-This section is the current source-of-truth for the latest engineering updates.
-
-- UI/UX hardening completed:
-  - Added confirmation guard for destructive actions (history delete, clear session).
-  - Added responsive breakpoints in history layout for narrow viewports.
-  - Added `aria-live`/status semantics for live preview, live list, and notices.
-  - Added popup auto-reconnect with exponential backoff.
-- Settings UX consistency completed:
-  - Option input minimum values now match sanitization constraints.
-  - Save/reset in options now include explicit error handling.
-- Export consistency completed:
-  - History export now respects `filenamePattern` settings.
-- Build pipeline baseline:
-  - `npm run lint`
-  - `npm run typecheck`
-  - `npm run test:coverage`
-  - `npm run build`
-  - `npm run verify` (full pipeline)
-- Known deferred item (intentionally not changed in this cycle):
-  - Potential subtitle-change miss in local polling path.
-- Security note:
-  - `npm audit` high findings on `rollup@2.x` remain due upstream pinning in `@crxjs/vite-plugin` dependency chain.
-
-## 2026-03-11 Addendum Closure
-
-The functional-gap addendum items have been implemented and verified.
-
-- Security hardening completed:
-  - page-world observer bridge now requires a runtime token
-  - frame-forward nonce rotates on navigation
-- Functional consistency completed:
-  - `filterUnconfirmedEnabled` now applies consistently to container fallback paths
-- Runtime stability completed:
-  - invalidated extension context now triggers explicit runtime shutdown cleanup
-  - offscreen document create-flow tolerates already-exists conditions
-- Performance stabilization completed:
-  - top-frame fallback uses adaptive backoff
-  - last successful frame-path is reused for targeted probing
-  - subtitle row style normalization uses cache + bounded descendant checks
-- Coverage expansion completed:
-  - added focused tests for `dom-probe`, `frame-probe`, and `injected-observer`
-
-Reference docs:
-
-- `IMPLEMENTATION_RISK_REVIEW_2026-03-13.md`
-
-## 2026-03-13 Sync Update
-
-This section tracks the latest storage recovery, validation, and UI consistency changes.
-
-- Persistence recovery hardening completed:
-  - page-exit stopped snapshots now enqueue per-session replay records before background save
-  - startup now replays queued stopped snapshots before stale running-session cleanup
-  - replay/cleanup summaries are persisted as diagnostics and exposed in options `저장 복구 상태`
-- Session import and bulk-operation hardening completed:
-  - JSON import now sanitizes allow-listed fields instead of spreading raw payloads
-  - unsupported backup wrapper versions and invalid timestamps are rejected during import
-  - history full-delete confirmation now uses exact count + preview, not full-library preload
-  - full-library JSON backup now uses store-level export helpers instead of view-layer preload
-- UI feedback consistency completed:
-  - history and popup async actions now surface user-facing error messages consistently
-  - options numeric fields now keep draft string state + inline validation and block invalid saves
-  - fallback/polling capture notices now use neutral “수집 중 + 자동 조정” copy when subtitles are still being collected
-
-## 2026-03-12 Additional Sync Update
-
-- session import summaries now include `failedCount`.
-- popup command feedback now includes `POPUP_FEEDBACK`, including explicit `OPEN_INPAGE_PANEL` result messages.
-- supported host matching is fixed to `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
-- options field exposure is declared in code and regression-tested.
-- the foreign-language/CJK review item remains intentionally excluded by product policy.
-
-## 2026-03-14 Sync Update
-
-This section tracks the latest capture-persistence and history-consistency hardening.
-
-- Empty running-session handling completed:
-  - `startCapture()` no longer persists an empty `running` record immediately.
-  - `stopCapture()` and reset-before-preserve now explicitly remove an existing persisted record when the current session has no persistable content.
-- Session metadata preservation completed:
-  - `saveSession()` and `updateRunningSession()` now preserve `starred`, `pinnedAt`, and `note` from the existing stored record.
-  - `upsertSessionRecord()` remains the explicit overwrite path for history edits.
-- Page-exit ordering completed:
-  - page-exit stopped snapshots now queue replay state before the background persist request is sent.
-  - the ordering logic is isolated in `src/content/page-exit-persist.ts` and regression-tested.
-- Import/fallback consistency completed:
-  - `importSessionRecords()` now allows the same transient IndexedDB fallback behavior as normal writes.
-- History pagination/live refresh completed:
-  - history now uses store-level `listSessionsPage({ page, pageSize, starredOnly })` instead of preloading a capped session list.
-  - session library writes bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page live-refreshes on that signal.
-  - selected-session detail can now load outside the current page, and dirty note drafts are preserved across same-session refreshes.
-- Popup/options initial snapshot consistency completed:
-  - `CAPTURE_STATUS` now includes `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
-  - popup/options can fully hydrate their initial state from `CAPTURE_STATUS` alone, while `PREVIEW_UPDATE` and `SESSION_STATS` remain incremental updates.
+```bash
+npm run verify
+```

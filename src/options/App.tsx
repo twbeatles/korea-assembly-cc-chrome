@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
 import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
+import { validateFilenamePattern } from "../shared/filename-pattern";
 import { connectToTab, getTab, queryTabs, sendRuntimeMessage } from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
@@ -216,6 +217,7 @@ export default function App() {
   const [settings, setSettings] = useState<ExtensionSettings | null>(null);
   const [numberDrafts, setNumberDrafts] = useState<NumberDraftState | null>(null);
   const [numberFieldErrors, setNumberFieldErrors] = useState<NumberFieldErrorState>({});
+  const [filenamePatternError, setFilenamePatternError] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("설정을 불러오는 중입니다.");
   const [view, setView] = useState<OptionsView>(getInitialView);
   const [diagnosticsTabId] = useState<number | null>(getInitialDiagnosticsTabId);
@@ -237,6 +239,7 @@ export default function App() {
         setSettings(data);
         setNumberDrafts(buildNumberDraftState(data));
         setNumberFieldErrors({});
+        setFilenamePatternError(undefined);
         setMessage("필요한 값을 바꾼 뒤 저장하세요.");
       })
       .catch((error: unknown) => {
@@ -428,6 +431,7 @@ export default function App() {
   }, [diagnosticsReloadToken, diagnosticsTabId, view]);
 
   const hasNumberFieldErrors = Object.values(numberFieldErrors).some(Boolean);
+  const hasFieldErrors = hasNumberFieldErrors || Boolean(filenamePatternError);
 
   const updateField = <K extends keyof ExtensionSettings>(key: K, value: ExtensionSettings[K]): void => {
     setSettings((current) => (current ? { ...current, [key]: value } : current));
@@ -462,9 +466,9 @@ export default function App() {
   };
 
   const handleSave = async (): Promise<void> => {
-    if (!settings || hasNumberFieldErrors) {
-      if (hasNumberFieldErrors) {
-        setMessage("잘못된 숫자 입력을 먼저 고쳐주세요.");
+    if (!settings || hasFieldErrors) {
+      if (hasFieldErrors) {
+        setMessage("잘못된 입력을 먼저 고쳐주세요.");
       }
       return;
     }
@@ -474,6 +478,7 @@ export default function App() {
       setSettings(next);
       setNumberDrafts(buildNumberDraftState(next));
       setNumberFieldErrors({});
+      setFilenamePatternError(undefined);
       setMessage("설정을 저장했습니다.");
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : "설정을 저장하지 못했습니다.");
@@ -486,6 +491,7 @@ export default function App() {
       setSettings(next);
       setNumberDrafts(buildNumberDraftState(next));
       setNumberFieldErrors({});
+      setFilenamePatternError(undefined);
       setMessage("기본값으로 되돌렸습니다.");
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : "기본값으로 되돌리지 못했습니다.");
@@ -618,6 +624,7 @@ export default function App() {
                       <input
                         type="number"
                         min={getFieldMin(field)}
+                        aria-label={getFieldLabel(field)}
                         value={numberDrafts[field]}
                         aria-invalid={Boolean(numberFieldErrors[field])}
                         onChange={(event) => handleNumberDraftChange(field, event.target.value)}
@@ -632,16 +639,29 @@ export default function App() {
               );
             })}
 
-            <label className="setting-card input-card full-width">
+            <label
+              className={`setting-card input-card full-width ${filenamePatternError ? "has-error" : ""}`}
+            >
               <div>
                 <strong>저장 파일 이름 규칙</strong>
                 <span>{`사용 가능한 값: {date}, {committee}, {time}`}</span>
               </div>
-              <input
-                type="text"
-                value={settings.filenamePattern}
-                onChange={(event) => updateField("filenamePattern", event.target.value)}
-              />
+              <div className="number-input-group">
+                <input
+                  type="text"
+                  aria-label="저장 파일 이름 규칙"
+                  aria-invalid={Boolean(filenamePatternError)}
+                  value={settings.filenamePattern}
+                  onChange={(event) => {
+                    const nextValue = event.target.value;
+                    updateField("filenamePattern", nextValue);
+                    setFilenamePatternError(validateFilenamePattern(nextValue));
+                  }}
+                />
+                {filenamePatternError ? (
+                  <span className="field-error">{filenamePatternError}</span>
+                ) : null}
+              </div>
             </label>
 
             <details className="advanced-card full-width">
@@ -694,6 +714,7 @@ export default function App() {
                           <input
                             type="number"
                             min={getFieldMin(field)}
+                            aria-label={getFieldLabel(field)}
                             value={numberDrafts[field]}
                             aria-invalid={Boolean(numberFieldErrors[field])}
                             onChange={(event) => handleNumberDraftChange(field, event.target.value)}
@@ -712,7 +733,7 @@ export default function App() {
           </section>
 
           <footer className="actions">
-            <button onClick={handleSave} disabled={hasNumberFieldErrors}>
+            <button onClick={handleSave} disabled={hasFieldErrors}>
               저장
             </button>
             <button className="secondary" onClick={handleReset}>
