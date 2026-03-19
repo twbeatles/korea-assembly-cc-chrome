@@ -55,17 +55,29 @@ function createSnapshot(): StatusSnapshot {
   };
 }
 
-function createLiveRows(): LivePanelRow[] {
-  return [
-    {
-      key: "top::row_1",
-      text: "안녕하세요",
-      nodeKey: "row_1",
-      speakerColor: "rgb(35, 124, 147)",
-      speakerChannel: "primary",
-      updatedAt: Date.parse("2026-03-10T09:00:00.000Z"),
-    },
-  ];
+function createLiveRows(count = 1): LivePanelRow[] {
+  return Array.from({ length: count }, (_, index) => ({
+    key: `top::row_${index + 1}`,
+    text: index === 0 ? "안녕하세요" : `${index + 1}번째 자막입니다.`,
+    nodeKey: `row_${index + 1}`,
+    speakerColor: "rgb(35, 124, 147)",
+    speakerChannel: "primary",
+    updatedAt: Date.parse(`2026-03-10T09:00:0${index}.000Z`),
+  }));
+}
+
+function mockScrollableMetrics(
+  element: HTMLDivElement,
+  metrics: { scrollHeight: number; clientHeight: number },
+): void {
+  Object.defineProperty(element, "scrollHeight", {
+    configurable: true,
+    value: metrics.scrollHeight,
+  });
+  Object.defineProperty(element, "clientHeight", {
+    configurable: true,
+    value: metrics.clientHeight,
+  });
 }
 
 function buildPanelState(input?: {
@@ -141,13 +153,14 @@ describe("in-page panel", () => {
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
     expect(shadowRoot?.querySelector(".panel-scroll")).not.toBeNull();
 
+    const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
     expect(shadowRoot?.querySelector(".preview-box")?.getAttribute("role")).toBe("status");
     expect(shadowRoot?.querySelector(".live-row-list")?.getAttribute("role")).toBe("log");
-    expect(shadowRoot?.querySelector(".notice")?.getAttribute("aria-live")).toBe("polite");
+    expect(notice?.getAttribute("aria-live")).toBe("polite");
+    expect(notice?.hidden).toBe(true);
+    expect(notice?.getAttribute("aria-hidden")).toBe("true");
+    expect(notice?.dataset.message).toBe("자막을 모으는 중입니다.");
     expect(shadowRoot?.querySelector(".preview-toggle")?.textContent).toBe("실시간 내용 펼치기");
-    expect(shadowRoot?.querySelector("style")?.textContent).toContain(
-      "min-height: calc(1.5em * 2 + 20px);",
-    );
 
     controller.destroy();
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
@@ -195,8 +208,12 @@ describe("in-page panel", () => {
     );
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
     expect(shadowRoot?.textContent).toContain("실시간 자막");
-    expect(shadowRoot?.textContent).toContain(
+    expect(shadowRoot?.textContent).not.toContain(
+      "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
+    );
+    expect(notice?.dataset.message).toBe(
       "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
     );
     expect(shadowRoot?.textContent).not.toContain("자막 찾는 중");
@@ -402,6 +419,84 @@ describe("in-page panel", () => {
     );
 
     expect(liveRowList?.scrollTop).toBe(123);
+
+    controller.destroy();
+  });
+
+  it("does not auto-scroll the live rows while the user is reading older subtitles", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        options: {
+          liveRows: createLiveRows(2),
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const jumpButton = shadowRoot?.querySelector(
+      'button[aria-label="수집된 자막 맨 아래로 이동"]',
+    ) as HTMLButtonElement | null;
+    expect(liveRowList).not.toBeNull();
+    expect(jumpButton).not.toBeNull();
+
+    mockScrollableMetrics(liveRowList!, {
+      scrollHeight: 640,
+      clientHeight: 220,
+    });
+    liveRowList!.scrollTop = 160;
+    liveRowList!.dispatchEvent(new Event("scroll"));
+
+    expect(jumpButton?.hidden).toBe(false);
+
+    controller.update(
+      buildPanelState({
+        options: {
+          liveRows: createLiveRows(3),
+        },
+      }),
+    );
+
+    expect(liveRowList?.scrollTop).toBe(160);
+    expect(jumpButton?.hidden).toBe(false);
+
+    controller.destroy();
+  });
+
+  it("scrolls back to the bottom when the live row jump button is clicked", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        options: {
+          liveRows: createLiveRows(3),
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const jumpButton = shadowRoot?.querySelector(
+      'button[aria-label="수집된 자막 맨 아래로 이동"]',
+    ) as HTMLButtonElement | null;
+    expect(liveRowList).not.toBeNull();
+    expect(jumpButton).not.toBeNull();
+
+    mockScrollableMetrics(liveRowList!, {
+      scrollHeight: 640,
+      clientHeight: 220,
+    });
+    liveRowList!.scrollTop = 120;
+    liveRowList!.dispatchEvent(new Event("scroll"));
+
+    expect(jumpButton?.hidden).toBe(false);
+
+    jumpButton?.click();
+
+    expect(liveRowList?.scrollTop).toBe(640);
+    expect(jumpButton?.hidden).toBe(true);
 
     controller.destroy();
   });

@@ -4,6 +4,7 @@ import type { StatusSnapshot } from "../shared/message-types";
 import { getCaptureStatusLabel, getExportFormatLabel, UI_TEXT } from "../shared/ui-labels";
 
 export const IN_PAGE_PANEL_HOST_ID = "assembly-subtitle-panel-host";
+const SCROLL_FOLLOW_THRESHOLD_PX = 24;
 
 const PANEL_STYLE = `
   :host {
@@ -270,6 +271,13 @@ const PANEL_STYLE = `
     border: 1px solid rgba(20, 54, 90, 0.06);
   }
 
+  .live-row-shell {
+    position: relative;
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+  }
+
   .preview-box {
     overflow: hidden;
     flex-shrink: 0;
@@ -319,6 +327,31 @@ const PANEL_STYLE = `
     background: linear-gradient(180deg, #f8fbff, #edf4fb);
   }
 
+  .scroll-jump {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    z-index: 1;
+    width: 44px;
+    min-width: 44px;
+    height: 44px;
+    min-height: 44px;
+    padding: 0;
+    border-radius: 999px;
+    background: rgba(23, 63, 110, 0.96);
+    color: #ffffff;
+    font-size: 22px;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 14px 24px rgba(17, 44, 82, 0.28);
+  }
+
+  .scroll-jump[hidden] {
+    display: none;
+  }
+
   .live-row {
     padding: 14px 16px;
     border-radius: 14px;
@@ -337,7 +370,7 @@ const PANEL_STYLE = `
   .live-row p {
     margin: 0;
     color: #10263c;
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 600;
     line-height: 1.7;
   }
@@ -351,7 +384,7 @@ const PANEL_STYLE = `
     padding: 0 10px;
     text-align: center;
     color: #35536e;
-    font-size: 17px;
+    font-size: 18px;
     font-weight: 700;
     line-height: 1.7;
   }
@@ -574,6 +607,21 @@ function buildLiveRowsSignature(rows: LivePanelRow[]): string {
   return rows.map((row) => `${row.key}|${row.text}|${row.updatedAt}`).join("||");
 }
 
+function getScrollBottomDistance(container: HTMLElement): number {
+  return Math.max(container.scrollHeight - container.clientHeight - container.scrollTop, 0);
+}
+
+function isScrollNearBottom(
+  container: HTMLElement,
+  threshold = SCROLL_FOLLOW_THRESHOLD_PX,
+): boolean {
+  return getScrollBottomDistance(container) <= threshold;
+}
+
+function scrollToBottom(container: HTMLElement): void {
+  container.scrollTop = container.scrollHeight;
+}
+
 export function buildInPagePanelState(
   snapshot: StatusSnapshot,
   options: {
@@ -673,6 +721,19 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   liveRowEmpty.className = "empty-text";
   liveRowEmpty.textContent = "화면에서 자막을 찾으면 수집된 자막이 이곳에 누적됩니다.";
   liveRowList.append(liveRowEmpty);
+  const liveRowShell = document.createElement("div");
+  liveRowShell.className = "live-row-shell";
+  const liveRowJumpButton = createButton(
+    "↓",
+    () => {
+      scrollToBottom(liveRowList);
+      syncLiveRowJumpButton();
+    },
+    "scroll-jump",
+  );
+  liveRowJumpButton.setAttribute("aria-label", "수집된 자막 맨 아래로 이동");
+  liveRowJumpButton.hidden = true;
+  liveRowShell.append(liveRowList, liveRowJumpButton);
 
   const previewSection = document.createElement("section");
   previewSection.className = "preview-section";
@@ -699,7 +760,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   previewBox.append(previewScroll);
   previewSection.append(previewHeader, previewBox);
 
-  heroCard.append(liveRowHeader, liveRowList, previewSection);
+  heroCard.append(liveRowHeader, liveRowShell, previewSection);
 
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
@@ -730,6 +791,8 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   notice.setAttribute("role", "status");
   notice.setAttribute("aria-live", "polite");
   notice.setAttribute("aria-atomic", "true");
+  notice.setAttribute("aria-hidden", "true");
+  notice.hidden = true;
 
   const footer = document.createElement("div");
   footer.className = "footer-actions";
@@ -758,9 +821,20 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   let renderedPreviewCollapsed: boolean | null = null;
   let renderedPreviewSignature = "";
   let renderedLiveRowsSignature = "";
+  const syncLiveRowJumpButton = (hasRows = liveRowNodes.size > 0): void => {
+    const shouldShow = hasRows && !isScrollNearBottom(liveRowList);
+    liveRowJumpButton.hidden = !shouldShow;
+    liveRowJumpButton.setAttribute("aria-hidden", String(!shouldShow));
+  };
+
+  liveRowList.addEventListener("scroll", () => {
+    syncLiveRowJumpButton();
+  });
 
   return {
     update(nextState) {
+      const liveRowsWereNearBottom = isScrollNearBottom(liveRowList);
+
       host.style.display = nextState.visible ? "block" : "none";
 
       if (renderedCollapsed !== nextState.collapsed) {
@@ -839,7 +913,8 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       }
 
       if (renderedNotice !== nextState.notice) {
-        notice.textContent = nextState.notice;
+        // Preserve notice state for diagnostics without exposing it in the main UI.
+        notice.dataset.message = nextState.notice;
         renderedNotice = nextState.notice;
       }
 
@@ -862,10 +937,12 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
         if (previewChanged && !nextState.previewCollapsed) {
           previewScroll.scrollTop = previewScroll.scrollHeight;
         }
-        if (liveRowsChanged) {
-          liveRowList.scrollTop = liveRowList.scrollHeight;
+        if (liveRowsChanged && liveRowsWereNearBottom) {
+          scrollToBottom(liveRowList);
         }
       }
+
+      syncLiveRowJumpButton(nextState.liveRows.length > 0);
     },
     destroy() {
       host.remove();
