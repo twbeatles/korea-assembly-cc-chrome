@@ -363,6 +363,8 @@ const PANEL_STYLE = `
   }
 
   .notice {
+    box-sizing: border-box;
+    min-height: calc(1.5em * 2 + 20px);
     padding: 10px 12px;
     border-radius: 14px;
     background: rgba(227, 236, 247, 0.72);

@@ -145,6 +145,9 @@ describe("in-page panel", () => {
     expect(shadowRoot?.querySelector(".live-row-list")?.getAttribute("role")).toBe("log");
     expect(shadowRoot?.querySelector(".notice")?.getAttribute("aria-live")).toBe("polite");
     expect(shadowRoot?.querySelector(".preview-toggle")?.textContent).toBe("실시간 내용 펼치기");
+    expect(shadowRoot?.querySelector("style")?.textContent).toContain(
+      "min-height: calc(1.5em * 2 + 20px);",
+    );
 
     controller.destroy();
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
