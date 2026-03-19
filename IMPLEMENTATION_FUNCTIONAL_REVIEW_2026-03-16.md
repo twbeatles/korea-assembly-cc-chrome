@@ -134,3 +134,5 @@
 - `npm run test`: 통과
 - `npm run typecheck`: 통과
 - `npm run build`: 통과
+
+추가 후속 구현/정합성 반영은 `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md`를 참고합니다.

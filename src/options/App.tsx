@@ -233,6 +233,25 @@ export default function App() {
   const [unsupported, setUnsupported] = useState(false);
   const [requiresReload, setRequiresReload] = useState(false);
 
+  const diagnosticsErrorRows = [
+    {
+      label: "queue 쓰기 오류",
+      value: persistReplayDiagnostics.lastQueueWriteError || "-",
+    },
+    {
+      label: "replay 오류",
+      value: persistReplayDiagnostics.lastReplayError || "-",
+    },
+    {
+      label: "cleanup 오류",
+      value: persistReplayDiagnostics.lastCleanupError || "-",
+    },
+    {
+      label: "오류 요약",
+      value: persistReplayDiagnostics.lastError || "-",
+    },
+  ];
+
   useEffect(() => {
     void getSettings()
       .then((data) => {
@@ -824,10 +843,12 @@ export default function App() {
                 <span>startup cleanup 감지</span>
                 <strong>{persistReplayDiagnostics.lastCleanupDetectedCount}</strong>
               </div>
-              <div className="meta-row">
-                <span>마지막 오류</span>
-                <strong>{persistReplayDiagnostics.lastError || "-"}</strong>
-              </div>
+              {diagnosticsErrorRows.map((row) => (
+                <div className="meta-row" key={row.label}>
+                  <span>{row.label}</span>
+                  <strong>{row.value}</strong>
+                </div>
+              ))}
             </div>
           </section>
 

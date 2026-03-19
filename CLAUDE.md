@@ -183,26 +183,41 @@ offscreen.html
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `화면 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
+- replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 해야 하며, 같은 `sessionId` 충돌 시 `record.updatedAt` 우선, 동률이면 `queuedAt`이 더 늦은 쪽을 유지해야 합니다.
+- queue write 실패는 메모리 queue를 지우면 안 되며, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`로 phase별로 남겨야 합니다.
 - capture notice 는 `정상 수집`, `자동 조정 중 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
 - 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다.
+- popup `SAVE_SESSION`은 `subtitleCount > 0 || previewText.trim() !== ""`일 때만 활성화해야 하며, 빈 저장 요청은 패널/popup 모두 `저장할 자막이 아직 없습니다.`로 응답해야 합니다.
+- 자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다.
 - options 숫자 필드는 canonical number state 와 별도 draft string state 를 유지하고, invalid draft 는 inline field error 로 표시하며 저장을 막아야 합니다.
 
 ## 8. 작업 시 주의사항
 
 - popup 이 닫혀도 수집이 멈추면 안 됩니다.
 - Selenium / PyQt 구조를 다시 가져오면 안 됩니다.
-- `legacy/` 는 현재 기준 참조용 아카이브이며 Git 추적 대상에서도 제외되어 있습니다.
+- `legacy/` 는 로컬 참조용 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - storage 실패, observer 실패, frame 접근 실패, selector 미탐색은 크래시 대신 fallback 으로 내려가야 합니다.
 - export 는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback 을 유지합니다.
-- frame forwarding 은 nonce 검증을 통과한 메시지만 top frame 에서 수용해야 합니다.
+- frame forwarding 은 탭 단위 storage-backed nonce 검증을 통과한 메시지만 top frame 에서 수용해야 하며, content script는 주기 재동기화와 mismatch 즉시 resync를 유지해야 합니다.
 - 코드 수정 후 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 확인합니다.
 
 ## 9. 관련 문서
 
 - 메인 설명: `README.md`
-- 과거 의미론 참고: `legacy/python-desktop/PIPELINE_LOCK.md`
-- 과거 운영 설명 참고: `legacy/python-desktop/README.md`
 - 배포 절차: `DEPLOYMENT.md`
+- 구현 점검: `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-16.md`
+- 구현 점검 업데이트: `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md`
+
+## Sync Delta (2026-03-19)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- frame-forward nonce는 탭 단위 `chrome.storage.local` source를 기준으로 유지되며, 탭 `loading` 시 회전하고 탭 제거 시 정리합니다.
+- 모든 content script는 bootstrap 시 nonce를 받고 15초마다 재동기화하며, forwarded frame message nonce mismatch는 현재 이벤트를 버리고 즉시 resync 해야 합니다.
+- replay queue는 storage와 memory를 merge 해서 읽고, storage write failure 뒤에도 같은 런타임의 memory queue를 보존해야 합니다.
+- options `저장 복구 상태`는 queue write / replay / cleanup 오류를 개별 행으로 노출해야 하며 `lastError`는 요약 필드로만 유지합니다.
+- popup 저장 버튼은 persistable content가 있을 때만 활성화되며, 빈 저장 요청은 `저장할 자막이 아직 없습니다.` 피드백으로 일관되게 처리해야 합니다.
+- subtitle auto activation 성공은 `visible && (hasText || controlActive)` 조건을 충족할 때만 인정하고, 그 외에는 수동 클릭 안내 notice로 내려가야 합니다.
 
 ## Sync Delta (2026-03-12)
 
@@ -249,7 +264,7 @@ When editing this repository, align with the current implemented behavior below.
 
 Cross-document alignment note:
 
-- `IMPLEMENTATION_RISK_REVIEW_2026-03-13.md` tracks the 2026-03-13 hardening round and remaining residual risk.
+- `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md` tracks the latest hardening round and residual deferred scope.
 
 Current closure status:
 

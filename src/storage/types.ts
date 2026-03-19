@@ -76,10 +76,13 @@ export interface PersistReplayDiagnostics {
   lastReplayReplayedCount: number;
   lastReplaySkippedCount: number;
   lastReplayFailedCount: number;
+  lastReplayError: string | null;
   lastCleanupAt: string | null;
   lastCleanupDetectedCount: number;
   lastCleanupClosedCount: number;
   lastCleanupFailedCount: number;
+  lastCleanupError: string | null;
+  lastQueueWriteError: string | null;
   lastError: string | null;
 }
 

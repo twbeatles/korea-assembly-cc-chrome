@@ -58,7 +58,9 @@ npm run build
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
 - preview-only 자막만 남은 시점에도 저장/export/pagehide에서 내용이 유실되지 않는지 확인
+- service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
+- popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
 - 페이지 패널의 `최근 N줄 복사`가 현재 화면 row가 아니라 누적 세션 기준으로 history와 같은 결과를 주는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
@@ -151,7 +153,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - AI 자막 DOM 을 읽어 사용자가 파일로 저장할 수 있게 함
 - 수집 데이터는 세션 저장 및 내보내기 목적
 - `downloads` 권한은 TXT/SRT/VTT/JSON 파일 저장용
-- `storage` 권한은 설정 및 세션 저장 fallback 용
+- `storage` 권한은 설정, 세션 저장 fallback, page-exit replay queue, 탭 단위 frame-forward nonce, 저장 복구 diagnostics 용
 - `storage` 는 즐겨찾기/메모 같은 세션 메타와 JSON 가져오기 후 복원된 기록 저장에도 사용됨
 
 ## 7. 릴리스 체크리스트
@@ -185,7 +187,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 7. 브라우저/확장 재시작 뒤 남아 있던 `running` 세션이 `stopped`로 정리되는지
 8. 브라우저/확장 재시작 뒤 page-exit queued stopped snapshot replay가 cleanup보다 먼저 적용되는지
 9. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
-10. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하는지
+10. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하고, 성공 판정이 `visible && (hasText || controlActive)`와 맞는지 확인
 11. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
 12. 자막 보정 중에는 패널의 `실시간 내용`과 `화면 자막`이 바로 갱신되는지
 13. `화면 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
@@ -196,6 +198,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 18. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
 19. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
 20. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
+21. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
 
 ## 9. 자주 발생하는 문제
 
@@ -271,7 +274,7 @@ Pre-release validation now assumes the addendum closure changes are present:
 
 Deployment documentation consistency sources:
 
-- `IMPLEMENTATION_RISK_REVIEW_2026-03-13.md`
+- `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md`
 
 ## 2026-03-12 Deployment Consistency Update
 
@@ -294,3 +297,11 @@ Deployment documentation consistency sources:
 - History validation should cover store-level paging, live refresh via `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and note-draft preservation during same-session refreshes.
 - Popup and options initial render should be validated from `CAPTURE_STATUS` alone, including subtitle count, char count, preview text, and recent entry hydration.
 - The current pre-release gate remains `npm run verify`.
+
+## 2026-03-19 Deployment Consistency Update
+
+- Release verification should confirm that frame-forward nonce state survives MV3 service worker restarts via `chrome.storage.local` and converges again without requiring a page reload.
+- Release verification should confirm that queued exit persist reads merge storage and memory snapshots, and that a storage write failure does not silently drop the in-memory replay candidate.
+- Options validation should confirm that `저장 복구 상태` shows `queue write`, `replay`, `cleanup`, and summary errors separately when they are present.
+- Popup validation should confirm that `지금 저장` is disabled when `subtitleCount === 0` and `previewText` is empty, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.
+- Subtitle activation validation should confirm that merely showing `#viewSubtit` is not enough; success requires visible text or an active control signal.

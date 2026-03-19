@@ -15,10 +15,13 @@ const persistRecoveryMocks = vi.hoisted(() => ({
     lastReplayReplayedCount: 0,
     lastReplaySkippedCount: 0,
     lastReplayFailedCount: 0,
+    lastReplayError: null,
     lastCleanupAt: null,
     lastCleanupDetectedCount: 0,
     lastCleanupClosedCount: 0,
     lastCleanupFailedCount: 0,
+    lastCleanupError: null,
+    lastQueueWriteError: null,
     lastError: null,
   })),
   readPersistReplayDiagnostics: vi.fn(),
@@ -66,11 +69,14 @@ describe("options app", () => {
       lastReplayReplayedCount: 1,
       lastReplaySkippedCount: 1,
       lastReplayFailedCount: 0,
+      lastReplayError: "Replay failed once",
       lastCleanupAt: "2026-03-13T09:30:00.000Z",
       lastCleanupDetectedCount: 3,
       lastCleanupClosedCount: 2,
       lastCleanupFailedCount: 1,
-      lastError: "Replay failed once",
+      lastCleanupError: "Cleanup failed once",
+      lastQueueWriteError: "Queue write failed once",
+      lastError: "Cleanup failed once",
     });
   });
 
@@ -130,7 +136,9 @@ describe("options app", () => {
     render(<App />);
 
     await screen.findByText("저장 복구 상태");
+    expect(screen.getByText("Queue write failed once")).toBeTruthy();
     expect(screen.getByText("Replay failed once")).toBeTruthy();
+    expect(screen.getAllByText("Cleanup failed once").length).toBeGreaterThan(0);
     expect(screen.getByText("1 / 0")).toBeTruthy();
     expect(screen.getByText("2 / 1")).toBeTruthy();
   });

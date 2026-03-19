@@ -55,6 +55,13 @@ export function isForwardedFrameMessage(
   );
 }
 
+export function resolveForwardedFrameNonceAction(
+  expectedNonce: string,
+  incomingNonce: string,
+): "accept" | "resync" {
+  return expectedNonce && expectedNonce === incomingNonce ? "accept" : "resync";
+}
+
 export function resolveTopFallbackDelayMs(
   missStreak: number,
   pollingFallbackIntervalMs: number,

@@ -99,6 +99,7 @@ import {
   forwardFrameEvent,
   isForwardedFrameMessage,
   isObserverBridgeEventMessage,
+  resolveForwardedFrameNonceAction,
   resolveTopFallbackDelayMs,
 } from "./frame-coordinator";
 import { persistQueuedPageExitRecord } from "./page-exit-persist";
@@ -116,6 +117,7 @@ const DEFAULT_IN_PAGE_NOTICE = "페이지 오른쪽에서 수집된 자막을 �
 const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-script";
 const SUBTITLE_RESET_GRACE_MS = 1000;
 const INVALIDATED_CONTEXT_NOTICE = "Extension was updated. Please refresh the page (F5).";
+const FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS = 15_000;
 
 let settings: ExtensionSettings = {
   autoScroll: true,
@@ -147,6 +149,8 @@ let previewCollapsed = true;
 let panelNotice = DEFAULT_IN_PAGE_NOTICE;
 let inPagePanel: InPagePanelController | null = null;
 let frameForwardNonce = "";
+let frameForwardNonceRefreshTimer: number | null = null;
+let frameForwardNonceRefreshInFlight = false;
 let observerBridgeToken = createObserverBridgeToken();
 let lastSubtitleActivationAttemptAt = 0;
 let lastNavigationSnapshotAt = 0;
@@ -213,6 +217,13 @@ function clearTopFallbackTimer(): void {
   }
 }
 
+function clearFrameForwardNonceRefresh(): void {
+  if (frameForwardNonceRefreshTimer) {
+    window.clearInterval(frameForwardNonceRefreshTimer);
+    frameForwardNonceRefreshTimer = null;
+  }
+}
+
 function shutdownForInvalidatedContext(): void {
   if (extensionContextInvalidated) {
     return;
@@ -221,6 +232,7 @@ function shutdownForInvalidatedContext(): void {
   extensionContextInvalidated = true;
   clearLocalPolling();
   clearTopFallbackTimer();
+  clearFrameForwardNonceRefresh();
   clearRunningPersistTimer();
   clearPendingReset();
   state.observerActive = false;
@@ -635,10 +647,18 @@ function persistStoppedSnapshotForPageExit(now = Date.now()): void {
   });
 }
 
-async function saveCurrentSessionSnapshot(): Promise<void> {
+async function saveCurrentSessionSnapshot(): Promise<{
+  saved: boolean;
+  message?: string;
+}> {
   const record = buildPreparedSessionRecord("saved");
   if (!shouldPersistFinalSession(isTopFrame, record.entries.length)) {
-    return;
+    const message = "저장할 자막이 아직 없습니다.";
+    setPanelNotice(message);
+    return {
+      saved: false,
+      message,
+    };
   }
 
   try {
@@ -647,13 +667,62 @@ async function saveCurrentSessionSnapshot(): Promise<void> {
       failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
     }
     state = applyPersistSuccess(state, saved.updatedAt);
-    setPanelNotice("현재까지 모든 내용을 저장했습니다.");
+    const message = "현재까지 모든 내용을 저장했습니다.";
+    setPanelNotice(message);
+    return {
+      saved: true,
+      message,
+    };
   } catch (error) {
     if (state.status !== "running") {
       failedStoppedSessionGuard = rememberFailedStoppedSession(record, error);
     }
     reportRuntimeError("세션 저장에 실패했습니다.", error);
+    throw error;
   }
+}
+
+async function refreshFrameForwardNonce(): Promise<void> {
+  const response = await sendRuntimeMessage({ type: "GET_FRAME_FORWARD_NONCE" });
+  if (!response.ok || !response.nonce) {
+    throw new Error(response.ok ? "프레임 전달 토큰을 받지 못했습니다." : response.error);
+  }
+  frameForwardNonce = response.nonce;
+}
+
+function requestFrameForwardNonceResync(quiet = true): void {
+  if (extensionContextInvalidated || frameForwardNonceRefreshInFlight) {
+    return;
+  }
+
+  frameForwardNonceRefreshInFlight = true;
+  void refreshFrameForwardNonce()
+    .catch((error: unknown) => {
+      if (isExtensionContextInvalidatedError(error)) {
+        reportRuntimeError(INVALIDATED_CONTEXT_NOTICE, error);
+        return;
+      }
+
+      if (!quiet) {
+        reportRuntimeError("프레임 전달 보안 토큰을 다시 확인하지 못했습니다.", error);
+      } else {
+        logDebug("frame forward nonce resync failed", error);
+      }
+    })
+    .finally(() => {
+      frameForwardNonceRefreshInFlight = false;
+    });
+}
+
+function startFrameForwardNonceRefresh(): void {
+  clearFrameForwardNonceRefresh();
+  if (extensionContextInvalidated) {
+    return;
+  }
+
+  frameForwardNonceRefreshTimer = window.setInterval(() => {
+    requestFrameForwardNonceResync(true);
+  }, FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS);
 }
 
 function dispatchObserverConfig(): void {
@@ -1335,7 +1404,18 @@ async function handleCommand(
       syncPortState(port);
       return;
     case "SAVE_SESSION":
-      await saveCurrentSessionSnapshot();
+      {
+        const result = await saveCurrentSessionSnapshot();
+        if (result.message && !result.saved) {
+          postToPopupPort(
+            port,
+            createPopupFeedbackMessage({
+              command: "SAVE_SESSION",
+              message: result.message,
+            }),
+          );
+        }
+      }
       syncUserInterfaces();
       syncPortState(port);
       return;
@@ -1467,24 +1547,19 @@ function bindBridgeMessages(): void {
       return;
     }
 
-    if (
-      isTopFrame &&
-      event.source !== window &&
-      frameForwardNonce &&
-      isForwardedFrameMessage(data) &&
-      data.nonce === frameForwardNonce
-    ) {
-      handleTopFrameEvent(data.event);
+    if (isTopFrame && event.source !== window && isForwardedFrameMessage(data)) {
+      if (resolveForwardedFrameNonceAction(frameForwardNonce, data.nonce) === "accept") {
+        handleTopFrameEvent(data.event);
+        return;
+      }
+
+      requestFrameForwardNonceResync(true);
     }
   });
 }
 
 async function ensureFrameForwardNonce(): Promise<void> {
-  const response = await sendRuntimeMessage({ type: "GET_FRAME_FORWARD_NONCE" });
-  if (!response.ok || !response.nonce) {
-    throw new Error(response.ok ? "프레임 전달 토큰을 받지 못했습니다." : response.error);
-  }
-  frameForwardNonce = response.nonce;
+  await refreshFrameForwardNonce();
 }
 
 async function bootstrap(): Promise<void> {
@@ -1518,6 +1593,7 @@ async function bootstrap(): Promise<void> {
   bindNavigationGuards();
   mountInPagePanel();
   updateInPagePanel();
+  startFrameForwardNonceRefresh();
 
   try {
     await injectObserverScript();

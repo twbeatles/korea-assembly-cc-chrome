@@ -12,6 +12,7 @@ export interface SubtitleLayerState {
   found: boolean;
   visible: boolean;
   hasText: boolean;
+  controlActive: boolean;
   text: string;
 }
 
@@ -48,20 +49,35 @@ function isActivationControlActive(element: HTMLElement): boolean {
   return /\bon\b/.test(className) || /(끄기|닫기)/.test(title) || ariaPressed === "true";
 }
 
-function findActivationControl(root: ParentNode): { selector: string; element: HTMLElement } | null {
+function findVisibleActivationControl(
+  root: ParentNode,
+): { selector: string; element: HTMLElement; active: boolean } | null {
   for (const selector of ACTIVATION_CONTROL_SELECTORS) {
     const control = root.querySelector(selector);
-    if (!isHTMLElement(control) || !isVisible(control) || isActivationControlActive(control)) {
+    if (!isHTMLElement(control) || !isVisible(control)) {
       continue;
     }
 
     return {
       selector,
       element: control,
+      active: isActivationControlActive(control),
     };
   }
 
   return null;
+}
+
+function findActivationControl(root: ParentNode): { selector: string; element: HTMLElement } | null {
+  const control = findVisibleActivationControl(root);
+  if (!control || control.active) {
+    return null;
+  }
+
+  return {
+    selector: control.selector,
+    element: control.element,
+  };
 }
 
 function walkFramesForControl(
@@ -99,13 +115,53 @@ function walkFramesForControl(
   return null;
 }
 
+function walkFramesForVisibleControl(
+  rootDocument: Document,
+  depth: number = 0,
+  maxDepth: number = 3,
+): { selector: string; element: HTMLElement; active: boolean } | null {
+  if (depth > maxDepth) {
+    return null;
+  }
+
+  const direct = findVisibleActivationControl(rootDocument);
+  if (direct) {
+    return direct;
+  }
+
+  const frames = Array.from(
+    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+  );
+
+  for (const frame of frames) {
+    try {
+      const childDoc = frame.contentDocument;
+      if (!childDoc) continue;
+
+      const found = walkFramesForVisibleControl(childDoc, depth + 1, maxDepth);
+      if (found) {
+        return found;
+      }
+    } catch {
+      // Cross-origin access ignored
+    }
+  }
+
+  return null;
+}
+
 export function readSubtitleLayerState(root: ParentNode = document): SubtitleLayerState {
+  const isDoc = root.nodeType === Node.DOCUMENT_NODE;
+  const control = isDoc
+    ? walkFramesForVisibleControl(root as Document)
+    : findVisibleActivationControl(root);
   const layer = root.querySelector(SUBTITLE_LAYER_SELECTOR);
   if (!isHTMLElement(layer)) {
     return {
       found: false,
       visible: false,
       hasText: false,
+      controlActive: Boolean(control?.active),
       text: "",
     };
   }
@@ -115,13 +171,14 @@ export function readSubtitleLayerState(root: ParentNode = document): SubtitleLay
     found: true,
     visible: isVisible(layer),
     hasText: Boolean(text),
+    controlActive: Boolean(control?.active),
     text,
   };
 }
 
 export function tryDomSubtitleActivation(root: ParentNode = document): SubtitleActivationResult {
   const current = readSubtitleLayerState(root);
-  if (current.visible) {
+  if (current.visible && (current.hasText || current.controlActive)) {
     return {
       attempted: false,
       method: "already-visible",
@@ -163,7 +220,7 @@ export async function waitForSubtitleLayer(
 
   while (Date.now() - startedAt <= timeoutMs) {
     const state = readSubtitleLayerState();
-    if (state.visible) {
+    if (state.visible && (state.hasText || state.controlActive)) {
       return state;
     }
     await new Promise<void>((resolve) => window.setTimeout(resolve, intervalMs));

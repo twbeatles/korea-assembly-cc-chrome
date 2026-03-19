@@ -181,9 +181,13 @@ npm run build
 - page-exit stopped snapshot 은 replay queue 에 함께 적재되고, background 저장 성공 시 stale queued snapshot 을 정리해야 함
 - startup 에서는 queued stopped snapshot replay -> stale running cleanup 순서를 유지해야 함
 - replay / cleanup diagnostics 는 options `저장 복구 상태`에 노출됨
+- replay queue 조회는 storage snapshot + memory snapshot merge여야 하며, 같은 `sessionId` 충돌 시 `updatedAt` 우선, 동률이면 늦은 `queuedAt`을 유지해야 함
+- queue write 실패는 메모리 queue를 유지한 채 `lastQueueWriteError`로 기록하고, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`를 함께 유지해야 함
 - session import 는 allow-list sanitize 후 normalize 해야 하며, unsupported wrapper version / invalid timestamp 는 reject 해야 함
 - 패널과 popup 은 `수집 진단` 화면 진입을 제공하고, capture mode, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 의 `수집 진단` 탭에서 표시
 - fallback/polling capture notice 는 실제 수집이 이어질 때 중립적 “수집 중 + 자동 조정” 톤을 유지해야 함
+- popup `SAVE_SESSION`은 `subtitleCount > 0 || previewText.trim() !== ""`일 때만 활성화되어야 하고, 빈 저장 요청은 `저장할 자막이 아직 없습니다.`로 응답해야 함
+- subtitle auto activation 성공은 `visible && (hasText || controlActive)`로 판정해야 함
 - options 숫자 필드는 draft string + inline validation 패턴을 유지해야 함
 
 ## 8. exporter 규칙
@@ -205,9 +209,20 @@ npm run build
 
 - crash 보다 fallback 이 우선입니다.
 - popup 종료와 수집 중단을 연결하면 안 됩니다.
-- `legacy/` 는 Git ignore 대상이므로, 현재 구현 변경은 루트 확장 코드에만 반영해야 합니다.
+- `legacy/` 는 로컬 참조 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
 - 변경 후에는 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 실행합니다.
+
+## Sync Delta (2026-03-19)
+
+Use this delta as the current operational baseline.
+
+- frame-forward nonce는 탭 단위 `chrome.storage.local`에 유지되며, 탭 `loading` 시 회전하고 탭 제거 시 정리됩니다.
+- 모든 content script는 bootstrap 시 nonce를 받고 15초마다 재동기화하며, forwarded frame nonce mismatch는 현재 이벤트를 버리고 즉시 resync 해야 합니다.
+- replay queue는 storage + memory merge 기준으로 읽고, storage write failure 뒤에도 메모리 queue를 유지해야 합니다.
+- options `저장 복구 상태`는 queue write / replay / cleanup 오류를 개별적으로 보여 줘야 합니다.
+- popup 저장 버튼은 persistable content가 없으면 비활성화되고, 빈 저장은 `저장할 자막이 아직 없습니다.` 피드백으로 일관되게 처리되어야 합니다.
+- subtitle auto activation 성공은 `visible && (hasText || controlActive)` 조건을 충족할 때만 인정됩니다.
 
 ## Sync Delta (2026-03-12)
 
@@ -274,7 +289,7 @@ Keep this file aligned with the implementation closure below:
 
 Reference consistency set:
 
-- `IMPLEMENTATION_RISK_REVIEW_2026-03-13.md`
+- `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md`
 
 ## 2026-03-12 Additional Sync Update
 

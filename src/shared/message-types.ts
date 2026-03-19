@@ -80,9 +80,9 @@ export interface SessionStatsPayload {
 }
 
 export interface PopupFeedbackPayload {
-  command: "OPEN_INPAGE_PANEL";
+  command: "OPEN_INPAGE_PANEL" | "SAVE_SESSION";
   message: string;
-  panelOpened: boolean;
+  panelOpened?: boolean;
 }
 
 export type PopupToContentMessage =

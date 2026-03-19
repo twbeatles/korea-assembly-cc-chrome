@@ -1,5 +1,14 @@
 import { isSupportedAssemblyUrl, OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
 import { runStartupPersistenceMaintenance } from "./startup-persistence";
+import {
+  handleFrameForwardNonceTabRemoved,
+  handleFrameForwardNonceTabUpdated,
+} from "./frame-forward-nonce-lifecycle";
+import {
+  clearPersistedFrameForwardNonce,
+  getOrCreatePersistedFrameForwardNonce,
+  rotatePersistedFrameForwardNonce,
+} from "./frame-forward-nonce-store";
 import type {
   BackgroundCommandMessage,
   BackgroundCommandResponse,
@@ -110,15 +119,30 @@ function isOffscreenDocumentAlreadyExistsError(error: unknown): boolean {
   );
 }
 
-function getOrCreateFrameForwardNonce(tabId: number): string {
-  const current = frameForwardNonceByTabId.get(tabId);
-  if (current) {
-    return current;
-  }
+async function getOrCreateStoredFrameForwardNonce(tabId: number): Promise<string> {
+  return getOrCreatePersistedFrameForwardNonce({
+    tabId,
+    cache: frameForwardNonceByTabId,
+    storage: chrome.storage.local,
+    createNonce,
+  });
+}
 
-  const next = createNonce();
-  frameForwardNonceByTabId.set(tabId, next);
-  return next;
+async function rotateStoredFrameForwardNonce(tabId: number): Promise<string> {
+  return rotatePersistedFrameForwardNonce({
+    tabId,
+    cache: frameForwardNonceByTabId,
+    storage: chrome.storage.local,
+    createNonce,
+  });
+}
+
+async function clearStoredFrameForwardNonce(tabId: number): Promise<void> {
+  await clearPersistedFrameForwardNonce({
+    tabId,
+    cache: frameForwardNonceByTabId,
+    storage: chrome.storage.local,
+  });
 }
 
 function sleep(delayMs: number): Promise<void> {
@@ -332,7 +356,7 @@ async function handleMessage(
       if (typeof tabId !== "number") {
         return { ok: false, error: "탭 정보를 확인하지 못했습니다." };
       }
-      return { ok: true, nonce: getOrCreateFrameForwardNonce(tabId) };
+      return { ok: true, nonce: await getOrCreateStoredFrameForwardNonce(tabId) };
     }
     case "PERSIST_SESSION_RECORD":
       if (message.record.status === "running") {
@@ -411,13 +435,11 @@ chrome.downloads.onChanged.addListener((delta) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  frameForwardNonceByTabId.delete(tabId);
+  void handleFrameForwardNonceTabRemoved(tabId, clearStoredFrameForwardNonce);
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  if (changeInfo.status === "loading") {
-    frameForwardNonceByTabId.set(tabId, createNonce());
-  }
+  void handleFrameForwardNonceTabUpdated(tabId, changeInfo, rotateStoredFrameForwardNonce);
 });
 
 chrome.runtime.onStartup.addListener(() => {

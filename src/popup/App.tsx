@@ -17,6 +17,8 @@ export default function App() {
   const [requiresReload, setRequiresReload] = useState(false);
   const [port, setPort] = useState<chrome.runtime.Port | null>(null);
   const [currentTabId, setCurrentTabId] = useState<number | null>(null);
+  const hasPersistableContent =
+    (snapshot?.subtitleCount ?? 0) > 0 || Boolean(snapshot?.previewText?.trim());
 
   useEffect(() => {
     let active = true;
@@ -330,7 +332,7 @@ export default function App() {
             <button
               className="secondary"
               onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
-              disabled={!tabReady}
+              disabled={!tabReady || !hasPersistableContent}
             >
               {UI_TEXT.saveSession}
             </button>

@@ -22,6 +22,43 @@ function cloneQueuedRecord(record: QueuedExitPersistRecord): QueuedExitPersistRe
   };
 }
 
+function compareQueuedRecordFreshness(
+  left: QueuedExitPersistRecord,
+  right: QueuedExitPersistRecord,
+): number {
+  const updatedAtCompare = left.record.updatedAt.localeCompare(right.record.updatedAt);
+  if (updatedAtCompare !== 0) {
+    return updatedAtCompare;
+  }
+
+  return left.queuedAt.localeCompare(right.queuedAt);
+}
+
+function mergeQueuedRecordCollections(
+  storageRecords: QueuedExitPersistRecord[],
+  memoryRecords: QueuedExitPersistRecord[],
+): QueuedExitPersistRecord[] {
+  const merged = new Map<string, QueuedExitPersistRecord>();
+
+  [...storageRecords, ...memoryRecords].forEach((record) => {
+    const current = merged.get(record.sessionId);
+    if (!current || compareQueuedRecordFreshness(record, current) > 0) {
+      merged.set(record.sessionId, cloneQueuedRecord(record));
+    }
+  });
+
+  return [...merged.values()];
+}
+
+function resolvePersistReplayLastError(diagnostics: PersistReplayDiagnostics): string | null {
+  return (
+    diagnostics.lastCleanupError ??
+    diagnostics.lastReplayError ??
+    diagnostics.lastQueueWriteError ??
+    null
+  );
+}
+
 function getQueuedRecordStorageKey(sessionId: string): string {
   return `${EXIT_PERSIST_RECORD_PREFIX}${sessionId}`;
 }
@@ -74,10 +111,13 @@ export function createEmptyPersistReplayDiagnostics(): PersistReplayDiagnostics 
     lastReplayReplayedCount: 0,
     lastReplaySkippedCount: 0,
     lastReplayFailedCount: 0,
+    lastReplayError: null,
     lastCleanupAt: null,
     lastCleanupDetectedCount: 0,
     lastCleanupClosedCount: 0,
     lastCleanupFailedCount: 0,
+    lastCleanupError: null,
+    lastQueueWriteError: null,
     lastError: null,
   };
 }
@@ -100,6 +140,10 @@ function sanitizePersistReplayDiagnostics(value: unknown): PersistReplayDiagnost
       typeof candidate.lastReplaySkippedCount === "number" ? candidate.lastReplaySkippedCount : 0,
     lastReplayFailedCount:
       typeof candidate.lastReplayFailedCount === "number" ? candidate.lastReplayFailedCount : 0,
+    lastReplayError:
+      typeof candidate.lastReplayError === "string" && candidate.lastReplayError
+        ? candidate.lastReplayError
+        : null,
     lastCleanupAt: isValidDateString(candidate.lastCleanupAt) ? candidate.lastCleanupAt : null,
     lastCleanupDetectedCount:
       typeof candidate.lastCleanupDetectedCount === "number"
@@ -109,8 +153,27 @@ function sanitizePersistReplayDiagnostics(value: unknown): PersistReplayDiagnost
       typeof candidate.lastCleanupClosedCount === "number" ? candidate.lastCleanupClosedCount : 0,
     lastCleanupFailedCount:
       typeof candidate.lastCleanupFailedCount === "number" ? candidate.lastCleanupFailedCount : 0,
+    lastCleanupError:
+      typeof candidate.lastCleanupError === "string" && candidate.lastCleanupError
+        ? candidate.lastCleanupError
+        : null,
+    lastQueueWriteError:
+      typeof candidate.lastQueueWriteError === "string" && candidate.lastQueueWriteError
+        ? candidate.lastQueueWriteError
+        : null,
     lastError: typeof candidate.lastError === "string" && candidate.lastError ? candidate.lastError : null,
   };
+}
+
+async function updatePersistReplayDiagnostics(
+  updater: (current: PersistReplayDiagnostics) => PersistReplayDiagnostics,
+): Promise<void> {
+  const current = await readPersistReplayDiagnostics();
+  const next = updater(current);
+  await writePersistReplayDiagnostics({
+    ...next,
+    lastError: resolvePersistReplayLastError(next),
+  });
 }
 
 export async function queueExitPersistRecord(record: SessionRecord): Promise<void> {
@@ -129,9 +192,25 @@ export async function queueExitPersistRecord(record: SessionRecord): Promise<voi
     return;
   }
 
-  await chrome.storage.local.set({
-    [getQueuedRecordStorageKey(record.id)]: cloneQueuedRecord(nextRecord),
-  });
+  try {
+    await chrome.storage.local.set({
+      [getQueuedRecordStorageKey(record.id)]: cloneQueuedRecord(nextRecord),
+    });
+    await updatePersistReplayDiagnostics((current) => ({
+      ...current,
+      lastQueueWriteError: null,
+    })).catch(() => {
+      // Queue write succeeded; diagnostics update is best-effort.
+    });
+  } catch (error) {
+    await updatePersistReplayDiagnostics((current) => ({
+      ...current,
+      lastQueueWriteError: error instanceof Error ? error.message : "queued exit persist write failed",
+    })).catch(() => {
+      // Preserve the original queue write failure even if diagnostics cannot be updated.
+    });
+    throw error;
+  }
 }
 
 export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistRecord[]> {
@@ -140,16 +219,21 @@ export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistR
   }
 
   const snapshot = await chrome.storage.local.get(null);
-  const records = Object.entries(snapshot)
+  const storageRecords = Object.entries(snapshot)
     .filter(([key]) => key.startsWith(EXIT_PERSIST_RECORD_PREFIX))
     .map(([, value]) => sanitizeQueuedRecord(value))
     .filter((value): value is QueuedExitPersistRecord => Boolean(value));
 
+  const mergedRecords = mergeQueuedRecordCollections(
+    storageRecords,
+    [...memoryQueuedRecords.values()].map(cloneQueuedRecord),
+  );
+
   memoryQueuedRecords.clear();
-  records.forEach((record) => {
+  mergedRecords.forEach((record) => {
     memoryQueuedRecords.set(record.sessionId, cloneQueuedRecord(record));
   });
-  return records.map(cloneQueuedRecord);
+  return mergedRecords.map(cloneQueuedRecord);
 }
 
 export async function clearQueuedExitPersistRecord(sessionId: string): Promise<void> {
@@ -162,7 +246,11 @@ export async function clearQueuedExitPersistRecord(sessionId: string): Promise<v
     return;
   }
 
-  await chrome.storage.local.remove(getQueuedRecordStorageKey(sessionId));
+  try {
+    await chrome.storage.local.remove(getQueuedRecordStorageKey(sessionId));
+  } catch {
+    // Queue cleanup is best-effort and must not block other persistence work.
+  }
 }
 
 export async function clearQueuedExitPersistRecordsUpTo(
@@ -183,10 +271,14 @@ export async function clearQueuedExitPersistRecordsUpTo(
   }
 
   const storageKey = getQueuedRecordStorageKey(sessionId);
-  const snapshot = await chrome.storage.local.get(storageKey);
-  const queued = sanitizeQueuedRecord(snapshot[storageKey]);
-  if (queued && queued.record.updatedAt.localeCompare(updatedAt) <= 0) {
-    await chrome.storage.local.remove(storageKey);
+  try {
+    const snapshot = await chrome.storage.local.get(storageKey);
+    const queued = sanitizeQueuedRecord(snapshot[storageKey]);
+    if (queued && queued.record.updatedAt.localeCompare(updatedAt) <= 0) {
+      await chrome.storage.local.remove(storageKey);
+    }
+  } catch {
+    // Queue cleanup is best-effort and must not block other persistence work.
   }
 }
 
@@ -206,7 +298,11 @@ export async function readPersistReplayDiagnostics(): Promise<PersistReplayDiagn
 export async function writePersistReplayDiagnostics(
   diagnostics: PersistReplayDiagnostics,
 ): Promise<void> {
-  const nextDiagnostics = sanitizePersistReplayDiagnostics(diagnostics);
+  const sanitizedDiagnostics = sanitizePersistReplayDiagnostics(diagnostics);
+  const nextDiagnostics = {
+    ...sanitizedDiagnostics,
+    lastError: resolvePersistReplayLastError(sanitizedDiagnostics),
+  };
   memoryDiagnostics = nextDiagnostics;
   if (!hasChromeStorageLocal()) {
     return;

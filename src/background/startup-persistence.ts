@@ -1,5 +1,6 @@
 import {
   createEmptyPersistReplayDiagnostics,
+  readPersistReplayDiagnostics,
   writePersistReplayDiagnostics,
 } from "../storage/persist-recovery";
 import {
@@ -22,12 +23,14 @@ export async function runStartupPersistenceMaintenance(
   dependencies: {
     replay?: typeof replayQueuedExitPersistRecords;
     cleanup?: typeof closeRunningSessionsOnStartup;
+    readDiagnostics?: typeof readPersistReplayDiagnostics;
     writeDiagnostics?: typeof writePersistReplayDiagnostics;
     now?: () => string;
   } = {},
 ): Promise<StartupPersistenceResult> {
   const replay = dependencies.replay ?? replayQueuedExitPersistRecords;
   const cleanup = dependencies.cleanup ?? closeRunningSessionsOnStartup;
+  const readDiagnostics = dependencies.readDiagnostics ?? readPersistReplayDiagnostics;
   const writeDiagnostics = dependencies.writeDiagnostics ?? writePersistReplayDiagnostics;
   const now = dependencies.now ?? (() => new Date().toISOString());
 
@@ -45,32 +48,37 @@ export async function runStartupPersistenceMaintenance(
 
   let replaySummary = emptyReplaySummary;
   let cleanupSummary = emptyCleanupSummary;
-  let lastError: string | null = null;
+  let lastReplayError: string | null = null;
+  let lastCleanupError: string | null = null;
 
   try {
     replaySummary = await replay();
   } catch (error) {
-    lastError = error instanceof Error ? error.message : "queued exit persistence replay failed";
+    lastReplayError =
+      error instanceof Error ? error.message : "queued exit persistence replay failed";
   }
 
   try {
     cleanupSummary = await cleanup();
   } catch (error) {
-    lastError = error instanceof Error ? error.message : "startup cleanup failed";
+    lastCleanupError = error instanceof Error ? error.message : "startup cleanup failed";
   }
 
+  const existingDiagnostics = await readDiagnostics().catch(() => createEmptyPersistReplayDiagnostics());
   const diagnostics: PersistReplayDiagnostics = {
-    ...createEmptyPersistReplayDiagnostics(),
+    ...existingDiagnostics,
     lastReplayAt: now(),
     lastReplayQueuedCount: replaySummary.queuedCount,
     lastReplayReplayedCount: replaySummary.replayedCount,
     lastReplaySkippedCount: replaySummary.skippedCount,
     lastReplayFailedCount: replaySummary.failedCount,
+    lastReplayError,
     lastCleanupAt: now(),
     lastCleanupDetectedCount: cleanupSummary.detectedCount,
     lastCleanupClosedCount: cleanupSummary.closedCount,
     lastCleanupFailedCount: cleanupSummary.failedCount,
-    lastError,
+    lastCleanupError,
+    lastError: lastCleanupError ?? lastReplayError ?? existingDiagnostics.lastQueueWriteError ?? null,
   };
   await writeDiagnostics(diagnostics);
 

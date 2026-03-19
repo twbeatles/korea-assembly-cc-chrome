@@ -22,6 +22,7 @@ describe("subtitle layer helpers", () => {
       found: true,
       visible: true,
       hasText: true,
+      controlActive: false,
       text: "실시간 자막입니다.",
     });
   });
@@ -61,6 +62,33 @@ describe("subtitle layer helpers", () => {
     expect(readSubtitleLayerState().visible).toBe(true);
   });
 
+  it("reports an active activation control and treats it as a successful visible state", async () => {
+    vi.useFakeTimers();
+    mountLayer({ visible: true });
+
+    const button = document.createElement("button");
+    button.className = "btn_subtit_ai on";
+    button.textContent = "AI 자막보기";
+    document.body.append(button);
+
+    expect(readSubtitleLayerState()).toEqual({
+      found: true,
+      visible: true,
+      hasText: false,
+      controlActive: true,
+      text: "",
+    });
+
+    const pending = waitForSubtitleLayer({ timeoutMs: 1000, intervalMs: 60 });
+    await vi.advanceTimersByTimeAsync(60);
+
+    await expect(pending).resolves.toMatchObject({
+      visible: true,
+      controlActive: true,
+    });
+    vi.useRealTimers();
+  });
+
   it("waits until the subtitle layer becomes visible", async () => {
     vi.useFakeTimers();
     mountLayer();
@@ -70,6 +98,10 @@ describe("subtitle layer helpers", () => {
       if (layer) {
         layer.style.display = "block";
       }
+      const textContainer = document.querySelector<HTMLElement>("#viewSubtit .incont");
+      if (textContainer) {
+        textContainer.textContent = "실시간 자막입니다.";
+      }
     }, 180);
 
     const pending = waitForSubtitleLayer({ timeoutMs: 1000, intervalMs: 60 });
@@ -77,6 +109,21 @@ describe("subtitle layer helpers", () => {
 
     await expect(pending).resolves.toMatchObject({
       visible: true,
+    });
+    vi.useRealTimers();
+  });
+
+  it("does not treat visible-only empty layers as activation success", async () => {
+    vi.useFakeTimers();
+    mountLayer({ visible: true });
+
+    const pending = waitForSubtitleLayer({ timeoutMs: 240, intervalMs: 60 });
+    await vi.advanceTimersByTimeAsync(300);
+
+    await expect(pending).resolves.toMatchObject({
+      visible: true,
+      hasText: false,
+      controlActive: false,
     });
     vi.useRealTimers();
   });

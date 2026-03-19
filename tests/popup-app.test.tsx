@@ -94,6 +94,88 @@ describe("popup app", () => {
     expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_STATUS" });
   });
 
+  it("disables save when there is no persistable content and shows popup feedback messages", async () => {
+    const messageListeners: Array<(message: unknown) => void> = [];
+    const port = {
+      onMessage: {
+        addListener: vi.fn((listener: (message: unknown) => void) => {
+          messageListeners.push(listener);
+        }),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+
+    chromeApiMocks.queryActiveTab.mockResolvedValue({
+      id: 1,
+      url: "https://assembly.webcast.go.kr/main/player.asp",
+    });
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValue({
+      ok: true,
+      ready: true,
+      requiresReload: false,
+    });
+    chromeApiMocks.connectToTab.mockReturnValue(port);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalled();
+    });
+
+    act(() => {
+      messageListeners.forEach((listener) =>
+        listener({
+          type: "CAPTURE_STATUS",
+          payload: {
+            connected: true,
+            requiresReload: false,
+            status: "idle",
+            sessionId: "session_popup_empty",
+            title: "정무위",
+            committeeName: "정무위원회",
+            sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+            subtitleCount: 0,
+            charCount: 0,
+            previewText: "",
+            recentEntries: [],
+            startedAt: null,
+            endedAt: null,
+            updatedAt: null,
+            lastPersistedAt: null,
+            observerActive: false,
+            currentSelector: "",
+            currentFramePath: [],
+            diagnostics: {
+              captureMode: "idle",
+              observerActive: false,
+              currentSelector: "",
+              currentFramePath: [],
+              sourceLabel: "대기 중",
+            },
+          },
+        }),
+      );
+      messageListeners.forEach((listener) =>
+        listener({
+          type: "POPUP_FEEDBACK",
+          payload: {
+            command: "SAVE_SESSION",
+            message: "저장할 자막이 아직 없습니다.",
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("저장할 자막이 아직 없습니다.")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: "지금 저장" }).hasAttribute("disabled")).toBe(true);
+  });
+
   it("shows a user-facing error when opening history fails", async () => {
     chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(new Error("history failed"));
 

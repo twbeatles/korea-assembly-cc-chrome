@@ -38,9 +38,11 @@ describe("startup persistence maintenance", () => {
         lastReplayReplayedCount: 1,
         lastReplaySkippedCount: 1,
         lastReplayFailedCount: 0,
+        lastReplayError: null,
         lastCleanupDetectedCount: 3,
         lastCleanupClosedCount: 2,
         lastCleanupFailedCount: 1,
+        lastCleanupError: null,
       }),
     );
     expect(result.diagnostics.lastReplayAt).toBe("2026-03-13T09:30:00.000Z");
@@ -51,6 +53,21 @@ describe("startup persistence maintenance", () => {
     const writeDiagnostics = vi.fn();
 
     const result = await runStartupPersistenceMaintenance({
+      readDiagnostics: async () => ({
+        lastReplayAt: null,
+        lastReplayQueuedCount: 0,
+        lastReplayReplayedCount: 0,
+        lastReplaySkippedCount: 0,
+        lastReplayFailedCount: 0,
+        lastReplayError: null,
+        lastCleanupAt: null,
+        lastCleanupDetectedCount: 0,
+        lastCleanupClosedCount: 0,
+        lastCleanupFailedCount: 0,
+        lastCleanupError: null,
+        lastQueueWriteError: "Queue write failed",
+        lastError: "Queue write failed",
+      }),
       replay: async () => {
         throw new Error("Replay failed");
       },
@@ -64,9 +81,13 @@ describe("startup persistence maintenance", () => {
     });
 
     expect(result.diagnostics.lastError).toBe("Replay failed");
+    expect(result.diagnostics.lastReplayError).toBe("Replay failed");
+    expect(result.diagnostics.lastCleanupError).toBeNull();
+    expect(result.diagnostics.lastQueueWriteError).toBe("Queue write failed");
     expect(writeDiagnostics).toHaveBeenCalledWith(
       expect.objectContaining({
         lastError: "Replay failed",
+        lastReplayError: "Replay failed",
       }),
     );
   });
