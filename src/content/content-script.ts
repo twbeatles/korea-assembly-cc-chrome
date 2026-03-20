@@ -71,6 +71,7 @@ import {
   createInPagePanel,
   type InPagePanelController,
 } from "./inpage-panel";
+import { resolvePanelLiveRows } from "./panel-live-rows";
 import {
   clearFailedStoppedSessionGuard,
   createEmptyFailedStoppedSessionGuard,
@@ -281,7 +282,12 @@ function logDebug(message: string, payload?: unknown): void {
 }
 
 function getPanelLiveRows(): LivePanelRow[] {
-  return listLivePanelRows(liveCaptureLedger);
+  return resolvePanelLiveRows({
+    structuredRows: listLivePanelRows(liveCaptureLedger),
+    entries: state.entries,
+    captureMode: getCaptureMode(),
+    sourceUrl: state.sourceUrl || window.location.href,
+  });
 }
 
 function getLivePreviewText(): string {

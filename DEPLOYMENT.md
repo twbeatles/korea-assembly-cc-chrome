@@ -51,7 +51,9 @@ npm run build
 - 페이지 오른쪽 패널이 자동으로 뜨는지 확인
 - 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
 - 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
-- `화면 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
+- `수집된 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
+- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback으로만 잡혀도 `실시간 내용` 누적 원문이 유지되고 `수집된 자막` 목록이 commit된 entry 기준으로 계속 쌓이는지 확인
+- `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구가 저장/export/누적 목록에 들어가지 않는지 확인
 - 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
 - 패널의 `저장 / 내보내기` 버튼에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
@@ -113,7 +115,7 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version>-cws.zip -Force
 ```
 
 ## 6. Chrome Web Store 배포
@@ -166,6 +168,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 - `npm run build` 통과
 - `dist/manifest.json` 생성 확인
 - `dist/injected-observer.js` 생성 확인
+- `dist/manifest.json` 의 버전이 루트 `manifest.json` / `package.json` 과 같은지 확인
 - unpacked 로드 테스트 완료
 - 실제 국회 페이지 자막 추출 확인
 - exporter 결과물 확인
@@ -189,16 +192,18 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 9. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
 10. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하고, 성공 판정이 `visible && (hasText || controlActive)`와 맞는지 확인
 11. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
-12. 자막 보정 중에는 패널의 `실시간 내용`과 `화면 자막`이 바로 갱신되는지
-13. `화면 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
-14. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
-15. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
-16. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
-17. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
-18. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
-19. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
-20. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
-21. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
+12. 자막 보정 중에는 패널의 `실시간 내용`과 `수집된 자막`이 바로 갱신되는지
+13. `수집된 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
+14. 본회의 페이지에서는 structured row가 없어도 `수집된 자막` 목록이 commit된 누적 entry를 계속 보여 주는지
+15. `로딩중..`, `로딩 중...`, `Loading...` placeholder가 저장 기록이나 export 결과에 남지 않는지
+16. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
+17. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
+18. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
+19. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
+20. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
+21. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
+22. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
+23. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
 
 ## 9. 자주 발생하는 문제
 
@@ -227,7 +232,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome.zip -For
 ### 9.5 Chrome Web Store 참고 기능과 차이가 있음
 
 - 현재 범위에는 `영상 캡처`, `중요 표시`, `발언자 편집` 기능이 포함되지 않습니다.
-- 이번 배포는 검색 / 복사 / autosave UX 외에 자막 자동 활성화와 자막 우선 패널 구조 개선도 포함합니다.
+- 이번 배포는 검색 / 복사 / autosave UX 외에 자막 자동 활성화, 본회의 fallback 누적 표시, placeholder 필터링 하드닝도 포함합니다.
 
 ## 10. 권장 운영 방식
 
@@ -258,7 +263,16 @@ Additional release notes:
 - UI/UX safety guards and accessibility updates are now part of baseline behavior.
 - History export now uses user-defined `filenamePattern`.
 - Popup now attempts automatic reconnection on disconnect.
-- Preview-only subtitle persistence, stopped-session retry guard, and cumulative `화면 자막` panel behavior are part of current release baseline.
+
+## 2026-03-20 Release Update
+
+Current release alignment:
+
+- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback에서는 `실시간 내용` 원문 누적을 유지합니다.
+- structured row가 비어 있어도 본회의 fallback capture는 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
+- `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
+- Chrome Web Store 제출용 압축 예시는 `korea-assembly-cc-chrome-<version>-cws.zip` 형식을 권장합니다.
+- Preview-only subtitle persistence, stopped-session retry guard, and cumulative `수집된 자막` panel behavior are part of current release baseline.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
 
@@ -274,7 +288,8 @@ Pre-release validation now assumes the addendum closure changes are present:
 
 Deployment documentation consistency sources:
 
-- `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md`
+- `README.md`
+- `DEPLOYMENT.md`
 
 ## 2026-03-12 Deployment Consistency Update
 

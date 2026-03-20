@@ -1,4 +1,5 @@
 import {
+  isAssemblyPlenaryUrl,
   OBSERVER_ACTIVATE_EVENT,
   OBSERVER_BRIDGE_SOURCE,
   OBSERVER_CONFIG_EVENT,
@@ -180,7 +181,7 @@ function readContainerText(node: HTMLElement | null): string {
   if (!text) {
     return "";
   }
-  if (text.length <= 400) {
+  if (text.length <= 400 || isAssemblyPlenaryUrl(window.location.href)) {
     return text;
   }
   return normalizeText(extractTailLines(raw, 3));

@@ -40,4 +40,50 @@ describe("dom probe unconfirmed filtering", () => {
     expect(result.sourceMode).toBe("container");
     expect(result.text).toContain("container fallback subtitle");
   });
+
+  it("keeps the full accumulated realtime content on plenary pages", () => {
+    const longLines = Array.from(
+      { length: 12 },
+      (_, index) => `[P${String(index + 1).padStart(2, "0")}] 본회의 누적 문장 ${"가".repeat(32)}`,
+    );
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="incont">${longLines.join("\n")}</div>
+      </div>
+    `;
+
+    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
+      filterUnconfirmedEnabled: false,
+      sourceUrl:
+        "https://assembly.webcast.go.kr/main/player.asp?xcode=10&xcgcd=DCM000010224330202",
+    });
+
+    expect(result.found).toBe(true);
+    expect(result.text).toContain(longLines[0]);
+    expect(result.text).toContain(longLines.at(-1) ?? "");
+  });
+
+  it("still trims long container fallback text on committee pages", () => {
+    const longLines = Array.from(
+      { length: 12 },
+      (_, index) => `[C${String(index + 1).padStart(2, "0")}] 위원회 문장 ${"나".repeat(32)}`,
+    );
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="incont">${longLines.join("\n")}</div>
+      </div>
+    `;
+
+    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
+      filterUnconfirmedEnabled: false,
+      sourceUrl:
+        "https://assembly.webcast.go.kr/main/player.asp?xcode=25&xcgcd=DCM000025224330202",
+    });
+
+    expect(result.found).toBe(true);
+    expect(result.text).not.toContain(longLines[0]);
+    expect(result.text).toContain(longLines[9]);
+    expect(result.text).toContain(longLines[10]);
+    expect(result.text).toContain(longLines[11]);
+  });
 });

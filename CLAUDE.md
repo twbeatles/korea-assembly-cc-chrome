@@ -8,7 +8,7 @@
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정 / 수집 진단` 중심의 보조 화면입니다.
-- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모`, `entry 체크박스 기반 부분 복사/부분 export`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 화면 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
+- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모`, `entry 체크박스 기반 부분 복사/부분 export`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
 - 현재 기준 기본 검증 명령은 아래 4개입니다.
 
 ```bash
@@ -33,13 +33,14 @@ npm run build
 manifest.json
 src/
   background/service-worker.ts
-  content/
-    content-script.ts
-    injected-observer.ts
-    dom-probe.ts
-    frame-probe.ts
-    capture-notice.ts
-    failed-stopped-session.ts
+    content/
+      content-script.ts
+      injected-observer.ts
+      dom-probe.ts
+      panel-live-rows.ts
+      frame-probe.ts
+      capture-notice.ts
+      failed-stopped-session.ts
   core/
     live-capture.ts
     subtitle-pipeline.ts
@@ -76,6 +77,7 @@ offscreen.html
 - stable `nodeKey` 가 잡히면 같은 row 의 보정/완성은 live row 와 마지막 엔트리를 제자리 갱신하고, 새 row 만 commit 후보로 봅니다.
 - stable key 가 없으면 `unstable` 로 간주하고 기존 raw/container fallback 으로 내려갑니다.
 - 실패 시 container text fallback 을 사용합니다.
+- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback 은 raw 누적 원문을 잘라내지 않습니다.
 
 ### 4.2 프레임 탐색
 
@@ -119,6 +121,7 @@ offscreen.html
 - 차단:
   - 숫자-only
   - 기호-only
+- noise filter 설정과 무관하게 `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
 - `noiseFilterEnabled = false` 이면 숫자-only / 기호-only도 통과시킵니다.
 - 중복 차단 최소 길이 설정 키는 `recentDuplicateMinLength` 입니다.
 
@@ -168,8 +171,9 @@ offscreen.html
 - 기본 상태는 `펼쳐짐` 이고, 접으면 오른쪽의 `자막 보기` 탭만 남습니다.
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
-- 패널은 `실시간 내용`과 `화면 자막` 2단으로 보입니다.
-- `화면 자막` 목록은 현재 active row만 번쩍 보여 주는 뷰가 아니라, live ledger 기준 최근 row가 누적되는 뷰를 유지합니다.
+- 패널은 `실시간 내용`과 `수집된 자막` 2단으로 보입니다.
+- `수집된 자막` 목록은 현재 active row만 번쩍 보여 주는 뷰가 아니라, live ledger 기준 최근 row가 누적되는 뷰를 유지합니다.
+- 본회의 fallback capture에서는 structured row가 비어 있어도 이미 commit된 entry를 `수집된 자막` 목록으로 재구성해 누적 표시합니다.
 - 같은 row key 의 갱신은 라이브 목록 DOM 노드를 재사용해 제자리 수정합니다.
 - history 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 `최근 N줄 복사`를 지원합니다.
@@ -180,7 +184,7 @@ offscreen.html
 - history 상단은 전체 저장소 기준 `JSON 백업` 과 단일 세션/번들 `JSON 가져오기` 를 지원하며, 가져오기는 같은 `id` 충돌 시 더 최신 `updatedAt` 레코드를 유지합니다.
 - history 의 전체 삭제 확인은 전체 세션 preload 가 아니라 `정확한 총 건수 + 최대 3건 preview` 기준으로 보여 줘야 합니다.
 - history 의 전체 JSON 백업은 view layer preload 가 아니라 store helper export payload 를 사용해야 합니다.
-- `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `화면 자막` 영역을 강제 스크롤하지 않습니다.
+- `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `수집된 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
 - replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 해야 하며, 같은 `sessionId` 충돌 시 `record.updatedAt` 우선, 동률이면 `queuedAt`이 더 늦은 쪽을 유지해야 합니다.
@@ -205,8 +209,16 @@ offscreen.html
 
 - 메인 설명: `README.md`
 - 배포 절차: `DEPLOYMENT.md`
-- 구현 점검: `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-16.md`
-- 구현 점검 업데이트: `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md`
+- 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
+- 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
+
+## Sync Delta (2026-03-20)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback은 `실시간 내용` 누적 원문을 그대로 유지해야 합니다.
+- 본회의 fallback capture에서는 structured live row가 비어 있어도 commit된 entry를 `수집된 자막` 목록으로 계속 보여 주어야 합니다.
+- `로딩중..`, `로딩 중...`, `Loading...` placeholder는 noise filter 토글과 무관하게 commit/persist/export 대상에서 제외되어야 합니다.
 
 ## Sync Delta (2026-03-19)
 
@@ -227,7 +239,7 @@ When editing this repository, align with the newly implemented behavior below.
 - Failed stopped-session persistence must retry before destructive continuation and require explicit discard confirmation only after the retry fails.
 - Session storage reads must merge IndexedDB and fallback records, while successful IndexedDB writes heal stale fallback copies.
 - History view must live-sync `recentCopyLineCount` and `filenamePattern` while the page remains open.
-- The in-page `화면 자막` list must accumulate recent live rows and must not jump-scroll on preview-only updates.
+- The in-page `수집된 자막` list must accumulate recent live rows and must not jump-scroll on preview-only updates.
 - History now persists session favorites/notes, supports partial copy/export, and supports JSON backup/import with freshest-`updatedAt` conflict resolution.
 - Panel and popup now expose runtime capture diagnostics (mode, observer, selector, frame path).
 - Local polling change-detection work stays test-first; use the regression scaffold before broadening heuristics.
@@ -261,10 +273,6 @@ When editing this repository, align with the current implemented behavior below.
   - `npm run build` (or `npm run verify`)
 
 ## Addendum Closure (2026-03-11)
-
-Cross-document alignment note:
-
-- `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md` tracks the latest hardening round and residual deferred scope.
 
 Current closure status:
 

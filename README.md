@@ -21,9 +21,10 @@
 ## 주요 기능
 
 - 국회 의사중계 페이지의 AI 자막 실시간 추출
-- `실시간 내용 / 화면 자막` 2단 표시
+- `실시간 내용 / 수집된 자막` 2단 표시
 - `MutationObserver` 우선 + polling fallback
 - `.smi_word` nodeKey + framePath 기반 live row ledger 추적, 같은 row 제자리 보정, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
+- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback에서는 `실시간 내용` 누적 원문을 유지하고, fallback으로 commit된 entry도 `수집된 자막` 목록에 계속 누적 표시
 - `normalized capture event -> live ledger -> preview / normalize / gate`
 - 글로벌 히스토리 + `rfind` suffix 기반 증분 추출
 - keepalive 기반 마지막 자막 `endTime` 갱신
@@ -44,6 +45,7 @@
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
 - history는 store-level 페이지네이션을 사용하며, 대용량 작업 중에는 관련 버튼을 잠가 중복 실행을 막습니다
 - options의 저장 파일 이름 규칙은 금지 문자와 지원하지 않는 placeholder를 저장 전에 검증합니다
+- `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 수집된 자막/저장/export 대상에서 제외합니다
 - 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각, queue write / replay / cleanup phase별 저장 복구 오류 확인
 - 패널 / popup 에서 수집 진단 화면 진입
 - 페이지 패널 / options / history UI
@@ -96,13 +98,13 @@ src/
 tests/
 ```
 
-현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 입니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
+현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
 
 - `DEPLOYMENT.md`
 - `CLAUDE.md`
 - `GEMINI.md`
-- `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-16.md`
-- `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md`
+- `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
+- `PRIVACY_POLICY_DRAFT_KO.md`
 
 ## 설치 방법
 
@@ -160,7 +162,7 @@ npm run build
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
 3. `자막 모으기`를 눌러 수집을 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 표시한다
-5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `화면 자막`에서 최근 화면 자막이 누적되는 목록을 본다
+5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 누적 목록을 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry가 이 목록에 계속 쌓인다
 6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 이때 아직 확정되지 않은 preview-only 자막도 저장 후보에 포함된다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
@@ -195,6 +197,7 @@ npm run build
 - subframe content script는 background에서 탭 단위 frame-forward nonce를 bootstrap 받고, 15초 주기 및 nonce mismatch 시점에 다시 동기화합니다
 - page-world `MutationObserver`, local polling, top-frame fallback을 모두 같은 `normalized capture event` 형태로 파이프라인에 전달합니다
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
+- 본회의 fallback capture에서는 container raw를 잘라내지 않고 유지하며, structured row가 비어 있어도 이미 commit된 entry를 `수집된 자막` 패널 목록으로 재구성합니다
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도하며, 실제 성공은 `visible && (hasText || controlActive)` 기준으로 판정합니다
 - 패널 notice는 `정상 수집 / 자동 조정 중 수집 / reset 복구 중`을 구분해 표시하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 경고 문구 대신 중립 안내를 사용합니다
@@ -211,10 +214,11 @@ npm run build
 
 ### pipeline
 
-- `normalized capture event -> live reconcile -> normalize -> preview gate -> history/rfind suffix -> noise filter -> merge/add`
+- `normalized capture event -> live reconcile -> normalize -> preview gate -> history/rfind suffix -> placeholder/noise filter -> merge/add`
 - structured row 가 안정적으로 잡히면 row별 baseline과 글로벌 history를 함께 써서 commit/update를 분리하고, 아니면 raw/container fallback으로 내려갑니다
 - `confirmedCompact`, `trailingSuffix`, history anchor, overlap fallback, soft resync 의미론을 유지합니다
 - recent compact tail 기반 중복 차단
+- `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 noise filter 설정과 무관하게 commit/persist/export 대상에서 제외합니다
 - export 정규화는 마지막 안전망으로만 exact carry-over duplicate 를 한 번 더 정리합니다
 - keepalive / reset / finalize 처리
 - persistence/export용 prepared snapshot은 `flushPendingPreviews`를 통해 현재 preview를 clone 상태에 materialize한 뒤 저장합니다

@@ -18,7 +18,7 @@
   - 쉬운 한국어 UI / 검색 / 최근 N줄 복사 / autosave UX
   - history 즐겨찾기 / 세션 메모 / 부분 선택 복사 / 부분 export / JSON 백업·복원
   - 패널 / popup 수집 진단 진입 + options 수집 진단 탭
-  - 자막 우선 대형 미리보기 / 화면 자막 2단 UI
+  - 자막 우선 대형 미리보기 / 수집된 자막 2단 UI
 
 ## 3. 필수 명령
 
@@ -49,6 +49,7 @@ npm run build
 - `src/content/dom-probe.ts`
 - `src/content/frame-probe.ts`
 - `src/content/injected-observer.ts`
+- `src/content/panel-live-rows.ts`
 - `src/core/live-capture.ts`
 - `src/core/subtitle-pipeline.ts`
 - `src/core/noise-filter.ts`
@@ -107,6 +108,7 @@ npm run build
 - 새 row 는 carry-over trim 과 글로벌 history 비교를 거친 뒤 실제 신규 delta 만 commit 합니다.
 - stable key 가 없으면 `unstable` 로 표시하고 raw/container fallback 을 사용합니다.
 - container text fallback 이 항상 있어야 합니다.
+- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback 은 raw 누적 원문을 잘라내지 않습니다.
 - 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 시도합니다.
 
 ### 6.2 증분 추출
@@ -128,6 +130,7 @@ npm run build
 - `noiseFilterEnabled = true` 이면 숫자-only, 기호-only는 reject 합니다.
 - `noiseFilterEnabled = false` 이면 숫자-only, 기호-only도 통과시킵니다.
 - 한글/영문 1~2글자는 허용합니다.
+- `로딩중..`, `로딩 중...`, `Loading...` placeholder는 noise filter 설정과 무관하게 commit/persist/export 대상에서 제외합니다.
 - recent compact tail 로 과잉 재누적을 막습니다.
 - 중복 차단 최소 길이 설정 키는 `recentDuplicateMinLength` 입니다.
 
@@ -166,8 +169,9 @@ npm run build
 - top frame 에 우측 패널이 자동 삽입됨
 - popup 은 페이지 패널 다시 열기용 보조 화면
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려감
-- 패널은 `실시간 내용`과 `화면 자막` 2단으로 표시
-- `화면 자막`은 live ledger 기준 최근 row 누적 목록이며, preview-only 갱신만으로 목록 스크롤이 초기화되면 안 됨
+- 패널은 `실시간 내용`과 `수집된 자막` 2단으로 표시
+- `수집된 자막`은 live ledger 기준 최근 row 누적 목록이며, preview-only 갱신만으로 목록 스크롤이 초기화되면 안 됨
+- 본회의 fallback capture에서는 structured row가 비어 있어도 commit된 entry를 `수집된 자막` 목록으로 재구성해 누적 표시해야 함
 - 복사 포맷은 `[HH:MM:SS] text`
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
@@ -175,7 +179,7 @@ npm run build
 - history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
 - history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함
 - 전체 JSON 백업은 view-layer preload 대신 store helper export payload 를 사용해야 함
-- `autoScroll` 이 꺼지면 `실시간 내용` / `화면 자막` 강제 스크롤 금지
+- `autoScroll` 이 꺼지면 `실시간 내용` / `수집된 자막` 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
 - stopped 세션 최종 저장 실패 시 다음 시작/비우기 전에 1회 재시도 후, 계속 실패하면 폐기 확인
 - page-exit stopped snapshot 은 replay queue 에 함께 적재되고, background 저장 성공 시 stale queued snapshot 을 정리해야 함
@@ -224,6 +228,14 @@ Use this delta as the current operational baseline.
 - popup 저장 버튼은 persistable content가 없으면 비활성화되고, 빈 저장은 `저장할 자막이 아직 없습니다.` 피드백으로 일관되게 처리되어야 합니다.
 - subtitle auto activation 성공은 `visible && (hasText || controlActive)` 조건을 충족할 때만 인정됩니다.
 
+## Sync Delta (2026-03-20)
+
+Use this delta as the current operational baseline.
+
+- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback은 `실시간 내용` 누적 원문을 그대로 유지해야 합니다.
+- 본회의 fallback capture에서는 structured live row가 비어 있어도 commit된 entry를 `수집된 자막` 목록으로 계속 보여 주어야 합니다.
+- `로딩중..`, `로딩 중...`, `Loading...` placeholder는 noise filter 토글과 무관하게 commit/persist/export 대상에서 제외되어야 합니다.
+
 ## Sync Delta (2026-03-12)
 
 Use this delta as the current operational baseline.
@@ -232,7 +244,7 @@ Use this delta as the current operational baseline.
 - Failed stopped-session persistence must retry before `start`/`clear` proceeds.
 - Session reads must merge IndexedDB and fallback storage using freshest `updatedAt`.
 - History view must live-sync settings-driven copy/export behavior.
-- The in-page `화면 자막` list now accumulates recent live rows and should remain visually stable during preview-only updates.
+- The in-page `수집된 자막` list now accumulates recent live rows and should remain visually stable during preview-only updates.
 - History now supports favorites, notes, partial copy/export, and full JSON backup/import.
 - Panel and popup now surface runtime capture diagnostics.
 
@@ -289,7 +301,8 @@ Keep this file aligned with the implementation closure below:
 
 Reference consistency set:
 
-- `IMPLEMENTATION_FUNCTIONAL_REVIEW_2026-03-19.md`
+- `README.md`
+- `DEPLOYMENT.md`
 
 ## 2026-03-12 Additional Sync Update
 

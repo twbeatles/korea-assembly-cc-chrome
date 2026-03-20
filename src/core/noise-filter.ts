@@ -3,6 +3,8 @@ import { cleanDisplayText } from "./text-normalizer";
 const LANGUAGE_RE = /[가-힣A-Za-z]/;
 const NUMERIC_ONLY_RE = /^[\d\s.,:;+\-*/()%]+$/;
 const SYMBOL_ONLY_RE = /^[\W_]+$/u;
+const PLACEHOLDER_PUNCTUATION_RE = /[.\u2026!?,~·:\-_/()[\]{}"'`]/g;
+const PLACEHOLDER_TEXT_SET = new Set(["로딩중", "loading"]);
 
 export function normalizeForNoiseCheck(text: string): string {
   return cleanDisplayText(text).replace(/\s+/g, " ").trim();
@@ -30,6 +32,21 @@ export function isShortLanguageUtterance(text: string): boolean {
 
   const compact = normalized.replace(/\s+/g, "");
   return compact.length <= 2;
+}
+
+export function isPlaceholderSubtitleText(text: string): boolean {
+  const normalized = normalizeForNoiseCheck(text);
+  if (!normalized) {
+    return false;
+  }
+
+  const compact = normalized
+    .replace(PLACEHOLDER_PUNCTUATION_RE, "")
+    .replace(/\s+/g, "")
+    .trim()
+    .toLowerCase();
+
+  return PLACEHOLDER_TEXT_SET.has(compact);
 }
 
 export function isNoiseOnly(text: string): boolean {
@@ -64,5 +81,6 @@ export function isMeaningfulSubtitleText(text: string): boolean {
 }
 
 export function hasRequiredSubtitleContent(text: string): boolean {
-  return Boolean(normalizeForNoiseCheck(text));
+  const normalized = normalizeForNoiseCheck(text);
+  return Boolean(normalized) && !isPlaceholderSubtitleText(normalized);
 }

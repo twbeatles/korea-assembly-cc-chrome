@@ -71,6 +71,9 @@ export const ASSEMBLY_HOST_MATCH_PATTERNS = [
   "https://webcast.assembly.go.kr/*",
 ] as const;
 
+const PLENARY_XCODE = "10";
+const PLENARY_XCGCD_PREFIX = "DCM000010";
+
 export function isSupportedAssemblyUrl(url?: string): boolean {
   return typeof url === "string" && ASSEMBLY_HOSTS.some((host) => url.startsWith(host));
 }
@@ -83,4 +86,19 @@ export function isSupportedAssemblyHostname(hostname: string): boolean {
       return false;
     }
   });
+}
+
+export function isAssemblyPlenaryUrl(url?: string): boolean {
+  if (typeof url !== "string" || !isSupportedAssemblyUrl(url)) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    const xcode = parsed.searchParams.get("xcode")?.trim().toUpperCase();
+    const xcgcd = parsed.searchParams.get("xcgcd")?.trim().toUpperCase();
+    return xcode === PLENARY_XCODE || Boolean(xcgcd?.startsWith(PLENARY_XCGCD_PREFIX));
+  } catch {
+    return false;
+  }
 }

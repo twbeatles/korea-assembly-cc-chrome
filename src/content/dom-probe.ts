@@ -1,4 +1,4 @@
-import { SUBTITLE_SELECTOR_CANDIDATES } from "../shared/constants";
+import { isAssemblyPlenaryUrl, SUBTITLE_SELECTOR_CANDIDATES } from "../shared/constants";
 import type { ObservedSubtitleRow } from "../shared/message-types";
 import {
   extractTailLines,
@@ -16,6 +16,7 @@ export interface DomProbeResult {
 
 export interface DomProbeOptions {
   filterUnconfirmedEnabled?: boolean;
+  sourceUrl?: string;
 }
 
 const PRIMARY_SELECTOR_PRIORITY = new Map<string, number>([
@@ -80,13 +81,13 @@ function queryAllSafe(root: ParentNode, selector: string): HTMLElement[] {
   }
 }
 
-function normalizeContainerText(node: HTMLElement): string {
+function normalizeContainerText(node: HTMLElement, sourceUrl?: string): string {
   const raw = node.innerText || node.textContent || "";
   const text = normalizeSubtitleText(raw);
   if (!text) {
     return "";
   }
-  if (text.length <= 400) {
+  if (text.length <= 400 || isAssemblyPlenaryUrl(sourceUrl)) {
     return text;
   }
   return normalizeSubtitleText(extractTailLines(raw, 3));
@@ -128,6 +129,7 @@ function shouldBlockContainerFallbackForUnconfirmed(
 function readContainerFallback(
   root: ParentNode,
   blockContainerFallback = false,
+  sourceUrl?: string,
 ): DomProbeResult {
   if (blockContainerFallback) {
     return {
@@ -151,7 +153,7 @@ function readContainerFallback(
       continue;
     }
 
-    const text = normalizeContainerText(node);
+    const text = normalizeContainerText(node, sourceUrl);
     if (text) {
       return {
         text,
@@ -175,6 +177,8 @@ export function readSubtitleTextBySelectors(
   options?: DomProbeOptions,
 ): DomProbeResult {
   const blockContainerFallback = shouldBlockContainerFallbackForUnconfirmed(root, options);
+  const sourceUrl =
+    options?.sourceUrl ?? (typeof window !== "undefined" ? window.location.href : undefined);
 
   for (const selector of selectors) {
     if (selector.includes(".smi_word")) {
@@ -203,7 +207,7 @@ export function readSubtitleTextBySelectors(
       continue;
     }
 
-    const text = normalizeContainerText(node);
+    const text = normalizeContainerText(node, sourceUrl);
     if (!text) {
       continue;
     }
@@ -216,7 +220,7 @@ export function readSubtitleTextBySelectors(
     };
   }
 
-  return readContainerFallback(root, blockContainerFallback);
+  return readContainerFallback(root, blockContainerFallback, sourceUrl);
 }
 
 export function estimateRecentRaw(

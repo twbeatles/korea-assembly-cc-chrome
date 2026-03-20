@@ -223,6 +223,11 @@ describe("subtitle pipeline", () => {
     noiseState.previewText = "12345";
     const noiseFlushed = flushPendingPreviews(noiseState, now);
     expect(noiseFlushed.entries).toHaveLength(0);
+
+    const placeholderState = createEmptySessionState("http://test.com", "Test");
+    placeholderState.previewText = "로딩중..";
+    const placeholderFlushed = flushPendingPreviews(placeholderState, now);
+    expect(placeholderFlushed.entries).toHaveLength(0);
   });
 
   it("starts a new entry when the merge gap exceeds the configured boundary", () => {
