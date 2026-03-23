@@ -657,8 +657,20 @@ async function saveCurrentSessionSnapshot(): Promise<{
   saved: boolean;
   message?: string;
 }> {
+  // Pre-flush guard: aligns with popup hasPersistableContent condition so the
+  // "nothing to save" response is only possible when the button was also disabled.
+  if (!isTopFrame || (state.entries.length === 0 && !state.previewText.trim())) {
+    const message = "저장할 자막이 아직 없습니다.";
+    setPanelNotice(message);
+    return {
+      saved: false,
+      message,
+    };
+  }
+
   const record = buildPreparedSessionRecord("saved");
-  if (!shouldPersistFinalSession(isTopFrame, record.entries.length)) {
+  if (!record.entries.length) {
+    // previewText existed but was filtered out during flush (e.g. noise-only text)
     const message = "저장할 자막이 아직 없습니다.";
     setPanelNotice(message);
     return {
@@ -764,7 +776,7 @@ async function ensureSubtitleLayerActive(): Promise<boolean> {
     timeoutMs: Math.max(1200, settings.pollingFallbackIntervalMs * 10),
     intervalMs: Math.max(80, settings.pollingFallbackIntervalMs),
   });
-  return layer.visible;
+  return layer.visible && (layer.hasText || layer.controlActive);
 }
 
 async function injectObserverScript(): Promise<void> {

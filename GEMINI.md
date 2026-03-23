@@ -81,6 +81,7 @@ npm run build
 - `CAPTURE_STATUS`
 - `PREVIEW_UPDATE`
 - `SESSION_STATS`
+- `POPUP_FEEDBACK`
 - `ERROR`
 
 ### background
@@ -311,6 +312,14 @@ Reference consistency set:
 - session import summaries now include `failedCount`.
 - supported hosts are fixed to both `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
 - options field exposure is now declared in code and covered by regression tests.
+
+## Sync Delta (2026-03-23)
+
+Use this delta as the current operational baseline.
+
+- `ensureSubtitleLayerActive` 성공 판정은 `layer.visible` 단독이 아니라 `layer.visible && (layer.hasText || layer.controlActive)` 조건을 충족할 때만 인정합니다. 이전에는 `visible`만 체크해 텍스트나 control 신호가 없어도 성공으로 처리하던 버그가 수정되었습니다.
+- `saveCurrentSessionSnapshot`에 2단계 guard가 추가되었습니다. pre-flush 단계에서 `entries.length === 0 && previewText.trim() === ""`이면 즉시 반환하고, post-flush 단계에서 `record.entries.length === 0`이면(noise-only previewText가 flush 후 필터링된 경우) 빈 저장을 막습니다. popup 버튼 활성화 조건(`subtitleCount > 0 || previewText.trim() !== ""`)과 실제 저장 성공 경로가 정렬됩니다.
+- noise-only `previewText`(숫자/기호만 포함)는 flush 후 entries가 0개가 되어 최종 저장 guard에서 걸립니다. `shouldPersistFinalSession(true, 0)` → `false` 동작이 regression test로 보장됩니다.
 
 ## Sync Delta (2026-03-14)
 

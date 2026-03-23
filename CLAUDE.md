@@ -212,6 +212,17 @@ offscreen.html
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
 
+## Sync Delta (2026-03-23)
+
+When editing this repository, align with the bug fixes below.
+
+- `ensureSubtitleLayerActive` 반환값이 `layer.visible` 단독 → `layer.visible && (layer.hasText || layer.controlActive)` 로 수정되었습니다. 이 조건은 CLAUDE.md 의 subtitle auto activation 성공 판정 기준과 일치합니다.
+- `saveCurrentSessionSnapshot` 에 2단계 빈 저장 guard가 추가되었습니다.
+  - pre-flush guard: `entries.length === 0 && !previewText.trim()` 이면 즉시 `저장할 자막이 아직 없습니다.` 반환.
+  - post-flush guard: flush 후 `record.entries.length === 0` 이면(noise-only previewText 등) 마찬가지로 저장 차단.
+  - popup 버튼 활성화 조건(`subtitleCount > 0 || previewText.trim() !== ""`)과 실제 저장 경로가 완전히 정렬됩니다.
+- `tests/content-autosave.test.ts` 에 noise-only previewText flush → entries 0 → `shouldPersistFinalSession` false 회귀 테스트가 추가되었습니다.
+
 ## Sync Delta (2026-03-20)
 
 When editing this repository, align with the newly implemented behavior below.

@@ -90,6 +90,27 @@ describe("content autosave policy", () => {
     expect(record.entries[0].text).toBe("페이지에만 보이는 자막");
   });
 
+  it("noise-only previewText produces no entries after flush and fails the final save guard", () => {
+    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    state.status = "running";
+    state.previewText = "123456"; // numeric-only → filtered by noise filter
+
+    const prepared = flushPendingPreviews(
+      state,
+      Date.parse("2026-03-10T09:00:02.000Z"),
+      DEFAULT_EXTENSION_SETTINGS,
+    );
+    const record = toSessionRecord(prepared, "saved");
+
+    // Noise-only text must not survive flush into entries
+    expect(record.entries).toHaveLength(0);
+    // shouldPersistFinalSession must return false — no data to store
+    expect(shouldPersistFinalSession(true, record.entries.length)).toBe(false);
+    // The pre-flush raw state would have enabled the popup save button (previewText != "")
+    // but the post-flush check correctly prevents an empty save
+    expect(state.previewText.trim()).not.toBe("");
+  });
+
   it("updates lastPersistedAt after a successful save", () => {
     const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
     const persisted = applyPersistSuccess(state, "2026-03-10T09:00:01.000Z");
