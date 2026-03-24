@@ -6,6 +6,11 @@
 
 기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON`으로 저장하는 최소 실용 버전을 제공하는 것입니다.
 
+## Chrome 웹 스토어 배포
+
+Chrome 웹 스토어에서 확장프로그램을 바로 설치할 수 있습니다.
+
+- 설치 링크: https://chromewebstore.google.com/detail/khchppfkjljacdhohihlpkbbkddmoghk?utm_source=item-share-cp
 
 ## 기술 선택
 
