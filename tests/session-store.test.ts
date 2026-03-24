@@ -384,6 +384,92 @@ describe("session store", () => {
     expect(parsed.entries[2].speakerChannel).toBeUndefined();
   });
 
+  it("trims cumulative carry-over text in TXT export", async () => {
+    const session: SessionRecord = {
+      ...buildSession("session_export_cumulative", "saved"),
+      subtitleCount: 3,
+      charCount: 0,
+      entries: [
+        {
+          id: "entry_1",
+          text: "결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+          sourceNodeKey: "row_1",
+        },
+        {
+          id: "entry_2",
+          text: "결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다",
+          timestamp: "2026-03-10T09:00:02.000Z",
+          startTime: "2026-03-10T09:00:02.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+          sourceNodeKey: "row_2",
+        },
+        {
+          id: "entry_3",
+          text: "결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다 보다 자세한 내용은 단말기의 의결안을 참고해 주시기 바랍니다",
+          timestamp: "2026-03-10T09:00:03.000Z",
+          startTime: "2026-03-10T09:00:03.000Z",
+          endTime: "2026-03-10T09:00:03.000Z",
+          sourceNodeKey: "row_3",
+        },
+      ],
+    };
+
+    const payload = await exportSessionData(session, "txt");
+
+    expect(payload.content).toBe(
+      [
+        "[18:00:01] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다",
+        "[18:00:02] 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다",
+        "[18:00:03] 보다 자세한 내용은 단말기의 의결안을 참고해 주시기 바랍니다",
+      ].join("\n"),
+    );
+  });
+
+  it("normalizes cumulative carry-over text when persisting sessions", async () => {
+    await saveSession({
+      ...buildSession("session_persist_normalized", "saved"),
+      subtitleCount: 3,
+      charCount: 0,
+      entries: [
+        {
+          id: "entry_1",
+          text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+          sourceNodeKey: "row_1",
+        },
+        {
+          id: "entry_2",
+          text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다",
+          timestamp: "2026-03-10T09:00:02.000Z",
+          startTime: "2026-03-10T09:00:02.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+          sourceNodeKey: "row_2",
+        },
+        {
+          id: "entry_3",
+          text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다 추가 설명도 드리겠습니다",
+          timestamp: "2026-03-10T09:00:03.000Z",
+          startTime: "2026-03-10T09:00:03.000Z",
+          endTime: "2026-03-10T09:00:03.000Z",
+          sourceNodeKey: "row_3",
+        },
+      ],
+    });
+
+    const loaded = await loadSession("session_persist_normalized");
+
+    expect(loaded?.entries.map((entry) => entry.text)).toEqual([
+      "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
+      "저희가 방법을 찾아보겠습니다",
+      "추가 설명도 드리겠습니다",
+    ]);
+  });
+
   it("prefers the fresher fallback copy when IndexedDB and fallback diverge", async () => {
     await saveSession(buildSession("session_union", "saved"));
     await new Promise((resolve) => setTimeout(resolve, 5));

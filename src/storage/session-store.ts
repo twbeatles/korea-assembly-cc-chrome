@@ -1,5 +1,6 @@
 import { exportJson } from "../core/exporters/json";
 import { normalizeSessionForExport } from "../core/exporters/normalize-session";
+import { normalizeEntriesForOutput } from "../core/output-normalizer";
 import { exportSrt } from "../core/exporters/srt";
 import { exportTxt } from "../core/exporters/txt";
 import { exportVtt } from "../core/exporters/vtt";
@@ -257,10 +258,7 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 function normalizeEntries(entries: SubtitleEntry[]): SubtitleEntry[] {
-  return entries.map((entry) => ({
-    ...entry,
-    sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
-  }));
+  return normalizeEntriesForOutput(entries);
 }
 
 function normalizeSessionRecord(

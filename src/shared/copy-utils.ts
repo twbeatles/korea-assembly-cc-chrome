@@ -1,3 +1,4 @@
+import { normalizeEntriesForOutput } from "../core/output-normalizer";
 import type { SubtitleEntry } from "../core/subtitle-models";
 import { formatClockTime } from "../core/timeline";
 
@@ -43,7 +44,8 @@ export function selectCopyEntries(
   entries: SubtitleEntry[],
   options: BuildCopyTextOptions = {},
 ): SubtitleEntry[] {
-  const selectedEntries = filterEntriesByIds(entries, options.selectedIds);
+  const normalizedEntries = normalizeEntriesForOutput(entries);
+  const selectedEntries = filterEntriesByIds(normalizedEntries, options.selectedIds);
   const filteredEntries = filterEntriesByQuery(selectedEntries, options.query);
   return typeof options.limit === "number" && options.limit > 0
     ? filteredEntries.slice(-options.limit)
