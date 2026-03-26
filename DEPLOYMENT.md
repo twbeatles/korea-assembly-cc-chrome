@@ -54,12 +54,13 @@ npm run build
 - `수집된 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback으로만 잡혀도 `실시간 내용` 누적 원문이 유지되고 `수집된 자막` 목록이 commit된 entry 기준으로 계속 쌓이는지 확인
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구가 저장/export/누적 목록에 들어가지 않는지 확인
-- 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
+- 화면의 `수집된 자막` 목록과 TXT/SRT/VTT/JSON 내보내기 결과가 동일한 항목 기준으로 나오는지 확인
 - 패널의 `저장 / 내보내기` 버튼에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
+- TXT 내보내기가 기본적으로 타임스탬프를 제외하는지, options 토글로 포함 출력도 가능한지 확인
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
-- preview-only 자막만 남은 시점에도 저장/export/pagehide에서 내용이 유실되지 않는지 확인
+- 장시간 수집(수시간)에서도 화면 표시와 내보내기 결과가 누락 없이 유지되는지 확인
 - service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
@@ -191,19 +192,20 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 8. 브라우저/확장 재시작 뒤 page-exit queued stopped snapshot replay가 cleanup보다 먼저 적용되는지
 9. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
 10. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하고, 성공 판정이 `visible && (hasText || controlActive)`와 맞는지 확인
-11. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
+11. JSON 내보내기에서 내부 발언자 메타가 노출되지 않는지
 12. 자막 보정 중에는 패널의 `실시간 내용`과 `수집된 자막`이 바로 갱신되는지
 13. `수집된 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
 14. 본회의 페이지에서는 structured row가 없어도 `수집된 자막` 목록이 commit된 누적 entry를 계속 보여 주는지
 15. `로딩중..`, `로딩 중...`, `Loading...` placeholder가 저장 기록이나 export 결과에 남지 않는지
-16. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
-17. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
-18. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
-19. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
-20. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
-21. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
-22. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
-23. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
+16. TXT 내보내기가 기본값으로 타임스탬프를 제외하는지, 옵션 변경 시 즉시 반영되는지
+17. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
+18. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
+19. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
+20. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
+21. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
+22. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
+23. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
+24. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
 
 ## 9. 자주 발생하는 문제
 
@@ -275,6 +277,16 @@ Current release alignment:
 - Preview-only subtitle persistence, stopped-session retry guard, and cumulative `수집된 자막` panel behavior are part of current release baseline.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
+
+## 2026-03-26 Release Update
+
+Current release alignment:
+
+- 내보내기/복사는 후단 텍스트 정규화 단계를 추가로 거치지 않고 `수집된 자막` 기준 snapshot을 그대로 사용합니다.
+- 패널 화면의 `수집된 자막` 목록과 export 결과(TXT/SRT/VTT/JSON)가 같은 데이터 경로를 사용합니다.
+- TXT 내보내기에는 타임스탬프 제외 옵션이 추가되었고 기본값은 `제외(ON)`입니다.
+- 장시간 회의를 위해 화면/내보내기 데이터는 무제한 유지하고, 내부 캐시만 주기적으로 압축합니다.
+- release verification에는 장시간 수집 시 메모리 증가 추세와 export 정합성(화면 대비)을 함께 확인해야 합니다.
 
 ## 2026-03-11 Addendum Deployment Notes
 

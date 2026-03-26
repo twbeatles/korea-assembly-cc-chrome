@@ -36,6 +36,9 @@ Chrome 웹 스토어에서 확장프로그램을 바로 설치할 수 있습니�
 - `subtitle_reset` 처리
 - 저장된 기록 관리
 - `TXT / SRT / VTT / JSON` 내보내기
+- 페이지 패널의 `수집된 자막` 목록을 저장/내보내기/복사의 공통 원본으로 사용
+- 장시간 회의 대응: 화면/내보내기 데이터는 무제한 유지하고, 내부 캐시만 주기적으로 압축
+- TXT 내보내기 타임스탬프(`[HH:MM:SS]`) 포함 여부 옵션 제공(기본: 제외)
 - 사이트 안 우측 패널에서 실시간 자막 확인
 - 수집 시작 시 AI 자막 레이어 자동 활성화 시도
 - AI 자막 레이어 자동 활성화 성공은 `visible && (hasText || controlActive)` 신호 기준으로 판정
@@ -59,12 +62,13 @@ Chrome 웹 스토어에서 확장프로그램을 바로 설치할 수 있습니�
 
 ## 자막 및 내보내기 정합성
 
+- TXT는 기본적으로 타임스탬프를 제외해 내보내며, options에서 포함으로 바꿀 수 있습니다
 - SRT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS,mmm` 형식으로 출력합니다
 - VTT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS.mmm` 형식으로 출력합니다
 - JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
-- 중복 문장은 실시간 수집 단계에서 먼저 차단하고, export 정규화는 마지막 안전망으로만 한 번 더 적용합니다
+- 복사/TXT/SRT/VTT/JSON 내보내기는 별도의 후단 텍스트 정규화 없이 `수집된 자막` 기준 snapshot을 그대로 사용합니다
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
-- 저장/export/pagehide/beforeunload/stop 직전 snapshot에서는 preview-only 자막도 clone 기반 flush를 거쳐 `entries`에 반영합니다
+- 장시간 세션에서는 내부 state cache만 주기 압축하고, 화면 표시/내보내기 기준 데이터는 계속 유지합니다
 
 ## 1차 범위
 
@@ -168,7 +172,7 @@ npm run build
 3. `자막 모으기`를 눌러 수집을 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 표시한다
 5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 누적 목록을 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry가 이 목록에 계속 쌓인다
-6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 이때 아직 확정되지 않은 preview-only 자막도 저장 후보에 포함된다
+6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 저장/내보내기 결과는 화면의 `수집된 자막` 목록과 같은 기준으로 생성된다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
@@ -180,7 +184,7 @@ npm run build
 
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
-- 탭이 숨겨지거나 페이지를 떠날 때는 preview flush를 포함한 running/stopped 스냅샷을 background에 넘겨 자동 저장을 시도합니다.
+- 탭이 숨겨지거나 페이지를 떠날 때는 현재 `수집된 자막` 기준 스냅샷을 background에 넘겨 자동 저장을 시도합니다.
 
 ## 권한 설명
 
@@ -204,6 +208,8 @@ npm run build
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
 - 본회의 fallback capture에서는 container raw를 잘라내지 않고 유지하며, structured row가 비어 있어도 이미 commit된 entry를 `수집된 자막` 패널 목록으로 재구성합니다
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
+- 저장/내보내기/복사는 `수집된 자막` 목록에서 파생된 공통 snapshot을 사용해 화면과 결과물의 불일치를 줄입니다
+- 장시간 수집 시 내부 state/pending cache만 주기적으로 압축해 메모리 부담을 낮춥니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도하며, 실제 성공은 `visible && (hasText || controlActive)` 기준으로 판정합니다
 - 패널 notice는 `정상 수집 / 자동 조정 중 수집 / reset 복구 중`을 구분해 표시하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 경고 문구 대신 중립 안내를 사용합니다
 - 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
@@ -224,9 +230,9 @@ npm run build
 - `confirmedCompact`, `trailingSuffix`, history anchor, overlap fallback, soft resync 의미론을 유지합니다
 - recent compact tail 기반 중복 차단
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 noise filter 설정과 무관하게 commit/persist/export 대상에서 제외합니다
-- export 정규화는 마지막 안전망으로만 exact carry-over duplicate 를 한 번 더 정리합니다
+- 복사/export 단계에서는 추가 텍스트 정규화를 적용하지 않고 수집 결과 snapshot을 그대로 사용합니다
 - keepalive / reset / finalize 처리
-- persistence/export용 prepared snapshot은 `flushPendingPreviews`를 통해 현재 preview를 clone 상태에 materialize한 뒤 저장합니다
+- persistence/export용 prepared snapshot은 현재 `수집된 자막` 기준으로 생성합니다
 
 ### storage
 

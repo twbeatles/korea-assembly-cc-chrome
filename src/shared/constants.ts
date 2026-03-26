@@ -38,6 +38,7 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
+  exportTxtWithoutTimestamps: true,
   debugLogging: false,
   autoStartEnabled: true,
   filterUnconfirmedEnabled: true,
@@ -58,7 +59,7 @@ export const PIPELINE_DEFAULTS = {
   frameProbeMaxDepth: 3,
   frameProbeMaxFrames: 60,
   observerPollIntervalMs: 180,
-  liveLedgerMaxRows: 300,
+  liveLedgerMaxRows: Number.POSITIVE_INFINITY,
 } as const;
 
 export const ASSEMBLY_HOSTS = [

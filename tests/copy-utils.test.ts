@@ -54,7 +54,7 @@ describe("copy utils", () => {
     );
   });
 
-  it("trims cumulative carry-over text before copying", () => {
+  it("keeps cumulative carry-over text as-is before copying", () => {
     const overlappingEntries = [
       buildEntry(
         "a",
@@ -76,8 +76,8 @@ describe("copy utils", () => {
     expect(buildCopyText(overlappingEntries)).toBe(
       [
         "[09:00:00] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다",
-        "[09:00:01] 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다",
-        "[09:00:02] 보다 자세한 내용은 단말기의 의결안을 참고해 주시기 바랍니다",
+        "[09:00:01] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다",
+        "[09:00:02] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다 보다 자세한 내용은 단말기의 의결안을 참고해 주시기 바랍니다",
       ].join("\n"),
     );
   });

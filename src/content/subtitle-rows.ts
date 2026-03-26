@@ -56,11 +56,9 @@ function extractAttributeNodeKey(node: HTMLElement): string {
   return "";
 }
 
-function ensureGeneratedNodeKey(node: HTMLElement): string {
-  if (!node.dataset.assemblyRowKey) {
-    node.dataset.assemblyRowKey = `row_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
-  }
-  return node.dataset.assemblyRowKey;
+function resolveFallbackSlotNodeKey(index: number, totalCount: number): string {
+  const slotFromTail = Math.max(1, totalCount - index);
+  return `slot:${slotFromTail}`;
 }
 
 export function normalizeSpeakerColor(color: string): string {
@@ -180,7 +178,7 @@ export function readObservedSubtitleRows(
     classKeyCounts.set(classKey, (classKeyCounts.get(classKey) ?? 0) + 1);
   });
 
-  nodes.forEach((node) => {
+  nodes.forEach((node, index) => {
     if (options?.filterUnconfirmedEnabled && !isConfirmedSubtitleNode(node)) {
       return;
     }
@@ -199,7 +197,7 @@ export function readObservedSubtitleRows(
       ? `class:${classNodeKey}`
       : attrNodeKey
         ? `attr:${attrNodeKey}`
-        : ensureGeneratedNodeKey(node);
+        : resolveFallbackSlotNodeKey(index, nodes.length);
     const speakerColor = readSpeakerColor(node);
     const nextRow: ObservedSubtitleRow = {
       nodeKey,

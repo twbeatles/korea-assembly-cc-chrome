@@ -9,8 +9,6 @@ import {
   reconcileLiveCapture,
   setLiveRowBaseline,
 } from "../src/core/live-capture";
-import { PIPELINE_DEFAULTS } from "../src/shared/constants";
-
 describe("live capture reducer", () => {
   it("keeps the same live row key when a row is corrected", () => {
     let ledger = createEmptyLiveCaptureLedger();
@@ -101,10 +99,11 @@ describe("live capture reducer", () => {
     ]);
   });
 
-  it("prunes stale rows to keep the live ledger bounded", () => {
+  it("keeps all rows when the live ledger is unbounded", () => {
     let ledger = createEmptyLiveCaptureLedger();
+    const totalRows = 480;
 
-    for (let i = 0; i < PIPELINE_DEFAULTS.liveLedgerMaxRows + 20; i += 1) {
+    for (let i = 0; i < totalRows; i += 1) {
       ledger = reconcileLiveCapture(
         ledger,
         normalizeCaptureEvent({
@@ -124,11 +123,9 @@ describe("live capture reducer", () => {
       ).ledger;
     }
 
-    expect(ledger.order.length).toBe(PIPELINE_DEFAULTS.liveLedgerMaxRows);
+    expect(ledger.order.length).toBe(totalRows);
     expect(ledger.activeRowKeys).toHaveLength(1);
-    expect(getLiveRow(ledger, "top::row_0")).toBeNull();
-    expect(getLiveRow(ledger, `top::row_${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`)?.text).toBe(
-      `문장-${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`,
-    );
+    expect(getLiveRow(ledger, "top::row_0")?.text).toBe("문장-0");
+    expect(getLiveRow(ledger, `top::row_${totalRows - 1}`)?.text).toBe(`문장-${totalRows - 1}`);
   });
 });

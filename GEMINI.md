@@ -140,7 +140,7 @@ npm run build
 - 동일 raw 유지 시 마지막 entry `endTime` 갱신
 - `subtitle_reset` 시 live ledger 와 pipeline state 를 함께 완전 리셋
 - stop 시 현재 state 기준으로 finalize
-- 저장/export/unload/stop 직전 prepared snapshot 생성 경로에서는 preview-only 텍스트도 flush 후 반영
+- 저장/export/unload/stop 직전 prepared snapshot 생성 경로는 `수집된 자막` 기준 snapshot을 사용
 
 ## 7. persistence 규칙
 
@@ -175,7 +175,7 @@ npm run build
 - 본회의 fallback capture에서는 structured row가 비어 있어도 commit된 entry를 `수집된 자막` 목록으로 재구성해 누적 표시해야 함
 - 복사 포맷은 `[HH:MM:SS] text`
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
-- history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
+- history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern`, `exportTxtWithoutTimestamps` 변경을 즉시 반영
 - session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
 - history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
 - history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함
@@ -197,10 +197,11 @@ npm run build
 
 ## 8. exporter 규칙
 
+- `TXT`: 기본값은 타임스탬프 제외(`text`)이며, 옵션에서 포함 시 `[HH:MM:SS] text`
 - `SRT`: `HH:MM:SS,mmm`, 세션 시작 기준 상대 시간
 - `VTT`: `HH:MM:SS.mmm`, 세션 시작 기준 상대 시간
 - `JSON`: 세션 전체 복원 가능한 구조
-- export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
+- export/copy 단계에서는 추가 후단 정규화를 적용하지 않고 `수집된 자막` 기준 snapshot을 그대로 사용합니다.
 - 다운로드는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback
 
 ## 9. known limits
@@ -217,6 +218,15 @@ npm run build
 - `legacy/` 는 로컬 참조 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
 - 변경 후에는 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 실행합니다.
+
+## Sync Delta (2026-03-26)
+
+Use this delta as the current operational baseline.
+
+- 내보내기/복사 기준 데이터는 패널 `수집된 자막` 목록과 같은 snapshot 경로를 사용해야 합니다.
+- `session-store` export 경로에서는 `normalizeSessionForExport` 기반 후단 정규화를 적용하지 않습니다.
+- `TXT` 내보내기는 `exportTxtWithoutTimestamps` 옵션을 지원하고 기본값은 `true`(타임스탬프 제외)입니다.
+- 장시간 세션에서는 화면/내보내기 데이터는 무제한 유지하고, 내부 state cache만 주기 압축합니다.
 
 ## Sync Delta (2026-03-19)
 

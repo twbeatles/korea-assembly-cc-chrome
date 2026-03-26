@@ -50,6 +50,7 @@ const defaultSettings = {
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
+  exportTxtWithoutTimestamps: true,
   debugLogging: false,
   autoStartEnabled: true,
   filterUnconfirmedEnabled: true,

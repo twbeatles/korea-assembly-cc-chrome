@@ -110,7 +110,7 @@ offscreen.html
 - 동일 raw 유지 시 keepalive 로 마지막 entry 의 `endTime` 만 갱신합니다.
 - `subtitle_reset` 이 오면 grace 이후 live ledger 와 pipeline state 를 함께 완전 리셋합니다.
 - `finalizeSession` 은 현재 state 기준으로 종료 처리합니다.
-- 저장/export/unload/stop 직전 prepared snapshot 생성 경로에서는 `flushPendingPreviews` 가 현재 preview-only 텍스트를 clone 상태에 materialize 합니다.
+- 저장/export/unload/stop 직전 prepared snapshot 생성 경로는 `수집된 자막` 기준 snapshot을 사용합니다.
 
 ## 6. noise filtering 규칙
 
@@ -129,11 +129,11 @@ offscreen.html
 
 ### 7.1 Exporter
 
-- `TXT`: `[HH:MM:SS] text`
+- `TXT`: 기본값은 타임스탬프 제외(`text`)이며, 옵션에서 포함 시 `[HH:MM:SS] text`
 - `SRT`: 세션 시작 기준 상대 시간, `HH:MM:SS,mmm`
 - `VTT`: 세션 시작 기준 상대 시간, `HH:MM:SS.mmm`
 - `JSON`: 세션 전체 복원 가능한 구조
-- export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
+- export/copy 단계에서는 추가 후단 정규화를 적용하지 않고 `수집된 자막` 기준 snapshot을 그대로 사용합니다.
 
 ### 7.2 Session Store
 
@@ -177,7 +177,7 @@ offscreen.html
 - 같은 row key 의 갱신은 라이브 목록 DOM 노드를 재사용해 제자리 수정합니다.
 - history 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 `최근 N줄 복사`를 지원합니다.
-- history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 `chrome.storage.onChanged` 로 즉시 반영합니다.
+- history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern`, `exportTxtWithoutTimestamps` 변경을 `chrome.storage.onChanged` 로 즉시 반영합니다.
 - history 의 `전체 삭제` 는 현재 로드된 1000건만이 아니라 저장소 전체를 비워야 하며, 선택 삭제는 부분 성공/실패 요약을 남긴 뒤 항상 refresh 해야 합니다.
 - history 는 session-level `즐겨찾기`, `메모`, `즐겨찾기만 보기` 필터를 제공하고, 이 메타데이터는 persistence 및 JSON 백업/복원에서 함께 보존되어야 합니다.
 - history detail 은 entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
@@ -211,6 +211,15 @@ offscreen.html
 - 배포 절차: `DEPLOYMENT.md`
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
+
+## Sync Delta (2026-03-26)
+
+When editing this repository, align with the behavior below.
+
+- 내보내기/복사 기준 데이터는 패널 `수집된 자막` 목록과 동일한 snapshot 경로를 사용해야 합니다.
+- `session-store` export 경로에서 `normalizeSessionForExport` 기반 후단 정규화는 사용하지 않습니다.
+- `TXT` 내보내기에는 `exportTxtWithoutTimestamps` 옵션이 있으며 기본값은 `true`(타임스탬프 제외)입니다.
+- 장시간 세션 대응을 위해 화면/내보내기 데이터는 무제한 유지하고, 내부 state cache만 주기적으로 압축합니다.
 
 ## Sync Delta (2026-03-23)
 

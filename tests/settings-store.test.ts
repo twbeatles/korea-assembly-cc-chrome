@@ -7,6 +7,7 @@ describe("settings store", () => {
       runningAutoSaveEnabled: false,
       runningAutoSaveDebounceMs: 1200,
       recentCopyLineCount: 9,
+      exportTxtWithoutTimestamps: true,
       recentDuplicateMinLength: 12,
       filterUnconfirmedEnabled: false,
     });
@@ -14,6 +15,7 @@ describe("settings store", () => {
     expect(sanitized.runningAutoSaveEnabled).toBe(false);
     expect(sanitized.runningAutoSaveDebounceMs).toBe(1200);
     expect(sanitized.recentCopyLineCount).toBe(9);
+    expect(sanitized.exportTxtWithoutTimestamps).toBe(true);
     expect(sanitized.recentDuplicateMinLength).toBe(12);
     expect(sanitized.filterUnconfirmedEnabled).toBe(false);
   });
@@ -34,6 +36,9 @@ describe("settings store", () => {
     );
     expect(sanitized.recentCopyLineCount).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
+    );
+    expect(sanitized.exportTxtWithoutTimestamps).toBe(
+      DEFAULT_EXTENSION_SETTINGS.exportTxtWithoutTimestamps,
     );
     expect(sanitized.recentDuplicateMinLength).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,

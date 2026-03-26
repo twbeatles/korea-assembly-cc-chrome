@@ -1,10 +1,9 @@
 import { exportJson } from "../core/exporters/json";
-import { normalizeSessionForExport } from "../core/exporters/normalize-session";
-import { normalizeEntriesForOutput } from "../core/output-normalizer";
 import { exportSrt } from "../core/exporters/srt";
 import { exportTxt } from "../core/exporters/txt";
 import { exportVtt } from "../core/exporters/vtt";
 import {
+  cloneEntry,
   cloneSessionRecord,
   getSessionCharCount,
   withSessionEntries,
@@ -258,7 +257,7 @@ function openDb(): Promise<IDBDatabase> {
 }
 
 function normalizeEntries(entries: SubtitleEntry[]): SubtitleEntry[] {
-  return normalizeEntriesForOutput(entries);
+  return entries.map((entry) => cloneEntry(entry));
 }
 
 function normalizeSessionRecord(
@@ -841,43 +840,44 @@ function toExportPayload(
   format: ExportFormat,
   filenamePattern?: string,
   entries?: SubtitleEntry[],
+  stripTxtTimestamps = false,
 ): ExportPayload {
   const baseSession = entries ? withSessionEntries(session, entries) : session;
-  const normalized = normalizeSessionForExport(
-    normalizeSessionRecord(baseSession, {
-      preserveTimestamps: true,
-      forceStatus: baseSession.status,
-    }),
-  );
+  const exportSession = normalizeSessionRecord(baseSession, {
+    preserveTimestamps: true,
+    forceStatus: baseSession.status,
+  });
 
   switch (format) {
     case "txt":
       return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
+        filename: buildExportFilename(exportSession, format, filenamePattern),
         format,
         mimeType: "text/plain;charset=utf-8",
-        content: exportTxt(normalized),
+        content: exportTxt(exportSession, {
+          includeTimestamp: !stripTxtTimestamps,
+        }),
       };
     case "srt":
       return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
+        filename: buildExportFilename(exportSession, format, filenamePattern),
         format,
         mimeType: "application/x-subrip;charset=utf-8",
-        content: exportSrt(normalized),
+        content: exportSrt(exportSession),
       };
     case "vtt":
       return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
+        filename: buildExportFilename(exportSession, format, filenamePattern),
         format,
         mimeType: "text/vtt;charset=utf-8",
-        content: exportVtt(normalized),
+        content: exportVtt(exportSession),
       };
     case "json":
       return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
+        filename: buildExportFilename(exportSession, format, filenamePattern),
         format,
         mimeType: "application/json;charset=utf-8",
-        content: exportJson(normalized),
+        content: exportJson(exportSession),
       };
   }
 }
@@ -1271,8 +1271,9 @@ export async function exportSessionData(
   format: ExportFormat,
   filenamePattern?: string,
   entries?: SubtitleEntry[],
+  stripTxtTimestamps = false,
 ): Promise<ExportPayload> {
-  return toExportPayload(session, format, filenamePattern, entries);
+  return toExportPayload(session, format, filenamePattern, entries, stripTxtTimestamps);
 }
 
 export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySummary> {

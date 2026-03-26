@@ -15,6 +15,7 @@ export const ADVANCED_NUMBER_FIELDS: Array<keyof ExtensionSettings> = [
 export const TOGGLE_FIELDS: Array<keyof ExtensionSettings> = [
   "autoScroll",
   "runningAutoSaveEnabled",
+  "exportTxtWithoutTimestamps",
   "autoStartEnabled",
   "filterUnconfirmedEnabled",
   "noiseFilterEnabled",

@@ -627,6 +627,20 @@ export default function App() {
               최근 복사 버튼과 수집 중 자동 저장 타이밍을 여기에서 조정할 수 있습니다.
             </p>
 
+            <label className="setting-card">
+              <div>
+                <strong>TXT 내보내기 타임스탬프 제외</strong>
+                <span>켜면 TXT 파일의 각 줄 앞 시간표시(`[HH:MM:SS]`)를 제거합니다.</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.exportTxtWithoutTimestamps}
+                onChange={(event) =>
+                  updateField("exportTxtWithoutTimestamps", event.target.checked)
+                }
+              />
+            </label>
+
             {BASIC_NUMBER_FIELDS.map((field) => {
               const fieldUnit = getFieldUnit(field);
               return (

@@ -2,7 +2,7 @@
   applyKeepalive,
   applyPreview,
   applyReset,
-  commitLiveRow,
+  buildConfirmedCompactHistory,
   finalizeSession,
 } from "../core/subtitle-pipeline";
 import {
@@ -13,17 +13,22 @@ import {
   markLiveRowCommitted,
   normalizeCaptureEvent,
   reconcileLiveCapture,
-  setLiveRowBaseline,
   type CaptureMode,
+  type LiveCaptureRow,
   type LivePanelRow,
 } from "../core/live-capture";
 import {
+  cloneEntry,
+  cloneState,
+  createId,
   createEmptySessionState,
   getSessionCharCount,
   toSessionRecord,
   type SessionRecord,
   type SessionState,
+  type SubtitleEntry,
 } from "../core/subtitle-models";
+import { compactSubtitleText, normalizeSubtitleText } from "../core/text-normalizer";
 import {
   EXTENSION_STORAGE_KEY,
   FRAME_FORWARD_NONCE_SOURCE,
@@ -39,7 +44,6 @@ import {
 import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
-  hasPersistableRunningContent,
   resolveRunningPersistDebounceMs,
   scheduleRunningPersistTimer,
   shouldPersistFinalSession,
@@ -105,8 +109,6 @@ import {
 } from "./frame-coordinator";
 import { persistQueuedPageExitRecord } from "./page-exit-persist";
 import {
-  buildPreparedSessionRecord as prepareSessionRecord,
-  buildPreparedSessionState as prepareSessionState,
   createResetSessionState,
 } from "./session-lifecycle";
 import { hasOnlyStableRows, resolveRuntimeCaptureNotice } from "./subtitle-event-handler";
@@ -119,6 +121,11 @@ const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-scrip
 const SUBTITLE_RESET_GRACE_MS = 1000;
 const INVALIDATED_CONTEXT_NOTICE = "Extension was updated. Please refresh the page (F5).";
 const FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS = 15_000;
+const INTERNAL_CACHE_COMPACT_INTERVAL_MS = 30_000;
+const INTERNAL_CACHE_MAX_STATE_ENTRIES = 1200;
+const INTERNAL_CACHE_TARGET_STATE_ENTRIES = 400;
+const INTERNAL_CACHE_MAX_PENDING_PREVIEWS = 32;
+const INTERNAL_LEDGER_METADATA_STALE_MS = 60_000;
 
 let settings: ExtensionSettings = {
   autoScroll: true,
@@ -131,6 +138,7 @@ let settings: ExtensionSettings = {
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
+  exportTxtWithoutTimestamps: true,
   debugLogging: false,
   autoStartEnabled: true,
   filterUnconfirmedEnabled: true,
@@ -158,6 +166,7 @@ let lastNavigationSnapshotAt = 0;
 let liveCaptureLedger = createEmptyLiveCaptureLedger();
 let extensionContextInvalidated = false;
 let failedStoppedSessionGuard = createEmptyFailedStoppedSessionGuard();
+let lastInternalCacheCompactAt = 0;
 
 function setPanelNotice(message: string): boolean {
   if (panelNotice === message) {
@@ -290,6 +299,37 @@ function getPanelLiveRows(): LivePanelRow[] {
   });
 }
 
+function mapLiveRowsToOutputEntries(
+  rows: LivePanelRow[],
+  now = Date.now(),
+): SubtitleEntry[] {
+  return rows.map((row, index) => {
+    const resolvedMs =
+      Number.isFinite(row.updatedAt) && row.updatedAt > 0
+        ? row.updatedAt
+        : now;
+    const timestamp = new Date(resolvedMs).toISOString();
+    return {
+      id: `live:${row.key}:${resolvedMs}:${index}`,
+      text: row.text,
+      timestamp,
+      startTime: timestamp,
+      endTime: timestamp,
+      sourceNodeKey: row.key,
+      speakerColor: row.speakerColor,
+      speakerChannel: row.speakerChannel,
+    };
+  });
+}
+
+function resolveCurrentOutputEntries(now = Date.now()): SubtitleEntry[] {
+  const liveRows = getPanelLiveRows();
+  if (liveRows.length > 0) {
+    return mapLiveRowsToOutputEntries(liveRows, now);
+  }
+  return state.entries.map((entry) => cloneEntry(entry));
+}
+
 function getLivePreviewText(): string {
   return liveCaptureLedger.previewText || state.previewText;
 }
@@ -300,6 +340,7 @@ function getCaptureMode(): CaptureMode {
 
 function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   const captureMode = getCaptureMode();
+  const outputEntries = resolveCurrentOutputEntries();
   return {
     connected: isSupportedAssemblyUrl(window.location.href),
     requiresReload,
@@ -308,10 +349,10 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
     title: state.title,
     committeeName: state.committeeName,
     sourceUrl: state.sourceUrl,
-    subtitleCount: state.entries.length,
-    charCount: getSessionCharCount(state.entries),
+    subtitleCount: outputEntries.length,
+    charCount: getSessionCharCount(outputEntries),
     previewText: getLivePreviewText(),
-    recentEntries: state.entries.slice(-20),
+    recentEntries: outputEntries.slice(-20),
     startedAt: state.startedAt,
     endedAt: state.endedAt,
     updatedAt: state.updatedAt,
@@ -354,22 +395,32 @@ function clearRunningPersistTimer(): void {
 }
 
 function canPersistCurrentRunningState(): boolean {
-  return hasPersistableRunningContent(state);
+  if (state.status !== "running") {
+    return false;
+  }
+  return (
+    resolveCurrentOutputEntries().length > 0 ||
+    state.pendingPreviews.length > 0 ||
+    Boolean(state.previewText.trim())
+  );
 }
 
 function buildPreparedSessionState(now = Date.now()): SessionState {
-  return prepareSessionState(state, settings, now);
+  const prepared = cloneState(state);
+  prepared.entries = resolveCurrentOutputEntries(now);
+  return prepared;
 }
 
 function buildPreparedSessionRecord(
   persistedStatus: "running" | "saved" | "stopped",
   now = Date.now(),
 ): SessionRecord {
+  const preparedState = buildPreparedSessionState(now);
   if (persistedStatus !== "stopped") {
-    return prepareSessionRecord(state, settings, persistedStatus, now);
+    return toSessionRecord(preparedState, persistedStatus);
   }
 
-  return toSessionRecord(finalizeSession(buildPreparedSessionState(now), now, settings).state, persistedStatus);
+  return toSessionRecord(finalizeSession(preparedState, now, settings).state, persistedStatus);
 }
 
 function updateInPagePanel(): void {
@@ -440,6 +491,238 @@ function applyPreviewStateOnly(previewText: string, now: number): boolean {
   return true;
 }
 
+function refreshStructuredHistoryState(): void {
+  const configuredMax = Number(settings.maxBufferLength);
+  const maxLength =
+    Number.isFinite(configuredMax) && configuredMax >= 1000
+      ? Math.floor(configuredMax)
+      : PIPELINE_DEFAULTS.confirmedCompactMaxLength;
+  state.confirmedCompact = buildConfirmedCompactHistory(state.entries, maxLength);
+  state.trailingSuffix = state.confirmedCompact.slice(-PIPELINE_DEFAULTS.suffixLength);
+  state.previewDesyncCount = 0;
+  state.previewAmbiguousSkipCount = 0;
+  state.lastCommittedResetAt = null;
+  state.lastProcessedRaw = state.previewText;
+}
+
+function compactLiveLedgerMetadata(now: number): boolean {
+  if (liveCaptureLedger.order.length === 0) {
+    return false;
+  }
+
+  const activeRowKeys = new Set(liveCaptureLedger.activeRowKeys);
+  let compactedRows: Record<string, LiveCaptureRow> | null = null;
+
+  for (const key of liveCaptureLedger.order) {
+    const row = liveCaptureLedger.rows[key];
+    if (!row || activeRowKeys.has(key)) {
+      continue;
+    }
+    if (now - row.updatedAt < INTERNAL_LEDGER_METADATA_STALE_MS) {
+      continue;
+    }
+
+    const shouldCompact =
+      row.framePath.length > 0 ||
+      Boolean(row.selector) ||
+      row.unstableKey ||
+      row.baselineCompact !== null;
+    if (!shouldCompact) {
+      continue;
+    }
+
+    if (!compactedRows) {
+      compactedRows = { ...liveCaptureLedger.rows };
+    }
+
+    compactedRows[key] = {
+      ...row,
+      framePath: [],
+      selector: undefined,
+      unstableKey: false,
+      baselineCompact: null,
+    };
+  }
+
+  if (!compactedRows) {
+    return false;
+  }
+
+  liveCaptureLedger = {
+    ...liveCaptureLedger,
+    rows: compactedRows,
+  };
+  return true;
+}
+
+function compactInternalCaches(now: number): boolean {
+  if (state.status !== "running") {
+    return false;
+  }
+  if (now - lastInternalCacheCompactAt < INTERNAL_CACHE_COMPACT_INTERVAL_MS) {
+    return false;
+  }
+  lastInternalCacheCompactAt = now;
+
+  let changed = false;
+
+  if (state.pendingPreviews.length > INTERNAL_CACHE_MAX_PENDING_PREVIEWS) {
+    state.pendingPreviews = state.pendingPreviews.slice(-INTERNAL_CACHE_MAX_PENDING_PREVIEWS);
+    changed = true;
+  }
+
+  if (
+    liveCaptureLedger.order.length > 0 &&
+    state.entries.length > INTERNAL_CACHE_MAX_STATE_ENTRIES
+  ) {
+    state.entries = state.entries
+      .slice(-INTERNAL_CACHE_TARGET_STATE_ENTRIES)
+      .map((entry) => cloneEntry(entry));
+    refreshStructuredHistoryState();
+    changed = true;
+  }
+
+  if (compactLiveLedgerMetadata(now)) {
+    changed = true;
+  }
+
+  return changed;
+}
+
+function applyStructuredEntryMeta(
+  entry: SubtitleEntry,
+  row: LiveCaptureRow,
+  nowIso: string,
+  selector?: string,
+  framePath?: number[],
+): boolean {
+  let changed = false;
+  if (entry.endTime !== nowIso) {
+    entry.endTime = nowIso;
+    changed = true;
+  }
+  if (entry.sourceSelector !== selector) {
+    entry.sourceSelector = selector;
+    changed = true;
+  }
+
+  const nextFramePath =
+    Array.isArray(framePath) && framePath.length > 0 ? [...framePath] : undefined;
+  const prevFramePath = JSON.stringify(entry.sourceFramePath ?? []);
+  const nextFramePathSignature = JSON.stringify(nextFramePath ?? []);
+  if (prevFramePath !== nextFramePathSignature) {
+    entry.sourceFramePath = nextFramePath;
+    changed = true;
+  }
+
+  if (entry.sourceNodeKey !== row.key) {
+    entry.sourceNodeKey = row.key;
+    changed = true;
+  }
+  if (entry.speakerColor !== row.speakerColor) {
+    entry.speakerColor = row.speakerColor;
+    changed = true;
+  }
+  if (entry.speakerChannel !== row.speakerChannel) {
+    entry.speakerChannel = row.speakerChannel;
+    changed = true;
+  }
+  return changed;
+}
+
+function isLikelySameStructuredUtterance(previousText: string, nextText: string): boolean {
+  const previousCompact = compactSubtitleText(previousText);
+  const nextCompact = compactSubtitleText(nextText);
+  if (!previousCompact || !nextCompact) {
+    return false;
+  }
+  if (previousCompact === nextCompact) {
+    return true;
+  }
+
+  const minSharedLength = Math.min(previousCompact.length, nextCompact.length);
+  if (minSharedLength < 8) {
+    return false;
+  }
+
+  return (
+    previousCompact.startsWith(nextCompact) ||
+    nextCompact.startsWith(previousCompact)
+  );
+}
+
+function appendStructuredEntry(
+  text: string,
+  row: LiveCaptureRow,
+  nowIso: string,
+  selector?: string,
+  framePath?: number[],
+): { entry: SubtitleEntry; changed: boolean } {
+  const compact = compactSubtitleText(text);
+  const lastEntry = state.entries.at(-1);
+  if (lastEntry && compactSubtitleText(lastEntry.text) === compact) {
+    const textChanged = lastEntry.text !== text;
+    if (textChanged) {
+      lastEntry.text = text;
+    }
+    const metaChanged = applyStructuredEntryMeta(lastEntry, row, nowIso, selector, framePath);
+    return { entry: lastEntry, changed: textChanged || metaChanged };
+  }
+
+  const entry: SubtitleEntry = {
+    id: createId("subtitle"),
+    text,
+    timestamp: nowIso,
+    startTime: nowIso,
+    endTime: nowIso,
+    sourceSelector: selector,
+    sourceFramePath: Array.isArray(framePath) && framePath.length > 0 ? [...framePath] : undefined,
+    sourceNodeKey: row.key,
+    speakerColor: row.speakerColor,
+    speakerChannel: row.speakerChannel,
+  };
+  state.entries.push(entry);
+  return { entry, changed: true };
+}
+
+function upsertStructuredRowEntry(
+  row: LiveCaptureRow,
+  now: number,
+  selector?: string,
+  framePath?: number[],
+): { changed: boolean; entryId: string | null } {
+  const nextText = normalizeSubtitleText(row.text);
+  if (!nextText) {
+    return {
+      changed: false,
+      entryId: row.committedEntryId,
+    };
+  }
+
+  const nowIso = new Date(now).toISOString();
+  const committedEntryId = row.committedEntryId;
+  if (committedEntryId) {
+    const existing = state.entries.find((entry) => entry.id === committedEntryId);
+    if (existing && isLikelySameStructuredUtterance(existing.text, nextText)) {
+      const textChanged = existing.text !== nextText;
+      if (textChanged) {
+        existing.text = nextText;
+      }
+      const metaChanged = applyStructuredEntryMeta(existing, row, nowIso, selector, framePath);
+      return {
+        changed: textChanged || metaChanged,
+        entryId: existing.id,
+      };
+    }
+  }
+
+  const appended = appendStructuredEntry(nextText, row, nowIso, selector, framePath);
+  return {
+    changed: appended.changed,
+    entryId: appended.entry.id,
+  };
+}
+
 function applyStructuredRowsEvent(
   rows: ObservedSubtitleRow[],
   previewText: string,
@@ -458,46 +741,33 @@ function applyStructuredRowsEvent(
   liveCaptureLedger = reconciliation.ledger;
 
   let changed = reconciliation.changed || applyPreviewStateOnly(captureEvent.previewText, now);
+  let entryChanged = false;
 
   reconciliation.rowChanges.forEach((rowChange) => {
-    let liveRow = getLiveRow(liveCaptureLedger, rowChange.key);
+    const liveRow = getLiveRow(liveCaptureLedger, rowChange.key);
     if (!liveRow) {
       return;
     }
 
-    if (liveRow.baselineCompact === null) {
-      liveCaptureLedger = setLiveRowBaseline(
-        liveCaptureLedger,
-        rowChange.key,
-        state.confirmedCompact,
-      );
-      liveRow = getLiveRow(liveCaptureLedger, rowChange.key);
-      if (!liveRow) {
-        return;
-      }
-    }
-
-    const result = commitLiveRow(state, liveRow.text, captureEvent.previewText, now, settings, {
-      selector,
-      framePath,
-      sourceNodeKey: liveRow.key,
-      entryId: liveRow.committedEntryId ?? undefined,
-      baselineCompact: liveRow.baselineCompact ?? state.confirmedCompact,
-    });
-
+    const result = upsertStructuredRowEntry(liveRow, now, selector, framePath);
     if (result.changed) {
-      state = result.state;
-      changed = true;
+      entryChanged = true;
     }
-
-    if (!liveRow.committedEntryId && result.appendedEntry) {
+    if (result.entryId && liveRow.committedEntryId !== result.entryId) {
       liveCaptureLedger = markLiveRowCommitted(
         liveCaptureLedger,
         rowChange.key,
-        result.appendedEntry.id,
+        result.entryId,
       );
     }
   });
+
+  if (entryChanged) {
+    state.updatedAt = new Date(now).toISOString();
+    state.lastObserverEventAt = now;
+    refreshStructuredHistoryState();
+    changed = true;
+  }
 
   return changed;
 }
@@ -657,9 +927,8 @@ async function saveCurrentSessionSnapshot(): Promise<{
   saved: boolean;
   message?: string;
 }> {
-  // Pre-flush guard: aligns with popup hasPersistableContent condition so the
-  // "nothing to save" response is only possible when the button was also disabled.
-  if (!isTopFrame || (state.entries.length === 0 && !state.previewText.trim())) {
+  const outputEntries = resolveCurrentOutputEntries();
+  if (!isTopFrame || (outputEntries.length === 0 && !state.previewText.trim())) {
     const message = "저장할 자막이 아직 없습니다.";
     setPanelNotice(message);
     return {
@@ -670,7 +939,6 @@ async function saveCurrentSessionSnapshot(): Promise<{
 
   const record = buildPreparedSessionRecord("saved");
   if (!record.entries.length) {
-    // previewText existed but was filtered out during flush (e.g. noise-only text)
     const message = "저장할 자막이 아직 없습니다.";
     setPanelNotice(message);
     return {
@@ -848,8 +1116,9 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       return;
     }
 
-    const hasStableStructuredRows =
-      captureEvent.captureMode === "structured" && hasOnlyStableRows(captureEvent.rows);
+    const hasStructuredRows =
+      captureEvent.captureMode === "structured" && captureEvent.rows.length > 0;
+    const hasStableStructuredRows = hasStructuredRows && hasOnlyStableRows(captureEvent.rows);
     const noticeChanged = setPanelNotice(
       resolveRuntimeCaptureNotice({
         captureMode: captureEvent.captureMode,
@@ -860,8 +1129,8 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       }),
     );
 
-    if (hasStableStructuredRows) {
-      const changed = applyStructuredRowsEvent(
+    if (hasStructuredRows) {
+      let changed = applyStructuredRowsEvent(
         captureEvent.rows,
         captureEvent.previewText,
         now,
@@ -874,10 +1143,17 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
         (!state.lastKeepaliveAt || now - state.lastKeepaliveAt >= settings.keepaliveIntervalMs)
       ) {
         state = applyKeepalive(state, now).state;
+        compactInternalCaches(now);
         scheduleRunningPersist();
         syncUserInterfaces();
         return;
       }
+
+      const compacted = compactInternalCaches(now);
+      if (compacted) {
+        changed = true;
+      }
+
       if (changed) {
         scheduleRunningPersist();
       }
@@ -903,6 +1179,7 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       (!state.lastKeepaliveAt || now - state.lastKeepaliveAt >= settings.keepaliveIntervalMs)
     ) {
       state = applyKeepalive(state, now).state;
+      compactInternalCaches(now);
       scheduleRunningPersist();
       syncUserInterfaces();
       return;
@@ -913,10 +1190,11 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       framePath: event.framePath,
     });
     state = result.state;
+    const compacted = compactInternalCaches(now);
     if (result.changed) {
       scheduleRunningPersist();
     }
-    if (fallbackReconciliation.changed || result.changed || noticeChanged) {
+    if (fallbackReconciliation.changed || result.changed || noticeChanged || compacted) {
       syncUserInterfaces();
     }
   } catch (error) {
@@ -1081,6 +1359,7 @@ function resetRuntimeState(): void {
   clearRunningPersistTimer();
   clearStructuredRuntimeState();
   state = createResetSessionState(window.location.href, document.title, deriveCommitteeName(document.title));
+  lastInternalCacheCompactAt = 0;
   topFallbackMissStreak = 0;
   lastSuccessfulFallbackFramePath = null;
   lastSubtitleActivationAttemptAt = 0;
@@ -1202,7 +1481,13 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
     return;
   }
 
-  const payload = await exportSessionData(record, format, settings.filenamePattern);
+  const payload = await exportSessionData(
+    record,
+    format,
+    settings.filenamePattern,
+    undefined,
+    settings.exportTxtWithoutTimestamps,
+  );
   const response = await sendRuntimeMessage({
     type: "DOWNLOAD_REQUEST",
     filename: payload.filename,

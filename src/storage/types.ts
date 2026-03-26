@@ -16,6 +16,7 @@ export interface ExtensionSettings {
   runningAutoSaveEnabled: boolean;
   runningAutoSaveDebounceMs: number;
   recentCopyLineCount: number;
+  exportTxtWithoutTimestamps: boolean;
   debugLogging: boolean;
   autoStartEnabled: boolean;
   filterUnconfirmedEnabled: boolean;
@@ -48,6 +49,7 @@ export interface SessionPageResult {
 export interface SessionExportOptions {
   filenamePattern?: string;
   entries?: SubtitleEntry[];
+  stripTxtTimestamps?: boolean;
 }
 
 export interface SessionImportSummary {
@@ -130,6 +132,7 @@ export interface SessionStoreApi {
     format: ExportFormat,
     filenamePattern?: string,
     entries?: SubtitleEntry[],
+    stripTxtTimestamps?: boolean,
   ) => Promise<ExportPayload>;
   closeRunningSessionsOnStartup: () => Promise<StartupCleanupSummary>;
 }

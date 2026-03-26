@@ -27,7 +27,7 @@ describe("subtitle row helpers", () => {
     expect(rows[1].speakerChannel).toBe("secondary");
   });
 
-  it("marks rows without a stable class token as unstable and assigns a generated row key", () => {
+  it("marks rows without a stable class token as unstable and assigns a deterministic slot key", () => {
     document.body.innerHTML = `
       <div id="viewSubtit">
         <div class="smi_word"><span>클래스 키가 없는 자막</span></div>
@@ -38,7 +38,28 @@ describe("subtitle row helpers", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0].unstableKey).toBe(true);
-    expect(rows[0].nodeKey).toContain("row_");
+    expect(rows[0].nodeKey).toBe("slot:1");
+  });
+
+  it("keeps fallback slot keys stable across DOM re-renders", () => {
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="smi_word"><span>첫 번째 자막</span></div>
+        <div class="smi_word"><span>두 번째 자막</span></div>
+      </div>
+    `;
+    const firstRead = readObservedSubtitleRows(document);
+
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="smi_word"><span>첫 번째 자막 수정</span></div>
+        <div class="smi_word"><span>두 번째 자막 수정</span></div>
+      </div>
+    `;
+    const secondRead = readObservedSubtitleRows(document);
+
+    expect(firstRead.map((row) => row.nodeKey)).toEqual(["slot:2", "slot:1"]);
+    expect(secondRead.map((row) => row.nodeKey)).toEqual(["slot:2", "slot:1"]);
   });
 
   it("builds a preview string from the latest visible rows", () => {

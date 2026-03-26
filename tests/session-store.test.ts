@@ -323,7 +323,7 @@ describe("session store", () => {
     }
   });
 
-  it("deduplicates carry-over entries and strips speaker metadata during export", async () => {
+  it("keeps carry-over entries and speaker metadata during export", async () => {
     const session: SessionRecord = {
       ...buildSession("session_export_cleanup", "saved"),
       subtitleCount: 4,
@@ -374,17 +374,18 @@ describe("session store", () => {
     const payload = await exportSessionData(session, "json");
     const parsed = JSON.parse(payload.content) as SessionRecord;
 
-    expect(parsed.entries).toHaveLength(3);
+    expect(parsed.entries).toHaveLength(4);
     expect(parsed.entries.map((entry) => entry.text)).toEqual([
       "늘 그 과정에서 문제를 제기하는 분들이 계십니다 그래서 제기되는 문제가 몇 가지가 있습니다",
       "알고 있습니다 그러면",
+      "늘 그 과정에서 문제를 제기하는 분들이 계십니다 그래서 제기되는 문제가 몇 가지가 있습니다",
       "예 알고 있습니다 그러면 이것에 대해서 답을 해야 되는 것 같습니다",
     ]);
-    expect(parsed.entries[0].speakerColor).toBeUndefined();
-    expect(parsed.entries[2].speakerChannel).toBeUndefined();
+    expect(parsed.entries[0].speakerColor).toBe("rgb(35, 124, 147)");
+    expect(parsed.entries[2].speakerChannel).toBe("primary");
   });
 
-  it("trims cumulative carry-over text in TXT export", async () => {
+  it("keeps cumulative carry-over text in TXT export", async () => {
     const session: SessionRecord = {
       ...buildSession("session_export_cumulative", "saved"),
       subtitleCount: 3,
@@ -422,15 +423,79 @@ describe("session store", () => {
     expect(payload.content).toBe(
       [
         "[18:00:01] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다",
-        "[18:00:02] 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다",
-        "[18:00:03] 보다 자세한 내용은 단말기의 의결안을 참고해 주시기 바랍니다",
+        "[18:00:02] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다",
+        "[18:00:03] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다 보다 자세한 내용은 단말기의 의결안을 참고해 주시기 바랍니다",
       ].join("\n"),
     );
   });
 
-  it("normalizes cumulative carry-over text when persisting sessions", async () => {
+  it("can strip timestamps in TXT export when requested", async () => {
+    const session: SessionRecord = {
+      ...buildSession("session_export_no_timestamp", "saved"),
+      subtitleCount: 2,
+      charCount: 0,
+      entries: [
+        {
+          id: "entry_1",
+          text: "첫 번째 줄",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+          sourceNodeKey: "row_1",
+        },
+        {
+          id: "entry_2",
+          text: "두 번째 줄",
+          timestamp: "2026-03-10T09:00:02.000Z",
+          startTime: "2026-03-10T09:00:02.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+          sourceNodeKey: "row_2",
+        },
+      ],
+    };
+
+    const payload = await exportSessionData(session, "txt", undefined, undefined, true);
+    expect(payload.content).toBe(["첫 번째 줄", "두 번째 줄"].join("\n"));
+  });
+
+  it("keeps front-back repeated carry-over text in TXT export", async () => {
+    const session: SessionRecord = {
+      ...buildSession("session_export_front_back_repeat", "saved"),
+      subtitleCount: 2,
+      charCount: 0,
+      entries: [
+        {
+          id: "entry_1",
+          text: "저희보다도 주도적으로 이제 재산권을 행사하시는데 이미 매물로 내놓으셨다고 제가 알고 있습니다 다음은 이재관 위원님 질의해 주시기 바랍니다 충남 천안을",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+          sourceNodeKey: "row_1",
+        },
+        {
+          id: "entry_2",
+          text: "충남 천안을 저희보다도 주도적으로 이제 재산권을 행사하시는데 이미 매물로 내놓으셨다고 제가 알고 있습니다 다음은 이재관 위원님 질의해 주시기 바랍니다 충남 천안을 이재관 위원입니다",
+          timestamp: "2026-03-10T09:00:02.000Z",
+          startTime: "2026-03-10T09:00:02.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+          sourceNodeKey: "row_2",
+        },
+      ],
+    };
+
+    const payload = await exportSessionData(session, "txt");
+
+    expect(payload.content).toBe(
+      [
+        "[18:00:01] 저희보다도 주도적으로 이제 재산권을 행사하시는데 이미 매물로 내놓으셨다고 제가 알고 있습니다 다음은 이재관 위원님 질의해 주시기 바랍니다 충남 천안을",
+        "[18:00:02] 충남 천안을 저희보다도 주도적으로 이제 재산권을 행사하시는데 이미 매물로 내놓으셨다고 제가 알고 있습니다 다음은 이재관 위원님 질의해 주시기 바랍니다 충남 천안을 이재관 위원입니다",
+      ].join("\n"),
+    );
+  });
+
+  it("preserves cumulative carry-over text when persisting sessions and export", async () => {
     await saveSession({
-      ...buildSession("session_persist_normalized", "saved"),
+      ...buildSession("session_persist_cumulative", "saved"),
       subtitleCount: 3,
       charCount: 0,
       entries: [
@@ -461,13 +526,23 @@ describe("session store", () => {
       ],
     });
 
-    const loaded = await loadSession("session_persist_normalized");
+    const loaded = await loadSession("session_persist_cumulative");
 
     expect(loaded?.entries.map((entry) => entry.text)).toEqual([
       "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
-      "저희가 방법을 찾아보겠습니다",
-      "추가 설명도 드리겠습니다",
+      "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다",
+      "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다 추가 설명도 드리겠습니다",
     ]);
+
+    expect(loaded).toBeDefined();
+    const payload = await exportSessionData(loaded!, "txt");
+    expect(payload.content).toBe(
+      [
+        "[18:00:01] 위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
+        "[18:00:02] 위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다",
+        "[18:00:03] 위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다 추가 설명도 드리겠습니다",
+      ].join("\n"),
+    );
   });
 
   it("prefers the fresher fallback copy when IndexedDB and fallback diverge", async () => {
