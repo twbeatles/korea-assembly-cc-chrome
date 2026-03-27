@@ -56,14 +56,24 @@ function createSnapshot(): StatusSnapshot {
 }
 
 function createLiveRows(count = 1): LivePanelRow[] {
-  return Array.from({ length: count }, (_, index) => ({
-    key: `top::row_${index + 1}`,
-    text: index === 0 ? "안녕하세요" : `${index + 1}번째 자막입니다.`,
-    nodeKey: `row_${index + 1}`,
-    speakerColor: "rgb(35, 124, 147)",
-    speakerChannel: "primary",
-    updatedAt: Date.parse(`2026-03-10T09:00:0${index}.000Z`),
-  }));
+  return Array.from({ length: count }, (_, index) => {
+    const timestamp = `2026-03-10T09:00:0${index}.000Z`;
+    return {
+      key: `top::row_${index + 1}`,
+      text: index === 0 ? "안녕하세요" : `${index + 1}번째 자막입니다.`,
+      nodeKey: `row_${index + 1}`,
+      entryId: null,
+      timestamp,
+      startTime: timestamp,
+      endTime: timestamp,
+      sourceSelector: "#viewSubtit .smi_word",
+      sourceFramePath: [],
+      sourceNodeKey: `top::row_${index + 1}`,
+      speakerColor: "rgb(35, 124, 147)",
+      speakerChannel: "primary",
+      updatedAt: Date.parse(timestamp),
+    };
+  });
 }
 
 function mockScrollableMetrics(

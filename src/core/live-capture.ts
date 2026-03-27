@@ -1,4 +1,4 @@
-import type { SpeakerChannel } from "./subtitle-models";
+import type { SpeakerChannel, SubtitleEntry } from "./subtitle-models";
 import { normalizeSubtitleText } from "./text-normalizer";
 import type { ObservedSubtitleRow } from "../shared/message-types";
 import { PIPELINE_DEFAULTS } from "../shared/constants";
@@ -9,6 +9,13 @@ export interface LivePanelRow {
   key: string;
   text: string;
   nodeKey: string;
+  entryId: string | null;
+  timestamp: string;
+  startTime: string;
+  endTime: string;
+  sourceSelector?: string;
+  sourceFramePath?: number[];
+  sourceNodeKey: string;
   speakerColor: string;
   speakerChannel: SpeakerChannel;
   updatedAt: number;
@@ -59,6 +66,71 @@ function cloneRow(row: LiveCaptureRow): LiveCaptureRow {
   return {
     ...row,
     framePath: [...row.framePath],
+    sourceFramePath: row.sourceFramePath ? [...row.sourceFramePath] : undefined,
+  };
+}
+
+function cloneOptionalFramePath(framePath?: number[]): number[] | undefined {
+  return framePath ? [...framePath] : undefined;
+}
+
+function toIsoTimestamp(value: number): string {
+  return new Date(value).toISOString();
+}
+
+export function resolveLiveRowUpdatedAt(
+  entry: Pick<SubtitleEntry, "endTime" | "timestamp" | "startTime">,
+): number {
+  const endTime = Date.parse(entry.endTime || "");
+  if (Number.isFinite(endTime)) {
+    return endTime;
+  }
+
+  const timestamp = Date.parse(entry.timestamp || "");
+  if (Number.isFinite(timestamp)) {
+    return timestamp;
+  }
+
+  const startTime = Date.parse(entry.startTime || "");
+  return Number.isFinite(startTime) ? startTime : 0;
+}
+
+export function createLivePanelRowFromEntry(
+  entry: SubtitleEntry,
+  key = `entry::${entry.id}`,
+): LivePanelRow {
+  return {
+    key,
+    text: entry.text,
+    nodeKey: entry.sourceNodeKey || entry.id,
+    entryId: entry.id,
+    timestamp: entry.timestamp,
+    startTime: entry.startTime,
+    endTime: entry.endTime,
+    sourceSelector: entry.sourceSelector,
+    sourceFramePath: cloneOptionalFramePath(entry.sourceFramePath),
+    sourceNodeKey: entry.sourceNodeKey || entry.id,
+    speakerColor: entry.speakerColor || "",
+    speakerChannel: entry.speakerChannel || "unknown",
+    updatedAt: resolveLiveRowUpdatedAt(entry),
+  };
+}
+
+function toLivePanelRow(row: LiveCaptureRow): LivePanelRow {
+  return {
+    key: row.key,
+    text: row.text,
+    nodeKey: row.nodeKey,
+    entryId: row.entryId,
+    timestamp: row.timestamp,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    sourceSelector: row.sourceSelector,
+    sourceFramePath: cloneOptionalFramePath(row.sourceFramePath),
+    sourceNodeKey: row.sourceNodeKey,
+    speakerColor: row.speakerColor,
+    speakerChannel: row.speakerChannel,
+    updatedAt: row.updatedAt,
   };
 }
 
@@ -179,14 +251,7 @@ export function listLivePanelRows(ledger: LiveCaptureLedger): LivePanelRow[] {
   return ledger.order
     .map((key) => ledger.rows[key])
     .filter((row): row is LiveCaptureRow => Boolean(row))
-    .map((row) => ({
-      key: row.key,
-      text: row.text,
-      nodeKey: row.nodeKey,
-      speakerColor: row.speakerColor,
-      speakerChannel: row.speakerChannel,
-      updatedAt: row.updatedAt,
-    }));
+    .map(toLivePanelRow);
 }
 
 export function setLiveRowBaseline(
@@ -227,8 +292,65 @@ export function markLiveRowCommitted(
       ...ledger.rows,
       [key]: {
         ...existing,
+        entryId,
         committedEntryId: entryId,
       },
+    },
+  };
+}
+
+export function syncLiveRowOutputEntry(
+  ledger: LiveCaptureLedger,
+  key: string,
+  entry: SubtitleEntry,
+): LiveCaptureLedger {
+  const existing = ledger.rows[key];
+  if (!existing) {
+    return ledger;
+  }
+
+  const nextUpdatedAt = resolveLiveRowUpdatedAt(entry) || existing.updatedAt;
+  const nextSourceFramePath = cloneOptionalFramePath(entry.sourceFramePath);
+  const nextSourceFramePathSignature = JSON.stringify(nextSourceFramePath ?? []);
+  const currentSourceFramePathSignature = JSON.stringify(existing.sourceFramePath ?? []);
+  const nextRow: LiveCaptureRow = {
+    ...existing,
+    text: entry.text,
+    entryId: entry.id,
+    timestamp: entry.timestamp,
+    startTime: entry.startTime,
+    endTime: entry.endTime,
+    sourceSelector: entry.sourceSelector,
+    sourceFramePath: nextSourceFramePath,
+    sourceNodeKey: entry.sourceNodeKey || existing.sourceNodeKey || key,
+    speakerColor: entry.speakerColor ?? existing.speakerColor,
+    speakerChannel: entry.speakerChannel ?? existing.speakerChannel,
+    updatedAt: nextUpdatedAt,
+    committedEntryId: entry.id,
+  };
+
+  if (
+    existing.text === nextRow.text &&
+    existing.entryId === nextRow.entryId &&
+    existing.timestamp === nextRow.timestamp &&
+    existing.startTime === nextRow.startTime &&
+    existing.endTime === nextRow.endTime &&
+    existing.sourceSelector === nextRow.sourceSelector &&
+    currentSourceFramePathSignature === nextSourceFramePathSignature &&
+    existing.sourceNodeKey === nextRow.sourceNodeKey &&
+    existing.speakerColor === nextRow.speakerColor &&
+    existing.speakerChannel === nextRow.speakerChannel &&
+    existing.updatedAt === nextRow.updatedAt &&
+    existing.committedEntryId === nextRow.committedEntryId
+  ) {
+    return ledger;
+  }
+
+  return {
+    ...ledger,
+    rows: {
+      ...ledger.rows,
+      [key]: nextRow,
     },
   };
 }
@@ -267,10 +389,20 @@ export function reconcileLiveCapture(
     const previous = nextRows[key];
 
     if (!previous) {
+      const timestamp = toIsoTimestamp(event.timestamp);
       const nextRow: LiveCaptureRow = {
         key,
         nodeKey: row.nodeKey,
         text,
+        entryId: null,
+        timestamp,
+        startTime: timestamp,
+        endTime: timestamp,
+        sourceSelector: event.selector,
+        sourceFramePath: cloneOptionalFramePath(
+          event.framePath.length ? event.framePath : undefined,
+        ),
+        sourceNodeKey: key,
         speakerColor: row.speakerColor,
         speakerChannel: row.speakerChannel,
         updatedAt: event.timestamp,
@@ -300,6 +432,12 @@ export function reconcileLiveCapture(
     const nextRow: LiveCaptureRow = {
       ...previous,
       text,
+      endTime: toIsoTimestamp(event.timestamp),
+      sourceSelector: event.selector,
+      sourceFramePath: cloneOptionalFramePath(
+        event.framePath.length ? event.framePath : undefined,
+      ),
+      sourceNodeKey: key,
       speakerColor: row.speakerColor,
       speakerChannel: row.speakerChannel,
       updatedAt: event.timestamp,
@@ -337,14 +475,7 @@ export function reconcileLiveCapture(
   const liveRows = nextActiveRowKeys
     .map((key) => nextLedger.rows[key])
     .filter((row): row is LiveCaptureRow => Boolean(row))
-    .map((row) => ({
-      key: row.key,
-      text: row.text,
-      nodeKey: row.nodeKey,
-      speakerColor: row.speakerColor,
-      speakerChannel: row.speakerChannel,
-      updatedAt: row.updatedAt,
-    }));
+    .map(toLivePanelRow);
 
   const activeRowKey = nextActiveRowKeys.at(-1);
   const activeRow = activeRowKey ? cloneRow(nextLedger.rows[activeRowKey]) : null;

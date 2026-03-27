@@ -10,9 +10,9 @@ import {
   createEmptyLiveCaptureLedger,
   getLiveRow,
   listLivePanelRows,
-  markLiveRowCommitted,
   normalizeCaptureEvent,
   reconcileLiveCapture,
+  syncLiveRowOutputEntry,
   type CaptureMode,
   type LiveCaptureRow,
   type LivePanelRow,
@@ -75,7 +75,7 @@ import {
   createInPagePanel,
   type InPagePanelController,
 } from "./inpage-panel";
-import { resolvePanelLiveRows } from "./panel-live-rows";
+import { buildOutputEntriesFromPanelRows, resolvePanelLiveRows } from "./panel-live-rows";
 import {
   clearFailedStoppedSessionGuard,
   createEmptyFailedStoppedSessionGuard,
@@ -299,33 +299,10 @@ function getPanelLiveRows(): LivePanelRow[] {
   });
 }
 
-function mapLiveRowsToOutputEntries(
-  rows: LivePanelRow[],
-  now = Date.now(),
-): SubtitleEntry[] {
-  return rows.map((row, index) => {
-    const resolvedMs =
-      Number.isFinite(row.updatedAt) && row.updatedAt > 0
-        ? row.updatedAt
-        : now;
-    const timestamp = new Date(resolvedMs).toISOString();
-    return {
-      id: `live:${row.key}:${resolvedMs}:${index}`,
-      text: row.text,
-      timestamp,
-      startTime: timestamp,
-      endTime: timestamp,
-      sourceNodeKey: row.key,
-      speakerColor: row.speakerColor,
-      speakerChannel: row.speakerChannel,
-    };
-  });
-}
-
 function resolveCurrentOutputEntries(now = Date.now()): SubtitleEntry[] {
   const liveRows = getPanelLiveRows();
   if (liveRows.length > 0) {
-    return mapLiveRowsToOutputEntries(liveRows, now);
+    return buildOutputEntriesFromPanelRows(liveRows, now);
   }
   return state.entries.map((entry) => cloneEntry(entry));
 }
@@ -690,12 +667,12 @@ function upsertStructuredRowEntry(
   now: number,
   selector?: string,
   framePath?: number[],
-): { changed: boolean; entryId: string | null } {
+): { changed: boolean; entry: SubtitleEntry | null } {
   const nextText = normalizeSubtitleText(row.text);
   if (!nextText) {
     return {
       changed: false,
-      entryId: row.committedEntryId,
+      entry: null,
     };
   }
 
@@ -711,7 +688,7 @@ function upsertStructuredRowEntry(
       const metaChanged = applyStructuredEntryMeta(existing, row, nowIso, selector, framePath);
       return {
         changed: textChanged || metaChanged,
-        entryId: existing.id,
+        entry: existing,
       };
     }
   }
@@ -719,7 +696,7 @@ function upsertStructuredRowEntry(
   const appended = appendStructuredEntry(nextText, row, nowIso, selector, framePath);
   return {
     changed: appended.changed,
-    entryId: appended.entry.id,
+    entry: appended.entry,
   };
 }
 
@@ -753,11 +730,11 @@ function applyStructuredRowsEvent(
     if (result.changed) {
       entryChanged = true;
     }
-    if (result.entryId && liveRow.committedEntryId !== result.entryId) {
-      liveCaptureLedger = markLiveRowCommitted(
+    if (result.entry) {
+      liveCaptureLedger = syncLiveRowOutputEntry(
         liveCaptureLedger,
         rowChange.key,
-        result.entryId,
+        result.entry,
       );
     }
   });

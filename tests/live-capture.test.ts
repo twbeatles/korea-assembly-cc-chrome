@@ -8,6 +8,7 @@ import {
   normalizeCaptureEvent,
   reconcileLiveCapture,
   setLiveRowBaseline,
+  syncLiveRowOutputEntry,
 } from "../src/core/live-capture";
 describe("live capture reducer", () => {
   it("keeps the same live row key when a row is corrected", () => {
@@ -53,10 +54,67 @@ describe("live capture reducer", () => {
 
     expect(second.liveRows).toHaveLength(1);
     expect(second.liveRows[0].key).toBe(first.liveRows[0].key);
+    expect(second.liveRows[0].startTime).toBe("1970-01-01T00:00:00.001Z");
+    expect(second.liveRows[0].endTime).toBe("1970-01-01T00:00:00.002Z");
     expect(second.rowChanges).toHaveLength(1);
     expect(second.rowChanges[0].isNew).toBe(false);
     expect(getLiveRow(second.ledger, second.liveRows[0].key)?.committedEntryId).toBe("entry_1");
     expect(getLiveRow(second.ledger, second.liveRows[0].key)?.baselineCompact).toBe("기준이력");
+  });
+
+  it("syncs canonical entry metadata back into the live row after commit", () => {
+    const first = reconcileLiveCapture(
+      createEmptyLiveCaptureLedger(),
+      normalizeCaptureEvent({
+        raw: "첫 문장",
+        rows: [
+          {
+            nodeKey: "row_1",
+            text: "첫 문장",
+            speakerColor: "rgb(35, 124, 147)",
+            speakerChannel: "primary",
+            unstableKey: false,
+          },
+        ],
+        framePath: [1],
+        timestamp: 1000,
+      }),
+    );
+
+    const synced = syncLiveRowOutputEntry(first.ledger, first.liveRows[0].key, {
+      id: "entry_1",
+      text: "첫 문장 보정",
+      timestamp: "2026-03-20T08:00:01.000Z",
+      startTime: "2026-03-20T08:00:01.000Z",
+      endTime: "2026-03-20T08:00:05.000Z",
+      sourceSelector: "#viewSubtit .smi_word",
+      sourceFramePath: [1],
+      sourceNodeKey: "1::row_1",
+      speakerColor: "rgb(35, 124, 147)",
+      speakerChannel: "primary",
+    });
+
+    expect(getLiveRow(synced, first.liveRows[0].key)).toEqual(
+      expect.objectContaining({
+        text: "첫 문장 보정",
+        entryId: "entry_1",
+        committedEntryId: "entry_1",
+        timestamp: "2026-03-20T08:00:01.000Z",
+        startTime: "2026-03-20T08:00:01.000Z",
+        endTime: "2026-03-20T08:00:05.000Z",
+        sourceSelector: "#viewSubtit .smi_word",
+        sourceFramePath: [1],
+        sourceNodeKey: "1::row_1",
+      }),
+    );
+    expect(listLivePanelRows(synced)[0]).toEqual(
+      expect.objectContaining({
+        entryId: "entry_1",
+        startTime: "2026-03-20T08:00:01.000Z",
+        endTime: "2026-03-20T08:00:05.000Z",
+        sourceFramePath: [1],
+      }),
+    );
   });
 
   it("clears only the active live rows when fallback preview is used", () => {

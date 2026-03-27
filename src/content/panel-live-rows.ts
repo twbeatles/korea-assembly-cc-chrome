@@ -1,34 +1,54 @@
-import type { CaptureMode, LivePanelRow } from "../core/live-capture";
+import {
+  createLivePanelRowFromEntry,
+  type CaptureMode,
+  type LivePanelRow,
+} from "../core/live-capture";
 import type { SubtitleEntry } from "../core/subtitle-models";
 import { isAssemblyPlenaryUrl, PIPELINE_DEFAULTS } from "../shared/constants";
 
-function resolveEntryUpdatedAt(entry: SubtitleEntry): number {
-  const endTime = Date.parse(entry.endTime || "");
-  if (Number.isFinite(endTime)) {
-    return endTime;
-  }
+function cloneOptionalFramePath(framePath?: number[]): number[] | undefined {
+  return framePath ? [...framePath] : undefined;
+}
 
-  const timestamp = Date.parse(entry.timestamp || "");
-  if (Number.isFinite(timestamp)) {
-    return timestamp;
-  }
+function resolveIsoTimestamp(value: string | undefined, fallback: string): string {
+  return value && Number.isFinite(Date.parse(value)) ? value : fallback;
+}
 
-  const startTime = Date.parse(entry.startTime || "");
-  return Number.isFinite(startTime) ? startTime : 0;
+export function buildOutputEntriesFromPanelRows(
+  rows: LivePanelRow[],
+  now = Date.now(),
+): SubtitleEntry[] {
+  return rows.map((row, index) => {
+    const resolvedMs =
+      Number.isFinite(row.updatedAt) && row.updatedAt > 0
+        ? row.updatedAt
+        : now;
+    const fallbackTimestamp = new Date(resolvedMs).toISOString();
+    const timestamp = resolveIsoTimestamp(row.timestamp, fallbackTimestamp);
+    const startTime = resolveIsoTimestamp(row.startTime, timestamp);
+    const endTime = resolveIsoTimestamp(row.endTime, fallbackTimestamp);
+    return {
+      id: row.entryId || `live:${row.key}:${resolvedMs}:${index}`,
+      text: row.text,
+      timestamp,
+      startTime,
+      endTime,
+      sourceSelector: row.sourceSelector,
+      sourceFramePath: cloneOptionalFramePath(row.sourceFramePath),
+      sourceNodeKey: row.sourceNodeKey || row.key,
+      speakerColor: row.speakerColor,
+      speakerChannel: row.speakerChannel,
+    };
+  });
 }
 
 export function buildCommittedEntryLiveRows(
   entries: SubtitleEntry[],
   maxRows = PIPELINE_DEFAULTS.liveLedgerMaxRows,
 ): LivePanelRow[] {
-  return entries.slice(-maxRows).map((entry) => ({
-    key: `entry::${entry.id}`,
-    text: entry.text,
-    nodeKey: entry.sourceNodeKey || entry.id,
-    speakerColor: entry.speakerColor || "",
-    speakerChannel: entry.speakerChannel || "unknown",
-    updatedAt: resolveEntryUpdatedAt(entry),
-  }));
+  return entries
+    .slice(-maxRows)
+    .map((entry) => createLivePanelRowFromEntry(entry, `entry::${entry.id}`));
 }
 
 export function resolvePanelLiveRows(input: {
