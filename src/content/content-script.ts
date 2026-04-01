@@ -44,11 +44,13 @@ import {
 import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
+  createPreparedEligibilitySnapshot,
   resolveRunningPersistDebounceMs,
   scheduleRunningPersistTimer,
   shouldPersistFinalSession,
   shouldScheduleRunningPersist,
   shouldWarnBeforeUnload,
+  type PreparedEligibilitySnapshot,
 } from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
 import { buildCaptureDiagnostics } from "../shared/capture-diagnostics";
@@ -311,13 +313,38 @@ function getLivePreviewText(): string {
   return liveCaptureLedger.previewText || state.previewText;
 }
 
+function buildPreparedOutputSnapshot(now = Date.now()): {
+  liveRows: LivePanelRow[];
+  livePreviewText: string;
+  outputEntries: SubtitleEntry[];
+  eligibility: PreparedEligibilitySnapshot;
+} {
+  const liveRows = getPanelLiveRows();
+  const livePreviewText = getLivePreviewText();
+  const outputEntries =
+    liveRows.length > 0 ? buildOutputEntriesFromPanelRows(liveRows, now) : resolveCurrentOutputEntries(now);
+
+  return {
+    liveRows,
+    livePreviewText,
+    outputEntries,
+    eligibility: createPreparedEligibilitySnapshot({
+      status: state.status,
+      preparedEntryCount: outputEntries.length,
+      previewText: state.previewText,
+      livePreviewText,
+      liveRowCount: liveRows.length,
+    }),
+  };
+}
+
 function getCaptureMode(): CaptureMode {
   return liveCaptureLedger.captureMode;
 }
 
 function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   const captureMode = getCaptureMode();
-  const outputEntries = resolveCurrentOutputEntries();
+  const preparedOutput = buildPreparedOutputSnapshot();
   return {
     connected: isSupportedAssemblyUrl(window.location.href),
     requiresReload,
@@ -326,14 +353,15 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
     title: state.title,
     committeeName: state.committeeName,
     sourceUrl: state.sourceUrl,
-    subtitleCount: outputEntries.length,
-    charCount: getSessionCharCount(outputEntries),
-    previewText: getLivePreviewText(),
-    recentEntries: outputEntries.slice(-20),
+    subtitleCount: preparedOutput.outputEntries.length,
+    charCount: getSessionCharCount(preparedOutput.outputEntries),
+    previewText: preparedOutput.livePreviewText,
+    recentEntries: preparedOutput.outputEntries.slice(-20),
     startedAt: state.startedAt,
     endedAt: state.endedAt,
     updatedAt: state.updatedAt,
     lastPersistedAt: state.lastPersistedAt,
+    canPersistPreparedContent: preparedOutput.eligibility.canPersistPreparedContent,
     observerActive: state.observerActive,
     currentSelector: state.currentSelector,
     currentFramePath: [...state.currentFramePath],
@@ -375,16 +403,12 @@ function canPersistCurrentRunningState(): boolean {
   if (state.status !== "running") {
     return false;
   }
-  return (
-    resolveCurrentOutputEntries().length > 0 ||
-    state.pendingPreviews.length > 0 ||
-    Boolean(state.previewText.trim())
-  );
+  return buildPreparedOutputSnapshot().eligibility.canPersistPreparedContent;
 }
 
 function buildPreparedSessionState(now = Date.now()): SessionState {
   const prepared = cloneState(state);
-  prepared.entries = resolveCurrentOutputEntries(now);
+  prepared.entries = buildPreparedOutputSnapshot(now).outputEntries;
   return prepared;
 }
 
@@ -405,15 +429,18 @@ function updateInPagePanel(): void {
     return;
   }
 
+  const preparedOutput = buildPreparedOutputSnapshot();
+  const statusSnapshot = buildStatusSnapshot(false);
+
   inPagePanel.update(
-    buildInPagePanelState(buildStatusSnapshot(false), {
+    buildInPagePanelState(statusSnapshot, {
       collapsed: panelCollapsed,
       previewCollapsed,
       notice: panelNotice,
       autoScroll: settings.autoScroll,
       recentCopyLineCount: settings.recentCopyLineCount,
-      livePreviewText: getLivePreviewText(),
-      liveRows: getPanelLiveRows(),
+      livePreviewText: preparedOutput.livePreviewText,
+      liveRows: preparedOutput.liveRows,
     }),
   );
 }
@@ -904,8 +931,8 @@ async function saveCurrentSessionSnapshot(): Promise<{
   saved: boolean;
   message?: string;
 }> {
-  const outputEntries = resolveCurrentOutputEntries();
-  if (!isTopFrame || (outputEntries.length === 0 && !state.previewText.trim())) {
+  const eligibility = buildPreparedOutputSnapshot().eligibility;
+  if (!isTopFrame || !eligibility.canPersistPreparedContent) {
     const message = "저장할 자막이 아직 없습니다.";
     setPanelNotice(message);
     return {
@@ -1797,7 +1824,7 @@ function bindNavigationGuards(): void {
   });
 
   window.addEventListener("beforeunload", (event) => {
-    if (!shouldWarnBeforeUnload(isTopFrame, state)) {
+    if (!shouldWarnBeforeUnload(isTopFrame, buildPreparedOutputSnapshot().eligibility)) {
       return;
     }
 

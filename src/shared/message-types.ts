@@ -39,6 +39,7 @@ export interface StatusSnapshot {
   endedAt: string | null;
   updatedAt: string | null;
   lastPersistedAt: string | null;
+  canPersistPreparedContent: boolean;
   observerActive: boolean;
   currentSelector: string;
   currentFramePath: number[];
@@ -61,6 +62,7 @@ export interface CaptureStatusPayload {
   endedAt: string | null;
   updatedAt: string | null;
   lastPersistedAt: string | null;
+  canPersistPreparedContent: boolean;
   observerActive: boolean;
   currentSelector: string;
   currentFramePath: number[];

@@ -529,6 +529,8 @@ export interface InPagePanelState {
   charCount: number;
   recentCopyLineCount: number;
   notice: string;
+  canPersistPreparedContent: boolean;
+  hasVisibleRuntimeContent: boolean;
 }
 
 export interface InPagePanelActions {
@@ -652,6 +654,12 @@ export function buildInPagePanelState(
     charCount: snapshot.charCount,
     recentCopyLineCount: options.recentCopyLineCount,
     notice: options.notice,
+    canPersistPreparedContent: snapshot.canPersistPreparedContent,
+    hasVisibleRuntimeContent:
+      snapshot.canPersistPreparedContent ||
+      Boolean(snapshot.previewText.trim()) ||
+      Boolean((options.livePreviewText || snapshot.previewText).trim()) ||
+      options.liveRows.length > 0,
   };
 }
 
@@ -918,19 +926,15 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
         renderedNotice = nextState.notice;
       }
 
-      const hasEntries = nextState.subtitleCount > 0;
-      const hasPersistableContent =
-        hasEntries ||
-        nextState.liveRows.length > 0 ||
-        Boolean(nextState.livePreviewText.trim()) ||
-        Boolean(nextState.previewText.trim());
+      const canClearSession =
+        nextState.hasVisibleRuntimeContent || nextState.canPersistPreparedContent;
       startButton.style.display = nextState.status === "running" ? "none" : "";
       stopButton.style.display = nextState.status === "running" ? "" : "none";
-      clearButton.disabled = !hasPersistableContent;
-      saveButton.disabled = !hasPersistableContent;
-      copyRecentButton.disabled = !hasPersistableContent;
+      clearButton.disabled = !canClearSession;
+      saveButton.disabled = !nextState.canPersistPreparedContent;
+      copyRecentButton.disabled = !nextState.canPersistPreparedContent;
       exportButtons.forEach((button) => {
-        button.disabled = !hasPersistableContent;
+        button.disabled = !nextState.canPersistPreparedContent;
       });
 
       if (!nextState.collapsed && nextState.autoScroll) {

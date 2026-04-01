@@ -48,6 +48,8 @@ Chrome 웹 스토어에서 확장프로그램을 바로 설치할 수 있습니�
 - `autoScroll`, 중복 차단 최소 길이, noise filter 토글 등 옵션 반영
 - popup 보조 화면
 - popup의 `지금 저장` 버튼은 실제 저장 가능한 상태에서만 활성화되며, 빈 저장 요청에는 명시적 안내를 표시합니다
+- 패널 `저장 / 복사 / 내보내기`와 popup `지금 저장`, 페이지 이탈 경고는 모두 prepared snapshot 기준으로 정렬되며, raw preview만 남은 상태는 저장 가능으로 취급하지 않습니다
+- 패널 `화면 비우기`는 저장 가능 여부와 별개로 현재 화면에 보이는 runtime 내용이 있으면 계속 사용할 수 있습니다
 - history 기록 내부 검색 / 복사 / 즐겨찾기 / 세션 메모
 - history 상세 entry 체크박스 기반 부분 선택 복사 / 부분 export
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
@@ -184,7 +186,7 @@ npm run build
 
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
-- 탭이 숨겨지거나 페이지를 떠날 때는 현재 `수집된 자막` 기준 스냅샷을 background에 넘겨 자동 저장을 시도합니다.
+- 탭이 숨겨지거나 페이지를 떠날 때는 prepared snapshot에 실제 entry가 있을 때만 background 자동 저장을 시도합니다.
 
 ## 권한 설명
 
@@ -213,6 +215,7 @@ npm run build
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도하며, 실제 성공은 `visible && (hasText || controlActive)` 기준으로 판정합니다
 - 패널 notice는 `정상 수집 / 자동 조정 중 수집 / reset 복구 중`을 구분해 표시하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 경고 문구 대신 중립 안내를 사용합니다
 - 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
+- options `저장 복구 상태`는 diagnostics view가 열려 있는 동안 `chrome.storage.onChanged` 기반으로 queue write / replay / cleanup 변화가 즉시 반영됩니다
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 - 저장 가능한 자막이 없을 때 `SAVE_SESSION` 요청은 조용히 무시하지 않고 패널/popup 모두 `저장할 자막이 아직 없습니다.` 피드백을 남깁니다
 

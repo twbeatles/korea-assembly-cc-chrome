@@ -12,7 +12,9 @@ import type {
 import { getCaptureStatusLabel, UI_TEXT } from "../shared/ui-labels";
 import {
   createEmptyPersistReplayDiagnostics,
+  PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY,
   readPersistReplayDiagnostics,
+  sanitizePersistReplayDiagnostics,
 } from "../storage/persist-recovery";
 import { getSettings, resetSettings, saveSettings } from "../storage/settings-store";
 import type { ExtensionSettings, PersistReplayDiagnostics } from "../storage/types";
@@ -189,6 +191,7 @@ function mergeSnapshot(
         endedAt: message.payload.endedAt,
         updatedAt: message.payload.updatedAt,
         lastPersistedAt: message.payload.lastPersistedAt,
+        canPersistPreparedContent: message.payload.canPersistPreparedContent,
         observerActive: message.payload.observerActive,
         currentSelector: message.payload.currentSelector,
         currentFramePath: message.payload.currentFramePath,
@@ -290,6 +293,35 @@ export default function App() {
       active = false;
     };
   }, [diagnosticsReloadToken, view]);
+
+  useEffect(() => {
+    if (
+      view !== "diagnostics" ||
+      typeof chrome === "undefined" ||
+      !chrome.storage?.onChanged
+    ) {
+      return;
+    }
+
+    const handleStorageChange = (
+      changes: Record<string, chrome.storage.StorageChange>,
+      areaName: string,
+    ): void => {
+      if (areaName !== "local" || !changes[PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY]) {
+        return;
+      }
+
+      const change = changes[PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY];
+      setPersistReplayDiagnostics(
+        sanitizePersistReplayDiagnostics(change.newValue ?? createEmptyPersistReplayDiagnostics()),
+      );
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
+  }, [view]);
 
   useEffect(() => {
     if (view !== "diagnostics") {

@@ -72,6 +72,7 @@ describe("popup app", () => {
             endedAt: null,
             updatedAt: "2026-03-10T09:00:03.000Z",
             lastPersistedAt: "2026-03-10T09:00:03.000Z",
+            canPersistPreparedContent: true,
             observerActive: true,
             currentSelector: "#viewSubtit",
             currentFramePath: [],
@@ -146,6 +147,7 @@ describe("popup app", () => {
             endedAt: null,
             updatedAt: null,
             lastPersistedAt: null,
+            canPersistPreparedContent: false,
             observerActive: false,
             currentSelector: "",
             currentFramePath: [],
@@ -172,6 +174,80 @@ describe("popup app", () => {
 
     await waitFor(() => {
       expect(screen.getByText("저장할 자막이 아직 없습니다.")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: "지금 저장" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("keeps save disabled when only raw preview text exists without prepared entries", async () => {
+    const messageListeners: Array<(message: unknown) => void> = [];
+    const port = {
+      onMessage: {
+        addListener: vi.fn((listener: (message: unknown) => void) => {
+          messageListeners.push(listener);
+        }),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+
+    chromeApiMocks.queryActiveTab.mockResolvedValue({
+      id: 1,
+      url: "https://assembly.webcast.go.kr/main/player.asp",
+    });
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValue({
+      ok: true,
+      ready: true,
+      requiresReload: false,
+    });
+    chromeApiMocks.connectToTab.mockReturnValue(port);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalled();
+    });
+
+    act(() => {
+      messageListeners.forEach((listener) =>
+        listener({
+          type: "CAPTURE_STATUS",
+          payload: {
+            connected: true,
+            requiresReload: false,
+            status: "running",
+            sessionId: "session_popup_preview_only",
+            title: "정무위",
+            committeeName: "정무위원회",
+            sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+            subtitleCount: 0,
+            charCount: 0,
+            previewText: "실시간 미리보기만 있음",
+            recentEntries: [],
+            startedAt: "2026-03-10T09:00:00.000Z",
+            endedAt: null,
+            updatedAt: "2026-03-10T09:00:03.000Z",
+            lastPersistedAt: null,
+            canPersistPreparedContent: false,
+            observerActive: true,
+            currentSelector: "#viewSubtit",
+            currentFramePath: [],
+            diagnostics: {
+              captureMode: "fallback",
+              observerActive: true,
+              currentSelector: "#viewSubtit",
+              currentFramePath: [],
+              sourceLabel: "fallback",
+            },
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("실시간 미리보기만 있음")).toBeTruthy();
     });
     expect(screen.getByRole("button", { name: "지금 저장" }).hasAttribute("disabled")).toBe(true);
   });

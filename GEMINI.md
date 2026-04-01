@@ -189,9 +189,10 @@ npm run build
 - replay queue 조회는 storage snapshot + memory snapshot merge여야 하며, 같은 `sessionId` 충돌 시 `updatedAt` 우선, 동률이면 늦은 `queuedAt`을 유지해야 함
 - queue write 실패는 메모리 queue를 유지한 채 `lastQueueWriteError`로 기록하고, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`를 함께 유지해야 함
 - session import 는 allow-list sanitize 후 normalize 해야 하며, unsupported wrapper version / invalid timestamp 는 reject 해야 함
-- 패널과 popup 은 `수집 진단` 화면 진입을 제공하고, capture mode, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 의 `수집 진단` 탭에서 표시
+- 패널과 popup 은 `수집 진단` 화면 진입을 제공하고, capture mode, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 의 `수집 진단` 탭에서 표시합니다. diagnostics view가 열려 있는 동안 `저장 복구 상태`는 `chrome.storage.onChanged`로 즉시 반영되어야 합니다.
 - fallback/polling capture notice 는 실제 수집이 이어질 때 중립적 “수집 중 + 자동 조정” 톤을 유지해야 함
-- popup `SAVE_SESSION`은 `subtitleCount > 0 || previewText.trim() !== ""`일 때만 활성화되어야 하고, 빈 저장 요청은 `저장할 자막이 아직 없습니다.`로 응답해야 함
+- popup `SAVE_SESSION`, 패널 `저장/복사/내보내기`, `beforeunload` 경고, pagehide/visibilitychange 저장 시도는 모두 prepared snapshot 기준 `canPersistPreparedContent`로 정렬되어야 함. raw preview만 남아 있고 prepared entry가 비면 저장 가능 상태로 취급하면 안 됨
+- 패널 `화면 비우기`는 저장 가능 여부와 별개로 현재 화면에 보이는 runtime 내용이 있으면 계속 허용해야 함
 - subtitle auto activation 성공은 `visible && (hasText || controlActive)`로 판정해야 함
 - options 숫자 필드는 draft string + inline validation 패턴을 유지해야 함
 
@@ -228,6 +229,17 @@ Use this delta as the current operational baseline.
 - `TXT` 내보내기는 `exportTxtWithoutTimestamps` 옵션을 지원하고 기본값은 `true`(타임스탬프 제외)입니다.
 - 장시간 세션에서는 화면/내보내기 데이터는 무제한 유지하고, 내부 state cache만 주기 압축합니다.
 
+## Sync Delta (2026-04-01)
+
+Use this delta as the current operational baseline.
+
+- fallback 세션 조회는 `chrome.storage.local` index만 신뢰하지 않고 storage snapshot + memory snapshot union을 사용해야 합니다.
+- `IndexedDB`와 `chrome.storage.local` write가 모두 실패한 경우에도 같은 런타임 안에서는 memory-only fallback 세션이 history/list/overview에서 계속 보여야 합니다.
+- queued exit persist CRUD(`queue/list/clear`)는 직렬화되어야 하며, storage read 중 새 memory queue가 추가되어도 기존 메모리 레코드가 지워지면 안 됩니다.
+- popup 저장 버튼, 패널 저장/복사/내보내기, unload 경고는 prepared snapshot 기준 `canPersistPreparedContent`를 사용해야 합니다.
+- 패널 `화면 비우기`는 visible runtime content가 있으면 계속 허용해야 하며, 저장 가능 여부와 동일하게 묶으면 안 됩니다.
+- options `저장 복구 상태`는 diagnostics view가 열려 있는 동안 `chrome.storage.onChanged`로 live sync 되어야 합니다.
+
 ## Sync Delta (2026-03-19)
 
 Use this delta as the current operational baseline.
@@ -235,8 +247,8 @@ Use this delta as the current operational baseline.
 - frame-forward nonce는 탭 단위 `chrome.storage.local`에 유지되며, 탭 `loading` 시 회전하고 탭 제거 시 정리됩니다.
 - 모든 content script는 bootstrap 시 nonce를 받고 15초마다 재동기화하며, forwarded frame nonce mismatch는 현재 이벤트를 버리고 즉시 resync 해야 합니다.
 - replay queue는 storage + memory merge 기준으로 읽고, storage write failure 뒤에도 메모리 queue를 유지해야 합니다.
-- options `저장 복구 상태`는 queue write / replay / cleanup 오류를 개별적으로 보여 줘야 합니다.
-- popup 저장 버튼은 persistable content가 없으면 비활성화되고, 빈 저장은 `저장할 자막이 아직 없습니다.` 피드백으로 일관되게 처리되어야 합니다.
+- options `저장 복구 상태`는 queue write / replay / cleanup 오류를 개별적으로 보여 주고, diagnostics view가 열려 있는 동안 storage 변경을 즉시 반영해야 합니다.
+- popup 저장 버튼은 prepared snapshot 기준 persistable content가 없으면 비활성화되고, 빈 저장은 `저장할 자막이 아직 없습니다.` 피드백으로 일관되게 처리되어야 합니다.
 - subtitle auto activation 성공은 `visible && (hasText || controlActive)` 조건을 충족할 때만 인정됩니다.
 
 ## Sync Delta (2026-03-20)
@@ -251,7 +263,7 @@ Use this delta as the current operational baseline.
 
 Use this delta as the current operational baseline.
 
-- Preview-only subtitles must survive save/export/pagehide/beforeunload/stop snapshots.
+- Preview-only runtime text may remain visible in the panel, but save/export/pagehide/beforeunload/stop snapshots must only persist prepared entries.
 - Failed stopped-session persistence must retry before `start`/`clear` proceeds.
 - Session reads must merge IndexedDB and fallback storage using freshest `updatedAt`.
 - History view must live-sync settings-driven copy/export behavior.
@@ -328,7 +340,7 @@ Reference consistency set:
 Use this delta as the current operational baseline.
 
 - `ensureSubtitleLayerActive` 성공 판정은 `layer.visible` 단독이 아니라 `layer.visible && (layer.hasText || layer.controlActive)` 조건을 충족할 때만 인정합니다. 이전에는 `visible`만 체크해 텍스트나 control 신호가 없어도 성공으로 처리하던 버그가 수정되었습니다.
-- `saveCurrentSessionSnapshot`에 2단계 guard가 추가되었습니다. pre-flush 단계에서 `entries.length === 0 && previewText.trim() === ""`이면 즉시 반환하고, post-flush 단계에서 `record.entries.length === 0`이면(noise-only previewText가 flush 후 필터링된 경우) 빈 저장을 막습니다. popup 버튼 활성화 조건(`subtitleCount > 0 || previewText.trim() !== ""`)과 실제 저장 성공 경로가 정렬됩니다.
+- `saveCurrentSessionSnapshot`에 2단계 guard가 추가되었습니다. pre-flush 단계에서 `entries.length === 0 && previewText.trim() === ""`이면 즉시 반환하고, post-flush 단계에서 `record.entries.length === 0`이면(noise-only previewText가 flush 후 필터링된 경우) 빈 저장을 막습니다. popup/패널 저장 가능 여부와 unload 계열 guard는 raw preview 유무가 아니라 prepared snapshot 기준 `canPersistPreparedContent`와 정렬됩니다.
 - noise-only `previewText`(숫자/기호만 포함)는 flush 후 entries가 0개가 되어 최종 저장 guard에서 걸립니다. `shouldPersistFinalSession(true, 0)` → `false` 동작이 regression test로 보장됩니다.
 
 ## Sync Delta (2026-03-14)

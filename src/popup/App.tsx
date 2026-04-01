@@ -17,8 +17,7 @@ export default function App() {
   const [requiresReload, setRequiresReload] = useState(false);
   const [port, setPort] = useState<chrome.runtime.Port | null>(null);
   const [currentTabId, setCurrentTabId] = useState<number | null>(null);
-  const hasPersistableContent =
-    (snapshot?.subtitleCount ?? 0) > 0 || Boolean(snapshot?.previewText?.trim());
+  const hasPersistableContent = Boolean(snapshot?.canPersistPreparedContent);
 
   useEffect(() => {
     let active = true;
@@ -129,6 +128,7 @@ export default function App() {
                 endedAt: message.payload.endedAt,
                 updatedAt: message.payload.updatedAt,
                 lastPersistedAt: message.payload.lastPersistedAt,
+                canPersistPreparedContent: message.payload.canPersistPreparedContent,
                 observerActive: message.payload.observerActive,
                 currentSelector: message.payload.currentSelector,
                 currentFramePath: message.payload.currentFramePath,

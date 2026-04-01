@@ -456,6 +456,43 @@ function setMemorySnapshot(snapshot: Record<string, SessionRecord>): void {
   });
 }
 
+function getMemorySnapshot(): Record<string, SessionRecord> {
+  return Object.fromEntries(
+    [...memoryFallbackStore.entries()].map(([key, value]) => [key, cloneSessionRecord(value)]),
+  );
+}
+
+function compareFallbackFreshness(left: SessionRecord, right: SessionRecord): number {
+  const updatedCompare = left.updatedAt.localeCompare(right.updatedAt);
+  if (updatedCompare !== 0) {
+    return updatedCompare;
+  }
+
+  return 0;
+}
+
+function mergeFallbackSnapshots(
+  storageSnapshot: Record<string, SessionRecord>,
+  memorySnapshot: Record<string, SessionRecord>,
+): Record<string, SessionRecord> {
+  const merged = new Map<string, SessionRecord>();
+
+  Object.entries(storageSnapshot).forEach(([key, value]) => {
+    merged.set(key, cloneSessionRecord(value));
+  });
+
+  Object.entries(memorySnapshot).forEach(([key, value]) => {
+    const current = merged.get(key);
+    if (!current || compareFallbackFreshness(value, current) >= 0) {
+      merged.set(key, cloneSessionRecord(value));
+    }
+  });
+
+  return Object.fromEntries(
+    [...merged.entries()].map(([key, value]) => [key, cloneSessionRecord(value)]),
+  );
+}
+
 function getFallbackRecordStorageKey(id: string): string {
   return `${FALLBACK_RECORD_PREFIX}${id}`;
 }
@@ -564,6 +601,21 @@ async function readChromeFallbackRecords(ids: string[]): Promise<Record<string, 
     logStoreError("Failed to read chrome.storage.local fallback records", error);
     return undefined;
   }
+}
+
+async function readUnifiedFallbackSnapshot(): Promise<Record<string, SessionRecord>> {
+  const memorySnapshot = getMemorySnapshot();
+  const index = await readChromeFallbackIndex();
+  const uniqueIds = [...new Set([...(index ?? []), ...Object.keys(memorySnapshot)])];
+
+  if (!uniqueIds.length) {
+    return memorySnapshot;
+  }
+
+  const storageSnapshot = (await readChromeFallbackRecords(uniqueIds)) ?? {};
+  const mergedSnapshot = mergeFallbackSnapshots(storageSnapshot, memorySnapshot);
+  setMemorySnapshot(mergedSnapshot);
+  return mergedSnapshot;
 }
 
 async function saveChromeFallbackRecord(record: SessionRecord): Promise<void> {
@@ -781,11 +833,7 @@ async function listIndexedDbSessionIds(): Promise<string[]> {
 
 async function listFallbackSessionIds(): Promise<string[]> {
   const index = await readChromeFallbackIndex();
-  if (index) {
-    return [...index];
-  }
-
-  return [...memoryFallbackStore.keys()];
+  return [...new Set([...(index ?? []), ...memoryFallbackStore.keys()])];
 }
 
 async function saveFallbackRecord(session: SessionRecord): Promise<SessionRecord> {
@@ -800,30 +848,24 @@ async function loadFallbackRecord(id: string): Promise<SessionRecord | undefined
     return undefined;
   }
 
-  const index = await readChromeFallbackIndex();
-  if (index) {
-    const records = await readChromeFallbackRecords([id]);
-    if (records && records[id]) {
-      memoryFallbackStore.set(id, cloneSessionRecord(records[id]));
-      return cloneSessionRecord(records[id]);
-    }
+  const memorySnapshot = getMemorySnapshot();
+  const storageSnapshot = (await readChromeFallbackRecords([id])) ?? {};
+  const mergedSnapshot = mergeFallbackSnapshots(
+    storageSnapshot,
+    memorySnapshot[id] ? { [id]: memorySnapshot[id] } : {},
+  );
+  const record = mergedSnapshot[id];
+  if (!record) {
+    return undefined;
   }
 
-  const record = memoryFallbackStore.get(id);
-  return record ? cloneSessionRecord(record) : undefined;
+  memoryFallbackStore.set(id, cloneSessionRecord(record));
+  return cloneSessionRecord(record);
 }
 
 async function listFallbackRecords(options: SessionListOptions = {}): Promise<SessionRecord[]> {
-  const index = await readChromeFallbackIndex();
-  if (index) {
-    const records = await readChromeFallbackRecords(index);
-    if (records) {
-      setMemorySnapshot(records);
-      return sortSessions(Object.values(records), options);
-    }
-  }
-
-  return sortSessions([...memoryFallbackStore.values()], options);
+  const records = await readUnifiedFallbackSnapshot();
+  return sortSessions(Object.values(records), options);
 }
 
 async function deleteFallbackRecord(id: string): Promise<void> {

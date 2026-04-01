@@ -190,8 +190,9 @@ offscreen.html
 - replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 해야 하며, 같은 `sessionId` 충돌 시 `record.updatedAt` 우선, 동률이면 `queuedAt`이 더 늦은 쪽을 유지해야 합니다.
 - queue write 실패는 메모리 queue를 지우면 안 되며, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`로 phase별로 남겨야 합니다.
 - capture notice 는 `정상 수집`, `자동 조정 중 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
-- 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다.
-- popup `SAVE_SESSION`은 `subtitleCount > 0 || previewText.trim() !== ""`일 때만 활성화해야 하며, 빈 저장 요청은 패널/popup 모두 `저장할 자막이 아직 없습니다.`로 응답해야 합니다.
+- 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다. `저장 복구 상태`는 diagnostics view가 열려 있는 동안 `chrome.storage.onChanged`를 통해 즉시 반영되어야 합니다.
+- popup `SAVE_SESSION`, 패널 `저장/복사/내보내기`, `beforeunload` 경고, pagehide/visibilitychange 저장 시도는 모두 prepared snapshot 기준 `canPersistPreparedContent`로 정렬해야 합니다. 현재 화면에 raw preview만 남아 있고 prepared entry가 비면 저장 가능 상태로 취급하면 안 됩니다.
+- 패널 `화면 비우기`는 저장 가능 여부와 별개로 현재 화면에 보이는 runtime 내용이 있으면 계속 허용해야 합니다.
 - 자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다.
 - options 숫자 필드는 canonical number state 와 별도 draft string state 를 유지하고, invalid draft 는 inline field error 로 표시하며 저장을 막아야 합니다.
 
@@ -229,7 +230,7 @@ When editing this repository, align with the bug fixes below.
 - `saveCurrentSessionSnapshot` 에 2단계 빈 저장 guard가 추가되었습니다.
   - pre-flush guard: `entries.length === 0 && !previewText.trim()` 이면 즉시 `저장할 자막이 아직 없습니다.` 반환.
   - post-flush guard: flush 후 `record.entries.length === 0` 이면(noise-only previewText 등) 마찬가지로 저장 차단.
-  - popup 버튼 활성화 조건(`subtitleCount > 0 || previewText.trim() !== ""`)과 실제 저장 경로가 완전히 정렬됩니다.
+  - popup/패널 저장 가능 여부와 unload 계열 guard는 raw preview 유무가 아니라 prepared snapshot 기준 `canPersistPreparedContent`와 정렬되어야 합니다.
 - `tests/content-autosave.test.ts` 에 noise-only previewText flush → entries 0 → `shouldPersistFinalSession` false 회귀 테스트가 추가되었습니다.
 
 ## Sync Delta (2026-03-20)
@@ -255,7 +256,7 @@ When editing this repository, align with the newly implemented behavior below.
 
 When editing this repository, align with the newly implemented behavior below.
 
-- Preview-only subtitles must be preserved in save/export/pagehide/beforeunload/stop snapshots.
+- Preview-only runtime text may remain visible in the panel, but save/export/pagehide/beforeunload/stop snapshots must only persist prepared entries.
 - Failed stopped-session persistence must retry before destructive continuation and require explicit discard confirmation only after the retry fails.
 - Session storage reads must merge IndexedDB and fallback records, while successful IndexedDB writes heal stale fallback copies.
 - History view must live-sync `recentCopyLineCount` and `filenamePattern` while the page remains open.

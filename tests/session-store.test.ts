@@ -323,6 +323,78 @@ describe("session store", () => {
     }
   });
 
+  it("keeps memory-only fallback sessions visible when chrome storage fallback writes fail", async () => {
+    const originalIndexedDb = globalThis.indexedDB;
+    const originalChrome = (globalThis as typeof globalThis & { chrome?: unknown }).chrome;
+    const storageState: Record<string, unknown> = {};
+    const storageGet = vi.fn(async (keys?: string | string[] | null) => {
+      if (typeof keys === "string") {
+        return { [keys]: storageState[keys] };
+      }
+      if (Array.isArray(keys)) {
+        return keys.reduce<Record<string, unknown>>((result, key) => {
+          result[key] = storageState[key];
+          return result;
+        }, {});
+      }
+      return { ...storageState };
+    });
+    const storageSet = vi.fn(async () => {
+      throw new Error("fallback write failed");
+    });
+    const storageRemove = vi.fn(async (keys: string | string[]) => {
+      const normalized = Array.isArray(keys) ? keys : [keys];
+      normalized.forEach((key) => {
+        delete storageState[key];
+      });
+    });
+
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(globalThis, "chrome", {
+      configurable: true,
+      value: {
+        storage: {
+          local: {
+            get: storageGet,
+            set: storageSet,
+            remove: storageRemove,
+          },
+        },
+      },
+    });
+
+    try {
+      await expect(saveSession(buildSession("session_memory_only", "saved"))).rejects.toThrow(
+        "fallback write failed",
+      );
+
+      expect((await loadSession("session_memory_only"))?.id).toBe("session_memory_only");
+      expect((await listSessions({ limit: 10 })).map((session) => session.id)).toContain(
+        "session_memory_only",
+      );
+
+      const page = await listSessionsPage({ page: 1, pageSize: 10 });
+      expect(page.sessions.map((session) => session.id)).toContain("session_memory_only");
+
+      const overview = await getSessionLibraryOverview(3);
+      expect(overview.totalCount).toBe(1);
+      expect(overview.previewSessions[0]?.id).toBe("session_memory_only");
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+      Object.defineProperty(globalThis, "chrome", {
+        configurable: true,
+        value: originalChrome,
+      });
+      await resetSessionStoreForTests();
+    }
+  });
+
   it("keeps carry-over entries and speaker metadata during export", async () => {
     const session: SessionRecord = {
       ...buildSession("session_export_cleanup", "saved"),

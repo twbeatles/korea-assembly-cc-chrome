@@ -31,6 +31,7 @@ export function createPopupMessages(snapshot: StatusSnapshot): ContentToPopupMes
         endedAt: snapshot.endedAt,
         updatedAt: snapshot.updatedAt,
         lastPersistedAt: snapshot.lastPersistedAt,
+        canPersistPreparedContent: snapshot.canPersistPreparedContent,
         observerActive: snapshot.observerActive,
         currentSelector: snapshot.currentSelector,
         currentFramePath: snapshot.currentFramePath,

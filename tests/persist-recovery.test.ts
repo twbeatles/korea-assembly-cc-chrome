@@ -135,4 +135,35 @@ describe("persist recovery", () => {
       expect.objectContaining(createEmptyPersistReplayDiagnostics()),
     );
   });
+
+  it("serializes list and queue operations so newer memory records are not lost", async () => {
+    await queueExitPersistRecord(buildSession("session_existing", "2026-03-10T09:00:02.000Z"));
+
+    let releaseGet!: () => void;
+    const blockedGet = new Promise<void>((resolve) => {
+      releaseGet = resolve;
+    });
+    const storageGet = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    storageGet.mockImplementationOnce(async () => {
+      await blockedGet;
+      return {};
+    });
+
+    const listingPromise = listQueuedExitPersistRecords();
+    const queuedPromise = queueExitPersistRecord(
+      buildSession("session_new", "2026-03-10T09:00:03.000Z"),
+    );
+
+    releaseGet();
+
+    const listed = await listingPromise;
+    expect(listed.map((record) => record.sessionId)).toContain("session_existing");
+
+    await queuedPromise;
+
+    const finalListed = await listQueuedExitPersistRecords();
+    expect(finalListed.map((record) => record.sessionId)).toEqual(
+      expect.arrayContaining(["session_existing", "session_new"]),
+    );
+  });
 });

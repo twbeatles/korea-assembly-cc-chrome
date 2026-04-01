@@ -24,6 +24,36 @@ export function shouldPersistFinalSession(
   return isTopFrame && entryCount > 0;
 }
 
+export interface PreparedEligibilitySnapshot {
+  status: SessionState["status"];
+  preparedEntryCount: number;
+  hasVisibleRuntimeContent: boolean;
+  canPersistPreparedContent: boolean;
+}
+
+export function createPreparedEligibilitySnapshot(
+  input: {
+    status: SessionState["status"];
+    preparedEntryCount: number;
+    previewText: string;
+    livePreviewText?: string;
+    liveRowCount?: number;
+  },
+): PreparedEligibilitySnapshot {
+  const hasVisibleRuntimeContent =
+    input.preparedEntryCount > 0 ||
+    Boolean(input.previewText.trim()) ||
+    Boolean(input.livePreviewText?.trim()) ||
+    (input.liveRowCount ?? 0) > 0;
+
+  return {
+    status: input.status,
+    preparedEntryCount: input.preparedEntryCount,
+    hasVisibleRuntimeContent,
+    canPersistPreparedContent: input.preparedEntryCount > 0,
+  };
+}
+
 export function hasPersistableRunningContent(
   state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
 ): boolean {
@@ -37,9 +67,9 @@ export function hasPersistableRunningContent(
 
 export function shouldWarnBeforeUnload(
   isTopFrame: boolean,
-  state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
+  eligibility: Pick<PreparedEligibilitySnapshot, "status" | "canPersistPreparedContent">,
 ): boolean {
-  return isTopFrame && hasPersistableRunningContent(state);
+  return isTopFrame && eligibility.status === "running" && eligibility.canPersistPreparedContent;
 }
 
 export function applyPersistSuccess(state: SessionState, persistedAt: string): SessionState {

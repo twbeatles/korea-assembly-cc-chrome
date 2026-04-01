@@ -59,11 +59,11 @@ npm run build
 - TXT 내보내기가 기본적으로 타임스탬프를 제외하는지, options 토글로 포함 출력도 가능한지 확인
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
-- 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
+- 탭 숨김 또는 페이지 이탈 직전 prepared snapshot에 실제 entry가 있을 때만 마지막 running/stopped 스냅샷 저장이 시도되는지 확인
 - 장시간 수집(수시간)에서도 화면 표시와 내보내기 결과가 누락 없이 유지되는지 확인
 - service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
-- popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
+- popup `지금 저장` 버튼이 prepared snapshot 기준 persistable content가 없으면 비활성화되고, raw preview만 남은 상태에서도 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
 - 페이지 패널의 `최근 N줄 복사`가 현재 화면 row가 아니라 누적 세션 기준으로 history와 같은 결과를 주는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
@@ -187,7 +187,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 3. observer 실패 시 polling fallback 이 계속 동작하는지
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
-6. options 페이지 `수집 진단` 탭에 마지막 자동 저장 시각과 `저장 복구 상태`가 보이는지
+6. options 페이지 `수집 진단` 탭에 마지막 자동 저장 시각과 `저장 복구 상태`가 보이고, diagnostics view가 열린 동안 storage 변경이 즉시 반영되는지
 7. 브라우저/확장 재시작 뒤 남아 있던 `running` 세션이 `stopped`로 정리되는지
 8. 브라우저/확장 재시작 뒤 page-exit queued stopped snapshot replay가 cleanup보다 먼저 적용되는지
 9. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
@@ -274,7 +274,7 @@ Current release alignment:
 - structured row가 비어 있어도 본회의 fallback capture는 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
 - Chrome Web Store 제출용 압축 예시는 `korea-assembly-cc-chrome-<version>-cws.zip` 형식을 권장합니다.
-- Preview-only subtitle persistence, stopped-session retry guard, and cumulative `수집된 자막` panel behavior are part of current release baseline.
+- Prepared-entry persistence gating, stopped-session retry guard, and cumulative `수집된 자막` panel behavior are part of current release baseline.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
 
@@ -314,7 +314,7 @@ Deployment documentation consistency sources:
   - history pagination and visible-only selection controls behave as expected
   - options page explains that `autoStartEnabled` defaults to `true`
   - startup cleanup restores persisted Blob download URL tracking safely
-  - options `저장 복구 상태` reflects replay / cleanup diagnostics from startup persistence maintenance
+  - options `저장 복구 상태` reflects replay / cleanup diagnostics from startup persistence maintenance and live storage updates while diagnostics view is open
 
 ## 2026-03-14 Deployment Consistency Update
 
@@ -329,6 +329,12 @@ Deployment documentation consistency sources:
 
 - Release verification should confirm that frame-forward nonce state survives MV3 service worker restarts via `chrome.storage.local` and converges again without requiring a page reload.
 - Release verification should confirm that queued exit persist reads merge storage and memory snapshots, and that a storage write failure does not silently drop the in-memory replay candidate.
-- Options validation should confirm that `저장 복구 상태` shows `queue write`, `replay`, `cleanup`, and summary errors separately when they are present.
-- Popup validation should confirm that `지금 저장` is disabled when `subtitleCount === 0` and `previewText` is empty, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.
+- Options validation should confirm that `저장 복구 상태` shows `queue write`, `replay`, `cleanup`, and summary errors separately when they are present, and that live `chrome.storage.onChanged` updates are reflected without reopening the page.
+- Popup validation should confirm that `지금 저장` is disabled whenever prepared entries are absent, including raw-preview-only states, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.
 - Subtitle activation validation should confirm that merely showing `#viewSubtit` is not enough; success requires visible text or an active control signal.
+
+## 2026-04-01 Deployment Consistency Update
+
+- Release verification should confirm that fallback history/list/overview paths use the merged storage + memory fallback view, so memory-only sessions remain visible during the current runtime after storage write failure.
+- Release verification should confirm that queued exit persist reads/writes are serialized and do not drop a newly queued in-memory record while a storage-backed list call is in flight.
+- Release verification should confirm that pagehide/beforeunload warnings and automatic persistence only trigger when prepared entries actually exist.

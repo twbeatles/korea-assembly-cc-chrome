@@ -9,6 +9,7 @@ const chromeApiMocks = vi.hoisted(() => ({
 }));
 
 const persistRecoveryMocks = vi.hoisted(() => ({
+  PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY: "assembly-subtitle-persist-replay-diagnostics",
   createEmptyPersistReplayDiagnostics: vi.fn(() => ({
     lastReplayAt: null,
     lastReplayQueuedCount: 0,
@@ -25,6 +26,7 @@ const persistRecoveryMocks = vi.hoisted(() => ({
     lastError: null,
   })),
   readPersistReplayDiagnostics: vi.fn(),
+  sanitizePersistReplayDiagnostics: vi.fn((value: unknown) => value),
 }));
 
 const settingsStoreMocks = vi.hoisted(() => ({
@@ -200,6 +202,7 @@ describe("options app", () => {
             endedAt: null,
             updatedAt: "2026-03-10T09:00:03.000Z",
             lastPersistedAt: "2026-03-10T09:00:03.000Z",
+            canPersistPreparedContent: true,
             observerActive: true,
             currentSelector: "#viewSubtit",
             currentFramePath: [],
@@ -220,5 +223,84 @@ describe("options app", () => {
       expect(screen.getByText("DOM observer")).toBeTruthy();
     });
     expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_STATUS" });
+  });
+
+  it("updates persist replay diagnostics live from chrome.storage.onChanged", async () => {
+    const listeners: Array<
+      (
+        changes: Record<string, chrome.storage.StorageChange>,
+        areaName: string,
+      ) => void
+    > = [];
+    const originalChrome = (globalThis as typeof globalThis & { chrome?: unknown }).chrome;
+
+    Object.defineProperty(globalThis, "chrome", {
+      configurable: true,
+      value: {
+        storage: {
+          onChanged: {
+            addListener: vi.fn((listener) => {
+              listeners.push(listener);
+            }),
+            removeListener: vi.fn((listener) => {
+              const index = listeners.indexOf(listener);
+              if (index >= 0) {
+                listeners.splice(index, 1);
+              }
+            }),
+          },
+        },
+      },
+    });
+
+    window.history.replaceState({}, "", "/options.html?view=diagnostics");
+
+    try {
+      const { unmount } = render(<App />);
+
+      await screen.findByText("저장 복구 상태");
+      act(() => {
+        listeners.forEach((listener) =>
+          listener(
+            {
+              [persistRecoveryMocks.PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY]: {
+                oldValue: null,
+                newValue: {
+                  lastReplayAt: "2026-03-13T10:00:00.000Z",
+                  lastReplayQueuedCount: 3,
+                  lastReplayReplayedCount: 2,
+                  lastReplaySkippedCount: 1,
+                  lastReplayFailedCount: 1,
+                  lastReplayError: "Replay failed again",
+                  lastCleanupAt: "2026-03-13T10:00:00.000Z",
+                  lastCleanupDetectedCount: 4,
+                  lastCleanupClosedCount: 3,
+                  lastCleanupFailedCount: 2,
+                  lastCleanupError: "Cleanup failed again",
+                  lastQueueWriteError: "Queue write failed again",
+                  lastError: "Cleanup failed again",
+                },
+              },
+            },
+            "local",
+          ),
+        );
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Queue write failed again")).toBeTruthy();
+        expect(screen.getByText("Replay failed again")).toBeTruthy();
+        expect(screen.getAllByText("Cleanup failed again").length).toBeGreaterThan(0);
+        expect(screen.getByText("2 / 1")).toBeTruthy();
+        expect(screen.getByText("3 / 2")).toBeTruthy();
+      });
+
+      unmount();
+    } finally {
+      Object.defineProperty(globalThis, "chrome", {
+        configurable: true,
+        value: originalChrome,
+      });
+    }
   });
 });

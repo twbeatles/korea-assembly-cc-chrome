@@ -42,6 +42,7 @@ function createSnapshot(): StatusSnapshot {
     endedAt: null,
     updatedAt: now,
     lastPersistedAt: now,
+    canPersistPreparedContent: true,
     observerActive: true,
     currentSelector: "#viewSubtit",
     currentFramePath: [],
@@ -227,6 +228,48 @@ describe("in-page panel", () => {
       "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
     );
     expect(shadowRoot?.textContent).not.toContain("자막 찾는 중");
+
+    controller.destroy();
+  });
+
+  it("keeps clear enabled while save/copy/export stay disabled for preview-only runtime content", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        snapshot: {
+          subtitleCount: 0,
+          charCount: 0,
+          previewText: "화면에는 보이지만 아직 저장 불가",
+          recentEntries: [],
+          canPersistPreparedContent: false,
+        },
+        options: {
+          liveRows: [],
+          livePreviewText: "화면에는 보이지만 아직 저장 불가",
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const buttons = [...(shadowRoot?.querySelectorAll("button") ?? [])];
+    const clearButton = buttons.find((button) => button.textContent === "화면 비우기") as
+      | HTMLButtonElement
+      | undefined;
+    const saveButton = buttons.find((button) => button.textContent === "지금 저장") as
+      | HTMLButtonElement
+      | undefined;
+    const copyButton = buttons.find((button) => button.textContent === "최근 5줄 복사") as
+      | HTMLButtonElement
+      | undefined;
+    const exportButton = buttons.find((button) => button.textContent === "텍스트(TXT)") as
+      | HTMLButtonElement
+      | undefined;
+
+    expect(clearButton?.disabled).toBe(false);
+    expect(saveButton?.disabled).toBe(true);
+    expect(copyButton?.disabled).toBe(true);
+    expect(exportButton?.disabled).toBe(true);
 
     controller.destroy();
   });
