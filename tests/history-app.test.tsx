@@ -22,6 +22,7 @@ const sessionStoreMocks = vi.hoisted(() => ({
   listSessionsPage: vi.fn(),
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
+  searchSessionsPage: vi.fn(),
   upsertSessionRecord: vi.fn(),
 }));
 
@@ -78,6 +79,32 @@ function buildSessionBase() {
         endTime: "2026-03-10T09:00:02.000Z",
       },
     ],
+  };
+}
+
+function buildSearchHit(
+  session: ReturnType<typeof buildSession>,
+  overrides: Partial<{
+    matchedEntryIds: string[];
+    matchedCount: number;
+    firstSnippet: string;
+  }> = {},
+) {
+  return {
+    sessionId: session.id,
+    title: session.title,
+    committeeName: session.committeeName,
+    sourceUrl: session.sourceUrl,
+    startedAt: session.startedAt,
+    updatedAt: session.updatedAt,
+    subtitleCount: session.subtitleCount,
+    charCount: session.charCount,
+    status: session.status,
+    starred: session.starred,
+    hasNote: Boolean(session.note.trim()),
+    matchedEntryIds: overrides.matchedEntryIds ?? session.entries.map((entry) => entry.id),
+    matchedCount: overrides.matchedCount ?? 1,
+    firstSnippet: overrides.firstSnippet ?? session.entries[0]?.text ?? "",
   };
 }
 
@@ -139,6 +166,12 @@ describe("history app", () => {
     sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
       ids.includes(session.id) ? [session] : [],
     );
+    sessionStoreMocks.searchSessionsPage.mockResolvedValue({
+      results: [],
+      totalCount: 0,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.getSessionLibraryOverview.mockResolvedValue({
       totalCount: 1,
       previewSessions: [
@@ -287,5 +320,126 @@ describe("history app", () => {
       expect(sessionStoreMocks.listSessionsPage).toHaveBeenCalledTimes(2);
     });
     expect(noteInput?.value).toBe("draft note");
+  });
+
+  it("switches the left list to transcript search results and initializes detail search on selection", async () => {
+    const primarySession = buildSession();
+    const searchSession = buildSession({
+      id: "session_history_search",
+      committeeName: "교육위원회",
+      title: "교육위",
+      entries: [
+        {
+          id: "entry_search_1",
+          text: "특정 자막 검색 결과",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 11,
+    });
+
+    sessionStoreMocks.listSessionsPage.mockResolvedValue({
+      sessions: [primarySession, searchSession],
+      totalCount: 2,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockImplementation(async (id: string) =>
+      id === searchSession.id ? searchSession : primarySession,
+    );
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
+      ids
+        .map((id) => (id === searchSession.id ? searchSession : primarySession))
+        .filter((session) => ids.includes(session.id)),
+    );
+    sessionStoreMocks.searchSessionsPage.mockResolvedValue({
+      results: [buildSearchHit(searchSession, { firstSnippet: "특정 자막 검색 결과", matchedCount: 1 })],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+
+    render(<App />);
+    const globalSearchInput = await screen.findByPlaceholderText("전체 기록에서 자막 검색");
+    fireEvent.change(globalSearchInput, { target: { value: "특정" } });
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.searchSessionsPage).toHaveBeenCalledWith({
+        query: "특정",
+        page: 1,
+        pageSize: 200,
+        starredOnly: false,
+      });
+      expect(screen.getByText("일치 항목 1개")).toBeTruthy();
+    });
+
+    const searchResultButton = screen.getByText("교육위원회").closest("button");
+    if (!searchResultButton) {
+      throw new Error("search result button was not rendered");
+    }
+    fireEvent.click(searchResultButton);
+
+    await waitFor(() => {
+      expect(
+        (screen.getByPlaceholderText("이 기록 안에서 내용 찾기") as HTMLInputElement).value,
+      ).toBe("특정");
+    });
+  });
+
+  it("restores the paged session list when the global transcript search is cleared", async () => {
+    const primarySession = buildSession();
+    const searchSession = buildSession({
+      id: "session_history_search_restore",
+      committeeName: "교육위원회",
+      title: "교육위",
+      entries: [
+        {
+          id: "entry_restore_1",
+          text: "특정 자막 검색 결과",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+    });
+
+    sessionStoreMocks.listSessionsPage.mockResolvedValue({
+      sessions: [primarySession, searchSession],
+      totalCount: 2,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockImplementation(async (id: string) =>
+      id === searchSession.id ? searchSession : primarySession,
+    );
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
+      ids
+        .map((id) => (id === searchSession.id ? searchSession : primarySession))
+        .filter((session) => ids.includes(session.id)),
+    );
+    sessionStoreMocks.searchSessionsPage.mockResolvedValue({
+      results: [buildSearchHit(searchSession, { firstSnippet: "특정 자막 검색 결과", matchedCount: 1 })],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+
+    render(<App />);
+    const globalSearchInput = await screen.findByPlaceholderText("전체 기록에서 자막 검색");
+    fireEvent.change(globalSearchInput, { target: { value: "특정" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("검색 결과 1개")).toBeTruthy();
+    });
+
+    fireEvent.change(globalSearchInput, { target: { value: "" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("전체 2개")).toBeTruthy();
+      expect(sessionStoreMocks.listSessionsPage).toHaveBeenCalledTimes(2);
+    });
   });
 });

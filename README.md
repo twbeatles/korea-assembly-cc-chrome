@@ -6,6 +6,8 @@
 
 기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON`으로 저장하는 최소 실용 버전을 제공하는 것입니다.
 
+현재 배포 준비 버전은 `1.0.5` 입니다.
+
 ## Chrome 웹 스토어 배포
 
 Chrome 웹 스토어에서 확장프로그램을 바로 설치할 수 있습니다.
@@ -46,11 +48,13 @@ Chrome 웹 스토어에서 확장프로그램을 바로 설치할 수 있습니�
 - 페이지 패널 / history에서 최근 `N`줄 복사
 - 페이지 패널의 `최근 N줄 복사`는 history와 같은 의미로 현재 세션에 누적된 최근 `N`줄을 기준으로 동작
 - `autoScroll`, 중복 차단 최소 길이, noise filter 토글 등 옵션 반영
+- 의미 있는 자막 판정은 현재 한국어/영어 기준이며, 다른 문자권 자막은 noise filter 정책에 따라 제외될 수 있음
 - popup 보조 화면
 - popup의 `지금 저장` 버튼은 실제 저장 가능한 상태에서만 활성화되며, 빈 저장 요청에는 명시적 안내를 표시합니다
 - 패널 `저장 / 복사 / 내보내기`와 popup `지금 저장`, 페이지 이탈 경고는 모두 prepared snapshot 기준으로 정렬되며, raw preview만 남은 상태는 저장 가능으로 취급하지 않습니다
 - 패널 `화면 비우기`는 저장 가능 여부와 별개로 현재 화면에 보이는 runtime 내용이 있으면 계속 사용할 수 있습니다
 - history 기록 내부 검색 / 복사 / 즐겨찾기 / 세션 메모
+- history 전체 기록 검색(세션 transcript 본문 기준 substring 검색)
 - history 상세 entry 체크박스 기반 부분 선택 복사 / 부분 export
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
 - history는 store-level 페이지네이션을 사용하며, 대용량 작업 중에는 관련 버튼을 잠가 중복 실행을 막습니다
@@ -100,14 +104,33 @@ manifest.json
 src/
   background/
   content/
+    bootstrap/
+    inpage-panel/
+    content-script.ts
+    committee-name.ts
+    dom-probe.ts
+    frame-probe.ts
+    injected-observer.ts
+    panel-live-rows.ts
+    subtitle-dom.ts
+    subtitle-layer.ts
   core/
   history/
+    components/
+    model/
+    App.tsx
   options/
   popup/
   shared/
   storage/
+    session-store/
+    session-store.ts
 tests/
 ```
+
+구조 메모:
+- `src/content/content-script.ts`, `src/history/App.tsx`, `src/storage/session-store.ts`, `src/content/inpage-panel.ts` 는 외부 경로 안정성을 위한 facade 입니다.
+- 실제 구현 본문은 각각 `src/content/bootstrap/`, `src/history/components/`, `src/storage/session-store/`, `src/content/inpage-panel/` 아래로 분리되어 있습니다.
 
 현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
 
@@ -180,9 +203,10 @@ npm run build
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
 10. 브라우저/확장을 다시 시작하면 먼저 page-exit 시점에 남겨둔 stopped 저장 replay queue를 복구하고, 그 다음 남아 있던 `running` 세션을 `stopped`로 정리한다
 11. history에서는 세션별 `즐겨찾기`, `메모 저장`, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 사용할 수 있다
-12. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부한다
-13. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`을 빠르게 여는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭과 `저장 복구 상태` 섹션에서 확인한다
-14. 현재 세션에 저장 가능한 내용이 없으면 popup의 `지금 저장` 버튼은 비활성화되며, 우회 호출이 들어와도 패널과 popup 모두 `저장할 자막이 아직 없습니다.` 문구로 일관되게 응답한다
+12. history 왼쪽 목록 상단의 `전체 기록 검색`은 저장소 전체 세션의 transcript entry 본문을 기준으로 대소문자 무시 substring 검색을 수행하며, 검색 결과를 선택하면 해당 세션 상세 검색어도 같은 질의로 초기화된다
+13. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부한다
+14. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`을 빠르게 여는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭과 `저장 복구 상태` 섹션에서 확인한다
+15. 현재 세션에 저장 가능한 내용이 없으면 popup의 `지금 저장` 버튼은 비활성화되며, 우회 호출이 들어와도 패널과 popup 모두 `저장할 자막이 아직 없습니다.` 문구로 일관되게 응답한다
 
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
@@ -254,6 +278,7 @@ npm run build
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
 - 세션 레코드에는 `starred`, `pinnedAt`, `note` 메타데이터가 포함되며, history의 즐겨찾기/메모 기능과 JSON 백업/복원에서 함께 유지됩니다
 - fallback 레코드가 없을 때 history paging/count 는 IndexedDB index 기반으로 처리해 전체 preload 비용을 줄입니다
+- transcript 검색 API(`searchSessionsPage`)는 correctness-first full scan 기준으로 저장소 전체 세션 entry 본문을 검색하며, history의 `전체 기록 검색` UI에서 사용합니다
 
 ### background
 
@@ -275,16 +300,17 @@ npm run build
 - 브라우저 저장소가 모두 실패하면 세션 persistence는 현재 탭 런타임 범위로 제한됩니다
 - 매우 큰 export는 Blob 경로를 우선 사용하지만, 브라우저 정책에 따라 data URL fallback으로 내려갈 수 있습니다
 - 대용량 JSON import/export 전용 진행률/취소 UX는 아직 별도 하드닝 범위에 포함하지 않았습니다
+- 의미 있는 자막 판정은 현재 한국어/영어 기준이라 다른 문자권 자막은 저장 전에 제외될 수 있습니다
 
 ## 향후 계획
 
-- 전체 기록을 가로지르는 통합 검색
 - 사용자 태그 / 카테고리
 - 페이지/위원회 preset 관리
 - 세션 품질 점수 / 수집 건강도 표시
-- DOM 구조 변화에 대한 selector profile 추가
+- 전체 기록 검색 결과 하이라이트 / relevance ranking
+- DOM 구조 변화에 대한 selector profile 확장
 - 중요 표시 / 발언자 편집
-- 브라우저 E2E 테스트 추가
+- 브라우저 E2E / 스모크 테스트 확대
 
 
 ## 검증 기준

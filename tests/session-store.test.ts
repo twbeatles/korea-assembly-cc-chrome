@@ -15,6 +15,7 @@ import {
   replayQueuedExitPersistRecords,
   resetSessionStoreForTests,
   saveSession,
+  searchSessionsPage,
   upsertSessionRecord,
   updateRunningSession,
 } from "../src/storage/session-store";
@@ -161,6 +162,91 @@ describe("session store", () => {
     expect(secondPage.sessions.map((session) => session.id)).toEqual(["session_page_1"]);
     expect(starredOnlyPage.totalCount).toBe(1);
     expect(starredOnlyPage.sessions.map((session) => session.id)).toEqual(["session_page_3"]);
+  });
+
+  it("searches transcript entries with case-insensitive paging and starred filtering", async () => {
+    await saveSession({
+      ...buildSession("session_search_1", "saved"),
+      entries: [
+        {
+          id: "session_search_1_entry_1",
+          text: "경제 정책 Alpha",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 9,
+      updatedAt: "2026-03-10T09:00:01.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_search_2", "saved"),
+      starred: true,
+      pinnedAt: "2026-03-10T09:20:00.000Z",
+      entries: [
+        {
+          id: "session_search_2_entry_1",
+          text: "ALPHA second hit",
+          timestamp: "2026-03-10T09:10:00.000Z",
+          startTime: "2026-03-10T09:10:00.000Z",
+          endTime: "2026-03-10T09:10:02.000Z",
+        },
+        {
+          id: "session_search_2_entry_2",
+          text: "alpha third hit",
+          timestamp: "2026-03-10T09:11:00.000Z",
+          startTime: "2026-03-10T09:11:00.000Z",
+          endTime: "2026-03-10T09:11:02.000Z",
+        },
+      ],
+      subtitleCount: 2,
+      charCount: 29,
+      updatedAt: "2026-03-10T09:00:02.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_search_3", "saved"),
+      entries: [
+        {
+          id: "session_search_3_entry_1",
+          text: "다른 문장",
+          timestamp: "2026-03-10T09:20:00.000Z",
+          startTime: "2026-03-10T09:20:00.000Z",
+          endTime: "2026-03-10T09:20:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 4,
+      updatedAt: "2026-03-10T09:00:03.000Z",
+    });
+
+    const firstPage = await searchSessionsPage({
+      query: "alpha",
+      page: 1,
+      pageSize: 1,
+    });
+    const secondPage = await searchSessionsPage({
+      query: "alpha",
+      page: 2,
+      pageSize: 1,
+    });
+    const starredOnly = await searchSessionsPage({
+      query: "ALPHA",
+      page: 1,
+      pageSize: 10,
+      starredOnly: true,
+    });
+
+    expect(firstPage.totalCount).toBe(2);
+    expect(firstPage.results[0]?.sessionId).toBe("session_search_2");
+    expect(firstPage.results[0]?.matchedCount).toBe(2);
+    expect(firstPage.results[0]?.matchedEntryIds).toEqual([
+      "session_search_2_entry_1",
+      "session_search_2_entry_2",
+    ]);
+    expect(firstPage.results[0]?.firstSnippet.toLowerCase()).toContain("alpha");
+    expect(secondPage.results.map((result) => result.sessionId)).toEqual(["session_search_1"]);
+    expect(starredOnly.results.map((result) => result.sessionId)).toEqual(["session_search_2"]);
   });
 
   it("fills default favorite and note fields for imported legacy records", async () => {

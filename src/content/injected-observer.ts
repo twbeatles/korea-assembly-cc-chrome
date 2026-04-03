@@ -1,28 +1,16 @@
 import {
-  isAssemblyPlenaryUrl,
   OBSERVER_ACTIVATE_EVENT,
   OBSERVER_BRIDGE_SOURCE,
   OBSERVER_CONFIG_EVENT,
   OBSERVER_STOP_EVENT,
 } from "../shared/constants";
+import {
+  getSubtitleContainerSelectors,
+  getSubtitleSelectorCandidates,
+  isElementActuallyVisible,
+  normalizeSubtitleContainerText,
+} from "./subtitle-dom";
 import { buildObservedSubtitlePreview, readObservedSubtitleRows } from "./subtitle-rows";
-const DEFAULT_SELECTORS = [
-  "#viewSubtit .smi_word:last-child",
-  "#viewSubtit .smi_word",
-  "#viewSubtit .incont",
-  "#viewSubtit",
-  "#viewSubtit span",
-  ".subtitle_area",
-  ".ai_subtitle",
-  "[class*='subtitle']",
-];
-const CONTAINER_PRIORITY = [
-  "#viewSubtit .incont",
-  "#viewSubtit",
-  ".subtitle_area",
-  ".ai_subtitle",
-  "[class*='subtitle']",
-];
 const BRIDGE_KEY = "__assemblySubtitleObserverBridge";
 
 type SubtitleReadResult = {
@@ -53,21 +41,8 @@ type BridgeState = {
   token: string;
 };
 
-function normalizeText(text: string): string {
-  return String(text || "").replace(/\s+/g, " ").trim();
-}
-
 function compactText(text: string): string {
   return String(text || "").replace(/\s+/g, "").trim();
-}
-
-function extractTailLines(text: string, maxLines = 3): string {
-  const lines = String(text || "")
-    .split("\n")
-    .map((line) => normalizeText(line))
-    .filter(Boolean);
-
-  return lines.slice(-maxLines).join(" ");
 }
 
 function queryOne(selector: string): HTMLElement | null {
@@ -87,12 +62,7 @@ function queryAll(selector: string): HTMLElement[] {
 }
 
 function isVisible(node: HTMLElement | null): boolean {
-  if (!node) {
-    return false;
-  }
-
-  const style = window.getComputedStyle(node);
-  return style.display !== "none" && style.visibility !== "hidden";
+  return isElementActuallyVisible(node);
 }
 
 function isSubtitleLayerVisible(): boolean {
@@ -175,16 +145,7 @@ function readContainerText(node: HTMLElement | null): string {
   if (!node) {
     return "";
   }
-
-  const raw = node.innerText || node.textContent || "";
-  const text = normalizeText(raw);
-  if (!text) {
-    return "";
-  }
-  if (text.length <= 400 || isAssemblyPlenaryUrl(window.location.href)) {
-    return text;
-  }
-  return normalizeText(extractTailLines(raw, 3));
+  return normalizeSubtitleContainerText(node, window.location.href);
 }
 
 function shouldBlockContainerFallbackForUnconfirmed(filterUnconfirmedEnabled: boolean): boolean {
@@ -233,7 +194,7 @@ function uniqueSelectors(selectors: string[]): string[] {
 }
 
 function resolveSelectors(selectors?: string[]): string[] {
-  return uniqueSelectors([...(selectors || []), ...DEFAULT_SELECTORS]);
+  return getSubtitleSelectorCandidates("", selectors, window.location.href);
 }
 
 function readSubtitleText(
@@ -278,7 +239,7 @@ function readSubtitleText(
     }
   }
 
-  for (const fallbackSelector of CONTAINER_PRIORITY) {
+  for (const fallbackSelector of getSubtitleContainerSelectors(window.location.href)) {
     if (blockContainerFallback) {
       break;
     }
@@ -319,7 +280,7 @@ function emit(
 }
 
 function selectTarget(selectors: string[]): { selector: string; element: HTMLElement | null } {
-  const queue = uniqueSelectors([...CONTAINER_PRIORITY, ...selectors]);
+  const queue = uniqueSelectors([...getSubtitleContainerSelectors(window.location.href), ...selectors]);
   for (const selector of queue) {
     const element = queryOne(selector);
     if (element) {
@@ -498,7 +459,8 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
     observer: null,
     pollingTimer: null,
     healthTimer: null,
-    selectors: [...DEFAULT_SELECTORS],
+    selectors: getSubtitleSelectorCandidates("", [], window.location.href),
+    
     lastText: "",
     lastCompact: "",
     lastRowSignature: "",

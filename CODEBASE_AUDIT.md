@@ -4,6 +4,8 @@
 > 기준 커밋: `496fad3` (Harden plenary fallback capture for 1.0.1)
 >
 > 2026-04-01 업데이트: 현재 HEAD 기준으로 `H-1`, `H-2`, `M-1`, `L-7`은 해결되었습니다. 아래 본문은 원래 감사 맥락을 유지하되, 해결된 항목에는 상태 메모를 추가했습니다.
+>
+> 2026-04-03 업데이트: 구조 분할 리팩토링과 후속 하드닝이 반영되었습니다. 현재 구현 경로는 `src/content/content-script.ts -> src/content/bootstrap/bootstrap-content-script.ts`, `src/history/App.tsx -> src/history/components/HistoryPage.tsx`, `src/storage/session-store.ts -> src/storage/session-store/operations.ts` 로 읽는 것이 맞습니다. 아래 line/path reference와 심각도 집계는 역사적 감사 스냅샷으로 유지되며, 현재 미해결 건수 집계표로 그대로 사용하면 안 됩니다. 추가로 `deriveCommitteeName`, subtitle visibility 공통화, fallback migration cache, history 전체 transcript 검색은 2026-04-03 후속 작업에서 반영되었습니다.
 
 ---
 

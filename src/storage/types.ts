@@ -46,6 +46,37 @@ export interface SessionPageResult {
   pageSize: number;
 }
 
+export interface SessionSearchPageOptions {
+  query: string;
+  page: number;
+  pageSize: number;
+  starredOnly?: boolean;
+}
+
+export interface SessionSearchHit {
+  sessionId: string;
+  title: string;
+  committeeName: string;
+  sourceUrl: string;
+  startedAt: string;
+  updatedAt: string;
+  subtitleCount: number;
+  charCount: number;
+  status: SessionRecord["status"];
+  starred: boolean;
+  hasNote: boolean;
+  matchedEntryIds: string[];
+  matchedCount: number;
+  firstSnippet: string;
+}
+
+export interface SessionSearchPageResult {
+  results: SessionSearchHit[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface SessionExportOptions {
   filenamePattern?: string;
   entries?: SubtitleEntry[];
@@ -118,6 +149,7 @@ export interface SessionStoreApi {
   loadSessionsByIds: (ids: string[]) => Promise<SessionRecord[]>;
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;
   listSessionsPage: (options: SessionPageOptions) => Promise<SessionPageResult>;
+  searchSessionsPage: (options: SessionSearchPageOptions) => Promise<SessionSearchPageResult>;
   getSessionLibraryOverview: (previewLimit?: number) => Promise<SessionLibraryOverview>;
   buildSessionLibraryBackupExport: () => Promise<LibraryBackupExport>;
   deleteSession: (id: string) => Promise<void>;

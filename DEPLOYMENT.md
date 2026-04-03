@@ -30,6 +30,12 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
+2026-04-03 릴리스 준비 기준 현재 배포 후보 버전은 `1.0.5` 입니다.
+
+추가 메모:
+- 엔트리 경로(`src/content/content-script.ts`, `src/history/App.tsx`, `src/storage/session-store.ts`)는 facade 로 유지되고, 실제 구현은 하위 폴더로 분리되어 있습니다.
+- 배포 검증은 facade 경로 안정성과 실제 하위 구현 모듈 변경이 함께 반영된 상태를 기준으로 수행해야 합니다.
+
 ## 3. 배포 전 검증
 
 루트에서 아래 명령을 실행합니다.
@@ -65,6 +71,7 @@ npm run build
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - popup `지금 저장` 버튼이 prepared snapshot 기준 persistable content가 없으면 비활성화되고, raw preview만 남은 상태에서도 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
+- history `전체 기록 검색`이 저장소 전체 transcript 본문 기준으로 동작하고, 결과 선택 시 해당 세션 상세 검색이 같은 질의로 초기화되는지 확인
 - 페이지 패널의 `최근 N줄 복사`가 현재 화면 row가 아니라 누적 세션 기준으로 history와 같은 결과를 주는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
@@ -170,6 +177,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 - `dist/manifest.json` 생성 확인
 - `dist/injected-observer.js` 생성 확인
 - `dist/manifest.json` 의 버전이 루트 `manifest.json` / `package.json` 과 같은지 확인
+- `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`의 구조/기능 설명이 현재 릴리스 코드와 어긋나지 않는지 확인
 - unpacked 로드 테스트 완료
 - 실제 국회 페이지 자막 추출 확인
 - exporter 결과물 확인
@@ -338,3 +346,9 @@ Deployment documentation consistency sources:
 - Release verification should confirm that fallback history/list/overview paths use the merged storage + memory fallback view, so memory-only sessions remain visible during the current runtime after storage write failure.
 - Release verification should confirm that queued exit persist reads/writes are serialized and do not drop a newly queued in-memory record while a storage-backed list call is in flight.
 - Release verification should confirm that pagehide/beforeunload warnings and automatic persistence only trigger when prepared entries actually exist.
+
+## 2026-04-03 Deployment Consistency Update
+
+- Current release candidate version is `1.0.5`.
+- Release verification should confirm that facade entry paths remain stable while the actual implementation is split under `src/content/bootstrap/`, `src/history/components/`, `src/storage/session-store/`, and `src/content/inpage-panel/`.
+- Release verification should confirm that history global transcript search, selector profile routing, committee-name parsing, and unified subtitle visibility checks match the documented behavior.

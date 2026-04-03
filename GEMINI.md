@@ -46,10 +46,17 @@ npm run build
 
 ### 4.2 자막 수집 코어
 
+- `src/content/bootstrap/bootstrap-content-script.ts`
+- `src/content/bootstrap/panel-controller.ts`
+- `src/content/bootstrap/panel-ui.ts`
+- `src/content/bootstrap/runtime-config.ts`
+- `src/content/bootstrap/runtime-helpers.ts`
+- `src/content/bootstrap/runtime-view.ts`
 - `src/content/dom-probe.ts`
 - `src/content/frame-probe.ts`
 - `src/content/injected-observer.ts`
 - `src/content/panel-live-rows.ts`
+- `src/content/subtitle-dom.ts`
 - `src/core/live-capture.ts`
 - `src/core/subtitle-pipeline.ts`
 - `src/core/noise-filter.ts`
@@ -57,6 +64,11 @@ npm run build
 ### 4.3 저장 / 내보내기
 
 - `src/storage/session-store.ts`
+- `src/storage/session-store/operations.ts`
+- `src/storage/session-store/db.ts`
+- `src/storage/session-store/fallback.ts`
+- `src/storage/session-store/normalize.ts`
+- `src/storage/session-store/search.ts`
 - `src/storage/session-backup.ts`
 - `src/storage/settings-store.ts`
 - `src/core/exporters/txt.ts`
@@ -64,6 +76,10 @@ npm run build
 - `src/core/exporters/vtt.ts`
 - `src/core/exporters/json.ts`
 - `src/shared/capture-diagnostics.ts`
+
+구조 메모:
+- `src/content/content-script.ts`, `src/history/App.tsx`, `src/storage/session-store.ts`, `src/content/inpage-panel.ts` 는 facade 입니다.
+- 실제 구현 본문은 `src/content/bootstrap/bootstrap-content-script.ts`, `src/history/components/HistoryPage.tsx`, `src/storage/session-store/operations.ts`, `src/content/inpage-panel/controller.ts` 기준으로 읽는 것이 맞습니다.
 
 ## 5. 메시지와 책임 분리
 
@@ -162,6 +178,7 @@ npm run build
 - `loadSessionsByIds`
 - `getSessionLibraryOverview`
 - `buildSessionLibraryBackupExport`
+- `searchSessionsPage`
 - `replayQueuedExitPersistRecords`
 - `closeRunningSessionsOnStartup`
 
@@ -176,6 +193,7 @@ npm run build
 - 복사 포맷은 `[HH:MM:SS] text`
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern`, `exportTxtWithoutTimestamps` 변경을 즉시 반영
+- history 는 저장소 전체 transcript entry 본문 기준 `전체 기록 검색`을 지원하며, global query 와 session-local query 상태를 분리해야 함
 - session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
 - history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
 - history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함
@@ -219,6 +237,16 @@ npm run build
 - `legacy/` 는 로컬 참조 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
 - 변경 후에는 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 실행합니다.
+
+## Sync Delta (2026-04-03)
+
+Use this delta as the current operational baseline.
+
+- 위원회명 파싱은 `src/content/committee-name.ts` 의 보수적 suffix 제거 규칙을 사용해야 하며, 일반 제목의 하이픈/날짜를 잘라내면 안 됩니다.
+- subtitle visibility 판정은 `hidden`, `display:none`, `visibility:hidden`, `opacity:0`, zero-size 를 함께 반영하는 공통 helper 기준으로 맞춰야 합니다.
+- selector profile(`default | committee | plenary`)은 `src/content/subtitle-dom.ts` 단일 기준으로 유지해야 하며, probe/observer/fallback 간 selector 의미론이 갈라지면 안 됩니다.
+- 전체 기록 검색은 `searchSessionsPage()` 기반 transcript full scan + case-insensitive substring 의미론을 유지합니다.
+- 2026-04-03 이후 구조는 facade + internal module 분리 기준이므로, 새 기능은 `content-script.ts`/`session-store.ts` 같은 facade 파일로 다시 몰아넣지 않습니다.
 
 ## Sync Delta (2026-03-26)
 

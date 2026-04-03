@@ -8,7 +8,7 @@
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정 / 수집 진단` 중심의 보조 화면입니다.
-- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모`, `entry 체크박스 기반 부분 복사/부분 export`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
+- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `history 전체 기록 검색`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모`, `entry 체크박스 기반 부분 복사/부분 export`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
 - 현재 기준 기본 검증 명령은 아래 4개입니다.
 
 ```bash
@@ -33,14 +33,27 @@ npm run build
 manifest.json
 src/
   background/service-worker.ts
-    content/
-      content-script.ts
-      injected-observer.ts
-      dom-probe.ts
-      panel-live-rows.ts
-      frame-probe.ts
-      capture-notice.ts
-      failed-stopped-session.ts
+  content/
+    bootstrap/
+      bootstrap-content-script.ts
+      panel-controller.ts
+      panel-ui.ts
+      runtime-config.ts
+      runtime-helpers.ts
+      runtime-view.ts
+    inpage-panel/
+      controller.ts
+      dom.ts
+      index.ts
+      styles.ts
+      view-state.ts
+    content-script.ts
+    dom-probe.ts
+    frame-probe.ts
+    injected-observer.ts
+    panel-live-rows.ts
+    subtitle-dom.ts
+    subtitle-layer.ts
   core/
     live-capture.ts
     subtitle-pipeline.ts
@@ -49,18 +62,36 @@ src/
   shared/
     capture-diagnostics.ts
   storage/
+    session-store/
+      db.ts
+      fallback.ts
+      merge.ts
+      normalize.ts
+      operations.ts
+      search.ts
+      state.ts
+      test-reset.ts
     session-store.ts
     session-backup.ts
     settings-store.ts
   popup/
   options/
   history/
+    components/
+      HistoryPage.tsx
+    model/
+      history-confirm.ts
+      session-list-row.ts
+    App.tsx
 tests/
 README.md
 CLAUDE.md
 GEMINI.md
 offscreen.html
 ```
+
+- `src/content/content-script.ts`, `src/history/App.tsx`, `src/storage/session-store.ts`, `src/content/inpage-panel.ts` 는 외부 경로 안정성을 위한 facade 입니다.
+- 실제 구현 본문은 `src/content/bootstrap/bootstrap-content-script.ts`, `src/history/components/HistoryPage.tsx`, `src/storage/session-store/operations.ts`, `src/content/inpage-panel/controller.ts` 기준으로 읽는 것이 맞습니다.
 
 ## 4. 자막 추출 구조
 
@@ -94,7 +125,7 @@ offscreen.html
 - observer, local polling, top-frame fallback 은 모두 같은 `NormalizedCaptureEvent` 형태로 합류합니다.
 - top frame 에서는 자막 공백을 즉시 reset 하지 않고 약 1초 grace 뒤에만 실제 reset 을 commit 합니다.
 - observer 실패 또는 타겟 미탐색 시 polling fallback 이 동작합니다.
-- `content-script.ts` 는 top frame 에서만 세션 상태와 subtitle pipeline 을 소유합니다.
+- `src/content/content-script.ts` 는 bootstrap facade 이고, 실제 top-frame orchestration은 `src/content/bootstrap/bootstrap-content-script.ts` 가 소유합니다.
 
 ## 5. subtitle pipeline 고정 의미론
 
@@ -149,6 +180,7 @@ offscreen.html
 - `loadSessionsByIds`
 - `getSessionLibraryOverview`
 - `buildSessionLibraryBackupExport`
+- `searchSessionsPage`
 - `replayQueuedExitPersistRecords`
 - `closeRunningSessionsOnStartup`
 
@@ -178,6 +210,7 @@ offscreen.html
 - history 복사 포맷은 기본적으로 `[HH:MM:SS] text` 줄단위입니다.
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 `최근 N줄 복사`를 지원합니다.
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern`, `exportTxtWithoutTimestamps` 변경을 `chrome.storage.onChanged` 로 즉시 반영합니다.
+- history 는 저장소 전체 transcript entry 본문 기준 `전체 기록 검색`을 지원하며, global query 와 selected-session local query 상태를 분리해야 합니다.
 - history 의 `전체 삭제` 는 현재 로드된 1000건만이 아니라 저장소 전체를 비워야 하며, 선택 삭제는 부분 성공/실패 요약을 남긴 뒤 항상 refresh 해야 합니다.
 - history 는 session-level `즐겨찾기`, `메모`, `즐겨찾기만 보기` 필터를 제공하고, 이 메타데이터는 persistence 및 JSON 백업/복원에서 함께 보존되어야 합니다.
 - history detail 은 entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
@@ -212,6 +245,16 @@ offscreen.html
 - 배포 절차: `DEPLOYMENT.md`
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
+
+## Sync Delta (2026-04-03)
+
+When editing this repository, align with the structure and behavior below.
+
+- 위원회명 파싱은 일반 `-`/`|` 절단이 아니라 `src/content/committee-name.ts` 의 보수적 suffix 제거 규칙을 따라야 합니다.
+- subtitle visibility 판정은 `display:none`, `visibility:hidden`, `opacity:0`, `hidden`, zero-size 를 공통 helper 기준으로 맞춰야 하며 `subtitle-layer`와 observer가 서로 다른 기준을 가지면 안 됩니다.
+- selector profile(`default | committee | plenary`)은 `src/content/subtitle-dom.ts` 를 단일 기준으로 사용해야 하며, probe/observer/fallback 경로가 서로 다른 selector 의미론으로 갈라지면 안 됩니다.
+- session store transcript 검색은 `searchSessionsPage()` 를 통해 제공되며, 현재 정책은 correctness-first full scan + case-insensitive substring 입니다.
+- 2026-04-03 이후 구조는 facade + internal implementation 분리 기준입니다. 새 기능을 추가할 때는 facade 파일을 다시 비대하게 만들지 말고 해당 하위 모듈 아래로 배치합니다.
 
 ## Sync Delta (2026-03-26)
 

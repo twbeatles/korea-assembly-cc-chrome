@@ -6,12 +6,34 @@ import {
   waitForSubtitleLayer,
 } from "../src/content/subtitle-layer";
 
+function attachVisibleRect(element: HTMLElement, width = 240, height = 42): void {
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () =>
+      ({
+        width,
+        height,
+        top: 0,
+        left: 0,
+        bottom: height,
+        right: width,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      }) satisfies DOMRect,
+  });
+}
+
 function mountLayer(options: { visible?: boolean; text?: string } = {}): void {
   document.body.innerHTML = `
     <div id="viewSubtit" style="display:${options.visible ? "block" : "none"}">
       <div class="incont">${options.text ?? ""}</div>
     </div>
   `;
+  const layer = document.querySelector<HTMLElement>("#viewSubtit");
+  if (layer) {
+    attachVisibleRect(layer, 360, 56);
+  }
 }
 
 describe("subtitle layer helpers", () => {
@@ -32,6 +54,7 @@ describe("subtitle layer helpers", () => {
     const button = document.createElement("button");
     button.className = "btn_subtit_ai";
     button.textContent = "AI 자막보기";
+    attachVisibleRect(button, 88, 32);
     button.addEventListener("click", () => {
       const layer = document.querySelector<HTMLElement>("#viewSubtit");
       if (layer) {
@@ -69,6 +92,7 @@ describe("subtitle layer helpers", () => {
     const button = document.createElement("button");
     button.className = "btn_subtit_ai on";
     button.textContent = "AI 자막보기";
+    attachVisibleRect(button, 88, 32);
     document.body.append(button);
 
     expect(readSubtitleLayerState()).toEqual({

@@ -1,10 +1,7 @@
 import { PIPELINE_DEFAULTS } from "../shared/constants";
 import type { DomProbeOptions, DomProbeResult } from "./dom-probe";
-import {
-  estimateRecentRaw,
-  getSubtitleSelectorCandidates,
-  readSubtitleTextBySelectors,
-} from "./dom-probe";
+import { estimateRecentRaw, readSubtitleTextBySelectors } from "./dom-probe";
+import { getSubtitleSelectorCandidates } from "./subtitle-dom";
 
 export interface FrameProbeResult extends DomProbeResult {
   framePath: number[];
@@ -178,14 +175,18 @@ export function probeAccessibleFrames(
   primarySelector = "",
   options?: DomProbeOptions,
 ): FrameProbeResult[] {
-  const selectors = getSubtitleSelectorCandidates(primarySelector);
+  const sourceUrl =
+    options?.sourceUrl ?? (typeof window !== "undefined" ? window.location.href : undefined);
+  const selectors = getSubtitleSelectorCandidates(primarySelector, [], sourceUrl);
   const results: FrameProbeResult[] = [];
   walkDocuments(document, selectors, [], 0, results, options);
   return results.sort((left, right) => scoreFrameResult(right, selectors) - scoreFrameResult(left, selectors));
 }
 
 export function probeTopDocument(primarySelector = "", options?: DomProbeOptions): FrameProbeResult {
-  const selectors = getSubtitleSelectorCandidates(primarySelector);
+  const sourceUrl =
+    options?.sourceUrl ?? (typeof window !== "undefined" ? window.location.href : undefined);
+  const selectors = getSubtitleSelectorCandidates(primarySelector, [], sourceUrl);
   const direct = estimateRecentRaw(document, primarySelector, options);
   if (direct.found) {
     return {
@@ -211,7 +212,9 @@ export function probeFramePath(
     return emptyFrameProbe(framePath);
   }
 
-  const selectors = getSubtitleSelectorCandidates(primarySelector);
+  const sourceUrl =
+    options?.sourceUrl ?? (typeof window !== "undefined" ? window.location.href : undefined);
+  const selectors = getSubtitleSelectorCandidates(primarySelector, [], sourceUrl);
   const result = probeDocumentRoots(targetDocument, selectors, options);
   if (!result.found) {
     return emptyFrameProbe(framePath);
