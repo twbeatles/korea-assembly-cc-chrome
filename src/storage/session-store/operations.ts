@@ -6,9 +6,11 @@ import {
   type SubtitleEntry,
 } from "../../core/subtitle-models";
 import {
+  clearAllQueuedExitPersistRecords,
   clearQueuedExitPersistRecord,
   clearQueuedExitPersistRecordsUpTo,
   listQueuedExitPersistRecords,
+  recordStopPersistSuccess,
 } from "../persist-recovery";
 import {
   buildSessionBackupBundle,
@@ -332,11 +334,13 @@ export async function deleteSession(id: string): Promise<void> {
 
   if (indexedDbResult.ok && indexedDbResult.value) {
     await bestEffortDeleteFallbackRecord(id);
+    await clearQueuedExitPersistRecord(id);
     await bumpSessionLibraryRevision();
     return;
   }
 
   await deleteFallbackRecord(id);
+  await clearQueuedExitPersistRecord(id);
   await bumpSessionLibraryRevision();
 }
 
@@ -365,6 +369,8 @@ export async function deleteAllSessions(): Promise<void> {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     errors.push(`fallback 저장소 정리 실패: ${message}`);
   }
+
+  await clearAllQueuedExitPersistRecords();
 
   if (clearedAnyStore) {
     await bumpSessionLibraryRevision();
@@ -468,6 +474,7 @@ export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySum
       }
 
       await saveSession(queuedRecord.record);
+      await recordStopPersistSuccess("replay", queuedRecord.record.updatedAt);
       replayedCount += 1;
       await clearQueuedExitPersistRecord(queuedRecord.sessionId);
     } catch (error) {

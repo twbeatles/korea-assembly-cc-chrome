@@ -15,6 +15,12 @@ export interface CaptureDiagnostics {
   sourceLabel: string;
 }
 
+export type PersistContext =
+  | "idle"
+  | "running_autosave"
+  | "stopped_final_save"
+  | "page_exit_checkpoint";
+
 export interface ObservedSubtitleRow {
   nodeKey: string;
   text: string;
@@ -40,45 +46,12 @@ export interface StatusSnapshot {
   updatedAt: string | null;
   lastPersistedAt: string | null;
   canPersistPreparedContent: boolean;
+  persistContext: PersistContext;
+  stopPersistInFlight: boolean;
   observerActive: boolean;
   currentSelector: string;
   currentFramePath: number[];
   diagnostics: CaptureDiagnostics;
-}
-
-export interface CaptureStatusPayload {
-  connected: boolean;
-  requiresReload: boolean;
-  status: CaptureStatus;
-  sessionId: string;
-  title: string;
-  committeeName: string;
-  sourceUrl: string;
-  subtitleCount: number;
-  charCount: number;
-  previewText: string;
-  recentEntries: SubtitleEntry[];
-  startedAt: string | null;
-  endedAt: string | null;
-  updatedAt: string | null;
-  lastPersistedAt: string | null;
-  canPersistPreparedContent: boolean;
-  observerActive: boolean;
-  currentSelector: string;
-  currentFramePath: number[];
-  diagnostics: CaptureDiagnostics;
-}
-
-export interface PreviewUpdatePayload {
-  sessionId: string;
-  previewText: string;
-  recentEntries: SubtitleEntry[];
-}
-
-export interface SessionStatsPayload {
-  sessionId: string;
-  subtitleCount: number;
-  charCount: number;
 }
 
 export interface PopupFeedbackPayload {
@@ -88,7 +61,6 @@ export interface PopupFeedbackPayload {
 }
 
 export type PopupToContentMessage =
-  | { type: "PING" }
   | { type: "GET_STATUS" }
   | { type: "OPEN_INPAGE_PANEL" }
   | { type: "START_CAPTURE" }
@@ -97,16 +69,19 @@ export type PopupToContentMessage =
   | { type: "SAVE_SESSION" }
   | { type: "EXPORT_REQUEST"; format: ExportFormat };
 
-export type ContentToPopupMessage =
-  | { type: "CAPTURE_STATUS"; payload: CaptureStatusPayload }
-  | { type: "PREVIEW_UPDATE"; payload: PreviewUpdatePayload }
-  | { type: "SESSION_STATS"; payload: SessionStatsPayload }
-  | { type: "POPUP_FEEDBACK"; payload: PopupFeedbackPayload }
-  | { type: "ERROR"; message: string };
+export type TabCommandResponse =
+  | {
+      ok: true;
+      snapshot?: StatusSnapshot;
+      feedback?: PopupFeedbackPayload;
+    }
+  | {
+      ok: false;
+      error: string;
+      snapshot?: StatusSnapshot;
+    };
 
 export type BackgroundCommandMessage =
-  | { type: "ENSURE_CONTENT_SCRIPT"; tabId: number; url?: string }
-  | { type: "GET_FRAME_FORWARD_NONCE" }
   | {
       type: "PERSIST_SESSION_RECORD";
       record: SessionRecord;
@@ -122,32 +97,8 @@ export type BackgroundCommandMessage =
   | { type: "OPEN_DIAGNOSTICS_PAGE"; tabId?: number };
 
 export type BackgroundCommandResponse =
-  | { ok: true; ready?: boolean; requiresReload?: boolean; downloadId?: number; nonce?: string }
-  | { ok: false; error: string; requiresReload?: boolean };
-
-export interface ObserverBridgeEvent {
-  source: string;
-  token?: string;
-  kind: "subtitle:update" | "subtitle:reset" | "subtitle:health";
-  raw?: string;
-  rows?: ObservedSubtitleRow[];
-  selector?: string;
-  framePath?: number[];
-  timestamp: number;
-  sourceUrl: string;
-  observerActive?: boolean;
-}
-
-export interface FrameForwardMessage {
-  source: string;
-  nonce: string;
-  event: ObserverBridgeEvent;
-}
-
-export interface FrameForwardNonceMessage {
-  source: string;
-  nonce: string;
-}
+  | { ok: true; downloadId?: number }
+  | { ok: false; error: string };
 
 export type OffscreenDocumentMessage =
   | {

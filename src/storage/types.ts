@@ -115,7 +115,12 @@ export interface PersistReplayDiagnostics {
   lastCleanupClosedCount: number;
   lastCleanupFailedCount: number;
   lastCleanupError: string | null;
+  lastQueueWriteSessionId: string | null;
+  lastQueueWriteRecordUpdatedAt: string | null;
+  lastQueueWriteApproxBytes: number | null;
   lastQueueWriteError: string | null;
+  lastStopPersistAt: string | null;
+  lastStopPersistMode: "direct" | "background" | "replay" | null;
   lastError: string | null;
 }
 

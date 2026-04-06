@@ -44,7 +44,7 @@ Chrome 웹 스토어에서 확장프로그램을 바로 설치할 수 있습니�
 - 사이트 안 우측 패널에서 실시간 자막 확인
 - 수집 시작 시 AI 자막 레이어 자동 활성화 시도
 - AI 자막 레이어 자동 활성화 성공은 `visible && (hasText || controlActive)` 신호 기준으로 판정
-- MV3 service worker 재기동 뒤에도 storage-backed frame-forward nonce + 주기적 재동기화로 iframe forwarding 복구
+- top-frame DOM coordinator가 접근 가능한 same-origin iframe/frame을 직접 순회하며 observer + polling 조합으로 자막 수집
 - 페이지 패널 / history에서 최근 `N`줄 복사
 - 페이지 패널의 `최근 N줄 복사`는 history와 같은 의미로 현재 세션에 누적된 최근 `N`줄을 기준으로 동작
 - `autoScroll`, 중복 차단 최소 길이, noise filter 토글 등 옵션 반영
@@ -59,8 +59,8 @@ Chrome 웹 스토어에서 확장프로그램을 바로 설치할 수 있습니�
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
 - history는 store-level 페이지네이션을 사용하며, 대용량 작업 중에는 관련 버튼을 잠가 중복 실행을 막습니다
 - options의 저장 파일 이름 규칙은 금지 문자와 지원하지 않는 placeholder를 저장 전에 검증합니다
-- `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 수집된 자막/저장/export 대상에서 제외합니다
-- 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각, queue write / replay / cleanup phase별 저장 복구 오류 확인
+- `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 structured/fallback 경로 공통으로 수집된 자막/저장/export 대상에서 제외합니다
+- 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각, queue write / replay / cleanup phase별 저장 복구 오류와 마지막 queue 대상 세션/크기, stopped 저장 방식 확인
 - 패널 / popup 에서 수집 진단 화면 진입
 - 페이지 패널 / options / history UI
 - **크롬 확장프로그램 전용 아이콘 세트 적용(16, 32, 48, 128px)**
@@ -154,7 +154,7 @@ npm install
 npm run dev
 ```
 
-`dev` 스크립트는 page-world observer 번들(`public/injected-observer.js`)을 먼저 생성한 뒤 Vite를 실행합니다.
+`dev` 스크립트는 page-world activation helper 번들(`injected-observer.js`)을 먼저 생성한 뒤 Vite를 실행합니다.
 
 ### 3. 테스트
 
@@ -199,7 +199,7 @@ npm run build
 5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 누적 목록을 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry가 이 목록에 계속 쌓인다
 6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 저장/내보내기 결과는 화면의 `수집된 자막` 목록과 같은 기준으로 생성된다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
-8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
+8. `멈추기`를 누르면 수집이 끝나고, 확장은 stopped snapshot을 먼저 replay queue에 적재한 뒤 direct 저장을 시도한다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
 10. 브라우저/확장을 다시 시작하면 먼저 page-exit 시점에 남겨둔 stopped 저장 replay queue를 복구하고, 그 다음 남아 있던 `running` 세션을 `stopped`로 정리한다
 11. history에서는 세션별 `즐겨찾기`, `메모 저장`, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 사용할 수 있다
@@ -211,14 +211,14 @@ npm run build
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
 - 탭이 숨겨지거나 페이지를 떠날 때는 prepared snapshot에 실제 entry가 있을 때만 background 자동 저장을 시도합니다.
+- `멈추기` 직후 pagehide/beforeunload가 겹쳐도 replay queue checkpoint를 먼저 남기도록 구현되어 있습니다.
 
 ## 권한 설명
 
-- `storage`: options, 저장된 세션 본문, 즐겨찾기/메모 같은 세션 메타데이터, page-exit replay queue, phase별 저장 복구 diagnostics, 탭 단위 frame-forward nonce 저장
+- `storage`: options, 저장된 세션 본문, 즐겨찾기/메모 같은 세션 메타데이터, IndexedDB 기반 replay queue와 legacy/fallback queue snapshot, phase별 저장 복구 diagnostics
 - `downloads`: TXT/SRT/VTT/JSON 파일 다운로드
 - `offscreen`: 대용량 export용 Blob URL 생성
-- `activeTab`: 현재 탭 상태 조회
-- `scripting`: MV3 런타임 보조 권한
+- `unlimitedStorage`: 장시간 회의에서 fallback 세션/queue snapshot과 diagnostics가 quota 때문에 조기 실패하지 않도록 브라우저 로컬 저장 여유 확보
 - `host_permissions: https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`
   국회 의사중계 고정 도메인 2개만 대상으로 제한합니다
 
@@ -229,34 +229,33 @@ npm run build
 - 현재 탭에서 세션 상태를 보유합니다
 - popup이 닫혀도 수집은 계속됩니다
 - top frame에 우측 패널을 삽입해 현재 상태를 바로 보여 줍니다
-- subframe content script는 background에서 탭 단위 frame-forward nonce를 bootstrap 받고, 15초 주기 및 nonce mismatch 시점에 다시 동기화합니다
-- page-world `MutationObserver`, local polling, top-frame fallback을 모두 같은 `normalized capture event` 형태로 파이프라인에 전달합니다
+- top frame content script가 단일 capture coordinator를 소유하고, 접근 가능한 same-origin iframe/frame document를 재귀적으로 직접 probe/observe합니다
+- coordinator는 subtitle container의 부모 레벨 observer와 polling fallback을 함께 사용하고, 모든 결과를 같은 `normalized capture event` 형태로 파이프라인에 전달합니다
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
 - 본회의 fallback capture에서는 container raw를 잘라내지 않고 유지하며, structured row가 비어 있어도 이미 commit된 entry를 `수집된 자막` 패널 목록으로 재구성합니다
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
 - 저장/내보내기/복사는 `수집된 자막` 목록에서 파생된 공통 snapshot을 사용해 화면과 결과물의 불일치를 줄입니다
 - 장시간 수집 시 내부 state/pending cache만 주기적으로 압축해 메모리 부담을 낮춥니다
-- 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도하며, 실제 성공은 `visible && (hasText || controlActive)` 기준으로 판정합니다
+- 수집 시작 시 DOM 클릭을 우선 시도하고, 필요할 때만 최소 page-world activation helper를 통해 AI 자막 레이어 활성화를 보조합니다
 - 패널 notice는 `정상 수집 / 자동 조정 중 수집 / reset 복구 중`을 구분해 표시하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 경고 문구 대신 중립 안내를 사용합니다
-- 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
-- options `저장 복구 상태`는 diagnostics view가 열려 있는 동안 `chrome.storage.onChanged` 기반으로 queue write / replay / cleanup 변화가 즉시 반영됩니다
+- 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태)은 options 페이지의 `수집 진단` 탭에서 현재 snapshot 기준으로 표시합니다
+- options `저장 복구 상태`는 diagnostics view가 열려 있는 동안 `chrome.storage.onChanged` 기반으로 queue write / replay / cleanup 변화가 즉시 반영되며, 마지막 queue 대상 session id / record.updatedAt / payload 크기와 마지막 stopped save 방식도 함께 표시합니다
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 - 저장 가능한 자막이 없을 때 `SAVE_SESSION` 요청은 조용히 무시하지 않고 패널/popup 모두 `저장할 자막이 아직 없습니다.` 피드백을 남깁니다
 
 ### injected observer
 
-- page context에서 DOM 변화를 감시합니다
-- `window.postMessage`로 `subtitle:update`, `subtitle:reset`, `subtitle:health`를 브리지합니다
-- `subtitle:update`에는 raw preview 외에 `.smi_word` row 메타도 함께 실립니다
-- 같은 `nodeKey`의 텍스트가 보정되면 새 key만 보내는 대신 현재 row 스냅샷 전체를 다시 보내 제자리 갱신을 가능하게 합니다
+- page context에서 자막 DOM을 감시하지 않습니다
+- content script가 DOM 관측을 직접 수행하고, `injected-observer.js`는 필요할 때만 page function(`smi_mode_act`, `smi_on`, `layerSubtit`) 호출을 돕는 최소 activation helper로만 사용합니다
 
 ### pipeline
 
 - `normalized capture event -> live reconcile -> normalize -> preview gate -> history/rfind suffix -> placeholder/noise filter -> merge/add`
 - structured row 가 안정적으로 잡히면 row별 baseline과 글로벌 history를 함께 써서 commit/update를 분리하고, 아니면 raw/container fallback으로 내려갑니다
+- structured row upsert와 prepared snapshot 직렬화도 같은 commit sanitizer를 사용하므로 placeholder는 항상 제외되고, 숫자-only / 기호-only는 `noiseFilterEnabled=true`일 때만 제외됩니다
 - `confirmedCompact`, `trailingSuffix`, history anchor, overlap fallback, soft resync 의미론을 유지합니다
 - recent compact tail 기반 중복 차단
-- `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 noise filter 설정과 무관하게 commit/persist/export 대상에서 제외합니다
+- `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 noise filter 설정과 무관하게 structured/fallback 공통 commit/persist/export 대상에서 제외합니다
 - 복사/export 단계에서는 추가 텍스트 정규화를 적용하지 않고 수집 결과 snapshot을 그대로 사용합니다
 - keepalive / reset / finalize 처리
 - persistence/export용 prepared snapshot은 현재 `수집된 자막` 기준으로 생성합니다
@@ -268,10 +267,12 @@ npm run build
 - `loadSession`/`listSessions`는 `IndexedDB`와 fallback 저장소를 함께 읽고, `updatedAt`이 더 최신인 레코드를 우선 사용합니다. 동률이면 `IndexedDB`를 우선합니다
 - 성공한 `IndexedDB` write/delete는 동일 id의 stale fallback copy를 best-effort로 정리합니다
 - 두 저장소가 모두 실패하는 극단적 상황에서는 현재 런타임 동안 메모리 fallback을 유지합니다
-- pagehide/beforeunload 직전 최종 stopped 스냅샷은 세션별 replay queue에도 함께 적재하고, background 저장이 성공하면 같은 세션의 stale queued snapshot을 즉시 정리합니다
-- replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 하며, 같은 `sessionId` 충돌 시 `updatedAt`이 더 최신인 레코드와 동률 시 더 늦은 `queuedAt`을 우선합니다
+- pagehide/beforeunload 직전 최종 stopped 스냅샷은 세션별 replay queue에도 함께 적재하고, background/direct/replay 저장이 성공하면 같은 세션의 stale queued snapshot을 즉시 정리합니다
+- replay queue는 session DB 내부 `IndexedDB` store를 우선 사용하고, `chrome.storage.local` queue snapshot은 레거시 데이터와 IDB 불가 시 fallback source로만 유지합니다
+- replay queue 조회는 `IndexedDB` queue store, legacy `chrome.storage.local` snapshot, 메모리 snapshot을 merge 하며, 같은 `sessionId` 충돌 시 `updatedAt`이 더 최신인 레코드와 동률 시 더 늦은 `queuedAt`을 우선합니다
 - queue write가 실패해도 메모리 queue는 유지되며, `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError` diagnostics를 통해 phase별 실패를 추적합니다
 - 브라우저/확장 cold start 시에는 queued stopped snapshot replay를 먼저 수행한 뒤 남아 있던 `running` 세션 cleanup을 진행하고, replay/cleanup 결과는 `chrome.storage.local` diagnostics snapshot으로 남깁니다
+- `deleteSession` / `deleteAllSessions` 는 세션 본문과 함께 관련 replay queue도 함께 정리해 삭제한 세션이 startup replay로 되살아나지 않게 합니다
 - JSON import는 허용 필드 재구성 기준으로 sanitize 하며, 지원하지 않는 backup wrapper version과 parse 불가능한 timestamp를 가져오기 단계에서 거부합니다
 - 설정은 `chrome.storage.local`
 - `filenamePattern` 은 `{date}`, `{committee}`, `{time}` 만 허용하며, 금지 문자가 있으면 options에서 저장을 막고 export 직전에도 한 번 더 안전하게 정리합니다
@@ -284,10 +285,6 @@ npm run build
 
 - offscreen Blob 우선 + data URL fallback 다운로드 처리
 - history/options 페이지 열기
-- content script 준비 여부 확인
-- 이미 열려 있던 탭에는 필요 시 content script 재주입 시도
-- storage-backed frame forwarding nonce 발급, 탭 `loading` 시 회전, 탭 제거 시 정리
-- service worker 재기동 뒤에도 content script의 nonce 재조회로 frame forwarding을 다시 수렴시킵니다
 - startup persistence maintenance에서 queued stopped snapshot replay -> stale running cleanup -> diagnostics snapshot 저장 순서를 유지합니다
 
 ## 알려진 한계
@@ -296,7 +293,7 @@ npm run build
 - cross-origin frame 내부 DOM은 브라우저 보안 정책 때문에 직접 순회하지 못할 수 있습니다
 - 일부 페이지는 observer보다 polling fallback 의존도가 높을 수 있습니다
 - `xcode -> xcgcd` 자동 보완 흐름은 이번 1차 범위에 포함하지 않았습니다
-- 확장 설치 전에 열려 있던 탭은 재주입으로 복구를 시도하지만, 탭 상태에 따라 새로고침이 필요할 수 있습니다
+- 확장 설치 전에 이미 열려 있던 탭은 content script가 아직 없을 수 있으므로 새로고침이 필요할 수 있습니다
 - 브라우저 저장소가 모두 실패하면 세션 persistence는 현재 탭 런타임 범위로 제한됩니다
 - 매우 큰 export는 Blob 경로를 우선 사용하지만, 브라우저 정책에 따라 data URL fallback으로 내려갈 수 있습니다
 - 대용량 JSON import/export 전용 진행률/취소 UX는 아직 별도 하드닝 범위에 포함하지 않았습니다

@@ -1,13 +1,23 @@
 import { useEffect, useState } from "react";
 
-import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
-import { connectToTab, queryActiveTab, sendRuntimeMessage } from "../shared/chrome-api";
+import { isSupportedAssemblyUrl } from "../shared/constants";
+import { queryActiveTab, sendRuntimeMessage, sendTabMessage } from "../shared/chrome-api";
 import type {
-  ContentToPopupMessage,
   PopupToContentMessage,
   StatusSnapshot,
+  TabCommandResponse,
 } from "../shared/message-types";
 import { getCaptureStatusLabel, UI_TEXT } from "../shared/ui-labels";
+
+function getContentMessageError(error: unknown): string {
+  if (error instanceof Error) {
+    if (error.message.includes("Receiving end does not exist")) {
+      return "현재 탭과 아직 연결되지 않았습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.";
+    }
+    return error.message;
+  }
+  return "현재 탭 상태를 확인하지 못했습니다.";
+}
 
 export default function App() {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
@@ -15,44 +25,13 @@ export default function App() {
   const [tabReady, setTabReady] = useState(false);
   const [unsupported, setUnsupported] = useState(false);
   const [requiresReload, setRequiresReload] = useState(false);
-  const [port, setPort] = useState<chrome.runtime.Port | null>(null);
   const [currentTabId, setCurrentTabId] = useState<number | null>(null);
   const hasPersistableContent = Boolean(snapshot?.canPersistPreparedContent);
 
   useEffect(() => {
     let active = true;
-    let reconnectTimer: number | null = null;
-    let reconnectAttempt = 0;
-    let connecting = false;
-    let currentPort: chrome.runtime.Port | null = null;
 
-    const clearReconnectTimer = (): void => {
-      if (reconnectTimer !== null) {
-        window.clearTimeout(reconnectTimer);
-        reconnectTimer = null;
-      }
-    };
-
-    const scheduleReconnect = (message: string): void => {
-      if (!active) {
-        return;
-      }
-
-      setStatusMessage(message);
-      clearReconnectTimer();
-      const delay = Math.min(5000, 500 * 2 ** reconnectAttempt);
-      reconnectAttempt += 1;
-      reconnectTimer = window.setTimeout(() => {
-        void connect();
-      }, delay);
-    };
-
-    const connect = async (): Promise<void> => {
-      if (!active || connecting || currentPort) {
-        return;
-      }
-      connecting = true;
-
+    const loadStatus = async (): Promise<void> => {
       try {
         const tab = await queryActiveTab();
         if (!active) {
@@ -61,167 +40,92 @@ export default function App() {
 
         if (!tab?.id || !tab.url) {
           setCurrentTabId(null);
+          setSnapshot(null);
           setTabReady(false);
-          scheduleReconnect("현재 탭 정보를 읽지 못했습니다. 자동으로 다시 연결을 시도합니다.");
+          setRequiresReload(false);
+          setStatusMessage("현재 탭 정보를 읽지 못했습니다.");
           return;
         }
 
         setCurrentTabId(tab.id);
         if (!isSupportedAssemblyUrl(tab.url)) {
           setUnsupported(true);
+          setSnapshot(null);
           setTabReady(false);
-          clearReconnectTimer();
+          setRequiresReload(false);
           setStatusMessage("국회 의사중계 페이지에서만 사용할 수 있습니다.");
           return;
         }
 
         setUnsupported(false);
-
-        const ensure = await sendRuntimeMessage({
-          type: "ENSURE_CONTENT_SCRIPT",
-          tabId: tab.id,
-          url: tab.url,
+        const response = await sendTabMessage<TabCommandResponse>(tab.id, {
+          type: "GET_STATUS",
         });
         if (!active) {
           return;
         }
 
-        if (!ensure.ok) {
-          setTabReady(false);
-          scheduleReconnect(`${ensure.error} 자동으로 다시 연결을 시도합니다.`);
-          return;
-        }
-
-        setRequiresReload(Boolean(ensure.requiresReload));
-        if (!ensure.ready) {
-          setTabReady(false);
-          scheduleReconnect("현재 탭과 아직 연결되지 않았습니다. 자동으로 다시 연결을 시도합니다.");
-          return;
-        }
-
-        reconnectAttempt = 0;
-        clearReconnectTimer();
-        const nextPort = connectToTab(tab.id, 0, POPUP_PORT_NAME);
-        currentPort = nextPort;
-        setPort(nextPort);
-
-        const onMessage = (message: ContentToPopupMessage): void => {
-          if (!active) {
-            return;
-          }
-
-          switch (message.type) {
-            case "CAPTURE_STATUS":
-              setSnapshot(() => ({
-                connected: message.payload.connected,
-                requiresReload: message.payload.requiresReload,
-                status: message.payload.status,
-                sessionId: message.payload.sessionId,
-                title: message.payload.title,
-                committeeName: message.payload.committeeName,
-                sourceUrl: message.payload.sourceUrl,
-                subtitleCount: message.payload.subtitleCount,
-                charCount: message.payload.charCount,
-                previewText: message.payload.previewText,
-                recentEntries: message.payload.recentEntries,
-                startedAt: message.payload.startedAt,
-                endedAt: message.payload.endedAt,
-                updatedAt: message.payload.updatedAt,
-                lastPersistedAt: message.payload.lastPersistedAt,
-                canPersistPreparedContent: message.payload.canPersistPreparedContent,
-                observerActive: message.payload.observerActive,
-                currentSelector: message.payload.currentSelector,
-                currentFramePath: message.payload.currentFramePath,
-                diagnostics: message.payload.diagnostics,
-              }));
-              setTabReady(true);
-              setStatusMessage((current) =>
-                current === "현재 페이지를 확인하고 있습니다."
-                  ? "페이지 확장판과 연결했습니다."
-                  : current,
-              );
-              return;
-            case "PREVIEW_UPDATE":
-              setSnapshot((current) =>
-                current
-                  ? {
-                      ...current,
-                      previewText: message.payload.previewText,
-                      recentEntries: message.payload.recentEntries,
-                    }
-                  : current,
-              );
-              return;
-            case "SESSION_STATS":
-              setSnapshot((current) =>
-                current
-                  ? {
-                      ...current,
-                      subtitleCount: message.payload.subtitleCount,
-                      charCount: message.payload.charCount,
-                    }
-                  : current,
-              );
-              return;
-            case "ERROR":
-              setStatusMessage(message.message);
-              return;
-            case "POPUP_FEEDBACK":
-              setStatusMessage(message.payload.message);
-              return;
-          }
-        };
-
-        const onDisconnect = (): void => {
-          const disconnectReason = chrome.runtime.lastError?.message;
-          if (!active) {
-            return;
-          }
-          currentPort = null;
-          setPort(null);
+        if (!response.ok) {
+          setSnapshot(response.snapshot ?? null);
           setTabReady(false);
           setRequiresReload(true);
-          scheduleReconnect(
-            disconnectReason?.includes("Receiving end does not exist")
-              ? "현재 탭과의 연결이 없습니다. 자동으로 다시 연결을 시도합니다."
-              : disconnectReason || "연결이 끊겼습니다. 자동으로 다시 연결을 시도합니다.",
-          );
-        };
+          setStatusMessage(response.error);
+          return;
+        }
 
-        nextPort.onMessage.addListener(onMessage);
-        nextPort.onDisconnect.addListener(onDisconnect);
-        nextPort.postMessage({ type: "GET_STATUS" } satisfies PopupToContentMessage);
+        setSnapshot(response.snapshot ?? null);
+        setTabReady(true);
+        setRequiresReload(false);
+        setStatusMessage("현재 탭 상태를 불러왔습니다.");
       } catch (error: unknown) {
         if (!active) {
           return;
         }
 
-        const baseMessage = error instanceof Error ? error.message : "팝업을 준비하지 못했습니다.";
-        scheduleReconnect(`${baseMessage} 자동으로 다시 연결을 시도합니다.`);
-      } finally {
-        connecting = false;
+        setTabReady(false);
+        setRequiresReload(true);
+        setStatusMessage(getContentMessageError(error));
       }
     };
 
-    void connect();
-
+    void loadStatus();
     return () => {
       active = false;
-      clearReconnectTimer();
-      currentPort?.disconnect();
-      currentPort = null;
-      setPort(null);
     };
   }, []);
 
-  const sendCommand = (message: PopupToContentMessage, label: string): void => {
-    if (!port) {
+  const sendCommand = async (
+    message: PopupToContentMessage,
+    pendingMessage: string,
+  ): Promise<void> => {
+    if (currentTabId === null) {
       setStatusMessage("현재 페이지와 아직 연결되지 않았습니다.");
       return;
     }
 
-    setStatusMessage(label);
-    port.postMessage(message);
+    setStatusMessage(pendingMessage);
+
+    try {
+      const response = await sendTabMessage<TabCommandResponse>(currentTabId, message);
+      if (!response.ok) {
+        setSnapshot(response.snapshot ?? snapshot);
+        setTabReady(false);
+        setRequiresReload(true);
+        setStatusMessage(response.error);
+        return;
+      }
+
+      if (response.snapshot) {
+        setSnapshot(response.snapshot);
+      }
+      setTabReady(true);
+      setRequiresReload(false);
+      setStatusMessage(response.feedback?.message || pendingMessage);
+    } catch (error: unknown) {
+      setTabReady(false);
+      setRequiresReload(true);
+      setStatusMessage(getContentMessageError(error));
+    }
   };
 
   const openHistory = async (): Promise<void> => {
@@ -314,7 +218,7 @@ export default function App() {
           {snapshot?.status === "running" ? (
             <button
               className="capture-btn stop"
-              onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 멈춥니다.")}
+              onClick={() => void sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 멈춥니다.")}
               disabled={!tabReady}
             >
               {UI_TEXT.stopCapture}
@@ -322,7 +226,7 @@ export default function App() {
           ) : (
             <button
               className="capture-btn"
-              onClick={() => sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")}
+              onClick={() => void sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")}
               disabled={!tabReady}
             >
               {UI_TEXT.startCapture}
@@ -331,14 +235,14 @@ export default function App() {
           <div className="save-open-row">
             <button
               className="secondary"
-              onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
+              onClick={() => void sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
               disabled={!tabReady || !hasPersistableContent}
             >
               {UI_TEXT.saveSession}
             </button>
             <button
               className="secondary"
-              onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
+              onClick={() => void sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
               disabled={!tabReady}
             >
               {UI_TEXT.openPanel}

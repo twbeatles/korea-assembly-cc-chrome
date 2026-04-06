@@ -244,6 +244,24 @@ describe("subtitle pipeline", () => {
     expect(later.state.entries[1].text).toBe("한참 뒤 문장");
   });
 
+  it("forces a new fallback entry for cumulative plenary-style previews", () => {
+    const base = Date.parse("2026-03-11T09:05:00.000Z");
+    let state = createEmptySessionState("http://test.com", "Test");
+
+    state = applyPreview(state, "첫 문장", base).state;
+    const result = applyPreview(
+      state,
+      "첫 문장 둘째 문장",
+      base + 1000,
+      undefined,
+      { forceNewEntry: true },
+    );
+
+    expect(result.state.entries).toHaveLength(2);
+    expect(result.state.entries[0].text).toBe("첫 문장");
+    expect(result.state.entries[1].text).toBe("둘째 문장");
+  });
+
   it("keeps trimming cumulative previews even when they span beyond the recent-history window", () => {
     const base = Date.parse("2026-03-11T09:10:00.000Z");
     let state = createEmptySessionState("http://test.com", "Test");

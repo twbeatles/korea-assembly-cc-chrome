@@ -1,79 +1,44 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  OBSERVER_BRIDGE_SOURCE,
-  OBSERVER_CONFIG_EVENT,
-  OBSERVER_STOP_EVENT,
-} from "../src/shared/constants";
+import { OBSERVER_ACTIVATE_EVENT } from "../src/shared/constants";
 
-type BridgeWindow = Window & {
-  __assemblySubtitleObserverBridge?: unknown;
+type ActivationWindow = Window & {
+  __assemblySubtitleActivationBridge?: boolean;
+  smi_mode_act?: (value: number) => void;
+  smi_on?: () => void;
+  layerSubtit?: () => void;
 };
 
-describe("injected observer token bridge", () => {
+describe("injected activation helper", () => {
   afterEach(() => {
-    window.dispatchEvent(new CustomEvent(OBSERVER_STOP_EVENT));
-    delete (window as BridgeWindow).__assemblySubtitleObserverBridge;
-    document.body.innerHTML = "";
+    delete (window as ActivationWindow).__assemblySubtitleActivationBridge;
+    delete (window as ActivationWindow).smi_mode_act;
+    delete (window as ActivationWindow).smi_on;
+    delete (window as ActivationWindow).layerSubtit;
     vi.restoreAllMocks();
   });
 
-  it("emits observer events with the configured token", async () => {
+  it("invokes page subtitle activation functions when the activate event fires", async () => {
     vi.resetModules();
 
-    document.body.innerHTML = `
-      <div id="viewSubtit">
-        <div class="smi_word row_1"><span>bridge token subtitle</span></div>
-      </div>
-    `;
-
-    const postMessageSpy = vi.spyOn(window, "postMessage");
+    const smiModeAct = vi.fn();
+    (window as ActivationWindow).smi_mode_act = smiModeAct;
     await import("../src/content/injected-observer");
 
-    const token = "bridge-token-test";
-    window.dispatchEvent(
-      new CustomEvent(OBSERVER_CONFIG_EVENT, {
-        detail: {
-          selectors: ["#viewSubtit .smi_word"],
-          pollingIntervalMs: 2000,
-          filterUnconfirmedEnabled: true,
-          token,
-        },
-      }),
-    );
+    window.dispatchEvent(new CustomEvent(OBSERVER_ACTIVATE_EVENT));
 
-    const hasTokenizedBridgeEvent = postMessageSpy.mock.calls.some(([payload]) => {
-      const data = payload as {
-        source?: string;
-        kind?: string;
-        token?: string;
-      };
-      return (
-        data.source === OBSERVER_BRIDGE_SOURCE &&
-        data.token === token
-      );
-    });
-
-    expect(hasTokenizedBridgeEvent).toBe(true);
+    expect(smiModeAct).toHaveBeenCalledWith(1);
   });
 
-  it("does not emit bridge events before the token-bearing config arrives", async () => {
+  it("falls back to the next activation candidate when the first one is unavailable", async () => {
     vi.resetModules();
 
-    document.body.innerHTML = `
-      <div id="viewSubtit">
-        <div class="smi_word row_1"><span>bridge token subtitle</span></div>
-      </div>
-    `;
-
-    const postMessageSpy = vi.spyOn(window, "postMessage");
+    const smiOn = vi.fn();
+    (window as ActivationWindow).smi_on = smiOn;
     await import("../src/content/injected-observer");
 
-    const bridgeEvents = postMessageSpy.mock.calls.filter(([payload]) => {
-      const data = payload as { source?: string };
-      return data.source === OBSERVER_BRIDGE_SOURCE;
-    });
+    window.dispatchEvent(new CustomEvent(OBSERVER_ACTIVATE_EVENT));
 
-    expect(bridgeEvents).toHaveLength(0);
+    expect(smiOn).toHaveBeenCalledTimes(1);
   });
 });

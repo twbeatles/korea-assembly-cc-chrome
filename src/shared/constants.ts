@@ -4,16 +4,11 @@ export const EXTENSION_STORAGE_KEY = "assembly-extension-settings";
 export const SESSION_LIBRARY_REVISION_STORAGE_KEY = "assembly-subtitle-session-library-revision";
 export const SESSION_DB_NAME = "assembly-subtitle-sessions";
 export const SESSION_STORE_NAME = "sessions";
+export const SESSION_REPLAY_QUEUE_STORE_NAME = "replayQueue";
 export const SESSION_RECORD_VERSION = "3";
-export const SESSION_DB_SCHEMA_VERSION = 3;
+export const SESSION_DB_SCHEMA_VERSION = 4;
 
-export const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";
-export const OBSERVER_STOP_EVENT = "assembly-subtitle-observer:stop";
 export const OBSERVER_ACTIVATE_EVENT = "assembly-subtitle-observer:activate";
-export const OBSERVER_BRIDGE_SOURCE = "assembly-subtitle-observer";
-export const FRAME_FORWARD_SOURCE = "assembly-subtitle-frame-forward";
-export const FRAME_FORWARD_NONCE_SOURCE = "assembly-subtitle-frame-forward:nonce";
-export const POPUP_PORT_NAME = "assembly-subtitle-popup";
 export const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 
 export const SUBTITLE_SELECTOR_CANDIDATES = [

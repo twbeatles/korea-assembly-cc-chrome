@@ -346,6 +346,27 @@ describe("session store", () => {
     expect(loaded?.title).toBe("이미 저장된 최신본");
   });
 
+  it("does not resurrect a deleted session from the replay queue", async () => {
+    await queueExitPersistRecord({
+      ...buildSession("session_deleted_queue", "stopped"),
+      updatedAt: "2026-03-10T09:00:04.000Z",
+      endedAt: "2026-03-10T09:00:04.000Z",
+    });
+
+    await deleteSession("session_deleted_queue");
+
+    const summary = await replayQueuedExitPersistRecords();
+    const loaded = await loadSession("session_deleted_queue");
+
+    expect(summary).toEqual({
+      queuedCount: 0,
+      replayedCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+    });
+    expect(loaded).toBeUndefined();
+  });
+
   it("falls back when IndexedDB is unavailable", async () => {
     const originalIndexedDb = globalThis.indexedDB;
     Object.defineProperty(globalThis, "indexedDB", {
@@ -1028,6 +1049,11 @@ describe("session store", () => {
 
   it("deletes all persisted sessions across IndexedDB and fallback storage", async () => {
     await saveSession(buildSession("session_idb_saved", "saved"));
+    await queueExitPersistRecord({
+      ...buildSession("session_queue_saved", "stopped"),
+      updatedAt: "2026-03-10T09:00:04.000Z",
+      endedAt: "2026-03-10T09:00:04.000Z",
+    });
 
     const originalIndexedDb = globalThis.indexedDB;
     Object.defineProperty(globalThis, "indexedDB", {
@@ -1048,6 +1074,12 @@ describe("session store", () => {
 
     await expect(listSessions({ limit: 10 })).resolves.toEqual([]);
     await expect(loadSession("session_idb_saved")).resolves.toBeUndefined();
+    await expect(replayQueuedExitPersistRecords()).resolves.toEqual({
+      queuedCount: 0,
+      replayedCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+    });
 
     Object.defineProperty(globalThis, "indexedDB", {
       configurable: true,

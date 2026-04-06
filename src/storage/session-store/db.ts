@@ -2,9 +2,15 @@ import { cloneSessionRecord, type SessionRecord } from "../../core/subtitle-mode
 import {
   SESSION_DB_NAME,
   SESSION_DB_SCHEMA_VERSION,
+  SESSION_REPLAY_QUEUE_STORE_NAME,
   SESSION_STORE_NAME,
 } from "../../shared/constants";
-import type { SessionListOptions, SessionPageOptions, SessionPageResult } from "../types";
+import type {
+  QueuedExitPersistRecord,
+  SessionListOptions,
+  SessionPageOptions,
+  SessionPageResult,
+} from "../types";
 import type { IndexedDbAttempt, IndexedDbSessionRecord } from "./internal-types";
 import { buildSessionSortKey, sortSessions, toIndexedDbRecord } from "./normalize";
 import { logStoreError } from "./shared";
@@ -17,14 +23,15 @@ export function withRequest<T>(request: IDBRequest<T>): Promise<T> {
   });
 }
 
-export async function withTransaction<T>(
+async function withStoreTransaction<T>(
+  storeName: string,
   mode: IDBTransactionMode,
   callback: (store: IDBObjectStore) => Promise<T>,
 ): Promise<T> {
   const db = await openDb();
   return new Promise<T>((resolve, reject) => {
-    const transaction = db.transaction(SESSION_STORE_NAME, mode);
-    const store = transaction.objectStore(SESSION_STORE_NAME);
+    const transaction = db.transaction(storeName, mode);
+    const store = transaction.objectStore(storeName);
     let settled = false;
     let transactionCompleted = false;
     let callbackCompleted = false;
@@ -88,6 +95,13 @@ export async function withTransaction<T>(
   });
 }
 
+export async function withTransaction<T>(
+  mode: IDBTransactionMode,
+  callback: (store: IDBObjectStore) => Promise<T>,
+): Promise<T> {
+  return withStoreTransaction(SESSION_STORE_NAME, mode, callback);
+}
+
 export function disableIndexedDb(): void {
   sessionStoreState.indexedDbAvailable = false;
   sessionStoreState.dbPromise = null;
@@ -111,26 +125,30 @@ export function openDb(): Promise<IDBDatabase> {
 
       request.onupgradeneeded = () => {
         const db = request.result;
-        const store = db.objectStoreNames.contains(SESSION_STORE_NAME)
+        const sessionStore = db.objectStoreNames.contains(SESSION_STORE_NAME)
           ? request.transaction?.objectStore(SESSION_STORE_NAME)
           : db.createObjectStore(SESSION_STORE_NAME, { keyPath: "id" });
-        if (!store) {
+        if (!sessionStore) {
           return;
         }
-        if (!store.indexNames.contains("updatedAt")) {
-          store.createIndex("updatedAt", "updatedAt");
+        if (!sessionStore.indexNames.contains("updatedAt")) {
+          sessionStore.createIndex("updatedAt", "updatedAt");
         }
-        if (!store.indexNames.contains("status")) {
-          store.createIndex("status", "status");
+        if (!sessionStore.indexNames.contains("status")) {
+          sessionStore.createIndex("status", "status");
         }
-        if (!store.indexNames.contains("starred")) {
-          store.createIndex("starred", "starredIndexKey");
+        if (!sessionStore.indexNames.contains("starred")) {
+          sessionStore.createIndex("starred", "starredIndexKey");
         }
-        if (!store.indexNames.contains("paging")) {
-          store.createIndex("paging", "sortKey");
+        if (!sessionStore.indexNames.contains("paging")) {
+          sessionStore.createIndex("paging", "sortKey");
         }
 
-        const cursorRequest = store.openCursor();
+        if (!db.objectStoreNames.contains(SESSION_REPLAY_QUEUE_STORE_NAME)) {
+          db.createObjectStore(SESSION_REPLAY_QUEUE_STORE_NAME, { keyPath: "sessionId" });
+        }
+
+        const cursorRequest = sessionStore.openCursor();
         cursorRequest.onsuccess = () => {
           const cursor = cursorRequest.result;
           if (!cursor) {
@@ -366,6 +384,56 @@ export async function deleteIndexedDbSession(id: string): Promise<void> {
 
 export async function clearIndexedDbSessions(): Promise<void> {
   await withTransaction("readwrite", async (store) => {
+    await withRequest(store.clear());
+  });
+}
+
+function cloneQueuedExitPersistRecord(
+  record: QueuedExitPersistRecord,
+): QueuedExitPersistRecord {
+  return {
+    sessionId: record.sessionId,
+    queuedAt: record.queuedAt,
+    record: cloneSessionRecord(record.record),
+  };
+}
+
+export async function listIndexedDbQueuedExitPersistRecords(): Promise<QueuedExitPersistRecord[]> {
+  return withStoreTransaction(SESSION_REPLAY_QUEUE_STORE_NAME, "readonly", async (store) => {
+    const all = await withRequest(store.getAll() as IDBRequest<QueuedExitPersistRecord[]>);
+    return (all as QueuedExitPersistRecord[]).map(cloneQueuedExitPersistRecord);
+  });
+}
+
+export async function loadIndexedDbQueuedExitPersistRecord(
+  sessionId: string,
+): Promise<QueuedExitPersistRecord | undefined> {
+  return withStoreTransaction(SESSION_REPLAY_QUEUE_STORE_NAME, "readonly", async (store) => {
+    const record = await withRequest(
+      store.get(sessionId) as IDBRequest<QueuedExitPersistRecord | undefined>,
+    );
+    return record ? cloneQueuedExitPersistRecord(record) : undefined;
+  });
+}
+
+export async function putIndexedDbQueuedExitPersistRecord(
+  record: QueuedExitPersistRecord,
+): Promise<QueuedExitPersistRecord> {
+  await withStoreTransaction(SESSION_REPLAY_QUEUE_STORE_NAME, "readwrite", async (store) => {
+    await withRequest(store.put(cloneQueuedExitPersistRecord(record)));
+    return record;
+  });
+  return cloneQueuedExitPersistRecord(record);
+}
+
+export async function deleteIndexedDbQueuedExitPersistRecord(sessionId: string): Promise<void> {
+  await withStoreTransaction(SESSION_REPLAY_QUEUE_STORE_NAME, "readwrite", async (store) => {
+    await withRequest(store.delete(sessionId));
+  });
+}
+
+export async function clearIndexedDbQueuedExitPersistRecords(): Promise<void> {
+  await withStoreTransaction(SESSION_REPLAY_QUEUE_STORE_NAME, "readwrite", async (store) => {
     await withRequest(store.clear());
   });
 }

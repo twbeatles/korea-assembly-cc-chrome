@@ -149,6 +149,48 @@ describe("panel live rows", () => {
     });
   });
 
+  it("filters placeholder and noise-only structured rows using the shared commit policy", () => {
+    const filtered = buildOutputEntriesFromPanelRows(
+      [
+        {
+          ...createStructuredRow(),
+          entryId: "entry_loading",
+          text: "로딩중..",
+        },
+        {
+          ...createStructuredRow(),
+          key: "top::row_2",
+          entryId: "entry_noise",
+          text: "12345",
+        },
+      ],
+      Date.parse("2026-03-20T08:00:05.000Z"),
+      {
+        noiseFilterEnabled: true,
+      },
+    );
+
+    expect(filtered).toEqual([]);
+  });
+
+  it("keeps numeric structured rows when noise filtering is disabled", () => {
+    const [entry] = buildOutputEntriesFromPanelRows(
+      [
+        {
+          ...createStructuredRow(),
+          entryId: "entry_numeric",
+          text: "12345",
+        },
+      ],
+      Date.parse("2026-03-20T08:00:05.000Z"),
+      {
+        noiseFilterEnabled: false,
+      },
+    );
+
+    expect(entry?.text).toBe("12345");
+  });
+
   it("keeps copy and export timings from panel rows instead of flattening to updatedAt", () => {
     const entries = buildOutputEntriesFromPanelRows([
       {

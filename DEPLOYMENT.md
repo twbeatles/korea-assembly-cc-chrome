@@ -49,7 +49,7 @@ npm run build
 ```
 
 설명:
-- `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
+- `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 activation helper 번들(`public/injected-observer.js`)을 재생성한 뒤 Vite 빌드를 수행합니다.
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
 
 추가 확인 권장:
@@ -67,7 +67,7 @@ npm run build
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 prepared snapshot에 실제 entry가 있을 때만 마지막 running/stopped 스냅샷 저장이 시도되는지 확인
 - 장시간 수집(수시간)에서도 화면 표시와 내보내기 결과가 누락 없이 유지되는지 확인
-- service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
+- service worker 재기동 뒤에도 top-frame DOM coordinator 기반 수집과 startup persistence maintenance 가 정상 복구되는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - popup `지금 저장` 버튼이 prepared snapshot 기준 persistable content가 없으면 비활성화되고, raw preview만 남은 상태에서도 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
@@ -96,7 +96,7 @@ npm run build
 
 1. 확장 popup 이 열리는지
 2. 국회 페이지 오른쪽에 패널이 자동으로 나타나는지
-3. 기존에 열려 있던 국회 탭에서 popup 연결 오류 없이 재주입 또는 새로고침 안내로 복구되는지
+3. 기존에 열려 있던 국회 탭에서 content script 수신자가 없을 때 popup 이 새로고침 안내로 안전하게 내려가는지
 4. 확장 아이콘의 popup 에서 현재 상태가 보이는지
 
 ## 5. 내부 공유용 배포
@@ -142,8 +142,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 - `storage`
 - `downloads`
 - `offscreen`
-- `activeTab`
-- `scripting`
+- `unlimitedStorage`
 - host permission:
   - `https://assembly.webcast.go.kr/*`
   - `https://webcast.assembly.go.kr/*`
@@ -163,7 +162,8 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 - AI 자막 DOM 을 읽어 사용자가 파일로 저장할 수 있게 함
 - 수집 데이터는 세션 저장 및 내보내기 목적
 - `downloads` 권한은 TXT/SRT/VTT/JSON 파일 저장용
-- `storage` 권한은 설정, 세션 저장 fallback, page-exit replay queue, 탭 단위 frame-forward nonce, 저장 복구 diagnostics 용
+- `storage` 권한은 설정, 세션 저장 fallback, page-exit replay queue, 저장 복구 diagnostics 용
+- `unlimitedStorage` 권한은 장시간 회의에서 fallback 세션/queue snapshot과 진단 정보가 quota 때문에 조기 실패하지 않도록 하기 위한 용도
 - `storage` 는 즐겨찾기/메모 같은 세션 메타와 JSON 가져오기 후 복원된 기록 저장에도 사용됨
 
 ## 7. 릴리스 체크리스트
@@ -220,7 +220,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 ### 9.1 확장을 로드했는데 페이지 패널이 보이지 않음
 
 - 국회 페이지가 이미 열려 있었다면 새로고침이 필요할 수 있습니다.
-- 최신 빌드는 기존 탭에 content script 재주입을 먼저 시도합니다.
+- manifest 적용 전에 이미 열려 있던 탭은 content script가 없을 수 있으므로 새로고침이 필요할 수 있습니다.
 - 대상 URL 이 `https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*` 범위인지 확인합니다.
 
 ### 9.2 zip 업로드가 실패함
@@ -300,8 +300,8 @@ Current release alignment:
 
 Pre-release validation now assumes the addendum closure changes are present:
 
-- Observer bridge token integrity checks
-- Frame-forward nonce rotation on navigation
+- Top-frame DOM coordinator simplification
+- Activation-only injected helper reduction
 - Fallback probing backoff + cached frame path probing
 - Invalidated-context shutdown cleanup
 - Offscreen duplicate-create tolerance
@@ -330,12 +330,12 @@ Deployment documentation consistency sources:
 - Release verification should confirm that favorited / noted sessions keep `starred`, `pinnedAt`, and `note` metadata after autosave, page-exit persistence, and final stop-save flows.
 - page-exit persistence is now ordered as `queue replay record -> background persist request`; regression coverage for that ordering is part of release confidence.
 - History validation should cover store-level paging, live refresh via `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and note-draft preservation during same-session refreshes.
-- Popup and options initial render should be validated from `CAPTURE_STATUS` alone, including subtitle count, char count, preview text, and recent entry hydration.
+- Popup and options initial render should be validated from the `GET_STATUS` response snapshot alone, including subtitle count, char count, preview text, and recent entry hydration.
 - The current pre-release gate remains `npm run verify`.
 
 ## 2026-03-19 Deployment Consistency Update
 
-- Release verification should confirm that frame-forward nonce state survives MV3 service worker restarts via `chrome.storage.local` and converges again without requiring a page reload.
+- Release verification should confirm that top-frame DOM coordinator 기반 observer/probe 조합이 service worker 재기동 뒤에도 유지되고, startup persistence maintenance 와 충돌하지 않습니다.
 - Release verification should confirm that queued exit persist reads merge storage and memory snapshots, and that a storage write failure does not silently drop the in-memory replay candidate.
 - Options validation should confirm that `저장 복구 상태` shows `queue write`, `replay`, `cleanup`, and summary errors separately when they are present, and that live `chrome.storage.onChanged` updates are reflected without reopening the page.
 - Popup validation should confirm that `지금 저장` is disabled whenever prepared entries are absent, including raw-preview-only states, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.

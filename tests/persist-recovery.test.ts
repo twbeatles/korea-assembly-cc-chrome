@@ -10,6 +10,7 @@ import {
   readPersistReplayDiagnostics,
   resetPersistRecoveryStateForTests,
 } from "../src/storage/persist-recovery";
+import { disableIndexedDb } from "../src/storage/session-store/db";
 
 function buildSession(
   id: string,
@@ -82,7 +83,8 @@ describe("persist recovery", () => {
     });
   });
 
-  it("keeps the memory queue when storage writes fail and clears the error after later success", async () => {
+  it("keeps the memory queue when fallback storage writes fail and clears the error after later success", async () => {
+    disableIndexedDb();
     const storageSet = chrome.storage.local.set as unknown as ReturnType<typeof vi.fn>;
     storageSet.mockRejectedValueOnce(new Error("queue write failed"));
 
@@ -132,7 +134,12 @@ describe("persist recovery", () => {
     expect(await listQueuedExitPersistRecords()).toEqual([]);
 
     expect(await readPersistReplayDiagnostics()).toEqual(
-      expect.objectContaining(createEmptyPersistReplayDiagnostics()),
+      expect.objectContaining({
+        ...createEmptyPersistReplayDiagnostics(),
+        lastQueueWriteSessionId: sessionId,
+        lastQueueWriteRecordUpdatedAt: record.updatedAt,
+        lastQueueWriteApproxBytes: expect.any(Number),
+      }),
     );
   });
 

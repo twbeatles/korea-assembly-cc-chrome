@@ -25,7 +25,8 @@ npm run build
 - UI: `React`
 - 테스트: `Vitest`
 - 확장 런타임: `Manifest V3`
-- 세션 저장: `IndexedDB` 우선, open/capability 실패 시 `chrome.storage.local` per-session fallback, 최후에는 메모리 fallback
+- 세션 저장: `IndexedDB` 우선, open/capability 실패 시 `chrome.storage.local` per-session fallback, replay queue는 session DB 내부 `IndexedDB` store 우선, 최후에는 메모리 fallback
+- 저장소 권한: `storage` + `unlimitedStorage` 조합으로 장시간 회의의 fallback/diagnostics quota 리스크를 낮춥니다.
 
 ## 3. 주요 파일 구조
 
@@ -118,19 +119,19 @@ offscreen.html
 
 ### 4.3 Observer + Polling
 
-- `injected-observer.ts` 가 page world 에서 `MutationObserver` 를 설치합니다.
-- 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 먼저 시도합니다.
-- observer 는 변경 신호를 받되, 실제 텍스트는 selector 기반으로 다시 읽고 `rows + raw preview` 를 함께 브리지합니다.
-- 같은 row 의 텍스트가 수정되면 새 key 만 보내지 않고 현재 row 스냅샷을 다시 보내 제자리 갱신을 가능하게 합니다.
-- observer, local polling, top-frame fallback 은 모두 같은 `NormalizedCaptureEvent` 형태로 합류합니다.
+- top frame content script 가 단일 capture coordinator 를 소유합니다.
+- coordinator 는 접근 가능한 same-origin `iframe/frame` document 를 재귀적으로 순회하고, subtitle container 부모 레벨 observer + polling fallback 을 함께 사용합니다.
+- observer 는 변경 신호용이고 실제 텍스트는 selector 기반 probe 로 다시 읽어 `rows + raw preview` 를 같은 `NormalizedCaptureEvent` 로 합류시킵니다.
+- `injected-observer.ts` 는 DOM 관측을 하지 않고, 자막 레이어 activation 이 DOM 클릭만으로 해결되지 않을 때 page function 호출을 돕는 최소 helper 로만 남깁니다.
 - top frame 에서는 자막 공백을 즉시 reset 하지 않고 약 1초 grace 뒤에만 실제 reset 을 commit 합니다.
-- observer 실패 또는 타겟 미탐색 시 polling fallback 이 동작합니다.
+- observer miss, 타겟 교체, 로딩 지연 상황에서는 polling fallback 이 동작합니다.
 - `src/content/content-script.ts` 는 bootstrap facade 이고, 실제 top-frame orchestration은 `src/content/bootstrap/bootstrap-content-script.ts` 가 소유합니다.
 
 ## 5. subtitle pipeline 고정 의미론
 
 - `normalized capture event -> live reconcile -> normalize -> preview gate -> history/rfind suffix -> noise filter -> merge/add`
 - structured row 가 안정적으로 잡히면 row baseline 과 글로벌 history 를 함께 사용해 commit/update 를 분리합니다.
+- structured row upsert 와 prepared snapshot 직렬화도 같은 commit sanitizer 를 사용해야 합니다.
 - `_confirmed_compact` / `trailingSuffix` 의미를 유지합니다.
 - suffix 매칭은 `rfind` 기반입니다.
 - 과거 세션에 남아 있는 `speakerColor`, `speakerChannel`, `speakerChanged` 는 로드 가능해야 하지만, 현재 UI/내보내기에서는 이 메타를 전면에 드러내지 않습니다.
@@ -152,7 +153,7 @@ offscreen.html
 - 차단:
   - 숫자-only
   - 기호-only
-- noise filter 설정과 무관하게 `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
+- noise filter 설정과 무관하게 `로딩중..`, `로딩 중...`, `Loading...` placeholder는 structured/fallback 공통 commit/persist/export 대상에서 제외합니다.
 - `noiseFilterEnabled = false` 이면 숫자-only / 기호-only도 통과시킵니다.
 - 중복 차단 최소 길이 설정 키는 `recentDuplicateMinLength` 입니다.
 
@@ -191,9 +192,10 @@ offscreen.html
 - `loadSession`/`listSessions` 는 IndexedDB + fallback 을 함께 읽고 `updatedAt` 기준으로 더 최신 레코드를 고릅니다. 동률이면 IndexedDB 를 우선합니다.
 - 개별 IndexedDB transaction/read/write 실패는 현재 연산만 fallback 으로 우회하고, 런타임 전체 disable 은 open/capability failure 에만 허용됩니다.
 - 성공한 IndexedDB write/delete 는 동일 id fallback copy 를 best-effort 로 정리합니다.
-- page-exit 시점의 stopped 스냅샷은 세션별 replay queue 에 함께 적재되고, background 저장 성공 시 해당 세션의 stale queued snapshot 을 정리합니다.
+- page-exit 시점의 stopped 스냅샷은 세션별 replay queue 에 함께 적재되고, background/direct/replay 저장 성공 시 해당 세션의 stale queued snapshot 을 정리합니다.
 - startup 에서는 queued stopped snapshot replay 를 먼저 수행하고, 그 다음 persisted running session cleanup 을 수행합니다.
 - replay / cleanup 결과는 `chrome.storage.local` diagnostics snapshot 으로 저장되며 options `저장 복구 상태`에 노출됩니다.
+- replay queue 는 session DB 내부 `IndexedDB` store, legacy `chrome.storage.local` snapshot, 메모리 snapshot 을 merge 해서 읽어야 하며, `chrome.storage.local` queue는 레거시/IDB 불가 fallback source로만 유지해야 합니다.
 - `closeRunningSessionsOnStartup` 는 숫자 하나가 아니라 `detected / closed / failed` 요약을 반환해야 합니다.
 - JSON import 는 raw session spread 가 아니라 allow-list sanitize 후 normalize 순서를 유지해야 하며, unsupported wrapper version 과 invalid timestamp 는 reject 해야 합니다.
 
@@ -202,7 +204,7 @@ offscreen.html
 - top frame 의 content script 가 우측 패널을 자동으로 삽입합니다.
 - 기본 상태는 `펼쳐짐` 이고, 접으면 오른쪽의 `자막 보기` 탭만 남습니다.
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
-- popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
+- popup 은 long-lived port 없이 현재 탭에 request/response 명령만 보내며, 수신자가 없으면 새로고침 안내로 내려갑니다.
 - 패널은 `실시간 내용`과 `수집된 자막` 2단으로 보입니다.
 - `수집된 자막` 목록은 현재 active row만 번쩍 보여 주는 뷰가 아니라, live ledger 기준 최근 row가 누적되는 뷰를 유지합니다.
 - 본회의 fallback capture에서는 structured row가 비어 있어도 이미 commit된 entry를 `수집된 자막` 목록으로 재구성해 누적 표시합니다.
@@ -220,10 +222,10 @@ offscreen.html
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `수집된 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
-- replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 해야 하며, 같은 `sessionId` 충돌 시 `record.updatedAt` 우선, 동률이면 `queuedAt`이 더 늦은 쪽을 유지해야 합니다.
+- replay queue 조회는 session DB 내부 `IndexedDB` queue store, legacy `chrome.storage.local` snapshot, 메모리 snapshot을 merge 해야 하며, 같은 `sessionId` 충돌 시 `record.updatedAt` 우선, 동률이면 `queuedAt`이 더 늦은 쪽을 유지해야 합니다.
 - queue write 실패는 메모리 queue를 지우면 안 되며, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`로 phase별로 남겨야 합니다.
 - capture notice 는 `정상 수집`, `자동 조정 중 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
-- 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다. `저장 복구 상태`는 diagnostics view가 열려 있는 동안 `chrome.storage.onChanged`를 통해 즉시 반영되어야 합니다.
+- 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다. `저장 복구 상태`는 diagnostics view가 열려 있는 동안 `chrome.storage.onChanged`를 통해 즉시 반영되어야 하며, 마지막 queue 대상 session id / record.updatedAt / payload 크기, 현재 persistence context, 마지막 stopped save 방식도 보여야 합니다.
 - popup `SAVE_SESSION`, 패널 `저장/복사/내보내기`, `beforeunload` 경고, pagehide/visibilitychange 저장 시도는 모두 prepared snapshot 기준 `canPersistPreparedContent`로 정렬해야 합니다. 현재 화면에 raw preview만 남아 있고 prepared entry가 비면 저장 가능 상태로 취급하면 안 됩니다.
 - 패널 `화면 비우기`는 저장 가능 여부와 별개로 현재 화면에 보이는 runtime 내용이 있으면 계속 허용해야 합니다.
 - 자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다.
@@ -236,7 +238,7 @@ offscreen.html
 - `legacy/` 는 로컬 참조용 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - storage 실패, observer 실패, frame 접근 실패, selector 미탐색은 크래시 대신 fallback 으로 내려가야 합니다.
 - export 는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback 을 유지합니다.
-- frame forwarding 은 탭 단위 storage-backed nonce 검증을 통과한 메시지만 top frame 에서 수용해야 하며, content script는 주기 재동기화와 mismatch 즉시 resync를 유지해야 합니다.
+- page-world observer bridge, frame forwarding, storage-backed nonce 계층은 재도입하지 않습니다. 자막 DOM 관측 책임은 top frame content script coordinator 하나로 유지합니다.
 - 코드 수정 후 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 확인합니다.
 
 ## 9. 관련 문서
@@ -284,12 +286,12 @@ When editing this repository, align with the newly implemented behavior below.
 - 본회의 fallback capture에서는 structured live row가 비어 있어도 commit된 entry를 `수집된 자막` 목록으로 계속 보여 주어야 합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 noise filter 토글과 무관하게 commit/persist/export 대상에서 제외되어야 합니다.
 
-## Sync Delta (2026-03-19)
+## Sync Delta (2026-04-06)
 
 When editing this repository, align with the newly implemented behavior below.
 
-- frame-forward nonce는 탭 단위 `chrome.storage.local` source를 기준으로 유지되며, 탭 `loading` 시 회전하고 탭 제거 시 정리합니다.
-- 모든 content script는 bootstrap 시 nonce를 받고 15초마다 재동기화하며, forwarded frame message nonce mismatch는 현재 이벤트를 버리고 즉시 resync 해야 합니다.
+- top frame content script 가 single-owner capture coordinator 를 유지하고, 접근 가능한 same-origin frame document 를 직접 관측합니다.
+- page-world helper 는 activation 전용이며, observer bridge / frame forwarding / nonce 동기화 계층은 더 이상 사용하지 않습니다.
 - replay queue는 storage와 memory를 merge 해서 읽고, storage write failure 뒤에도 같은 런타임의 memory queue를 보존해야 합니다.
 - options `저장 복구 상태`는 queue write / replay / cleanup 오류를 개별 행으로 노출해야 하며 `lastError`는 요약 필드로만 유지합니다.
 - popup 저장 버튼은 persistable content가 있을 때만 활성화되며, 빈 저장 요청은 `저장할 자막이 아직 없습니다.` 피드백으로 일관되게 처리해야 합니다.
@@ -340,8 +342,8 @@ When editing this repository, align with the current implemented behavior below.
 
 Current closure status:
 
-- Bridge token verification: completed.
-- Frame-forward nonce rotation: completed.
+- Top-frame DOM coordinator simplification: completed.
+- Activation-only injected helper reduction: completed.
 - Unconfirmed fallback consistency: completed.
 - Fallback probe backoff + cached frame path: completed.
 - Invalidated context shutdown path: completed.
@@ -351,7 +353,6 @@ Current closure status:
 
 ## 2026-03-12 Additional Sync Update
 
-- content -> popup messaging now also includes `POPUP_FEEDBACK`.
 - popup command feedback must explicitly surface `OPEN_INPAGE_PANEL` results.
 - session import summaries now include `failedCount`.
 - supported hosts are fixed to both `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
@@ -369,7 +370,7 @@ When editing this repository, align with the newly implemented behavior below.
 - History must use store-level paging through `listSessionsPage({ page, pageSize, starredOnly })`; do not reintroduce full-library preload with an arbitrary cap.
 - Session-library writes/deletes/imports/startup cleanup now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
 - History detail may load a selected session outside the current page, and same-session refreshes must not clobber a dirty note draft.
-- `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
+- `GET_STATUS` response snapshot is the complete initial payload for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
 
 ## 2026-03-16 Sync Update
 

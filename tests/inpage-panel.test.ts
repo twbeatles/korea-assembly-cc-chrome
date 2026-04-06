@@ -43,6 +43,8 @@ function createSnapshot(): StatusSnapshot {
     updatedAt: now,
     lastPersistedAt: now,
     canPersistPreparedContent: true,
+    persistContext: "running_autosave",
+    stopPersistInFlight: false,
     observerActive: true,
     currentSelector: "#viewSubtit",
     currentFramePath: [],

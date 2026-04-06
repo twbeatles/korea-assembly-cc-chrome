@@ -3,8 +3,10 @@ import {
   type CaptureMode,
   type LivePanelRow,
 } from "../core/live-capture";
+import { sanitizeCommittedText } from "../core/subtitle-pipeline";
 import type { SubtitleEntry } from "../core/subtitle-models";
 import { isAssemblyPlenaryUrl, PIPELINE_DEFAULTS } from "../shared/constants";
+import type { ExtensionSettings } from "../storage/types";
 
 function cloneOptionalFramePath(framePath?: number[]): number[] | undefined {
   return framePath ? [...framePath] : undefined;
@@ -17,8 +19,14 @@ function resolveIsoTimestamp(value: string | undefined, fallback: string): strin
 export function buildOutputEntriesFromPanelRows(
   rows: LivePanelRow[],
   now = Date.now(),
+  settings?: Partial<ExtensionSettings>,
 ): SubtitleEntry[] {
-  return rows.map((row, index) => {
+  return rows.flatMap((row, index) => {
+    const sanitizedText = sanitizeCommittedText(row.text, settings);
+    if (!sanitizedText) {
+      return [];
+    }
+
     const resolvedMs =
       Number.isFinite(row.updatedAt) && row.updatedAt > 0
         ? row.updatedAt
@@ -27,18 +35,20 @@ export function buildOutputEntriesFromPanelRows(
     const timestamp = resolveIsoTimestamp(row.timestamp, fallbackTimestamp);
     const startTime = resolveIsoTimestamp(row.startTime, timestamp);
     const endTime = resolveIsoTimestamp(row.endTime, fallbackTimestamp);
-    return {
-      id: row.entryId || `live:${row.key}:${resolvedMs}:${index}`,
-      text: row.text,
-      timestamp,
-      startTime,
-      endTime,
-      sourceSelector: row.sourceSelector,
-      sourceFramePath: cloneOptionalFramePath(row.sourceFramePath),
-      sourceNodeKey: row.sourceNodeKey || row.key,
-      speakerColor: row.speakerColor,
-      speakerChannel: row.speakerChannel,
-    };
+    return [
+      {
+        id: row.entryId || `live:${row.key}:${resolvedMs}:${index}`,
+        text: sanitizedText,
+        timestamp,
+        startTime,
+        endTime,
+        sourceSelector: row.sourceSelector,
+        sourceFramePath: cloneOptionalFramePath(row.sourceFramePath),
+        sourceNodeKey: row.sourceNodeKey || row.key,
+        speakerColor: row.speakerColor,
+        speakerChannel: row.speakerChannel,
+      },
+    ];
   });
 }
 
@@ -66,4 +76,23 @@ export function resolvePanelLiveRows(input: {
   }
 
   return buildCommittedEntryLiveRows(input.entries);
+}
+
+export function filterPanelLiveRows(
+  rows: LivePanelRow[],
+  settings?: Partial<ExtensionSettings>,
+): LivePanelRow[] {
+  return rows.flatMap((row) => {
+    const sanitizedText = sanitizeCommittedText(row.text, settings);
+    if (!sanitizedText) {
+      return [];
+    }
+
+    return [
+      {
+        ...row,
+        text: sanitizedText,
+      },
+    ];
+  });
 }

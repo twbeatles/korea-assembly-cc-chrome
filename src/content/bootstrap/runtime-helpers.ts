@@ -14,13 +14,6 @@ export function confirmFailedStoppedSessionDiscard(message: string): boolean {
   return window.confirm(message);
 }
 
-export function createObserverBridgeToken(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
 export function isExtensionContextInvalidatedError(error: unknown): boolean {
   if (typeof error === "string") {
     return error.includes("Extension context invalidated");

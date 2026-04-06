@@ -9,33 +9,30 @@ import {
   clearLiveCaptureLedger,
   createEmptyLiveCaptureLedger,
   getLiveRow,
+  markLiveRowCommitted,
   normalizeCaptureEvent,
   reconcileLiveCapture,
+  setLiveRowBaseline,
   syncLiveRowOutputEntry,
   type LiveCaptureRow,
 } from "../../core/live-capture";
 import {
   cloneEntry,
-  createId,
+  cloneSessionRecord,
   createEmptySessionState,
   type SessionRecord,
   type SessionState,
-  type SubtitleEntry,
 } from "../../core/subtitle-models";
-import { compactSubtitleText, normalizeSubtitleText } from "../../core/text-normalizer";
 import {
   EXTENSION_STORAGE_KEY,
-  FRAME_FORWARD_NONCE_SOURCE,
-  OBSERVER_BRIDGE_SOURCE,
   OBSERVER_ACTIVATE_EVENT,
-  OBSERVER_CONFIG_EVENT,
-  OBSERVER_STOP_EVENT,
+  isAssemblyPlenaryUrl,
   PIPELINE_DEFAULTS,
-  POPUP_PORT_NAME,
 } from "../../shared/constants";
 import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
+  hasPersistableRunningContent,
   resolveRunningPersistDebounceMs,
   scheduleRunningPersistTimer,
   shouldPersistFinalSession,
@@ -50,16 +47,12 @@ import {
 } from "../../shared/copy-utils";
 import type {
   BackgroundCommandResponse,
-  FrameForwardMessage,
   ObservedSubtitleRow,
-  ObserverBridgeEvent,
   PopupToContentMessage,
+  TabCommandResponse,
 } from "../../shared/message-types";
-import {
-  computeCurrentFramePath,
-  probeBestAccessibleSubtitle,
-  probeFramePath,
-} from "../frame-probe";
+import type { CaptureCoordinator } from "../capture-coordinator";
+import { createCaptureCoordinator } from "../capture-coordinator";
 import {
   type InPagePanelController,
 } from "../inpage-panel";
@@ -70,41 +63,30 @@ import {
   resolveFailedStoppedSessionGuard,
 } from "../failed-stopped-session";
 import { RESET_CAPTURE_NOTICE } from "../capture-notice";
-import { shouldEmitLocalProbeUpdate } from "../local-polling";
-import { estimateRecentRaw } from "../dom-probe";
 import {
   deleteSession,
   exportSessionData,
   saveSession,
   updateRunningSession,
 } from "../../storage/session-store";
-import { queueExitPersistRecord } from "../../storage/persist-recovery";
+import {
+  queueExitPersistRecord,
+  recordStopPersistSuccess,
+} from "../../storage/persist-recovery";
 import { getSettings, sanitizeSettings } from "../../storage/settings-store";
 import type { ExtensionSettings } from "../../storage/types";
 import { tryDomSubtitleActivation, waitForSubtitleLayer } from "../subtitle-layer";
 import { deriveCommitteeNameFromTitle } from "../committee-name";
-import { getSubtitleSelectorCandidates } from "../subtitle-dom";
-import {
-  createPopupFeedbackMessage,
-  postToPopupPort,
-} from "../popup-bridge";
-import {
-  forwardFrameEvent,
-  isForwardedFrameMessage,
-  isObserverBridgeEventMessage,
-  resolveForwardedFrameNonceAction,
-  resolveTopFallbackDelayMs,
-} from "../frame-coordinator";
 import { persistQueuedPageExitRecord } from "../page-exit-persist";
 import { createResetSessionState } from "../session-lifecycle";
 import { hasOnlyStableRows, resolveRuntimeCaptureNotice } from "../subtitle-event-handler";
+import { commitStructuredLiveRow } from "./structured-row-commit";
 import {
   collapseInPagePanelController,
   mountInPagePanelController,
   openInPagePanelController,
 } from "./panel-controller";
 import {
-  syncPortState as syncPortStateView,
   syncUserInterfaces as syncUserInterfacesView,
   updateInPagePanel as updateInPagePanelView,
 } from "./panel-ui";
@@ -115,7 +97,6 @@ import {
   buildStatusSnapshot as buildStatusSnapshotView,
 } from "./runtime-view";
 import {
-  FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS,
   INTERNAL_CACHE_COMPACT_INTERVAL_MS,
   INTERNAL_CACHE_MAX_PENDING_PREVIEWS,
   INTERNAL_CACHE_MAX_STATE_ENTRIES,
@@ -129,38 +110,30 @@ import {
 import {
   confirmFailedStoppedSessionDiscard,
   confirmSessionClear,
-  createObserverBridgeToken,
   isExtensionContextInvalidatedError,
 } from "./runtime-helpers";
 
 const isTopFrame = window.top === window;
-const localFramePath = computeCurrentFramePath();
-const injectedScriptId = "assembly-subtitle-observer-script";
+const injectedActivationScriptId = "assembly-subtitle-activation-script";
 let settings: ExtensionSettings = createDefaultSettings();
 let state: SessionState = createEmptySessionState(window.location.href, document.title);
-const popupPorts = new Set<chrome.runtime.Port>();
-let localPollingTimer: number | null = null;
-let topFallbackTimer: number | null = null;
 let persistTimer: number | null = null;
 let pendingResetTimer: number | null = null;
-let localLastProbeSignature = "";
-let localHadProbeText = false;
-let topFallbackMissStreak = 0;
-let lastSuccessfulFallbackFramePath: number[] | null = null;
 let panelCollapsed = false;
 let previewCollapsed = true;
 let panelNotice = DEFAULT_IN_PAGE_NOTICE;
 let inPagePanel: InPagePanelController | null = null;
-let frameForwardNonce = "";
-let frameForwardNonceRefreshTimer: number | null = null;
-let frameForwardNonceRefreshInFlight = false;
-let observerBridgeToken = createObserverBridgeToken();
+let captureCoordinator: CaptureCoordinator | null = null;
 let lastSubtitleActivationAttemptAt = 0;
 let lastNavigationSnapshotAt = 0;
 let liveCaptureLedger = createEmptyLiveCaptureLedger();
 let extensionContextInvalidated = false;
 let failedStoppedSessionGuard = createEmptyFailedStoppedSessionGuard();
 let lastInternalCacheCompactAt = 0;
+let persistContextOverride: "idle" | "running_autosave" | "stopped_final_save" | "page_exit_checkpoint" | null =
+  null;
+let stopPersistInFlight = false;
+let pendingStopPersistRecord: SessionRecord | null = null;
 
 function setPanelNotice(message: string): boolean {
   if (panelNotice === message) {
@@ -170,45 +143,16 @@ function setPanelNotice(message: string): boolean {
   return true;
 }
 
-function clearLocalPolling(): void {
-  if (localPollingTimer) {
-    window.clearInterval(localPollingTimer);
-    localPollingTimer = null;
-  }
-}
-
-function clearTopFallbackTimer(): void {
-  if (topFallbackTimer) {
-    window.clearTimeout(topFallbackTimer);
-    topFallbackTimer = null;
-  }
-}
-
-function clearFrameForwardNonceRefresh(): void {
-  if (frameForwardNonceRefreshTimer) {
-    window.clearInterval(frameForwardNonceRefreshTimer);
-    frameForwardNonceRefreshTimer = null;
-  }
-}
-
 function shutdownForInvalidatedContext(): void {
   if (extensionContextInvalidated) {
     return;
   }
 
   extensionContextInvalidated = true;
-  clearLocalPolling();
-  clearTopFallbackTimer();
-  clearFrameForwardNonceRefresh();
+  captureCoordinator?.stop();
   clearRunningPersistTimer();
   clearPendingReset();
   state.observerActive = false;
-
-  try {
-    window.dispatchEvent(new CustomEvent(OBSERVER_STOP_EVENT));
-  } catch {
-    // no-op
-  }
 }
 
 function reportRuntimeError(message: string, error?: unknown): void {
@@ -220,20 +164,6 @@ function reportRuntimeError(message: string, error?: unknown): void {
   console.warn(`[assembly-subtitle] ${message}`, error);
   setPanelNotice(message);
   updateInPagePanel();
-  if (!isTopFrame) {
-    return;
-  }
-
-  popupPorts.forEach((port) => {
-    try {
-      postToPopupPort(port, {
-        type: "ERROR",
-        message,
-      });
-    } catch {
-      // Ignore Invalidated context errors on ports
-    }
-  });
 }
 
 function logDebug(message: string, payload?: unknown): void {
@@ -254,21 +184,54 @@ function canPersistCurrentRunningState(): boolean {
   return buildPreparedOutputSnapshot().eligibility.canPersistPreparedContent;
 }
 
+function shouldForceNewFallbackEntry(): boolean {
+  return isAssemblyPlenaryUrl(state.sourceUrl || window.location.href);
+}
+
 function buildPreparedOutputSnapshot(now = Date.now()) {
   return buildPreparedOutputSnapshotView(
     liveCaptureLedger,
     state,
     state.sourceUrl || window.location.href,
+    settings,
     now,
   );
 }
 
-function buildStatusSnapshot(requiresReload = false) {
-  return buildStatusSnapshotView(window.location.href, liveCaptureLedger, state, requiresReload);
+function resolvePersistContext():
+  | "idle"
+  | "running_autosave"
+  | "stopped_final_save"
+  | "page_exit_checkpoint" {
+  if (stopPersistInFlight) {
+    return "stopped_final_save";
+  }
+  if (persistContextOverride) {
+    return persistContextOverride;
+  }
+  if (
+    state.status === "running" &&
+    settings.runningAutoSaveEnabled &&
+    hasPersistableRunningContent(state)
+  ) {
+    return "running_autosave";
+  }
+  if (pendingStopPersistRecord?.entries.length) {
+    return "page_exit_checkpoint";
+  }
+  return "idle";
 }
 
-function syncPortState(port: chrome.runtime.Port, requiresReload = false): void {
-  syncPortStateView(port, buildStatusSnapshot, requiresReload);
+function buildStatusSnapshot(requiresReload = false) {
+  return buildStatusSnapshotView(
+    window.location.href,
+    liveCaptureLedger,
+    state,
+    settings,
+    resolvePersistContext(),
+    stopPersistInFlight,
+    requiresReload,
+  );
 }
 
 function buildPreparedSessionState(now = Date.now()) {
@@ -276,6 +239,7 @@ function buildPreparedSessionState(now = Date.now()) {
     liveCaptureLedger,
     state,
     state.sourceUrl || window.location.href,
+    settings,
     now,
   );
 }
@@ -299,7 +263,6 @@ function updateInPagePanel(): void {
     {
       isTopFrame,
       inPagePanel,
-      popupPorts,
       panelCollapsed,
       previewCollapsed,
       panelNotice,
@@ -315,7 +278,6 @@ function syncUserInterfaces(requiresReload = false): void {
     {
       isTopFrame,
       inPagePanel,
-      popupPorts,
       panelCollapsed,
       previewCollapsed,
       panelNotice,
@@ -323,8 +285,8 @@ function syncUserInterfaces(requiresReload = false): void {
     },
     () => buildPreparedOutputSnapshot(),
     buildStatusSnapshot,
-    requiresReload,
   );
+  void requiresReload;
 }
 
 function clearPendingReset(): void {
@@ -337,8 +299,7 @@ function clearPendingReset(): void {
 function clearStructuredRuntimeState(): void {
   clearPendingReset();
   liveCaptureLedger = clearLiveCaptureLedger();
-  localLastProbeSignature = "";
-  localHadProbeText = false;
+  state.observerActive = false;
 }
 
 function scheduleDeferredSubtitleReset(): void {
@@ -470,140 +431,6 @@ function compactInternalCaches(now: number): boolean {
   return changed;
 }
 
-function applyStructuredEntryMeta(
-  entry: SubtitleEntry,
-  row: LiveCaptureRow,
-  nowIso: string,
-  selector?: string,
-  framePath?: number[],
-): boolean {
-  let changed = false;
-  if (entry.endTime !== nowIso) {
-    entry.endTime = nowIso;
-    changed = true;
-  }
-  if (entry.sourceSelector !== selector) {
-    entry.sourceSelector = selector;
-    changed = true;
-  }
-
-  const nextFramePath =
-    Array.isArray(framePath) && framePath.length > 0 ? [...framePath] : undefined;
-  const prevFramePath = JSON.stringify(entry.sourceFramePath ?? []);
-  const nextFramePathSignature = JSON.stringify(nextFramePath ?? []);
-  if (prevFramePath !== nextFramePathSignature) {
-    entry.sourceFramePath = nextFramePath;
-    changed = true;
-  }
-
-  if (entry.sourceNodeKey !== row.key) {
-    entry.sourceNodeKey = row.key;
-    changed = true;
-  }
-  if (entry.speakerColor !== row.speakerColor) {
-    entry.speakerColor = row.speakerColor;
-    changed = true;
-  }
-  if (entry.speakerChannel !== row.speakerChannel) {
-    entry.speakerChannel = row.speakerChannel;
-    changed = true;
-  }
-  return changed;
-}
-
-function isLikelySameStructuredUtterance(previousText: string, nextText: string): boolean {
-  const previousCompact = compactSubtitleText(previousText);
-  const nextCompact = compactSubtitleText(nextText);
-  if (!previousCompact || !nextCompact) {
-    return false;
-  }
-  if (previousCompact === nextCompact) {
-    return true;
-  }
-
-  const minSharedLength = Math.min(previousCompact.length, nextCompact.length);
-  if (minSharedLength < 8) {
-    return false;
-  }
-
-  return (
-    previousCompact.startsWith(nextCompact) ||
-    nextCompact.startsWith(previousCompact)
-  );
-}
-
-function appendStructuredEntry(
-  text: string,
-  row: LiveCaptureRow,
-  nowIso: string,
-  selector?: string,
-  framePath?: number[],
-): { entry: SubtitleEntry; changed: boolean } {
-  const compact = compactSubtitleText(text);
-  const lastEntry = state.entries.at(-1);
-  if (lastEntry && compactSubtitleText(lastEntry.text) === compact) {
-    const textChanged = lastEntry.text !== text;
-    if (textChanged) {
-      lastEntry.text = text;
-    }
-    const metaChanged = applyStructuredEntryMeta(lastEntry, row, nowIso, selector, framePath);
-    return { entry: lastEntry, changed: textChanged || metaChanged };
-  }
-
-  const entry: SubtitleEntry = {
-    id: createId("subtitle"),
-    text,
-    timestamp: nowIso,
-    startTime: nowIso,
-    endTime: nowIso,
-    sourceSelector: selector,
-    sourceFramePath: Array.isArray(framePath) && framePath.length > 0 ? [...framePath] : undefined,
-    sourceNodeKey: row.key,
-    speakerColor: row.speakerColor,
-    speakerChannel: row.speakerChannel,
-  };
-  state.entries.push(entry);
-  return { entry, changed: true };
-}
-
-function upsertStructuredRowEntry(
-  row: LiveCaptureRow,
-  now: number,
-  selector?: string,
-  framePath?: number[],
-): { changed: boolean; entry: SubtitleEntry | null } {
-  const nextText = normalizeSubtitleText(row.text);
-  if (!nextText) {
-    return {
-      changed: false,
-      entry: null,
-    };
-  }
-
-  const nowIso = new Date(now).toISOString();
-  const committedEntryId = row.committedEntryId;
-  if (committedEntryId) {
-    const existing = state.entries.find((entry) => entry.id === committedEntryId);
-    if (existing && isLikelySameStructuredUtterance(existing.text, nextText)) {
-      const textChanged = existing.text !== nextText;
-      if (textChanged) {
-        existing.text = nextText;
-      }
-      const metaChanged = applyStructuredEntryMeta(existing, row, nowIso, selector, framePath);
-      return {
-        changed: textChanged || metaChanged,
-        entry: existing,
-      };
-    }
-  }
-
-  const appended = appendStructuredEntry(nextText, row, nowIso, selector, framePath);
-  return {
-    changed: appended.changed,
-    entry: appended.entry,
-  };
-}
-
 function applyStructuredRowsEvent(
   rows: ObservedSubtitleRow[],
   previewText: string,
@@ -630,11 +457,32 @@ function applyStructuredRowsEvent(
       return;
     }
 
-    const result = upsertStructuredRowEntry(liveRow, now, selector, framePath);
+    const result = commitStructuredLiveRow({
+      state,
+      row: liveRow,
+      previewText: captureEvent.previewText,
+      now,
+      settings,
+      selector,
+      framePath,
+    });
+    state = result.state;
     if (result.changed) {
       entryChanged = true;
     }
     if (result.entry) {
+      if (result.baselineCompact !== null) {
+        liveCaptureLedger = setLiveRowBaseline(
+          liveCaptureLedger,
+          rowChange.key,
+          result.baselineCompact,
+        );
+      }
+      liveCaptureLedger = markLiveRowCommitted(
+        liveCaptureLedger,
+        rowChange.key,
+        result.entry.id,
+      );
       liveCaptureLedger = syncLiveRowOutputEntry(
         liveCaptureLedger,
         rowChange.key,
@@ -686,6 +534,9 @@ async function persistStoppedSession(record: SessionRecord): Promise<void> {
       await deleteSession(record.id);
       failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
       state.lastPersistedAt = null;
+      pendingStopPersistRecord = null;
+      stopPersistInFlight = false;
+      persistContextOverride = null;
     } catch (error) {
       reportRuntimeError("빈 종료 세션 정리에 실패했습니다.", error);
     }
@@ -696,9 +547,16 @@ async function persistStoppedSession(record: SessionRecord): Promise<void> {
     const saved = await saveSession(record);
     failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
     state = applyPersistSuccess(state, saved.updatedAt);
+    pendingStopPersistRecord = null;
+    stopPersistInFlight = false;
+    persistContextOverride = null;
+    await recordStopPersistSuccess("direct", saved.updatedAt);
     setPanelNotice("모든 자막을 저장했습니다.");
   } catch (error) {
     failedStoppedSessionGuard = rememberFailedStoppedSession(record, error);
+    pendingStopPersistRecord = cloneSessionRecord(record);
+    stopPersistInFlight = false;
+    persistContextOverride = pendingStopPersistRecord.entries.length ? "page_exit_checkpoint" : null;
     reportRuntimeError("종료된 세션 저장에 실패했습니다.", error);
   }
 }
@@ -755,12 +613,35 @@ function persistSessionRecordInBackground(record: SessionRecord, retryAttempt = 
           if (document.visibilityState === "visible") {
             syncUserInterfaces();
           }
+          return;
+        }
+
+        if (record.status === "stopped" && state.sessionId === record.id) {
+          state = applyPersistSuccess(state, record.updatedAt);
+          pendingStopPersistRecord = null;
+          persistContextOverride = null;
+          if (document.visibilityState === "visible") {
+            syncUserInterfaces();
+          }
         }
       },
     );
   } catch (error) {
     handlePersistFailure("백그라운드 세션 저장 전송이 실패했습니다.", error);
   }
+}
+
+function resolveStoppedExitPersistRecord(now = Date.now()): SessionRecord | null {
+  if (pendingStopPersistRecord?.entries.length) {
+    return cloneSessionRecord(pendingStopPersistRecord);
+  }
+
+  if (!canPersistCurrentRunningState()) {
+    return null;
+  }
+
+  const record = buildPreparedSessionRecord("stopped", now);
+  return record.entries.length > 0 ? record : null;
 }
 
 function persistRunningSnapshotForVisibilityChange(now = Date.now()): void {
@@ -783,16 +664,17 @@ function persistRunningSnapshotForVisibilityChange(now = Date.now()): void {
 }
 
 function persistStoppedSnapshotForPageExit(now = Date.now()): void {
-  if (extensionContextInvalidated || !isTopFrame || !canPersistCurrentRunningState()) {
+  if (extensionContextInvalidated || !isTopFrame) {
     return;
   }
 
   clearRunningPersistTimer();
-  const record = buildPreparedSessionRecord("stopped", now);
-  if (!record.entries.length) {
+  const record = resolveStoppedExitPersistRecord(now);
+  if (!record?.entries.length) {
     return;
   }
 
+  persistContextOverride = "page_exit_checkpoint";
   void persistQueuedPageExitRecord(record, {
     queueRecord: queueExitPersistRecord,
     persistRecordInBackground: (queuedRecord) => {
@@ -833,6 +715,12 @@ async function saveCurrentSessionSnapshot(): Promise<{
     if (failedStoppedSessionGuard.record?.id === saved.id) {
       failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
     }
+    if (state.status !== "running" && pendingStopPersistRecord?.id === saved.id) {
+      pendingStopPersistRecord = null;
+      persistContextOverride = null;
+      stopPersistInFlight = false;
+      await recordStopPersistSuccess("direct", saved.updatedAt);
+    }
     state = applyPersistSuccess(state, saved.updatedAt);
     const message = "현재까지 모든 내용을 저장했습니다.";
     setPanelNotice(message);
@@ -849,74 +737,32 @@ async function saveCurrentSessionSnapshot(): Promise<{
   }
 }
 
-async function refreshFrameForwardNonce(): Promise<void> {
-  const response = await sendRuntimeMessage({ type: "GET_FRAME_FORWARD_NONCE" });
-  if (!response.ok || !response.nonce) {
-    throw new Error(response.ok ? "프레임 전달 토큰을 받지 못했습니다." : response.error);
-  }
-  frameForwardNonce = response.nonce;
-}
-
-function requestFrameForwardNonceResync(quiet = true): void {
-  if (extensionContextInvalidated || frameForwardNonceRefreshInFlight) {
+async function ensureActivationHelperInjected(): Promise<void> {
+  if (document.getElementById(injectedActivationScriptId)) {
     return;
   }
 
-  frameForwardNonceRefreshInFlight = true;
-  void refreshFrameForwardNonce()
-    .catch((error: unknown) => {
-      if (isExtensionContextInvalidatedError(error)) {
-        reportRuntimeError(INVALIDATED_CONTEXT_NOTICE, error);
-        return;
-      }
-
-      if (!quiet) {
-        reportRuntimeError("프레임 전달 보안 토큰을 다시 확인하지 못했습니다.", error);
-      } else {
-        logDebug("frame forward nonce resync failed", error);
-      }
-    })
-    .finally(() => {
-      frameForwardNonceRefreshInFlight = false;
-    });
-}
-
-function startFrameForwardNonceRefresh(): void {
-  clearFrameForwardNonceRefresh();
-  if (extensionContextInvalidated) {
-    return;
-  }
-
-  frameForwardNonceRefreshTimer = window.setInterval(() => {
-    requestFrameForwardNonceResync(true);
-  }, FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS);
-}
-
-function dispatchObserverConfig(): void {
-  if (extensionContextInvalidated) {
-    return;
-  }
-
-  if (!observerBridgeToken) {
-    observerBridgeToken = createObserverBridgeToken();
-  }
-
-  window.dispatchEvent(
-    new CustomEvent(OBSERVER_CONFIG_EVENT, {
-      detail: {
-        selectors: getSubtitleSelectorCandidates("", [], state.sourceUrl || window.location.href),
-        pollingIntervalMs: settings.pollingFallbackIntervalMs,
-        filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
-        token: observerBridgeToken,
-      },
-    }),
-  );
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.id = injectedActivationScriptId;
+    script.src = chrome.runtime.getURL("injected-observer.js");
+    script.async = false;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Failed to inject activation helper"));
+    (document.head || document.documentElement).appendChild(script);
+  });
 }
 
 function requestSubtitleLayerActivation(): void {
   lastSubtitleActivationAttemptAt = Date.now();
   tryDomSubtitleActivation();
-  window.dispatchEvent(new CustomEvent(OBSERVER_ACTIVATE_EVENT));
+  void ensureActivationHelperInjected()
+    .then(() => {
+      window.dispatchEvent(new CustomEvent(OBSERVER_ACTIVATE_EVENT));
+    })
+    .catch((error: unknown) => {
+      logDebug("activation helper inject failed", error);
+    });
 }
 
 async function ensureSubtitleLayerActive(): Promise<boolean> {
@@ -928,69 +774,39 @@ async function ensureSubtitleLayerActive(): Promise<boolean> {
   return layer.visible && (layer.hasText || layer.controlActive);
 }
 
-async function injectObserverScript(): Promise<void> {
-  if (document.getElementById(injectedScriptId)) {
-    dispatchObserverConfig();
-    return;
-  }
-
-  await new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.id = injectedScriptId;
-    script.src = chrome.runtime.getURL("injected-observer.js");
-    script.async = false;
-    script.onload = () => {
-      dispatchObserverConfig();
-      resolve();
-    };
-    script.onerror = () => reject(new Error("Failed to inject observer bridge"));
-    (document.head || document.documentElement).appendChild(script);
-  });
-}
-
-function forwardToTop(event: ObserverBridgeEvent): void {
-  forwardFrameEvent(event, {
-    isTopFrame,
-    frameForwardNonce,
-    handleTopFrameEvent,
-  });
-}
-
-function handleTopFrameEvent(event: ObserverBridgeEvent): void {
+function handleCaptureObservation(input: {
+  raw?: string;
+  rows?: ObservedSubtitleRow[];
+  selector?: string;
+  framePath?: number[];
+  now: number;
+  observerActive: boolean;
+}): void {
   if (!isTopFrame) {
     return;
   }
 
   try {
-    state.observerActive = Boolean(event.observerActive);
-    if (event.selector) {
-      state.currentSelector = event.selector;
+    state.observerActive = input.observerActive;
+    if (input.selector) {
+      state.currentSelector = input.selector;
     }
-    if (event.framePath) {
-      state.currentFramePath = [...event.framePath];
-    }
-
-    const now = event.timestamp || Date.now();
-    if (event.kind === "subtitle:health") {
-      state.lastObserverEventAt = now;
-      return;
+    if (input.framePath) {
+      state.currentFramePath = [...input.framePath];
     }
 
+    const now = input.now || Date.now();
+    state.lastObserverEventAt = now;
     if (state.status !== "running") {
-      return;
-    }
-
-    if (event.kind === "subtitle:reset") {
-      scheduleDeferredSubtitleReset();
       return;
     }
 
     clearPendingReset();
     const captureEvent = normalizeCaptureEvent({
-      raw: event.raw,
-      rows: event.rows,
-      selector: event.selector,
-      framePath: event.framePath,
+      raw: input.raw,
+      rows: input.rows,
+      selector: input.selector,
+      framePath: input.framePath,
       timestamp: now,
     });
     if (!captureEvent.previewText) {
@@ -1015,8 +831,8 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
         captureEvent.rows,
         captureEvent.previewText,
         now,
-        event.selector,
-        event.framePath,
+        input.selector,
+        input.framePath,
       );
       if (
         !changed &&
@@ -1067,8 +883,9 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     }
 
     const result = applyPreview(state, normalized, now, settings, {
-      selector: event.selector,
-      framePath: event.framePath,
+      selector: input.selector,
+      framePath: input.framePath,
+      forceNewEntry: shouldForceNewFallbackEntry(),
     });
     state = result.state;
     const compacted = compactInternalCaches(now);
@@ -1083,162 +900,86 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
   }
 }
 
-function emitLocalProbeEvent(
-  kind: "subtitle:update" | "subtitle:reset",
-  raw?: string,
-  selector?: string,
-  rows?: ObservedSubtitleRow[],
-): void {
-  forwardToTop({
-    source: OBSERVER_BRIDGE_SOURCE,
-    token: observerBridgeToken,
-    kind,
-    raw,
-    rows,
-    selector,
-    framePath: localFramePath,
-    timestamp: Date.now(),
-    sourceUrl: window.location.href,
-    observerActive: false,
-  });
-}
-
-function startLocalPolling(): void {
-  if (extensionContextInvalidated) {
-    clearLocalPolling();
+function handleCaptureReset(now = Date.now(), observerActive = false): void {
+  if (!isTopFrame) {
     return;
   }
 
-  clearLocalPolling();
-  localPollingTimer = window.setInterval(() => {
-    try {
-      const probe = estimateRecentRaw(document, state.currentSelector, {
-        filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
-        sourceUrl: state.sourceUrl || window.location.href,
+  state.observerActive = observerActive;
+  state.lastObserverEventAt = now;
+  if (state.status !== "running") {
+    return;
+  }
+
+  scheduleDeferredSubtitleReset();
+}
+
+function createOrGetCaptureCoordinator(): CaptureCoordinator {
+  if (captureCoordinator) {
+    return captureCoordinator;
+  }
+
+  captureCoordinator = createCaptureCoordinator({
+    getPrimarySelector: () => state.currentSelector,
+    getPollingIntervalMs: () => settings.pollingFallbackIntervalMs,
+    getProbeOptions: () => ({
+      filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
+      sourceUrl: state.sourceUrl || window.location.href,
+    }),
+    onUpdate: ({ probe, now, observerActive }) => {
+      handleCaptureObservation({
+        raw: probe.text,
+        rows: probe.rows,
+        selector: probe.matchedSelector,
+        framePath: probe.framePath,
+        now,
+        observerActive,
       });
-      if (!probe.found || !probe.text) {
-        if (localHadProbeText) {
-          localHadProbeText = false;
-          localLastProbeSignature = "";
-          emitLocalProbeEvent("subtitle:reset");
-        }
-        return;
+    },
+    onReset: ({ now, observerActive }) => {
+      handleCaptureReset(now, observerActive);
+    },
+    onMiss: () => {
+      if (
+        state.status === "running" &&
+        Date.now() - lastSubtitleActivationAttemptAt >= 2000
+      ) {
+        requestSubtitleLayerActivation();
       }
+    },
+    onError: (error) => {
+      reportRuntimeError("자막 DOM coordinator 처리 중 오류가 발생했습니다.", error);
+    },
+  });
 
-      const decision = shouldEmitLocalProbeUpdate(localLastProbeSignature, probe);
-      if (!decision.shouldEmit) {
-        return;
-      }
-
-      localHadProbeText = true;
-      localLastProbeSignature = decision.signature;
-      emitLocalProbeEvent("subtitle:update", probe.text, probe.matchedSelector, probe.rows);
-    } catch (error) {
-      reportRuntimeError("로컬 자막 감지 중 오류가 발생했습니다.", error);
-    }
-  }, settings.pollingFallbackIntervalMs);
+  return captureCoordinator;
 }
 
-function scheduleTopFrameFallbackTick(delayMs: number): void {
+function startCaptureCoordinator(): void {
   if (!isTopFrame || extensionContextInvalidated) {
     return;
   }
 
-  clearTopFallbackTimer();
-  topFallbackTimer = window.setTimeout(() => {
-    topFallbackTimer = null;
-    runTopFrameFallbackTick();
-  }, delayMs);
+  createOrGetCaptureCoordinator().start();
 }
 
-function runTopFrameFallbackTick(): void {
-  if (!isTopFrame || extensionContextInvalidated) {
-    clearTopFallbackTimer();
+function refreshCaptureCoordinator(): void {
+  if (!isTopFrame || extensionContextInvalidated || !captureCoordinator) {
     return;
   }
 
   if (state.status !== "running") {
-    topFallbackMissStreak = 0;
-    scheduleTopFrameFallbackTick(
-      resolveTopFallbackDelayMs(topFallbackMissStreak, settings.pollingFallbackIntervalMs),
-    );
+    captureCoordinator.stop();
+    state.observerActive = false;
     return;
   }
 
-  const now = Date.now();
-  const staleFor = state.lastObserverEventAt
-    ? now - state.lastObserverEventAt
-    : Number.MAX_SAFE_INTEGER;
-  if (staleFor < settings.pollingFallbackIntervalMs * 2) {
-    topFallbackMissStreak = 0;
-    scheduleTopFrameFallbackTick(
-      resolveTopFallbackDelayMs(topFallbackMissStreak, settings.pollingFallbackIntervalMs),
-    );
-    return;
-  }
-
-  try {
-    const probeOptions = {
-      filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
-      sourceUrl: state.sourceUrl || window.location.href,
-    };
-    const cachedFramePath = lastSuccessfulFallbackFramePath;
-    const cachedProbe =
-      cachedFramePath && cachedFramePath.length
-        ? probeFramePath(cachedFramePath, state.currentSelector, probeOptions)
-        : null;
-    const probe =
-      cachedProbe && cachedProbe.found && cachedProbe.text
-        ? cachedProbe
-        : probeBestAccessibleSubtitle(state.currentSelector, probeOptions);
-    if (!probe.found || !probe.text) {
-      topFallbackMissStreak += 1;
-      if (now - lastSubtitleActivationAttemptAt >= 2000) {
-        requestSubtitleLayerActivation();
-      }
-      scheduleTopFrameFallbackTick(
-        resolveTopFallbackDelayMs(topFallbackMissStreak, settings.pollingFallbackIntervalMs),
-      );
-      return;
-    }
-
-    topFallbackMissStreak = 0;
-    lastSuccessfulFallbackFramePath = [...probe.framePath];
-
-    handleTopFrameEvent({
-      source: OBSERVER_BRIDGE_SOURCE,
-      kind: "subtitle:update",
-      raw: probe.text,
-      rows: probe.rows,
-      selector: probe.matchedSelector,
-      framePath: probe.framePath,
-      timestamp: now,
-      sourceUrl: window.location.href,
-      observerActive: false,
-    });
-  } catch (error) {
-    topFallbackMissStreak += 1;
-    reportRuntimeError("프레임 자막 fallback 탐색 중 오류가 발생했습니다.", error);
-  }
-
-  scheduleTopFrameFallbackTick(
-    resolveTopFallbackDelayMs(topFallbackMissStreak, settings.pollingFallbackIntervalMs),
-  );
-}
-
-function startTopFrameFallback(): void {
-  if (!isTopFrame || extensionContextInvalidated) {
-    clearTopFallbackTimer();
-    return;
-  }
-
-  topFallbackMissStreak = 0;
-  scheduleTopFrameFallbackTick(
-    resolveTopFallbackDelayMs(topFallbackMissStreak, settings.pollingFallbackIntervalMs),
-  );
+  captureCoordinator.refresh();
+  captureCoordinator.scheduleTick(0);
 }
 
 function resetRuntimeState(): void {
+  captureCoordinator?.stop();
   clearRunningPersistTimer();
   clearStructuredRuntimeState();
   state = createResetSessionState(
@@ -1247,10 +988,11 @@ function resetRuntimeState(): void {
     deriveCommitteeNameFromTitle(document.title),
   );
   lastInternalCacheCompactAt = 0;
-  topFallbackMissStreak = 0;
-  lastSuccessfulFallbackFramePath = null;
   lastSubtitleActivationAttemptAt = 0;
   lastNavigationSnapshotAt = 0;
+  persistContextOverride = null;
+  stopPersistInFlight = false;
+  pendingStopPersistRecord = null;
   setPanelNotice(DEFAULT_IN_PAGE_NOTICE);
 }
 
@@ -1263,6 +1005,11 @@ async function ensureFailedStoppedSessionResolved(actionLabel: string): Promise<
   });
 
   failedStoppedSessionGuard = resolution.guard;
+  pendingStopPersistRecord = resolution.guard.record ? cloneSessionRecord(resolution.guard.record) : null;
+  stopPersistInFlight = false;
+  if (!pendingStopPersistRecord) {
+    persistContextOverride = null;
+  }
 
   if (resolution.persistedRecord && state.sessionId === resolution.persistedRecord.id) {
     state = applyPersistSuccess(state, resolution.persistedRecord.updatedAt);
@@ -1287,9 +1034,16 @@ async function ensureCurrentRunningSessionPreservedBeforeReset(): Promise<boolea
     try {
       const saved = await saveSession(stoppedRecord);
       state = applyPersistSuccess(state, saved.updatedAt);
+      pendingStopPersistRecord = null;
+      persistContextOverride = null;
+      stopPersistInFlight = false;
+      await recordStopPersistSuccess("direct", saved.updatedAt);
       return true;
     } catch (error) {
       failedStoppedSessionGuard = rememberFailedStoppedSession(stoppedRecord, error);
+      pendingStopPersistRecord = cloneSessionRecord(stoppedRecord);
+      persistContextOverride = "page_exit_checkpoint";
+      stopPersistInFlight = false;
       reportRuntimeError("세션 초기화 전에 이전 실행 세션 저장에 실패했습니다.", error);
       return false;
     }
@@ -1335,7 +1089,7 @@ async function startCapture(): Promise<void> {
   setPanelNotice(
     "자막 모으기를 시작했습니다. 페이지를 이동하거나 닫으려고 하면 수집을 중단하고, 종료 직전에 자동 저장을 시도합니다.",
   );
-  dispatchObserverConfig();
+  startCaptureCoordinator();
   syncUserInterfaces();
 
   const subtitleLayerReady = await ensureSubtitleLayerActive().catch((error: unknown) => {
@@ -1350,10 +1104,23 @@ async function startCapture(): Promise<void> {
 }
 
 async function stopCapture(): Promise<void> {
+  captureCoordinator?.stop();
   clearRunningPersistTimer();
   clearPendingReset();
   const now = Date.now();
   const stoppedRecord = buildPreparedSessionRecord("stopped", now);
+  pendingStopPersistRecord = cloneSessionRecord(stoppedRecord);
+  stopPersistInFlight = stoppedRecord.entries.length > 0;
+  persistContextOverride = stopPersistInFlight ? "stopped_final_save" : null;
+
+  if (stopPersistInFlight) {
+    try {
+      await queueExitPersistRecord(stoppedRecord);
+    } catch (error) {
+      console.warn("[assembly-subtitle] Failed to queue stop checkpoint before final save", error);
+    }
+  }
+
   state = finalizeSession(state, now, settings).state;
   setPanelNotice("자막 모으기를 멈췄습니다.");
   await persistStoppedSession(stoppedRecord);
@@ -1509,99 +1276,99 @@ function mountInPagePanel(): void {
   });
 }
 
-async function handleCommand(
-  port: chrome.runtime.Port,
+async function handleTabCommand(
   message: PopupToContentMessage,
-): Promise<void> {
+): Promise<TabCommandResponse> {
   switch (message.type) {
-    case "PING":
-      syncPortState(port);
-      return;
     case "GET_STATUS":
-      syncPortState(port);
-      return;
+      return {
+        ok: true,
+        snapshot: buildStatusSnapshot(false),
+      };
     case "OPEN_INPAGE_PANEL": {
       const feedback = openInPagePanel();
-      postToPopupPort(port, createPopupFeedbackMessage(feedback));
-      syncPortState(port);
-      return;
+      return {
+        ok: true,
+        feedback,
+        snapshot: buildStatusSnapshot(false),
+      };
     }
     case "START_CAPTURE":
       await startCapture();
-      syncPortState(port);
-      return;
+      return {
+        ok: true,
+        snapshot: buildStatusSnapshot(false),
+      };
     case "STOP_CAPTURE":
       await stopCapture();
-      syncPortState(port);
-      return;
+      return {
+        ok: true,
+        snapshot: buildStatusSnapshot(false),
+      };
     case "CLEAR_SESSION":
       if (!confirmSessionClear()) {
         setPanelNotice("세션 비우기를 취소했습니다.");
         syncUserInterfaces();
-        syncPortState(port);
-        return;
+        return {
+          ok: true,
+          snapshot: buildStatusSnapshot(false),
+        };
       }
       await clearSessionAndReset();
-      syncPortState(port);
-      return;
+      return {
+        ok: true,
+        snapshot: buildStatusSnapshot(false),
+      };
     case "SAVE_SESSION":
       {
         const result = await saveCurrentSessionSnapshot();
-        if (result.message && !result.saved) {
-          postToPopupPort(
-            port,
-            createPopupFeedbackMessage({
-              command: "SAVE_SESSION",
-              message: result.message,
-            }),
-          );
-        }
+        syncUserInterfaces();
+        return {
+          ok: true,
+          snapshot: buildStatusSnapshot(false),
+          feedback: result.message
+            ? {
+                command: "SAVE_SESSION",
+                message: result.message,
+              }
+            : undefined,
+        };
       }
-      syncUserInterfaces();
-      syncPortState(port);
-      return;
     case "EXPORT_REQUEST":
       await exportCurrentSession(message.format);
-      syncPortState(port);
-      return;
+      return {
+        ok: true,
+        snapshot: buildStatusSnapshot(false),
+      };
   }
 }
 
-function bindPopupPort(): void {
+function bindTabMessages(): void {
   if (!isTopFrame) {
     return;
   }
 
-  chrome.runtime.onConnect.addListener((port) => {
-    if (port.name !== POPUP_PORT_NAME) {
-      return;
-    }
-
-    popupPorts.add(port);
-    syncPortState(port);
-
-    port.onMessage.addListener((message: PopupToContentMessage) => {
-      void handleCommand(port, message).catch((error: unknown) => {
-        postToPopupPort(port, {
-          type: "ERROR",
-          message: error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
-        });
-      });
-    });
-
-    port.onDisconnect.addListener(() => {
-      popupPorts.delete(port);
-    });
-  });
-
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
     const typedMessage = message as PopupToContentMessage;
-    if (typedMessage.type === "PING") {
-      sendResponse({ ok: true });
-      return true;
-    }
-    if (typedMessage.type === "GET_STATUS") {
-      sendResponse(buildStatusSnapshot(false));
+    if (
+      typedMessage.type === "GET_STATUS" ||
+      typedMessage.type === "OPEN_INPAGE_PANEL" ||
+      typedMessage.type === "START_CAPTURE" ||
+      typedMessage.type === "STOP_CAPTURE" ||
+      typedMessage.type === "CLEAR_SESSION" ||
+      typedMessage.type === "SAVE_SESSION" ||
+      typedMessage.type === "EXPORT_REQUEST"
+    ) {
+      void handleTabCommand(typedMessage)
+        .then(sendResponse)
+        .catch((error: unknown) => {
+          sendResponse({
+            ok: false,
+            error:
+              error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.",
+            snapshot: buildStatusSnapshot(false),
+          } satisfies TabCommandResponse);
+        });
       return true;
     }
     return undefined;
@@ -1625,9 +1392,7 @@ function bindSettingsChanges(): void {
       (changes[EXTENSION_STORAGE_KEY].newValue as Partial<ExtensionSettings> | undefined) ?? {},
     );
 
-    dispatchObserverConfig();
-    startLocalPolling();
-    startTopFrameFallback();
+    refreshCaptureCoordinator();
 
     if (!settings.runningAutoSaveEnabled) {
       clearRunningPersistTimer();
@@ -1644,63 +1409,42 @@ function bindNavigationGuards(): void {
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
-      persistRunningSnapshotForVisibilityChange();
+      if (stopPersistInFlight || pendingStopPersistRecord?.entries.length) {
+        persistStoppedSnapshotForPageExit();
+      } else {
+        persistRunningSnapshotForVisibilityChange();
+      }
     }
   });
 
   window.addEventListener("pagehide", (event) => {
     const pageTransitionEvent = event as PageTransitionEvent;
     if (pageTransitionEvent.persisted) {
-      persistRunningSnapshotForVisibilityChange();
+      if (stopPersistInFlight || pendingStopPersistRecord?.entries.length) {
+        persistStoppedSnapshotForPageExit();
+      } else {
+        persistRunningSnapshotForVisibilityChange();
+      }
       return;
     }
     persistStoppedSnapshotForPageExit();
   });
 
   window.addEventListener("beforeunload", (event) => {
-    if (!shouldWarnBeforeUnload(isTopFrame, buildPreparedOutputSnapshot().eligibility)) {
+    const shouldWarn =
+      stopPersistInFlight || shouldWarnBeforeUnload(isTopFrame, buildPreparedOutputSnapshot().eligibility);
+    if (!shouldWarn) {
       return;
     }
 
-    persistRunningSnapshotForVisibilityChange();
+    if (stopPersistInFlight || pendingStopPersistRecord?.entries.length) {
+      persistStoppedSnapshotForPageExit();
+    } else {
+      persistRunningSnapshotForVisibilityChange();
+    }
     event.preventDefault();
     event.returnValue = "";
   });
-}
-
-function bindBridgeMessages(): void {
-  window.addEventListener("message", (event) => {
-    const data = event.data as Partial<ObserverBridgeEvent> | Partial<FrameForwardMessage> | undefined;
-    if (!data || typeof data !== "object") {
-      return;
-    }
-
-    if (event.source === window && isObserverBridgeEventMessage(data)) {
-      if (!observerBridgeToken || data.token !== observerBridgeToken) {
-        return;
-      }
-
-      const eventPayload: ObserverBridgeEvent = {
-        ...data,
-        framePath: data.framePath ?? localFramePath,
-      };
-      forwardToTop(eventPayload);
-      return;
-    }
-
-    if (isTopFrame && event.source !== window && isForwardedFrameMessage(data)) {
-      if (resolveForwardedFrameNonceAction(frameForwardNonce, data.nonce) === "accept") {
-        handleTopFrameEvent(data.event);
-        return;
-      }
-
-      requestFrameForwardNonceResync(true);
-    }
-  });
-}
-
-async function ensureFrameForwardNonce(): Promise<void> {
-  await refreshFrameForwardNonce();
 }
 
 async function bootstrap(): Promise<void> {
@@ -1717,41 +1461,21 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  try {
-    await ensureFrameForwardNonce();
-  } catch (error) {
-    reportRuntimeError("프레임 전달 보안 토큰 준비에 실패했습니다.", error);
-  }
-  if (extensionContextInvalidated) {
-    return;
-  }
-
   state.title = document.title;
   state.committeeName = deriveCommitteeNameFromTitle(document.title);
-  bindBridgeMessages();
-  bindPopupPort();
+  bindTabMessages();
   bindSettingsChanges();
   bindNavigationGuards();
   mountInPagePanel();
   updateInPagePanel();
-  startFrameForwardNonceRefresh();
-
-  try {
-    await injectObserverScript();
-  } catch (error) {
-    reportRuntimeError("MutationObserver 주입에 실패해 polling fallback으로 계속 진행합니다.", error);
-  }
   if (extensionContextInvalidated) {
     return;
   }
 
-  startLocalPolling();
-  startTopFrameFallback();
   syncUserInterfaces();
   logDebug("content script bootstrapped", {
     isTopFrame,
-    localFramePath,
-    nonceSource: FRAME_FORWARD_NONCE_SOURCE,
+    captureRuntime: "top-frame-dom-coordinator",
   });
 
   if (isTopFrame && settings.autoStartEnabled && state.status !== "running") {
@@ -1769,8 +1493,6 @@ export async function bootstrapContentScript(): Promise<void> {
     }
     mountInPagePanel();
     updateInPagePanel();
-    startLocalPolling();
-    startTopFrameFallback();
   });
 }
 

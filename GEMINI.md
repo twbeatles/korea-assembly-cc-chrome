@@ -30,7 +30,7 @@ npm run test
 npm run build
 ```
 
-`npm run build` 는 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 먼저 생성한 뒤 확장 번들을 만듭니다.
+`npm run build` 는 `scripts/build-injected.mjs` 로 activation helper 번들(`public/injected-observer.js`)을 먼저 생성한 뒤 확장 번들을 만듭니다.
 
 ## 4. 핵심 파일 지도
 
@@ -92,17 +92,8 @@ npm run build
 - `SAVE_SESSION`
 - `EXPORT_REQUEST`
 
-### content -> popup
-
-- `CAPTURE_STATUS`
-- `PREVIEW_UPDATE`
-- `SESSION_STATS`
-- `POPUP_FEEDBACK`
-- `ERROR`
-
 ### background
 
-- `GET_FRAME_FORWARD_NONCE`
 - `DOWNLOAD_REQUEST`
 - `OPEN_HISTORY_PAGE`
 - `OPEN_OPTIONS_PAGE`
@@ -126,7 +117,7 @@ npm run build
 - stable key 가 없으면 `unstable` 로 표시하고 raw/container fallback 을 사용합니다.
 - container text fallback 이 항상 있어야 합니다.
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback 은 raw 누적 원문을 잘라내지 않습니다.
-- 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 시도합니다.
+- 수집 시작 시 자막 레이어가 닫혀 있으면 DOM 클릭을 우선 시도하고, 필요할 때만 page function activation helper를 사용합니다.
 
 ### 6.2 증분 추출
 
@@ -186,7 +177,7 @@ npm run build
 
 - top frame 에 우측 패널이 자동 삽입됨
 - popup 은 페이지 패널 다시 열기용 보조 화면
-- popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려감
+- popup 은 long-lived port 없이 현재 탭으로 request/response 명령만 보내며, content script 수신자가 없으면 새로고침 안내로 내려감
 - 패널은 `실시간 내용`과 `수집된 자막` 2단으로 표시
 - `수집된 자막`은 live ledger 기준 최근 row 누적 목록이며, preview-only 갱신만으로 목록 스크롤이 초기화되면 안 됨
 - 본회의 fallback capture에서는 structured row가 비어 있어도 commit된 entry를 `수집된 자막` 목록으로 재구성해 누적 표시해야 함
@@ -235,7 +226,7 @@ npm run build
 - crash 보다 fallback 이 우선입니다.
 - popup 종료와 수집 중단을 연결하면 안 됩니다.
 - `legacy/` 는 로컬 참조 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
-- frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
+- page-world observer bridge, frame forwarding, nonce 동기화 계층은 재도입하지 않습니다.
 - 변경 후에는 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 실행합니다.
 
 ## Sync Delta (2026-04-03)
@@ -268,12 +259,12 @@ Use this delta as the current operational baseline.
 - 패널 `화면 비우기`는 visible runtime content가 있으면 계속 허용해야 하며, 저장 가능 여부와 동일하게 묶으면 안 됩니다.
 - options `저장 복구 상태`는 diagnostics view가 열려 있는 동안 `chrome.storage.onChanged`로 live sync 되어야 합니다.
 
-## Sync Delta (2026-03-19)
+## Sync Delta (2026-04-06)
 
 Use this delta as the current operational baseline.
 
-- frame-forward nonce는 탭 단위 `chrome.storage.local`에 유지되며, 탭 `loading` 시 회전하고 탭 제거 시 정리됩니다.
-- 모든 content script는 bootstrap 시 nonce를 받고 15초마다 재동기화하며, forwarded frame nonce mismatch는 현재 이벤트를 버리고 즉시 resync 해야 합니다.
+- top frame content script 가 single-owner capture coordinator 를 유지하고, 접근 가능한 same-origin frame document 를 직접 probe/observe 합니다.
+- page-world helper 는 activation 전용이며, observer bridge / frame forwarding / nonce 동기화 계층은 사용하지 않습니다.
 - replay queue는 storage + memory merge 기준으로 읽고, storage write failure 뒤에도 메모리 queue를 유지해야 합니다.
 - options `저장 복구 상태`는 queue write / replay / cleanup 오류를 개별적으로 보여 주고, diagnostics view가 열려 있는 동안 storage 변경을 즉시 반영해야 합니다.
 - popup 저장 버튼은 prepared snapshot 기준 persistable content가 없으면 비활성화되고, 빈 저장은 `저장할 자막이 아직 없습니다.` 피드백으로 일관되게 처리되어야 합니다.
@@ -341,8 +332,8 @@ Use this delta as the current operational baseline.
 
 Keep this file aligned with the implementation closure below:
 
-- Observer bridge message token verification: completed.
-- Nonce rotation per navigation lifecycle: completed.
+- Top-frame DOM coordinator simplification: completed.
+- Activation-only injected helper reduction: completed.
 - Consistent unconfirmed filtering across container fallback: completed.
 - Adaptive fallback backoff and cached frame-path probing: completed.
 - Graceful shutdown on invalidated extension context: completed.
@@ -357,7 +348,6 @@ Reference consistency set:
 
 ## 2026-03-12 Additional Sync Update
 
-- content -> popup messaging now also includes `POPUP_FEEDBACK`.
 - popup command feedback must explicitly surface `OPEN_INPAGE_PANEL` results.
 - session import summaries now include `failedCount`.
 - supported hosts are fixed to both `assembly.webcast.go.kr` and `webcast.assembly.go.kr`.
@@ -383,4 +373,4 @@ Use this delta as the current operational baseline.
 - History must use store-level paging through `listSessionsPage({ page, pageSize, starredOnly })`; do not reintroduce capped full-library preload behavior.
 - Session-library writes now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
 - Same-session history refreshes must not clobber a dirty note draft.
-- `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
+- `GET_STATUS` response snapshot is the complete initial payload for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.

@@ -324,7 +324,7 @@ export function extractIncrementalTextFromHistory(
   };
 }
 
-function sanitizeCommittedText(
+export function sanitizeCommittedText(
   text: string,
   settings?: Partial<ExtensionSettings>,
 ): string {
