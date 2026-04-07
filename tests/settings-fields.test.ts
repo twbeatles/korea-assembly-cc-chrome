@@ -13,6 +13,7 @@ describe("options settings field registry", () => {
       "noiseFilterEnabled",
       "recentDuplicateMinLength",
       "filenamePattern",
+      "txtExportTimestampsEnabled",
       "runningAutoSaveEnabled",
       "runningAutoSaveDebounceMs",
       "recentCopyLineCount",

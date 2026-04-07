@@ -13,6 +13,7 @@ export interface ExtensionSettings {
   noiseFilterEnabled: boolean;
   recentDuplicateMinLength: number;
   filenamePattern: string;
+  txtExportTimestampsEnabled: boolean;
   runningAutoSaveEnabled: boolean;
   runningAutoSaveDebounceMs: number;
   recentCopyLineCount: number;
@@ -48,6 +49,7 @@ export interface SessionPageResult {
 export interface SessionExportOptions {
   filenamePattern?: string;
   entries?: SubtitleEntry[];
+  txtExportTimestampsEnabled?: boolean;
 }
 
 export interface SessionImportSummary {
@@ -128,8 +130,7 @@ export interface SessionStoreApi {
   exportSessionData: (
     session: SessionRecord,
     format: ExportFormat,
-    filenamePattern?: string,
-    entries?: SubtitleEntry[],
+    options?: SessionExportOptions,
   ) => Promise<ExportPayload>;
   closeRunningSessionsOnStartup: () => Promise<StartupCleanupSummary>;
 }

@@ -8,6 +8,7 @@ describe("settings store", () => {
       runningAutoSaveDebounceMs: 1200,
       recentCopyLineCount: 9,
       recentDuplicateMinLength: 12,
+      txtExportTimestampsEnabled: true,
       filterUnconfirmedEnabled: false,
     });
 
@@ -15,6 +16,7 @@ describe("settings store", () => {
     expect(sanitized.runningAutoSaveDebounceMs).toBe(1200);
     expect(sanitized.recentCopyLineCount).toBe(9);
     expect(sanitized.recentDuplicateMinLength).toBe(12);
+    expect(sanitized.txtExportTimestampsEnabled).toBe(true);
     expect(sanitized.filterUnconfirmedEnabled).toBe(false);
   });
 
@@ -39,6 +41,9 @@ describe("settings store", () => {
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
     );
     expect(sanitized.filenamePattern).toBe(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
+    expect(sanitized.txtExportTimestampsEnabled).toBe(
+      DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
+    );
     expect(sanitized.filterUnconfirmedEnabled).toBe(
       DEFAULT_EXTENSION_SETTINGS.filterUnconfirmedEnabled,
     );

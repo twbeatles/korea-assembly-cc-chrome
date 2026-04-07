@@ -35,6 +35,7 @@ import type {
   ExportPayload,
   LibraryBackupExport,
   PersistReplaySummary,
+  SessionExportOptions,
   SessionImportSummary,
   SessionLibraryOverview,
   SessionLibraryPreview,
@@ -839,9 +840,13 @@ async function deleteFallbackRecord(id: string): Promise<void> {
 function toExportPayload(
   session: SessionRecord,
   format: ExportFormat,
-  filenamePattern?: string,
-  entries?: SubtitleEntry[],
+  options: SessionExportOptions = {},
 ): ExportPayload {
+  const {
+    entries,
+    filenamePattern,
+    txtExportTimestampsEnabled = false,
+  } = options;
   const baseSession = entries ? withSessionEntries(session, entries) : session;
   const normalized = normalizeSessionForExport(
     normalizeSessionRecord(baseSession, {
@@ -856,7 +861,9 @@ function toExportPayload(
         filename: buildExportFilename(normalized, format, filenamePattern),
         format,
         mimeType: "text/plain;charset=utf-8",
-        content: exportTxt(normalized),
+        content: exportTxt(normalized, {
+          includeTimestamps: txtExportTimestampsEnabled,
+        }),
       };
     case "srt":
       return {
@@ -1269,10 +1276,9 @@ export async function importSessionRecords(
 export async function exportSessionData(
   session: SessionRecord,
   format: ExportFormat,
-  filenamePattern?: string,
-  entries?: SubtitleEntry[],
+  options: SessionExportOptions = {},
 ): Promise<ExportPayload> {
-  return toExportPayload(session, format, filenamePattern, entries);
+  return toExportPayload(session, format, options);
 }
 
 export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySummary> {

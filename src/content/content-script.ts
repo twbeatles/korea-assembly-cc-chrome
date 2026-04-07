@@ -133,6 +133,7 @@ let settings: ExtensionSettings = {
   noiseFilterEnabled: true,
   recentDuplicateMinLength: PIPELINE_DEFAULTS.recentDuplicateMinLength,
   filenamePattern: "{date}_{committee}_{time}",
+  txtExportTimestampsEnabled: false,
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
@@ -1256,7 +1257,10 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
     return;
   }
 
-  const payload = await exportSessionData(record, format, settings.filenamePattern);
+  const payload = await exportSessionData(record, format, {
+    filenamePattern: settings.filenamePattern,
+    txtExportTimestampsEnabled: settings.txtExportTimestampsEnabled,
+  });
   const response = await sendRuntimeMessage({
     type: "DOWNLOAD_REQUEST",
     filename: payload.filename,

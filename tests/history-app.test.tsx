@@ -119,6 +119,7 @@ describe("history app", () => {
       noiseFilterEnabled: true,
       recentDuplicateMinLength: 8,
       filenamePattern: "{date}_{committee}_{time}",
+      txtExportTimestampsEnabled: false,
       runningAutoSaveEnabled: true,
       runningAutoSaveDebounceMs: 800,
       recentCopyLineCount: 5,
@@ -184,6 +185,30 @@ describe("history app", () => {
 
     await waitFor(() => {
       expect(screen.getByText("export failed")).toBeTruthy();
+    });
+  });
+
+  it("passes the TXT timestamp setting through when exporting", async () => {
+    sessionStoreMocks.exportSessionData.mockResolvedValueOnce({
+      filename: "session.txt",
+      format: "txt",
+      mimeType: "text/plain;charset=utf-8",
+      content: "본문",
+    });
+
+    render(<App />);
+    await screen.findByRole("button", { name: "텍스트(TXT)" });
+    fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.exportSessionData).toHaveBeenCalledWith(
+        expect.objectContaining({ id: "session_history_1" }),
+        "txt",
+        expect.objectContaining({
+          filenamePattern: "{date}_{committee}_{time}",
+          txtExportTimestampsEnabled: false,
+        }),
+      );
     });
   });
 

@@ -624,7 +624,7 @@ export default function App() {
 
             <p className="settings-section-heading">복사 / 저장</p>
             <p className="settings-section-note">
-              최근 복사 버튼과 수집 중 자동 저장 타이밍을 여기에서 조정할 수 있습니다.
+              최근 복사 버튼, TXT 저장 형식, 수집 중 자동 저장 타이밍을 여기에서 조정할 수 있습니다.
             </p>
 
             {BASIC_NUMBER_FIELDS.map((field) => {
@@ -681,6 +681,20 @@ export default function App() {
                   <span className="field-error">{filenamePatternError}</span>
                 ) : null}
               </div>
+            </label>
+
+            <label className="setting-card full-width">
+              <div>
+                <strong>TXT 저장에 타임스탬프 포함</strong>
+                <span>끄면 자막 본문만 줄 단위로 저장합니다. 기본값은 꺼짐입니다.</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={settings.txtExportTimestampsEnabled}
+                onChange={(event) =>
+                  updateField("txtExportTimestampsEnabled", event.target.checked)
+                }
+              />
             </label>
 
             <details className="advanced-card full-width">

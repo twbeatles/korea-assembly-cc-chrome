@@ -139,6 +139,9 @@ export default function App() {
   const [sessionPage, setSessionPage] = useState(1);
   const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
   const [filenamePattern, setFilenamePattern] = useState(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
+  const [txtExportTimestampsEnabled, setTxtExportTimestampsEnabled] = useState(
+    DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
+  );
   const [reloadKey, setReloadKey] = useState(0);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
@@ -329,6 +332,7 @@ export default function App() {
         const nextSettings = selectHistoryViewSettings(settings);
         setRecentCopyLineCount(nextSettings.recentCopyLineCount);
         setFilenamePattern(nextSettings.filenamePattern);
+        setTxtExportTimestampsEnabled(nextSettings.txtExportTimestampsEnabled);
       })
       .catch(() => {
         // Keep defaults if settings cannot be loaded from a standalone history page.
@@ -352,6 +356,7 @@ export default function App() {
         const nextSettings = extractHistoryViewSettings(changes[EXTENSION_STORAGE_KEY].newValue);
         setRecentCopyLineCount(nextSettings.recentCopyLineCount);
         setFilenamePattern(nextSettings.filenamePattern);
+        setTxtExportTimestampsEnabled(nextSettings.txtExportTimestampsEnabled);
       }
 
       if (changes[SESSION_LIBRARY_REVISION_STORAGE_KEY]) {
@@ -540,7 +545,11 @@ export default function App() {
     }
 
     try {
-      const payload = await exportSessionData(selectedSession, format, filenamePattern, entries);
+      const payload = await exportSessionData(selectedSession, format, {
+        entries,
+        filenamePattern,
+        txtExportTimestampsEnabled,
+      });
       const response = await sendRuntimeMessage({
         type: "DOWNLOAD_REQUEST",
         filename: payload.filename,

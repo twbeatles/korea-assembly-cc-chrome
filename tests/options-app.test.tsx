@@ -47,6 +47,7 @@ const defaultSettings = {
   noiseFilterEnabled: true,
   recentDuplicateMinLength: 8,
   filenamePattern: "{date}_{committee}_{time}",
+  txtExportTimestampsEnabled: false,
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,

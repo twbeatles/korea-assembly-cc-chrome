@@ -59,6 +59,10 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       1,
     ),
     filenamePattern: sanitizeFilenamePattern(settings.filenamePattern),
+    txtExportTimestampsEnabled:
+      typeof settings.txtExportTimestampsEnabled === "boolean"
+        ? settings.txtExportTimestampsEnabled
+        : DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
     runningAutoSaveEnabled:
       typeof settings.runningAutoSaveEnabled === "boolean"
         ? settings.runningAutoSaveEnabled
