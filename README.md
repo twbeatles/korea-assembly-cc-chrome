@@ -39,13 +39,13 @@
 - MV3 service worker 재기동 뒤에도 storage-backed frame-forward nonce + 주기적 재동기화로 iframe forwarding 복구
 - 페이지 패널 / history에서 최근 `N`줄 복사
 - 페이지 패널의 `최근 N줄 복사`는 history와 같은 의미로 현재 세션에 누적된 최근 `N`줄을 기준으로 동작
-- `autoScroll`, 중복 차단 최소 길이, noise filter 토글 등 옵션 반영
+- `autoScroll`, 중복 차단 최소 길이, 한글/영문 중심 noise filter 토글 등 옵션 반영
 - popup 보조 화면
 - popup의 `지금 저장` 버튼은 실제 저장 가능한 상태에서만 활성화되며, 빈 저장 요청에는 명시적 안내를 표시합니다
 - history 기록 내부 검색 / 복사 / 즐겨찾기 / 세션 메모
 - history 상세 entry 체크박스 기반 부분 선택 복사 / 부분 export
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
-- history는 store-level 페이지네이션을 사용하며, 대용량 작업 중에는 관련 버튼을 잠가 중복 실행을 막습니다
+- history는 store-level 페이지네이션을 사용하며, 전체 JSON 백업 / JSON 가져오기는 단계별 진행률과 취소를 제공합니다
 - options의 저장 파일 이름 규칙은 금지 문자와 지원하지 않는 placeholder를 저장 전에 검증합니다
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 수집된 자막/저장/export 대상에서 제외합니다
 - 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각, queue write / replay / cleanup phase별 저장 복구 오류 확인
@@ -61,7 +61,7 @@
 - JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
 - 중복 문장은 실시간 수집 단계에서 먼저 차단하고, export 정규화는 마지막 안전망으로만 한 번 더 적용합니다
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
-- 패널 / popup의 수동 저장과 파일 내보내기는 현재 화면에 보이는 `수집된 자막` 목록을 우선 사용하고, 목록이 비어 있으면 현재 `실시간 내용` preview를 단일 항목으로 저장합니다
+- 패널 / popup의 수동 저장과 파일 내보내기는 현재 화면에 보이는 `수집된 자막` 누적 목록을 단일 기준으로 사용하고, 목록이 비어 있을 때만 정제된 `실시간 내용` preview를 단일 항목으로 materialize 합니다
 - 자동 저장, 중지, pagehide / beforeunload 직전 snapshot은 prepared state 기준으로 생성합니다
 
 ## 1차 범위
@@ -166,13 +166,13 @@ npm run build
 3. `자막 모으기`를 눌러 수집을 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 표시한다
 5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 누적 목록을 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry가 이 목록에 계속 쌓인다
-6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 현재 패널에 보이는 `수집된 자막` 목록을 우선 반영하고, 목록이 비어 있으면 현재 `실시간 내용` preview를 단일 항목으로 저장한다
+6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 현재 패널에 보이는 `수집된 자막` 누적 목록을 기준으로 하고, 목록이 비어 있을 때만 placeholder/noise/duplicate 제거 뒤에도 의미가 남는 `실시간 내용` preview를 단일 항목으로 저장한다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
 10. 브라우저/확장을 다시 시작하면 먼저 page-exit 시점에 남겨둔 stopped 저장 replay queue를 복구하고, 그 다음 남아 있던 `running` 세션을 `stopped`로 정리한다
 11. history에서는 세션별 `즐겨찾기`, `메모 저장`, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 사용할 수 있다
-12. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부한다
+12. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 두 작업 모두 현재 단계와 진행량을 표시하고 취소를 지원한다. 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부하며, 취소 시 이미 저장된 일부 레코드는 유지된다
 13. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`을 빠르게 여는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭과 `저장 복구 상태` 섹션에서 확인한다
 14. 현재 세션에 저장 가능한 내용이 없으면 popup의 `지금 저장` 버튼은 비활성화되며, 우회 호출이 들어와도 패널과 popup 모두 `저장할 자막이 아직 없습니다.` 문구로 일관되게 응답한다
 
@@ -222,6 +222,7 @@ npm run build
 - `confirmedCompact`, `trailingSuffix`, history anchor, overlap fallback, soft resync 의미론을 유지합니다
 - recent compact tail 기반 중복 차단
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 noise filter 설정과 무관하게 commit/persist/export 대상에서 제외합니다
+- 기본 noise filter는 한글/영문 중심으로 언어 텍스트를 판정하며, 외국어 원문을 최대한 보존하려면 options에서 noise filter를 꺼야 합니다
 - export 정규화는 마지막 안전망으로만 exact carry-over duplicate 를 한 번 더 정리합니다
 - keepalive / reset / finalize 처리
 - 자동 저장 / 중지 / pagehide 계열 prepared snapshot은 `flushPendingPreviews`를 통해 현재 preview를 clone 상태에 materialize한 뒤 저장합니다
@@ -238,6 +239,7 @@ npm run build
 - queue write가 실패해도 메모리 queue는 유지되며, `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError` diagnostics를 통해 phase별 실패를 추적합니다
 - 브라우저/확장 cold start 시에는 queued stopped snapshot replay를 먼저 수행한 뒤 남아 있던 `running` 세션 cleanup을 진행하고, replay/cleanup 결과는 `chrome.storage.local` diagnostics snapshot으로 남깁니다
 - JSON import는 허용 필드 재구성 기준으로 sanitize 하며, 지원하지 않는 backup wrapper version과 parse 불가능한 timestamp를 가져오기 단계에서 거부합니다
+- 전체 JSON 백업은 페이지 단위로 라이브러리를 읽어 진행률을 갱신하고, JSON 가져오기는 파일 읽기 -> JSON 파싱 -> sanitize/dedupe -> 저장 단계로 나눠 진행률과 취소를 처리합니다
 - 설정은 `chrome.storage.local`
 - `filenamePattern` 은 `{date}`, `{committee}`, `{time}` 만 허용하며, 금지 문자가 있으면 options에서 저장을 막고 export 직전에도 한 번 더 안전하게 정리합니다
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
@@ -263,7 +265,7 @@ npm run build
 - 확장 설치 전에 열려 있던 탭은 재주입으로 복구를 시도하지만, 탭 상태에 따라 새로고침이 필요할 수 있습니다
 - 브라우저 저장소가 모두 실패하면 세션 persistence는 현재 탭 런타임 범위로 제한됩니다
 - 매우 큰 export는 Blob 경로를 우선 사용하지만, 브라우저 정책에 따라 data URL fallback으로 내려갈 수 있습니다
-- 대용량 JSON import/export 전용 진행률/취소 UX는 아직 별도 하드닝 범위에 포함하지 않았습니다
+- noise filter의 언어 판정은 아직 한글/영문 중심이며, 외국어 텍스트 지원 확대는 이번 배치 범위에 포함하지 않았습니다
 
 ## 향후 계획
 

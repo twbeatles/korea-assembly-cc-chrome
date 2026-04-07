@@ -11,6 +11,21 @@ import {
   resetPersistRecoveryStateForTests,
 } from "../src/storage/persist-recovery";
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
+    resolve = nextResolve;
+    reject = nextReject;
+  });
+
+  return {
+    promise,
+    resolve,
+    reject,
+  };
+}
+
 function buildSession(
   id: string,
   updatedAt: string,
@@ -117,6 +132,25 @@ describe("persist recovery", () => {
     const listed = await listQueuedExitPersistRecords();
     expect(listed).toHaveLength(1);
     expect(listed[0]?.record.title).toBe("newer");
+  });
+
+  it("keeps a queue record inserted during storage snapshot reconciliation", async () => {
+    const storageGet = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    const deferred = createDeferred<Record<string, unknown>>();
+
+    storageGet.mockImplementationOnce(async () => deferred.promise);
+
+    const listedPromise = listQueuedExitPersistRecords();
+    await Promise.resolve();
+
+    await queueExitPersistRecord(
+      buildSession("session_inserted_during_list", "2026-03-10T09:00:06.000Z", "during-list"),
+    );
+    deferred.resolve({});
+
+    const listed = await listedPromise;
+    expect(listed.map((record) => record.sessionId)).toContain("session_inserted_during_list");
+    expect((await listQueuedExitPersistRecords())[0]?.record.title).toBe("during-list");
   });
 
   it("clears queue entries from memory and storage independently", async () => {

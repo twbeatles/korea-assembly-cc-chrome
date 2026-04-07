@@ -238,7 +238,7 @@ describe("history app", () => {
     });
   });
 
-  it("disables long-running action buttons while a backup is in progress", async () => {
+  it("shows backup progress, locks only JSON tasks, and supports cancellation", async () => {
     const deferred = createDeferred<{
       sessionCount: number;
       payload: {
@@ -248,33 +248,135 @@ describe("history app", () => {
         content: string;
       };
     }>();
-    sessionStoreMocks.buildSessionLibraryBackupExport.mockReturnValueOnce(deferred.promise);
+    sessionStoreMocks.buildSessionLibraryBackupExport.mockImplementationOnce(async (options) => {
+      options?.onProgress?.({
+        kind: "backup",
+        phase: "collect",
+        completed: 1,
+        total: 3,
+        message: "전체 JSON 백업을 준비하고 있습니다. (1 / 3)",
+      });
+      return deferred.promise;
+    });
 
     render(<App />);
     const backupButton = await screen.findByRole("button", { name: "전체 JSON 백업" });
+    const importButton = screen.getByRole("button", { name: "JSON 가져오기" });
     const deleteAllButton = screen.getByRole("button", { name: "전체 삭제" });
 
     fireEvent.click(backupButton);
 
     await waitFor(() => {
       expect(backupButton.hasAttribute("disabled")).toBe(true);
-      expect(deleteAllButton.hasAttribute("disabled")).toBe(true);
-      expect(screen.getByText("전체 JSON 백업을 준비하고 있습니다.")).toBeTruthy();
+      expect(importButton.hasAttribute("disabled")).toBe(true);
+      expect(deleteAllButton.hasAttribute("disabled")).toBe(false);
+      expect(screen.getByText("단계: 기록 수집")).toBeTruthy();
+      expect(screen.getByText("진행: 1 / 3")).toBeTruthy();
     });
 
-    deferred.resolve({
-      sessionCount: 1,
-      payload: {
-        filename: "backup.json",
-        format: "json",
-        mimeType: "application/json;charset=utf-8",
-        content: "{}",
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.buildSessionLibraryBackupExport).toHaveBeenCalledWith(
+        expect.objectContaining({
+          signal: expect.objectContaining({ aborted: true }),
+        }),
+      );
+    });
+    deferred.reject(new DOMException("backup aborted", "AbortError"));
+
+    await waitFor(() => {
+      expect(backupButton.hasAttribute("disabled")).toBe(false);
+      expect(importButton.hasAttribute("disabled")).toBe(false);
+      expect(screen.getByText("전체 JSON 백업을 취소했습니다.")).toBeTruthy();
+    });
+  });
+
+  it("shows a partial import summary when JSON import is cancelled after some writes", async () => {
+    const deferred = createDeferred<{
+      addedCount: number;
+      updatedCount: number;
+      keptCount: number;
+      failedCount: number;
+    }>();
+    sessionStoreMocks.importSessionRecords.mockImplementationOnce(async (_records, options) => {
+      options?.onProgress?.({
+        kind: "import",
+        phase: "write",
+        completed: 1,
+        total: 2,
+        message: "JSON 가져오기를 진행하고 있습니다. (1 / 2)",
+      });
+      return deferred.promise;
+    });
+
+    render(<App />);
+    await screen.findByRole("button", { name: "JSON 가져오기" });
+
+    const importInput = document.querySelector(".hidden-file-input") as HTMLInputElement | null;
+    expect(importInput).not.toBeNull();
+
+    const file = {
+      name: "backup.json",
+      type: "application/json",
+      text: vi.fn().mockResolvedValue(
+        JSON.stringify({
+          kind: "assembly-subtitle-session-backup",
+          version: "1",
+          exportedAt: "2026-03-10T09:00:00.000Z",
+          sessions: [
+            buildSession({
+              id: "session_import_a",
+              updatedAt: "2026-03-10T09:00:04.000Z",
+            }),
+            buildSession({
+              id: "session_import_b",
+              updatedAt: "2026-03-10T09:00:05.000Z",
+            }),
+          ],
+        }),
+      ),
+    } as unknown as File;
+
+    fireEvent.change(importInput!, {
+      target: {
+        files: [file],
       },
     });
 
     await waitFor(() => {
-      expect(backupButton.hasAttribute("disabled")).toBe(false);
-      expect(deleteAllButton.hasAttribute("disabled")).toBe(false);
+      expect(screen.getByText("단계: 기록 저장")).toBeTruthy();
+      expect(screen.getByText("진행: 1 / 2")).toBeTruthy();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.importSessionRecords).toHaveBeenCalledWith(
+        expect.any(Array),
+        expect.objectContaining({
+          signal: expect.objectContaining({ aborted: true }),
+        }),
+      );
+    });
+
+    deferred.reject(
+      Object.assign(new DOMException("import aborted", "AbortError"), {
+        summary: {
+          addedCount: 1,
+          updatedCount: 0,
+          keptCount: 0,
+          failedCount: 0,
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "JSON 가져오기를 취소했습니다. 추가 1건 / 갱신 0건 / 유지 0건 / 실패 0건 / 무효 0건",
+        ),
+      ).toBeTruthy();
     });
   });
 

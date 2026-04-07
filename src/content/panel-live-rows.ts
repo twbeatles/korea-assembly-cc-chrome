@@ -1,6 +1,6 @@
 import type { CaptureMode, LivePanelRow } from "../core/live-capture";
-import type { SubtitleEntry } from "../core/subtitle-models";
-import { isAssemblyPlenaryUrl, PIPELINE_DEFAULTS } from "../shared/constants";
+import { cloneEntry, type SubtitleEntry } from "../core/subtitle-models";
+import { PIPELINE_DEFAULTS } from "../shared/constants";
 
 function resolveEntryUpdatedAt(entry: SubtitleEntry): number {
   const endTime = Date.parse(entry.endTime || "");
@@ -17,14 +17,9 @@ function resolveEntryUpdatedAt(entry: SubtitleEntry): number {
   return Number.isFinite(startTime) ? startTime : 0;
 }
 
-function toIsoTimestamp(value: number, fallback: number): string {
-  const timestamp = Number.isFinite(value) ? value : fallback;
-  return new Date(timestamp).toISOString();
-}
-
 export function buildCommittedEntryLiveRows(
   entries: SubtitleEntry[],
-  maxRows = PIPELINE_DEFAULTS.liveLedgerMaxRows,
+  maxRows: number = PIPELINE_DEFAULTS.liveLedgerMaxRows,
 ): LivePanelRow[] {
   return entries.slice(-maxRows).map((entry) => ({
     key: `entry::${entry.id}`,
@@ -36,26 +31,15 @@ export function buildCommittedEntryLiveRows(
   }));
 }
 
-export function buildOutputEntriesFromPanelRows(
-  rows: LivePanelRow[],
-  sessionId: string,
-  now = Date.now(),
-): SubtitleEntry[] {
-  return rows
-    .filter((row) => String(row.text || "").trim())
-    .map((row, index) => {
-      const timestamp = toIsoTimestamp(row.updatedAt, now + index);
-      return {
-        id: `${sessionId}::visible::${row.key}::${index}`,
-        text: row.text,
-        timestamp,
-        startTime: timestamp,
-        endTime: timestamp,
-        sourceNodeKey: row.nodeKey,
-        speakerColor: row.speakerColor || undefined,
-        speakerChannel: row.speakerChannel || "unknown",
-      };
-    });
+export function buildPersistableOutputEntries(input: {
+  committedEntries: SubtitleEntry[];
+  previewFallbackEntries: SubtitleEntry[];
+}): SubtitleEntry[] {
+  if (input.committedEntries.length > 0) {
+    return input.committedEntries.map((entry) => cloneEntry(entry));
+  }
+
+  return input.previewFallbackEntries.map((entry) => cloneEntry(entry));
 }
 
 export function resolvePanelLiveRows(input: {
@@ -64,13 +48,8 @@ export function resolvePanelLiveRows(input: {
   captureMode: CaptureMode;
   sourceUrl: string;
 }): LivePanelRow[] {
-  if (
-    input.captureMode !== "fallback" ||
-    !isAssemblyPlenaryUrl(input.sourceUrl) ||
-    input.structuredRows.length > 0
-  ) {
-    return input.structuredRows;
-  }
-
-  return buildCommittedEntryLiveRows(input.entries);
+  void input.structuredRows;
+  void input.captureMode;
+  void input.sourceUrl;
+  return buildCommittedEntryLiveRows(input.entries, Number.MAX_SAFE_INTEGER);
 }

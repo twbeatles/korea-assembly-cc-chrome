@@ -43,6 +43,7 @@ export interface StatusSnapshot {
   currentSelector: string;
   currentFramePath: number[];
   diagnostics: CaptureDiagnostics;
+  hasPersistableContent: boolean;
 }
 
 export interface CaptureStatusPayload {
@@ -65,18 +66,21 @@ export interface CaptureStatusPayload {
   currentSelector: string;
   currentFramePath: number[];
   diagnostics: CaptureDiagnostics;
+  hasPersistableContent: boolean;
 }
 
 export interface PreviewUpdatePayload {
   sessionId: string;
   previewText: string;
   recentEntries: SubtitleEntry[];
+  hasPersistableContent: boolean;
 }
 
 export interface SessionStatsPayload {
   sessionId: string;
   subtitleCount: number;
   charCount: number;
+  hasPersistableContent: boolean;
 }
 
 export interface PopupFeedbackPayload {
@@ -110,6 +114,10 @@ export type BackgroundCommandMessage =
       record: SessionRecord;
     }
   | {
+      type: "DELETE_SESSION_RECORD";
+      sessionId: string;
+    }
+  | {
       type: "DOWNLOAD_REQUEST";
       filename: string;
       content: string;
@@ -120,7 +128,14 @@ export type BackgroundCommandMessage =
   | { type: "OPEN_DIAGNOSTICS_PAGE"; tabId?: number };
 
 export type BackgroundCommandResponse =
-  | { ok: true; ready?: boolean; requiresReload?: boolean; downloadId?: number; nonce?: string }
+  | {
+      ok: true;
+      ready?: boolean;
+      requiresReload?: boolean;
+      downloadId?: number;
+      nonce?: string;
+      updatedAt?: string;
+    }
   | { ok: false; error: string; requiresReload?: boolean };
 
 export interface ObserverBridgeEvent {

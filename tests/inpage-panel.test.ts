@@ -52,6 +52,7 @@ function createSnapshot(): StatusSnapshot {
       currentFramePath: [],
       sourceLabel: "structured",
     },
+    hasPersistableContent: true,
   };
 }
 
@@ -528,6 +529,35 @@ describe("in-page panel", () => {
     const updatedLiveRow = liveRowList?.querySelector(".live-row");
     expect(updatedLiveRow).toBe(firstLiveRow);
     expect(updatedLiveRow?.textContent).toContain("안녕하세요 수정");
+
+    controller.destroy();
+  });
+
+  it("disables save-related actions when there is no persistable content", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        snapshot: {
+          hasPersistableContent: false,
+        },
+        options: {
+          liveRows: [],
+          livePreviewText: "",
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const saveButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (element) => element.textContent === "지금 저장",
+    ) as HTMLButtonElement | undefined;
+    const copyButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (element) => element.textContent === "최근 5줄 복사",
+    ) as HTMLButtonElement | undefined;
+
+    expect(saveButton?.disabled).toBe(true);
+    expect(copyButton?.disabled).toBe(true);
 
     controller.destroy();
   });

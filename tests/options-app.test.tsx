@@ -116,6 +116,22 @@ describe("options app", () => {
     expect(debounceInput.value).toBe("800");
   });
 
+  it("enforces a minimum of one line for recent-copy settings", async () => {
+    render(<App />);
+    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+
+    const recentCopyInput = screen.getByRole("spinbutton", {
+      name: "최근 복사 줄 수",
+    }) as HTMLInputElement;
+
+    fireEvent.change(recentCopyInput, { target: { value: "0" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("1 이상이어야 합니다.")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: "저장" }).hasAttribute("disabled")).toBe(true);
+  });
+
   it("blocks save and shows a field error for an invalid filename pattern", async () => {
     render(<App />);
     await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
@@ -210,6 +226,7 @@ describe("options app", () => {
               currentFramePath: [],
               sourceLabel: "DOM observer",
             },
+            hasPersistableContent: true,
           },
         }),
       );

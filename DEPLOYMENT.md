@@ -61,7 +61,7 @@ npm run build
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
-- 패널 / popup의 수동 저장과 export 가 현재 화면에 보이는 `수집된 자막` 목록을 우선 반영하고, 목록이 비어 있으면 현재 `실시간 내용` preview 를 단일 항목으로 저장하는지 확인
+- 패널 / popup의 수동 저장과 export 가 현재 화면에 보이는 `수집된 자막` 목록을 우선 반영하고, 목록이 비어 있으면 placeholder / noise / duplicate 제거 뒤에도 의미가 남는 `실시간 내용` preview 만 단일 항목으로 저장하는지 확인
 - service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
@@ -70,7 +70,10 @@ npm run build
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
+- history `전체 JSON 백업` / `JSON 가져오기` 중 현재 단계, 진행량, 취소 버튼이 노출되고 중복 JSON 작업만 잠기는지 확인
+- `JSON 가져오기` 취소 시 이미 저장된 일부 레코드는 유지되고 부분 완료 요약 메시지가 표시되는지 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이, 저장 파일 이름 규칙 검증 확인
+- options noise filter 설명이 한글/영문 중심 판정과 foreign text 보존 시 filter off 필요성을 안내하는지 확인
 - stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
 - popup / 패널의 `수집 진단` 버튼이 options 페이지의 `수집 진단` 탭으로 연결되고, 그 탭에서 수집 방식, observer, selector, frame path 진단이 현재 상태와 맞는지 확인
 
@@ -274,8 +277,9 @@ Current release alignment:
 - structured row가 비어 있어도 본회의 fallback capture는 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
 - Chrome Web Store 제출용 압축 예시는 `korea-assembly-cc-chrome-<version>-cws.zip` 형식을 권장합니다.
-- 수동 저장 / export 는 현재 화면에 보이는 `수집된 자막` 목록 우선, 목록이 비어 있으면 `실시간 내용` preview 1건 저장 기준으로 검증해야 합니다.
+- 수동 저장 / export 는 현재 화면에 보이는 `수집된 자막` 목록 우선, 목록이 비어 있으면 정제 후에도 의미가 남는 `실시간 내용` preview 1건만 저장 기준으로 검증해야 합니다.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
+- full-library `JSON 백업` / `JSON 가져오기` 는 단계별 진행률과 취소를 제공하며, import cancel 은 partial completion 을 허용합니다.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
 
 ## 2026-03-11 Addendum Deployment Notes
@@ -320,5 +324,11 @@ Deployment documentation consistency sources:
 - Release verification should confirm that frame-forward nonce state survives MV3 service worker restarts via `chrome.storage.local` and converges again without requiring a page reload.
 - Release verification should confirm that queued exit persist reads merge storage and memory snapshots, and that a storage write failure does not silently drop the in-memory replay candidate.
 - Options validation should confirm that `저장 복구 상태` shows `queue write`, `replay`, `cleanup`, and summary errors separately when they are present.
-- Popup validation should confirm that `지금 저장` is disabled when `subtitleCount === 0` and `previewText` is empty, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.
+- Popup validation should confirm that `지금 저장` is disabled when `hasPersistableContent` is false, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.
 - Subtitle activation validation should confirm that merely showing `#viewSubtit` is not enough; success requires visible text or an active control signal.
+
+## 2026-04-07 Deployment Consistency Update
+
+- Release verification should confirm that `수집된 자막` 저장/export 기준이 live ledger cap 과 무관한 세션 전체 누적 committed subtitle 목록임을 유지합니다.
+- Release verification should confirm that 회의명 파서는 trailing `|` branding 만 제거하고 날짜 / 회차 / 하이픈 텍스트를 보존합니다.
+- Release verification should confirm that subtitle visibility 판정은 `display:none`, `visibility:hidden`, `opacity:0`, zero-rect 를 동일하게 hidden 으로 처리합니다.

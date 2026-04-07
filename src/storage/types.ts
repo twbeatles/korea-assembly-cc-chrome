@@ -59,6 +59,27 @@ export interface SessionImportSummary {
   failedCount: number;
 }
 
+export type SessionLongTaskKind = "backup" | "import";
+
+export interface SessionLongTaskProgress {
+  kind: SessionLongTaskKind;
+  phase: string;
+  completed: number;
+  total: number;
+  message: string;
+}
+
+export interface SessionLongTaskOptions {
+  signal?: AbortSignal;
+  onProgress?: (progress: SessionLongTaskProgress) => void;
+}
+
+export interface BuildSessionLibraryBackupExportOptions extends SessionLongTaskOptions {
+  pageSize?: number;
+}
+
+export type ImportSessionRecordsOptions = SessionLongTaskOptions;
+
 export interface StartupCleanupSummary {
   detectedCount: number;
   closedCount: number;
@@ -119,13 +140,16 @@ export interface SessionStoreApi {
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;
   listSessionsPage: (options: SessionPageOptions) => Promise<SessionPageResult>;
   getSessionLibraryOverview: (previewLimit?: number) => Promise<SessionLibraryOverview>;
-  buildSessionLibraryBackupExport: () => Promise<LibraryBackupExport>;
+  buildSessionLibraryBackupExport: (
+    options?: BuildSessionLibraryBackupExportOptions,
+  ) => Promise<LibraryBackupExport>;
   deleteSession: (id: string) => Promise<void>;
   deleteAllSessions: () => Promise<void>;
   updateRunningSession: (session: SessionRecord) => Promise<SessionRecord>;
   replayQueuedExitPersistRecords: () => Promise<PersistReplaySummary>;
   importSessionRecords: (
     sessions: StoredSessionRecord[],
+    options?: ImportSessionRecordsOptions,
   ) => Promise<SessionImportSummary>;
   exportSessionData: (
     session: SessionRecord,

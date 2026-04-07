@@ -15,7 +15,7 @@ import type {
   OffscreenDocumentMessage,
   OffscreenDocumentResponse,
 } from "../shared/message-types";
-import { saveSession, updateRunningSession } from "../storage/session-store";
+import { deleteSession, saveSession, updateRunningSession } from "../storage/session-store";
 
 const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
@@ -317,6 +317,7 @@ function isBackgroundCommandMessage(message: unknown): message is BackgroundComm
     type === "ENSURE_CONTENT_SCRIPT" ||
     type === "GET_FRAME_FORWARD_NONCE" ||
     type === "PERSIST_SESSION_RECORD" ||
+    type === "DELETE_SESSION_RECORD" ||
     type === "DOWNLOAD_REQUEST" ||
     type === "OPEN_HISTORY_PAGE" ||
     type === "OPEN_OPTIONS_PAGE" ||
@@ -358,12 +359,15 @@ async function handleMessage(
       }
       return { ok: true, nonce: await getOrCreateStoredFrameForwardNonce(tabId) };
     }
-    case "PERSIST_SESSION_RECORD":
-      if (message.record.status === "running") {
-        await updateRunningSession(message.record);
-      } else {
-        await saveSession(message.record);
-      }
+    case "PERSIST_SESSION_RECORD": {
+      const saved =
+        message.record.status === "running"
+          ? await updateRunningSession(message.record)
+          : await saveSession(message.record);
+      return { ok: true, updatedAt: saved.updatedAt };
+    }
+    case "DELETE_SESSION_RECORD":
+      await deleteSession(message.sessionId);
       return { ok: true };
     case "DOWNLOAD_REQUEST": {
       const downloadId = await downloadExport(

@@ -6,6 +6,7 @@ import {
   OBSERVER_STOP_EVENT,
 } from "../shared/constants";
 import { buildObservedSubtitlePreview, readObservedSubtitleRows } from "./subtitle-rows";
+import { isElementVisible } from "./visibility";
 const DEFAULT_SELECTORS = [
   "#viewSubtit .smi_word:last-child",
   "#viewSubtit .smi_word",
@@ -86,18 +87,9 @@ function queryAll(selector: string): HTMLElement[] {
   }
 }
 
-function isVisible(node: HTMLElement | null): boolean {
-  if (!node) {
-    return false;
-  }
-
-  const style = window.getComputedStyle(node);
-  return style.display !== "none" && style.visibility !== "hidden";
-}
-
 function isSubtitleLayerVisible(): boolean {
   const layer = queryOne("#viewSubtit");
-  return isVisible(layer);
+  return isElementVisible(layer);
 }
 
 function isActivationControlActive(node: HTMLElement): boolean {
@@ -109,7 +101,7 @@ function isActivationControlActive(node: HTMLElement): boolean {
 
 function clickActivationControl(selector: string): boolean {
   const button = queryOne(selector);
-  if (!button || !isVisible(button) || isActivationControlActive(button)) {
+  if (!button || !isElementVisible(button) || isActivationControlActive(button)) {
     return false;
   }
 

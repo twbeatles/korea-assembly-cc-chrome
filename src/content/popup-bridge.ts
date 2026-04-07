@@ -35,6 +35,7 @@ export function createPopupMessages(snapshot: StatusSnapshot): ContentToPopupMes
         currentSelector: snapshot.currentSelector,
         currentFramePath: snapshot.currentFramePath,
         diagnostics: snapshot.diagnostics,
+        hasPersistableContent: snapshot.hasPersistableContent,
       },
     },
     {
@@ -43,6 +44,7 @@ export function createPopupMessages(snapshot: StatusSnapshot): ContentToPopupMes
         sessionId: snapshot.sessionId,
         previewText: snapshot.previewText,
         recentEntries: snapshot.recentEntries,
+        hasPersistableContent: snapshot.hasPersistableContent,
       },
     },
     {
@@ -51,6 +53,7 @@ export function createPopupMessages(snapshot: StatusSnapshot): ContentToPopupMes
         sessionId: snapshot.sessionId,
         subtitleCount: snapshot.subtitleCount,
         charCount: snapshot.charCount,
+        hasPersistableContent: snapshot.hasPersistableContent,
       },
     },
   ];

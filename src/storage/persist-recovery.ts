@@ -218,22 +218,25 @@ export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistR
     return [...memoryQueuedRecords.values()].map(cloneQueuedRecord);
   }
 
+  const memorySnapshotBeforeRead = [...memoryQueuedRecords.values()].map(cloneQueuedRecord);
   const snapshot = await chrome.storage.local.get(null);
   const storageRecords = Object.entries(snapshot)
     .filter(([key]) => key.startsWith(EXIT_PERSIST_RECORD_PREFIX))
     .map(([, value]) => sanitizeQueuedRecord(value))
     .filter((value): value is QueuedExitPersistRecord => Boolean(value));
 
-  const mergedRecords = mergeQueuedRecordCollections(
-    storageRecords,
-    [...memoryQueuedRecords.values()].map(cloneQueuedRecord),
-  );
+  const memorySnapshotAfterRead = [...memoryQueuedRecords.values()].map(cloneQueuedRecord);
+  const mergedRecords = mergeQueuedRecordCollections(storageRecords, memorySnapshotBeforeRead);
+  const freshestRecords = mergeQueuedRecordCollections(mergedRecords, memorySnapshotAfterRead);
 
-  memoryQueuedRecords.clear();
-  mergedRecords.forEach((record) => {
-    memoryQueuedRecords.set(record.sessionId, cloneQueuedRecord(record));
+  freshestRecords.forEach((record) => {
+    const current = memoryQueuedRecords.get(record.sessionId);
+    if (!current || compareQueuedRecordFreshness(record, current) >= 0) {
+      memoryQueuedRecords.set(record.sessionId, cloneQueuedRecord(record));
+    }
   });
-  return mergedRecords.map(cloneQueuedRecord);
+
+  return freshestRecords.map(cloneQueuedRecord);
 }
 
 export async function clearQueuedExitPersistRecord(sessionId: string): Promise<void> {

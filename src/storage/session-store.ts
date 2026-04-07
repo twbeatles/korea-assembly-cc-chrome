@@ -21,6 +21,13 @@ import {
   resetPersistRecoveryStateForTests,
 } from "./persist-recovery";
 import {
+  createExtensionContextInvalidatedError,
+  hasExtensionContextInvalidated,
+  isExtensionContextInvalidatedError,
+  markExtensionContextInvalidated,
+  resetExtensionContextInvalidationForTests,
+} from "../shared/extension-context";
+import {
   buildSessionBackupBundle,
   buildSessionBackupFilename,
 } from "./session-backup";
@@ -32,10 +39,13 @@ import {
   SESSION_STORE_NAME,
 } from "../shared/constants";
 import type {
+  BuildSessionLibraryBackupExportOptions,
   ExportPayload,
+  ImportSessionRecordsOptions,
   LibraryBackupExport,
   PersistReplaySummary,
   SessionExportOptions,
+  SessionLongTaskProgress,
   SessionImportSummary,
   SessionLibraryOverview,
   SessionLibraryPreview,
@@ -72,7 +82,43 @@ interface IndexedDbSessionRecord extends SessionRecord {
   sortKey: string;
 }
 
+function createAbortError(message = "작업을 취소했습니다."): Error {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException(message, "AbortError");
+  }
+
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal, message?: string): void {
+  if (signal?.aborted) {
+    throw createAbortError(message);
+  }
+}
+
+function emitLongTaskProgress(
+  onProgress: ((progress: SessionLongTaskProgress) => void) | undefined,
+  progress: SessionLongTaskProgress,
+): void {
+  onProgress?.({ ...progress });
+}
+
+function createCancelledImportError(summary: SessionImportSummary): Error & {
+  summary: SessionImportSummary;
+} {
+  const error = createAbortError("JSON 가져오기를 취소했습니다.") as Error & {
+    summary: SessionImportSummary;
+  };
+  error.summary = { ...summary };
+  return error;
+}
+
 function logStoreError(message: string, error?: unknown): void {
+  if (hasExtensionContextInvalidated() || markExtensionContextInvalidated(error)) {
+    return;
+  }
   console.warn(`[session-store] ${message}`, error);
 }
 
@@ -338,7 +384,7 @@ function mergeEditableSessionMetadata(
 }
 
 async function bumpSessionLibraryRevision(): Promise<void> {
-  if (typeof chrome === "undefined" || !chrome.storage?.local) {
+  if (hasExtensionContextInvalidated() || typeof chrome === "undefined" || !chrome.storage?.local) {
     return;
   }
 
@@ -372,7 +418,15 @@ async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<IndexedDbAt
       value: await operation(),
     };
   } catch (error) {
-    logStoreError("IndexedDB operation failed, falling back", error);
+    if (markExtensionContextInvalidated(error)) {
+      return {
+        ok: false,
+        error: createExtensionContextInvalidatedError(),
+      };
+    }
+    if (!isExtensionContextInvalidatedError(error)) {
+      logStoreError("IndexedDB operation failed, falling back", error);
+    }
     return {
       ok: false,
       error,
@@ -477,6 +531,10 @@ function isQuotaExceededError(error: unknown): boolean {
 }
 
 function buildFallbackWriteError(action: string, error: unknown): Error {
+  if (hasExtensionContextInvalidated() || markExtensionContextInvalidated(error)) {
+    return createExtensionContextInvalidatedError();
+  }
+
   if (isQuotaExceededError(error)) {
     return new Error(`브라우저 저장소 용량이 가득 차 ${action} 내용을 영구 저장하지 못했습니다.`);
   }
@@ -791,6 +849,10 @@ async function listFallbackSessionIds(): Promise<string[]> {
 }
 
 async function saveFallbackRecord(session: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
   const record = cloneSessionRecord(session);
   memoryFallbackStore.set(record.id, cloneSessionRecord(record));
   await saveChromeFallbackRecord(record);
@@ -831,6 +893,10 @@ async function listFallbackRecords(options: SessionListOptions = {}): Promise<Se
 async function deleteFallbackRecord(id: string): Promise<void> {
   if (!id) {
     return;
+  }
+
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
   }
 
   memoryFallbackStore.delete(id);
@@ -906,6 +972,10 @@ function stopRunningRecord(record: SessionRecord): SessionRecord {
 }
 
 async function preserveStoredSessionMetadata(record: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
   const existingRecord = await loadSession(record.id);
   return mergeEditableSessionMetadata(record, existingRecord);
 }
@@ -917,6 +987,10 @@ async function writeSessionRecord(
     notifyRevision?: boolean;
   } = {},
 ): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
   const allowFallbackOnIndexedDbError = options.allowFallbackOnIndexedDbError !== false;
   const notifyRevision = options.notifyRevision !== false;
   const indexedDbResult = await tryIndexedDb(async () => {
@@ -936,6 +1010,10 @@ async function writeSessionRecord(
     return cloneSessionRecord(indexedDbResult.value);
   }
 
+  if (hasExtensionContextInvalidated() || markExtensionContextInvalidated(indexedDbResult.error)) {
+    throw createExtensionContextInvalidatedError();
+  }
+
   if (!allowFallbackOnIndexedDbError && indexedDbResult.error) {
     throw indexedDbResult.error instanceof Error
       ? indexedDbResult.error
@@ -951,6 +1029,10 @@ async function writeSessionRecord(
 }
 
 export async function saveSession(session: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
   const record = await preserveStoredSessionMetadata(
     normalizeSessionRecord(
       {
@@ -966,6 +1048,10 @@ export async function saveSession(session: SessionRecord): Promise<SessionRecord
 }
 
 export async function updateRunningSession(session: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
   const record = await preserveStoredSessionMetadata(
     normalizeSessionRecord(
       {
@@ -981,6 +1067,10 @@ export async function updateRunningSession(session: SessionRecord): Promise<Sess
 }
 
 export async function upsertSessionRecord(session: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
   const record = normalizeSessionRecord(session, {
     forceStatus: session.status,
   });
@@ -1087,10 +1177,64 @@ export async function getSessionLibraryOverview(
   };
 }
 
-export async function buildSessionLibraryBackupExport(): Promise<LibraryBackupExport> {
-  const sessions = await listAllSessions();
+export async function buildSessionLibraryBackupExport(
+  options: BuildSessionLibraryBackupExportOptions = {},
+): Promise<LibraryBackupExport> {
+  const pageSize = Math.max(1, options.pageSize ?? 200);
+  const sessions: SessionRecord[] = [];
+  let totalCount = 0;
+  let page = 1;
+
+  emitLongTaskProgress(options.onProgress, {
+    kind: "backup",
+    phase: "prepare",
+    completed: 0,
+    total: 0,
+    message: "전체 JSON 백업을 준비하고 있습니다.",
+  });
+
+  while (true) {
+    throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+    const pageResult = await listSessionsPage({
+      page,
+      pageSize,
+    });
+    throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+
+    totalCount = pageResult.totalCount;
+    sessions.push(...pageResult.sessions);
+    emitLongTaskProgress(options.onProgress, {
+      kind: "backup",
+      phase: "collect",
+      completed: Math.min(sessions.length, totalCount),
+      total: totalCount,
+      message: totalCount
+        ? `전체 JSON 백업을 준비하고 있습니다. (${Math.min(sessions.length, totalCount)} / ${totalCount})`
+        : "백업할 기록이 없습니다.",
+    });
+
+    if (!pageResult.sessions.length || sessions.length >= totalCount) {
+      break;
+    }
+
+    page += 1;
+  }
+
+  throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+  emitLongTaskProgress(options.onProgress, {
+    kind: "backup",
+    phase: "package",
+    completed: sessions.length,
+    total: totalCount,
+    message: totalCount
+      ? `전체 JSON 백업 파일을 생성하고 있습니다. (${sessions.length} / ${totalCount})`
+      : "백업 파일을 생성하고 있습니다.",
+  });
+
   const now = new Date();
   const backup = buildSessionBackupBundle(sessions, now.toISOString());
+  throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+
   return {
     sessionCount: sessions.length,
     payload: {
@@ -1213,10 +1357,23 @@ export async function deleteAllSessions(): Promise<void> {
 
 export async function importSessionRecords(
   sessions: StoredSessionRecord[],
+  options: ImportSessionRecordsOptions = {},
 ): Promise<SessionImportSummary> {
   const importedById = new Map<string, SessionRecord>();
+  let sanitizedCount = 0;
 
-  sessions.forEach((session) => {
+  emitLongTaskProgress(options.onProgress, {
+    kind: "import",
+    phase: "sanitize",
+    completed: 0,
+    total: sessions.length,
+    message: sessions.length
+      ? `가져올 기록을 정리하고 있습니다. (0 / ${sessions.length})`
+      : "가져올 기록이 없습니다.",
+  });
+
+  for (const session of sessions) {
+    throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
     const normalized = normalizeSessionRecord(session, {
       preserveTimestamps: true,
       forceStatus: session.status ?? "saved",
@@ -1225,17 +1382,60 @@ export async function importSessionRecords(
     if (!current || normalized.updatedAt.localeCompare(current.updatedAt) > 0) {
       importedById.set(normalized.id, normalized);
     }
-  });
+    sanitizedCount += 1;
+    emitLongTaskProgress(options.onProgress, {
+      kind: "import",
+      phase: "sanitize",
+      completed: sanitizedCount,
+      total: sessions.length,
+      message: `가져올 기록을 정리하고 있습니다. (${sanitizedCount} / ${sessions.length})`,
+    });
+  }
 
+  throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
+  emitLongTaskProgress(options.onProgress, {
+    kind: "import",
+    phase: "compare",
+    completed: 0,
+    total: importedById.size,
+    message: importedById.size
+      ? "기존 기록과 비교하고 있습니다."
+      : "가져올 기록이 없습니다.",
+  });
   const existingSessions = await loadSessionsByIds([...importedById.keys()]);
+  throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
   const existingById = new Map(existingSessions.map((session) => [session.id, session]));
 
   let addedCount = 0;
   let updatedCount = 0;
   let keptCount = 0;
   let failedCount = 0;
+  let processedCount = 0;
+  const summary = (): SessionImportSummary => ({
+    addedCount,
+    updatedCount,
+    keptCount,
+    failedCount,
+  });
+
+  emitLongTaskProgress(options.onProgress, {
+    kind: "import",
+    phase: "write",
+    completed: 0,
+    total: importedById.size,
+    message: importedById.size
+      ? `JSON 가져오기를 진행하고 있습니다. (0 / ${importedById.size})`
+      : "가져올 기록이 없습니다.",
+  });
 
   for (const record of importedById.values()) {
+    if (options.signal?.aborted) {
+      if (addedCount > 0 || updatedCount > 0) {
+        await bumpSessionLibraryRevision();
+      }
+      throw createCancelledImportError(summary());
+    }
+
     try {
       const existing = existingById.get(record.id);
       if (!existing) {
@@ -1243,21 +1443,26 @@ export async function importSessionRecords(
           notifyRevision: false,
         });
         addedCount += 1;
-        continue;
-      }
-
-      if (record.updatedAt.localeCompare(existing.updatedAt) > 0) {
+      } else if (record.updatedAt.localeCompare(existing.updatedAt) > 0) {
         await writeSessionRecord(record, {
           notifyRevision: false,
         });
         updatedCount += 1;
-        continue;
+      } else {
+        keptCount += 1;
       }
-
-      keptCount += 1;
     } catch (error) {
       failedCount += 1;
       logStoreError(`Failed to import session ${record.id}`, error);
+    } finally {
+      processedCount += 1;
+      emitLongTaskProgress(options.onProgress, {
+        kind: "import",
+        phase: "write",
+        completed: processedCount,
+        total: importedById.size,
+        message: `JSON 가져오기를 진행하고 있습니다. (${processedCount} / ${importedById.size})`,
+      });
     }
   }
 
@@ -1412,6 +1617,7 @@ export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSum
 
 export async function resetSessionStoreForTests(): Promise<void> {
   memoryFallbackStore.clear();
+  resetExtensionContextInvalidationForTests();
   await clearChromeFallbackRecordsForTests();
   await resetPersistRecoveryStateForTests();
   if (typeof chrome !== "undefined" && chrome.storage?.local) {

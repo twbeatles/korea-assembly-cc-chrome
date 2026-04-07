@@ -6,8 +6,9 @@
 > 2026-04-07 업데이트:
 > - 이 문서는 과거 감사 기준 문서이며, 현재 배포 준비 기준 구현은 이 보고서 작성 시점보다 뒤에 있습니다.
 > - 현재 스토어 제출 준비 버전은 `1.0.6` 입니다.
-> - 현재 수동 저장 / export 경로는 prepared snapshot 전체를 그대로 쓰지 않고, 패널에 보이는 `수집된 자막` row 를 우선 직렬화하며, row 가 없을 때만 현재 `실시간 내용` preview 또는 prepared entry 로 내려갑니다.
-> - 따라서 아래의 save/export 관련 일부 지적은 역사적 참고용으로만 읽어야 하며, 현재 릴리스 기준 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 를 우선합니다.
+> - 현재 수동 저장 / export 경로는 prepared snapshot 전체를 그대로 쓰지 않고, 패널에 보이는 `수집된 자막` row 를 우선 직렬화하며, row 가 없을 때만 정제 뒤에도 의미가 남는 `실시간 내용` preview 1건으로 내려갑니다.
+> - 현재 popup / panel 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되었고, replay queue merge race / title parser / subtitle visibility / history JSON progress+cancel 관련 지적도 이후 배치에서 반영되었습니다.
+> - 따라서 아래의 save/export, replay queue, popup enablement, history long-task 관련 일부 지적은 역사적 참고용으로만 읽어야 하며, 현재 릴리스 기준 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 를 우선합니다.
 
 ---
 

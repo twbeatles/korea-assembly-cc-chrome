@@ -132,6 +132,7 @@ npm run build
 - `noiseFilterEnabled = false` 이면 숫자-only, 기호-only도 통과시킵니다.
 - 한글/영문 1~2글자는 허용합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 noise filter 설정과 무관하게 commit/persist/export 대상에서 제외합니다.
+- 기본 언어 판정은 한글/영문 중심입니다. 외국어 텍스트 지원 확대는 이번 배치 범위에 포함하지 않았으며, raw foreign text 를 최대한 남기려면 noise filter 를 꺼야 합니다.
 - recent compact tail 로 과잉 재누적을 막습니다.
 - 중복 차단 최소 길이 설정 키는 `recentDuplicateMinLength` 입니다.
 
@@ -140,7 +141,7 @@ npm run build
 - 동일 raw 유지 시 마지막 entry `endTime` 갱신
 - `subtitle_reset` 시 live ledger 와 pipeline state 를 함께 완전 리셋
 - stop 시 현재 state 기준으로 finalize
-- 수동 저장 / export 는 현재 패널에 보이는 `수집된 자막` row 를 우선 직렬화하고, row 가 비어 있으면 현재 preview 텍스트를 단일 항목으로 저장
+- 수동 저장 / export 는 현재 패널에 보이는 `수집된 자막` row 를 우선 직렬화하고, row 가 비어 있을 때만 정제 규칙을 통과한 preview-only 항목 1건을 materialize
 - unload / stop / page-exit 계열 prepared snapshot 생성 경로에서는 preview-only 텍스트도 flush 후 반영
 
 ## 7. persistence 규칙
@@ -179,6 +180,7 @@ npm run build
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
 - session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
 - history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
+- 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원하며, import cancel 은 이미 저장된 부분 완료 레코드를 rollback 하지 않음
 - history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함
 - 전체 JSON 백업은 view-layer preload 대신 store helper export payload 를 사용해야 함
 - `autoScroll` 이 꺼지면 `실시간 내용` / `수집된 자막` 강제 스크롤 금지
@@ -192,7 +194,7 @@ npm run build
 - session import 는 allow-list sanitize 후 normalize 해야 하며, unsupported wrapper version / invalid timestamp 는 reject 해야 함
 - 패널과 popup 은 `수집 진단` 화면 진입을 제공하고, capture mode, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 의 `수집 진단` 탭에서 표시
 - fallback/polling capture notice 는 실제 수집이 이어질 때 중립적 “수집 중 + 자동 조정” 톤을 유지해야 함
-- popup `SAVE_SESSION`은 `subtitleCount > 0 || previewText.trim() !== ""`일 때만 활성화되어야 하고, 빈 저장 요청은 `저장할 자막이 아직 없습니다.`로 응답해야 함
+- popup `SAVE_SESSION`은 패널과 동일한 `hasPersistableContent` 기준일 때만 활성화되어야 하고, 빈 저장 요청은 `저장할 자막이 아직 없습니다.`로 응답해야 함
 - subtitle auto activation 성공은 `visible && (hasText || controlActive)`로 판정해야 함
 - options 숫자 필드는 draft string + inline validation 패턴을 유지해야 함
 
@@ -201,7 +203,7 @@ npm run build
 - `SRT`: `HH:MM:SS,mmm`, 세션 시작 기준 상대 시간
 - `VTT`: `HH:MM:SS.mmm`, 세션 시작 기준 상대 시간
 - `JSON`: 세션 전체 복원 가능한 구조
-- 수동 `saveSession` / `exportSessionData` 는 현재 패널에 보이는 `수집된 자막` 목록을 우선 사용하고, 목록이 비어 있을 때만 preview 또는 prepared entry 로 내려갑니다.
+- 수동 `saveSession` / `exportSessionData` 는 현재 패널에 보이는 `수집된 자막` 목록을 우선 사용하고, 목록이 비어 있을 때만 정제 뒤에도 의미가 남는 preview-only 항목 1건으로 내려갑니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 - 다운로드는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback
 
@@ -289,7 +291,7 @@ Use this delta as the current operational baseline.
 - `deleteAllSessions()` must attempt IndexedDB and fallback cleanup independently and surface partial-failure detail when only one store fails.
 - `filenamePattern` now rejects forbidden path characters and unsupported placeholders, and invalid stored values are sanitized back to the default pattern.
 - The in-page `최근 N줄 복사` action now uses the prepared cumulative session snapshot instead of transient live rows, so it matches history semantics.
-- History long-running actions lock related controls through a shared busy state while preserving search and note editing.
+- History long-running actions keep the shared busy state for 일반 작업 while full-library `JSON 백업` / `JSON 가져오기` use dedicated progress + cancel state and lock only the JSON task controls.
 - Options tests and inputs now rely on accessible field labels instead of display-text-only selectors.
 
 Keep this file aligned with the implementation closure below:
@@ -322,8 +324,20 @@ Use this delta as the current operational baseline.
 
 - `ensureSubtitleLayerActive` 성공 판정은 `layer.visible` 단독이 아니라 `layer.visible && (layer.hasText || layer.controlActive)` 조건을 충족할 때만 인정합니다. 이전에는 `visible`만 체크해 텍스트나 control 신호가 없어도 성공으로 처리하던 버그가 수정되었습니다.
 - `saveCurrentSessionSnapshot` / `exportCurrentSession` 은 prepared snapshot 을 그대로 쓰지 않고, 현재 패널에 보이는 `수집된 자막` row 를 우선 직렬화합니다.
-- row 가 없고 preview 만 있으면 현재 `실시간 내용` preview 를 단일 항목으로 저장하고, 둘 다 없을 때만 prepared snapshot entry 로 내려갑니다.
-- popup 버튼 활성화 조건(`subtitleCount > 0 || previewText.trim() !== ""`)은 현재 수동 저장 경로와 같은 의미론을 따릅니다.
+- row 가 없고 preview 만 있으면 placeholder / noise / duplicate 제거 뒤에도 의미가 남을 때만 현재 `실시간 내용` preview 를 단일 항목으로 저장하고, 둘 다 없을 때만 저장 / export 불가 상태로 남습니다.
+- popup 버튼 활성화 조건은 `subtitleCount` / `previewText` 단순 판정이 아니라 `hasPersistableContent` 기준으로 통일됩니다.
+
+## Sync Delta (2026-04-07)
+
+Use this delta as the current operational baseline.
+
+- `수집된 자막` 목록은 bounded live ledger 와 별개로 세션 전체 누적 committed subtitles 를 보여 줍니다. `liveLedgerMaxRows = 300` 은 reconciliation cap 일 뿐 저장/export 기준이 아닙니다.
+- 수동 저장 / export 는 누적 `수집된 자막` 목록을 단일 source of truth 로 사용하며, preview-only fallback 은 정제 후 의미 있는 경우에만 1건으로 materialize 됩니다.
+- popup / in-page panel 의 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일됩니다.
+- replay queue 조회는 storage snapshot + memory snapshot 을 freshness 기준으로 merge 하며, 동시 queue insert 를 잃지 않아야 합니다.
+- 회의명 파서는 trailing `|` branding 만 제거하고 날짜 / 회차 / 하이픈 텍스트는 유지합니다.
+- subtitle visibility 판정은 `display:none`, `visibility:hidden`, `opacity:0`, zero-rect 를 모두 hidden 으로 간주하는 공통 helper 를 사용합니다.
+- history full-library `JSON 백업` / `JSON 가져오기` 는 단계별 진행률과 취소를 지원하며, import cancel 은 partial completion 을 허용합니다.
 
 ## Sync Delta (2026-03-14)
 

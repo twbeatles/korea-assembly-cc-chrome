@@ -103,6 +103,34 @@ button.secondary:hover:not(:disabled) {
   padding: 8px 12px;
   border-radius: 10px;
   background: rgba(26, 108, 88, 0.07);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.hero-status-copy {
+  display: grid;
+  gap: 4px;
+}
+
+.hero-status-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #587368;
+}
+
+.hero-status-cancel-note {
+  color: #9a5600;
+  font-weight: 700;
+}
+
+.hero-status.long-task-status {
+  background: rgba(26, 108, 88, 0.12);
+  border: 1px solid rgba(26, 108, 88, 0.12);
 }
 
 /* ── Main layout ─────────────────────────────── */
@@ -579,6 +607,10 @@ button.secondary:hover:not(:disabled) {
 
   .hero-actions {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .hero-status {
     align-items: stretch;
   }
 

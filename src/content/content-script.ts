@@ -19,6 +19,8 @@ import {
 } from "../core/live-capture";
 import {
   cloneEntry,
+  cloneState,
+  cloneSessionRecord,
   createEmptySessionState,
   getSessionCharCount,
   toSessionRecord,
@@ -55,6 +57,11 @@ import {
   copyTextToClipboard,
   selectCopyEntries,
 } from "../shared/copy-utils";
+import {
+  invalidateExtensionContext,
+  isExtensionContextInvalidatedError,
+  markExtensionContextInvalidated,
+} from "../shared/extension-context";
 import type {
   BackgroundCommandResponse,
   FrameForwardMessage,
@@ -74,7 +81,7 @@ import {
   type InPagePanelController,
 } from "./inpage-panel";
 import {
-  buildOutputEntriesFromPanelRows,
+  buildPersistableOutputEntries,
   resolvePanelLiveRows,
 } from "./panel-live-rows";
 import {
@@ -86,12 +93,7 @@ import {
 import { RESET_CAPTURE_NOTICE } from "./capture-notice";
 import { shouldEmitLocalProbeUpdate } from "./local-polling";
 import { estimateRecentRaw } from "./dom-probe";
-import {
-  deleteSession,
-  exportSessionData,
-  saveSession,
-  updateRunningSession,
-} from "../storage/session-store";
+import { exportSessionData } from "../storage/session-store";
 import { queueExitPersistRecord } from "../storage/persist-recovery";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
@@ -196,20 +198,6 @@ function createObserverBridgeToken(): string {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
-function isExtensionContextInvalidatedError(error: unknown): boolean {
-  if (typeof error === "string") {
-    return error.includes("Extension context invalidated");
-  }
-  if (error instanceof Error) {
-    return error.message.includes("Extension context invalidated");
-  }
-  if (error && typeof error === "object" && "message" in error) {
-    const message = (error as { message?: unknown }).message;
-    return typeof message === "string" && message.includes("Extension context invalidated");
-  }
-  return false;
-}
-
 function clearLocalPolling(): void {
   if (localPollingTimer) {
     window.clearInterval(localPollingTimer);
@@ -237,6 +225,7 @@ function shutdownForInvalidatedContext(): void {
   }
 
   extensionContextInvalidated = true;
+  invalidateExtensionContext();
   clearLocalPolling();
   clearTopFallbackTimer();
   clearFrameForwardNonceRefresh();
@@ -252,7 +241,7 @@ function shutdownForInvalidatedContext(): void {
 }
 
 function reportRuntimeError(message: string, error?: unknown): void {
-  if (isExtensionContextInvalidatedError(error)) {
+  if (markExtensionContextInvalidated(error)) {
     shutdownForInvalidatedContext();
     message = INVALIDATED_CONTEXT_NOTICE;
   }
@@ -277,7 +266,7 @@ function reportRuntimeError(message: string, error?: unknown): void {
 }
 
 function deriveCommitteeName(title: string): string {
-  return title.replace(/\s*[-|].*$/, "").trim();
+  return title.replace(/\s+\|\s+[^|]+$/, "").trim();
 }
 
 function logDebug(message: string, payload?: unknown): void {
@@ -306,6 +295,7 @@ function getCaptureMode(): CaptureMode {
 
 function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   const captureMode = getCaptureMode();
+  const hasPersistableContent = buildVisibleOutputEntries().length > 0;
   return {
     connected: isSupportedAssemblyUrl(window.location.href),
     requiresReload,
@@ -331,6 +321,7 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
       currentSelector: state.currentSelector,
       currentFramePath: state.currentFramePath,
     }),
+    hasPersistableContent,
   };
 }
 
@@ -359,6 +350,31 @@ function clearRunningPersistTimer(): void {
   persistTimer = clearScheduledRunningPersist(persistTimer, (timerId) => window.clearTimeout(timerId));
 }
 
+async function persistSessionRecord(record: SessionRecord): Promise<SessionRecord> {
+  const response = await sendRuntimeMessage({
+    type: "PERSIST_SESSION_RECORD",
+    record,
+  });
+  if (!response.ok) {
+    throw new Error(response.error);
+  }
+
+  return {
+    ...cloneSessionRecord(record),
+    updatedAt: response.updatedAt ?? record.updatedAt,
+  };
+}
+
+async function deletePersistedSession(sessionId: string): Promise<void> {
+  const response = await sendRuntimeMessage({
+    type: "DELETE_SESSION_RECORD",
+    sessionId,
+  });
+  if (!response.ok) {
+    throw new Error(response.error);
+  }
+}
+
 function canPersistCurrentRunningState(): boolean {
   return hasPersistableRunningContent(state);
 }
@@ -368,44 +384,22 @@ function buildPreparedSessionState(now = Date.now()): SessionState {
 }
 
 function buildVisibleOutputEntries(now = Date.now()): SubtitleEntry[] {
-  const liveRows = getPanelLiveRows();
-  if (liveRows.length > 0) {
-    return buildOutputEntriesFromPanelRows(liveRows, state.sessionId, now);
+  if (state.entries.length > 0) {
+    return state.entries.map((entry) => cloneEntry(entry));
   }
 
-  const previewText = String(getLivePreviewText() || "").trim();
-  if (previewText) {
-    const timestamp =
-      state.updatedAt && Number.isFinite(Date.parse(state.updatedAt))
-        ? state.updatedAt
-        : new Date(now).toISOString();
-    const startTime =
-      state.startedAt && Number.isFinite(Date.parse(state.startedAt))
-        ? state.startedAt
-        : timestamp;
-
-    return [
-      {
-        id: `${state.sessionId}::preview::${now}`,
-        text: previewText,
-        timestamp,
-        startTime,
-        endTime: timestamp,
-        sourceSelector: state.currentSelector || undefined,
-        sourceFramePath: state.currentFramePath.length ? [...state.currentFramePath] : undefined,
-      },
-    ];
-  }
-
-  return prepareSessionState(state, settings, now).entries.map((entry) => cloneEntry(entry));
+  return buildPersistableOutputEntries({
+    committedEntries: state.entries,
+    previewFallbackEntries: prepareSessionState(state, settings, now).entries,
+  });
 }
 
 function buildVisibleSessionState(now = Date.now()): SessionState {
-  const preparedState = prepareSessionState(state, settings, now);
-  preparedState.entries = buildVisibleOutputEntries(now);
-  preparedState.previewText = getLivePreviewText();
-  preparedState.lastObservedRaw = preparedState.previewText;
-  return preparedState;
+  const nextState = cloneState(state);
+  nextState.entries = buildVisibleOutputEntries(now);
+  nextState.previewText = getLivePreviewText();
+  nextState.lastObservedRaw = nextState.previewText;
+  return nextState;
 }
 
 function buildVisibleSessionRecord(
@@ -576,7 +570,7 @@ function scheduleRunningPersist(): void {
       status: state.status,
       record: buildPreparedSessionRecord("running"),
     }),
-    persistRecord: updateRunningSession,
+    persistRecord: persistSessionRecord,
     onPersisted: (saved) => {
       state = applyPersistSuccess(state, saved.updatedAt);
       syncUserInterfaces();
@@ -590,7 +584,7 @@ function scheduleRunningPersist(): void {
 async function persistStoppedSession(record: SessionRecord): Promise<void> {
   if (!shouldPersistFinalSession(isTopFrame, record.entries.length)) {
     try {
-      await deleteSession(record.id);
+      await deletePersistedSession(record.id);
       failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
       state.lastPersistedAt = null;
     } catch (error) {
@@ -600,7 +594,7 @@ async function persistStoppedSession(record: SessionRecord): Promise<void> {
   }
 
   try {
-    const saved = await saveSession(record);
+    const saved = await persistSessionRecord(record);
     failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
     state = applyPersistSuccess(state, saved.updatedAt);
     setPanelNotice("모든 자막을 저장했습니다.");
@@ -735,7 +729,7 @@ async function saveCurrentSessionSnapshot(): Promise<{
   }
 
   try {
-    const saved = await saveSession(record);
+    const saved = await persistSessionRecord(record);
     if (failedStoppedSessionGuard.record?.id === saved.id) {
       failedStoppedSessionGuard = clearFailedStoppedSessionGuard();
     }
@@ -1147,7 +1141,7 @@ async function ensureFailedStoppedSessionResolved(actionLabel: string): Promise<
   const resolution = await resolveFailedStoppedSessionGuard({
     actionLabel,
     guard: failedStoppedSessionGuard,
-    persistRecord: saveSession,
+    persistRecord: persistSessionRecord,
     confirmDiscard: confirmFailedStoppedSessionDiscard,
   });
 
@@ -1174,7 +1168,7 @@ async function ensureCurrentRunningSessionPreservedBeforeReset(): Promise<boolea
   const stoppedRecord = buildPreparedSessionRecord("stopped");
   if (stoppedRecord.entries.length > 0) {
     try {
-      const saved = await saveSession(stoppedRecord);
+      const saved = await persistSessionRecord(stoppedRecord);
       state = applyPersistSuccess(state, saved.updatedAt);
       return true;
     } catch (error) {
@@ -1185,7 +1179,7 @@ async function ensureCurrentRunningSessionPreservedBeforeReset(): Promise<boolea
   }
 
   try {
-    await deleteSession(sessionId);
+    await deletePersistedSession(sessionId);
     return true;
   } catch (error) {
     reportRuntimeError("세션 초기화 전에 이전 실행 세션 정리에 실패했습니다.", error);

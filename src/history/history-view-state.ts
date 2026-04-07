@@ -43,6 +43,7 @@ export function buildSessionImportMessage(input: {
   keptCount: number;
   failedCount: number;
   invalidCount: number;
+  cancelled?: boolean;
 }): string {
   const parts = [
     `추가 ${input.addedCount}건`,
@@ -51,7 +52,7 @@ export function buildSessionImportMessage(input: {
     `실패 ${input.failedCount}건`,
     `무효 ${input.invalidCount}건`,
   ];
-  return `JSON 가져오기를 완료했습니다. ${parts.join(" / ")}`;
+  return `${input.cancelled ? "JSON 가져오기를 취소했습니다." : "JSON 가져오기를 완료했습니다."} ${parts.join(" / ")}`;
 }
 
 export function selectHistoryViewSettings(

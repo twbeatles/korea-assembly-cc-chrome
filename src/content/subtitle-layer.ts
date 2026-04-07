@@ -1,3 +1,5 @@
+import { isElementVisible } from "./visibility";
+
 const SUBTITLE_LAYER_SELECTOR = "#viewSubtit";
 const SUBTITLE_TEXT_SELECTOR = "#viewSubtit .smi_word, #viewSubtit .incont";
 const ACTIVATION_CONTROL_SELECTORS = [
@@ -26,15 +28,6 @@ function isHTMLElement(node: Element | null): node is HTMLElement {
   return Boolean(node) && node instanceof HTMLElement;
 }
 
-function isVisible(element: HTMLElement | null): boolean {
-  if (!element) {
-    return false;
-  }
-
-  const style = window.getComputedStyle(element);
-  return style.display !== "none" && style.visibility !== "hidden";
-}
-
 function readText(root: ParentNode): string {
   const raw = Array.from(root.querySelectorAll<HTMLElement>(SUBTITLE_TEXT_SELECTOR))
     .map((node) => node.innerText || node.textContent || "")
@@ -54,7 +47,7 @@ function findVisibleActivationControl(
 ): { selector: string; element: HTMLElement; active: boolean } | null {
   for (const selector of ACTIVATION_CONTROL_SELECTORS) {
     const control = root.querySelector(selector);
-    if (!isHTMLElement(control) || !isVisible(control)) {
+    if (!isHTMLElement(control) || !isElementVisible(control)) {
       continue;
     }
 
@@ -169,7 +162,7 @@ export function readSubtitleLayerState(root: ParentNode = document): SubtitleLay
   const text = readText(root);
   return {
     found: true,
-    visible: isVisible(layer),
+    visible: isElementVisible(layer),
     hasText: Boolean(text),
     controlActive: Boolean(control?.active),
     text,

@@ -81,6 +81,8 @@ function getFieldUnit(field: keyof ExtensionSettings): string {
 
 function getFieldMin(field: keyof ExtensionSettings): number {
   switch (field) {
+    case "recentCopyLineCount":
+      return 1;
     case "keepaliveIntervalMs":
       return 250;
     case "pollingFallbackIntervalMs":
@@ -193,6 +195,7 @@ function mergeSnapshot(
         currentSelector: message.payload.currentSelector,
         currentFramePath: message.payload.currentFramePath,
         diagnostics: message.payload.diagnostics,
+        hasPersistableContent: message.payload.hasPersistableContent,
       };
     case "PREVIEW_UPDATE":
       return current
@@ -200,6 +203,7 @@ function mergeSnapshot(
             ...current,
             previewText: message.payload.previewText,
             recentEntries: message.payload.recentEntries,
+            hasPersistableContent: message.payload.hasPersistableContent,
           }
         : current;
     case "SESSION_STATS":
@@ -208,6 +212,7 @@ function mergeSnapshot(
             ...current,
             subtitleCount: message.payload.subtitleCount,
             charCount: message.payload.charCount,
+            hasPersistableContent: message.payload.hasPersistableContent,
           }
         : current;
   }
@@ -701,7 +706,7 @@ export default function App() {
               <summary>
                 <span className="advanced-summary-title">고급 설정</span>
                 <span className="advanced-summary-description">
-                  필터와 내부 확인 주기를 세밀하게 조정합니다. 특별한 이유가 없다면 기본값을 그대로 두세요.
+                  필터와 내부 확인 주기를 세밀하게 조정합니다. 외국어 판정 범위는 이번 배치에서 넓히지 않았으니 특별한 이유가 없다면 기본값을 유지하세요.
                 </span>
               </summary>
               <div className="advanced-grid">
@@ -709,7 +714,8 @@ export default function App() {
                   <div>
                     <strong>불필요한 자막 자동 제외</strong>
                     <span>
-                      숫자나 기호만 있는 자막은 저장하지 않습니다. 원문을 최대한 남기려면 이 옵션을 끄세요.
+                      기본 noise filter는 한글/영문 중심 텍스트를 기준으로 숫자, 기호,
+                      placeholder를 제외합니다. 외국어 원문을 최대한 남기려면 이 옵션을 끄세요.
                     </span>
                   </div>
                   <input

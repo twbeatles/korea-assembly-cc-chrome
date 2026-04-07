@@ -17,8 +17,7 @@ export default function App() {
   const [requiresReload, setRequiresReload] = useState(false);
   const [port, setPort] = useState<chrome.runtime.Port | null>(null);
   const [currentTabId, setCurrentTabId] = useState<number | null>(null);
-  const hasPersistableContent =
-    (snapshot?.subtitleCount ?? 0) > 0 || Boolean(snapshot?.previewText?.trim());
+  const hasPersistableContent = Boolean(snapshot?.hasPersistableContent);
 
   useEffect(() => {
     let active = true;
@@ -133,6 +132,7 @@ export default function App() {
                 currentSelector: message.payload.currentSelector,
                 currentFramePath: message.payload.currentFramePath,
                 diagnostics: message.payload.diagnostics,
+                hasPersistableContent: message.payload.hasPersistableContent,
               }));
               setTabReady(true);
               setStatusMessage((current) =>
@@ -148,6 +148,7 @@ export default function App() {
                       ...current,
                       previewText: message.payload.previewText,
                       recentEntries: message.payload.recentEntries,
+                      hasPersistableContent: message.payload.hasPersistableContent,
                     }
                   : current,
               );
@@ -159,6 +160,7 @@ export default function App() {
                       ...current,
                       subtitleCount: message.payload.subtitleCount,
                       charCount: message.payload.charCount,
+                      hasPersistableContent: message.payload.hasPersistableContent,
                     }
                   : current,
               );

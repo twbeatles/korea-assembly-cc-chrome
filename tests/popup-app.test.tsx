@@ -82,6 +82,7 @@ describe("popup app", () => {
               currentFramePath: [],
               sourceLabel: "DOM observer",
             },
+            hasPersistableContent: true,
           },
         }),
       );
@@ -156,6 +157,7 @@ describe("popup app", () => {
               currentFramePath: [],
               sourceLabel: "대기 중",
             },
+            hasPersistableContent: false,
           },
         }),
       );

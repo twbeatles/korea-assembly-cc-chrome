@@ -21,7 +21,12 @@ import {
   loadSessionsByIds,
   upsertSessionRecord,
 } from "../storage/session-store";
-import type { SessionLibraryPreview } from "../storage/types";
+import type {
+  SessionImportSummary,
+  SessionLibraryPreview,
+  SessionLongTaskKind,
+  SessionLongTaskProgress,
+} from "../storage/types";
 import { getSettings } from "../storage/settings-store";
 import { getExportFormatLabel, getPersistedStatusLabel } from "../shared/ui-labels";
 import {
@@ -41,6 +46,65 @@ import {
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
 const HISTORY_PAGE_SIZE = 200;
+
+type HistoryLongTaskState = SessionLongTaskProgress & {
+  cancellable: boolean;
+  cancelRequested: boolean;
+};
+
+function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
+function isSessionImportSummary(value: unknown): value is SessionImportSummary {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+
+  const candidate = value as Partial<SessionImportSummary>;
+  return (
+    typeof candidate.addedCount === "number" &&
+    typeof candidate.updatedCount === "number" &&
+    typeof candidate.keptCount === "number" &&
+    typeof candidate.failedCount === "number"
+  );
+}
+
+function extractCancelledImportSummary(error: unknown): SessionImportSummary | null {
+  if (!error || typeof error !== "object" || !("summary" in error)) {
+    return null;
+  }
+
+  return isSessionImportSummary(error.summary) ? error.summary : null;
+}
+
+function getLongTaskPhaseLabel(phase: string): string {
+  switch (phase) {
+    case "read":
+      return "파일 읽기";
+    case "parse":
+      return "JSON 파싱";
+    case "sanitize":
+      return "기록 정리";
+    case "compare":
+      return "기존 기록 비교";
+    case "write":
+      return "기록 저장";
+    case "prepare":
+      return "준비";
+    case "collect":
+      return "기록 수집";
+    case "package":
+      return "백업 파일 생성";
+    case "download":
+      return "다운로드 준비";
+    default:
+      return phase;
+  }
+}
 
 function formatDate(value: string | null): string {
   if (!value) {
@@ -120,6 +184,7 @@ function confirmDiscardUnsavedNote(actionLabel: string): boolean {
 
 export default function App() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
+  const longTaskAbortControllerRef = useRef<AbortController | null>(null);
   const refreshMessageRef = useRef<string | undefined>(undefined);
   const preserveMessageOnRefreshRef = useRef(false);
   const selectedIdRef = useRef("");
@@ -144,6 +209,7 @@ export default function App() {
   );
   const [reloadKey, setReloadKey] = useState(0);
   const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [longTask, setLongTask] = useState<HistoryLongTaskState | null>(null);
 
   const filteredEntries = useMemo(
     () => filterEntriesByQuery(selectedSession?.entries ?? [], searchQuery),
@@ -165,6 +231,12 @@ export default function App() {
   const hasUnsavedNote =
     selectedSession ? noteDraft !== selectedSession.note : noteDraft.trim().length > 0;
   const actionButtonsDisabled = busyAction !== null;
+  const jsonTaskButtonsDisabled = busyAction !== null || longTask !== null;
+  const heroMessage = longTask?.message ?? message;
+  const longTaskProgressLabel =
+    longTask && longTask.total > 0
+      ? `${Math.min(longTask.completed, longTask.total)} / ${longTask.total}`
+      : null;
 
   const runBusyHistoryAction = (
     actionLabel: string,
@@ -188,6 +260,49 @@ export default function App() {
       .finally(() => {
         setBusyAction((current) => (current === actionLabel ? null : current));
       });
+  };
+
+  const updateLongTaskProgress = (progress: SessionLongTaskProgress): void => {
+    setLongTask((current) =>
+      current && current.kind === progress.kind
+        ? {
+            ...current,
+            ...progress,
+          }
+        : {
+            ...progress,
+            cancellable: true,
+            cancelRequested: false,
+          },
+    );
+  };
+
+  const clearLongTaskState = (
+    kind: SessionLongTaskKind,
+    controller: AbortController,
+  ): void => {
+    if (longTaskAbortControllerRef.current === controller) {
+      longTaskAbortControllerRef.current = null;
+    }
+
+    setLongTask((current) => (current?.kind === kind ? null : current));
+  };
+
+  const handleCancelLongTask = (): void => {
+    const controller = longTaskAbortControllerRef.current;
+    if (!controller || !longTask || longTask.cancelRequested) {
+      return;
+    }
+
+    setLongTask((current) =>
+      current
+        ? {
+            ...current,
+            cancelRequested: true,
+          }
+        : current,
+    );
+    controller.abort();
   };
 
   const requestRefresh = (
@@ -232,6 +347,14 @@ export default function App() {
     );
     previousSelectedSessionRef.current = selectedSession;
   }, [selectedSession]);
+
+  useEffect(
+    () => () => {
+      longTaskAbortControllerRef.current?.abort();
+      longTaskAbortControllerRef.current = null;
+    },
+    [],
+  );
 
   useEffect(() => {
     let active = true;
@@ -616,10 +739,41 @@ export default function App() {
   };
 
   const handleBackupAll = async (): Promise<void> => {
+    if (jsonTaskButtonsDisabled) {
+      return;
+    }
+
+    const controller = new AbortController();
+    longTaskAbortControllerRef.current = controller;
+    setLongTask({
+      kind: "backup",
+      phase: "prepare",
+      completed: 0,
+      total: 0,
+      message: "전체 JSON 백업을 준비하고 있습니다.",
+      cancellable: true,
+      cancelRequested: false,
+    });
+
     try {
-      const backupExport = await buildSessionLibraryBackupExport();
+      const backupExport = await buildSessionLibraryBackupExport({
+        signal: controller.signal,
+        onProgress: updateLongTaskProgress,
+      });
       if (!backupExport.sessionCount) {
         setMessage("백업할 기록이 없습니다.");
+        return;
+      }
+
+      updateLongTaskProgress({
+        kind: "backup",
+        phase: "download",
+        completed: backupExport.sessionCount,
+        total: backupExport.sessionCount,
+        message: `전체 JSON 백업 다운로드를 준비하고 있습니다. (${backupExport.sessionCount} / ${backupExport.sessionCount})`,
+      });
+      if (controller.signal.aborted) {
+        setMessage("전체 JSON 백업을 취소했습니다.");
         return;
       }
 
@@ -636,11 +790,22 @@ export default function App() {
 
       setMessage(`저장된 기록 ${backupExport.sessionCount}건의 JSON 백업을 시작했습니다.`);
     } catch (error) {
+      if (isAbortError(error)) {
+        setMessage("전체 JSON 백업을 취소했습니다.");
+        return;
+      }
+
       setMessage(error instanceof Error ? error.message : "전체 JSON 백업에 실패했습니다.");
+    } finally {
+      clearLongTaskState("backup", controller);
     }
   };
 
   const handleImportClick = (): void => {
+    if (jsonTaskButtonsDisabled) {
+      return;
+    }
+
     importInputRef.current?.click();
   };
 
@@ -649,22 +814,61 @@ export default function App() {
   ): Promise<void> => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || busyAction) {
+    if (!file || jsonTaskButtonsDisabled) {
       return;
     }
 
-    setBusyAction("import_json");
-    setMessage("JSON 가져오기를 진행하고 있습니다.");
+    const controller = new AbortController();
+    longTaskAbortControllerRef.current = controller;
+    setLongTask({
+      kind: "import",
+      phase: "read",
+      completed: 0,
+      total: 0,
+      message: "JSON 파일을 읽고 있습니다.",
+      cancellable: true,
+      cancelRequested: false,
+    });
+    let invalidCount = 0;
 
     try {
-      const parsed = JSON.parse(await file.text()) as unknown;
+      const fileText = await file.text();
+      if (controller.signal.aborted) {
+        setMessage("JSON 가져오기를 취소했습니다.");
+        return;
+      }
+
+      updateLongTaskProgress({
+        kind: "import",
+        phase: "parse",
+        completed: 0,
+        total: 0,
+        message: "JSON 내용을 해석하고 있습니다.",
+      });
+      const parsed = JSON.parse(fileText) as unknown;
+      if (controller.signal.aborted) {
+        setMessage("JSON 가져오기를 취소했습니다.");
+        return;
+      }
+
+      updateLongTaskProgress({
+        kind: "import",
+        phase: "sanitize",
+        completed: 0,
+        total: 0,
+        message: "가져올 기록을 정리하고 있습니다.",
+      });
       const importPayload = parseSessionImportPayload(parsed);
+      invalidCount = importPayload.invalidCount;
       if (!importPayload.records.length && importPayload.invalidCount === 0) {
         setMessage("가져올 기록이 없습니다.");
         return;
       }
 
-      const summary = await importSessionRecords(importPayload.records);
+      const summary = await importSessionRecords(importPayload.records, {
+        signal: controller.signal,
+        onProgress: updateLongTaskProgress,
+      });
       requestRefresh(
         buildSessionImportMessage({
           ...summary,
@@ -672,9 +876,30 @@ export default function App() {
         }),
       );
     } catch (error) {
+      if (isAbortError(error)) {
+        const cancelledSummary = extractCancelledImportSummary(error);
+        const cancelledMessage = buildSessionImportMessage({
+          ...(cancelledSummary ?? {
+            addedCount: 0,
+            updatedCount: 0,
+            keptCount: 0,
+            failedCount: 0,
+          }),
+          invalidCount,
+          cancelled: true,
+        });
+
+        if (cancelledSummary && (cancelledSummary.addedCount > 0 || cancelledSummary.updatedCount > 0)) {
+          requestRefresh(cancelledMessage);
+        } else {
+          setMessage(cancelledMessage);
+        }
+        return;
+      }
+
       setMessage(error instanceof Error ? error.message : "JSON 가져오기에 실패했습니다.");
     } finally {
-      setBusyAction((current) => (current === "import_json" ? null : current));
+      clearLongTaskState("import", controller);
     }
   };
 
@@ -714,33 +939,50 @@ export default function App() {
           </button>
           <button
             className="secondary"
-            onClick={() =>
-              runBusyHistoryAction(
-                "backup_all",
-                handleBackupAll,
-                "전체 JSON 백업에 실패했습니다.",
-                "전체 JSON 백업을 준비하고 있습니다.",
-              )
-            }
-            disabled={actionButtonsDisabled}
+            onClick={() => void handleBackupAll()}
+            disabled={jsonTaskButtonsDisabled}
           >
             전체 JSON 백업
           </button>
           <button
             className="secondary"
             onClick={handleImportClick}
-            disabled={actionButtonsDisabled}
+            disabled={jsonTaskButtonsDisabled}
           >
             JSON 가져오기
           </button>
         </div>
-        {message ? <div className="hero-status">{message}</div> : null}
+        {heroMessage ? (
+          <div className={`hero-status ${longTask ? "long-task-status" : ""}`}>
+            <div className="hero-status-copy">
+              <span>{heroMessage}</span>
+              {longTask ? (
+                <div className="hero-status-meta">
+                  <span>단계: {getLongTaskPhaseLabel(longTask.phase)}</span>
+                  {longTaskProgressLabel ? <span>진행: {longTaskProgressLabel}</span> : null}
+                  {longTask.cancelRequested ? (
+                    <span className="hero-status-cancel-note">취소 요청을 처리하고 있습니다.</span>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            {longTask ? (
+              <button
+                className="secondary"
+                onClick={handleCancelLongTask}
+                disabled={!longTask.cancellable || longTask.cancelRequested}
+              >
+                {longTask.cancelRequested ? "취소 요청 중" : "취소"}
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <input
           ref={importInputRef}
           className="hidden-file-input"
           type="file"
           accept=".json,application/json"
-          disabled={actionButtonsDisabled}
+          disabled={jsonTaskButtonsDisabled}
           onChange={(event) => void handleImportChange(event)}
         />
       </header>

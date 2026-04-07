@@ -1,4 +1,8 @@
 import type { SessionRecord } from "../src/core/subtitle-models";
+import {
+  markExtensionContextInvalidated,
+  resetExtensionContextInvalidationForTests,
+} from "../src/shared/extension-context";
 import { queueExitPersistRecord } from "../src/storage/persist-recovery";
 import {
   buildSessionLibraryBackupExport,
@@ -50,6 +54,7 @@ function buildSession(id: string, status: SessionRecord["status"]): SessionRecor
 
 describe("session store", () => {
   beforeEach(async () => {
+    resetExtensionContextInvalidationForTests();
     await resetSessionStoreForTests();
   });
 
@@ -319,6 +324,101 @@ describe("session store", () => {
         configurable: true,
         value: originalIndexedDb,
       });
+      await resetSessionStoreForTests();
+    }
+  });
+
+  it("surfaces an invalidated extension context directly when fallback storage is stale", async () => {
+    const originalIndexedDb = globalThis.indexedDB;
+    const originalChrome = globalThis.chrome;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(globalThis, "chrome", {
+      configurable: true,
+      value: {
+        storage: {
+          local: {
+            get: vi.fn(async () => {
+              throw new Error("Extension context invalidated.");
+            }),
+            set: vi.fn(async () => {
+              throw new Error("Extension context invalidated.");
+            }),
+            remove: vi.fn(async () => undefined),
+          },
+        },
+      },
+    });
+
+    try {
+      await expect(saveSession(buildSession("session_invalidated_fallback", "saved"))).rejects.toThrow(
+        "Extension context invalidated",
+      );
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+      if (typeof originalChrome === "undefined") {
+        delete (globalThis as { chrome?: typeof chrome }).chrome;
+      } else {
+        Object.defineProperty(globalThis, "chrome", {
+          configurable: true,
+          value: originalChrome,
+        });
+      }
+      await resetSessionStoreForTests();
+    }
+  });
+
+  it("fails fast instead of entering fallback writes after context invalidation is known", async () => {
+    const originalIndexedDb = globalThis.indexedDB;
+    const originalChrome = globalThis.chrome;
+    const storageGet = vi.fn(async () => ({}));
+    const storageSet = vi.fn(async () => undefined);
+    const storageRemove = vi.fn(async () => undefined);
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+    Object.defineProperty(globalThis, "chrome", {
+      configurable: true,
+      value: {
+        storage: {
+          local: {
+            get: storageGet,
+            set: storageSet,
+            remove: storageRemove,
+          },
+        },
+      },
+    });
+    markExtensionContextInvalidated(
+      new Error("Could not establish connection. Receiving end does not exist."),
+    );
+
+    try {
+      await expect(saveSession(buildSession("session_known_invalidated", "saved"))).rejects.toThrow(
+        "Extension context invalidated",
+      );
+      expect(storageGet).not.toHaveBeenCalled();
+      expect(storageSet).not.toHaveBeenCalled();
+      expect(storageRemove).not.toHaveBeenCalled();
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+      if (typeof originalChrome === "undefined") {
+        delete (globalThis as { chrome?: typeof chrome }).chrome;
+      } else {
+        Object.defineProperty(globalThis, "chrome", {
+          configurable: true,
+          value: originalChrome,
+        });
+      }
       await resetSessionStoreForTests();
     }
   });
@@ -689,6 +789,58 @@ describe("session store", () => {
     expect(loaded?.note).toBe("기존 최신본");
   });
 
+  it("reports import progress and returns a partial summary when cancelled mid-write", async () => {
+    const controller = new AbortController();
+    const progress: Array<{ phase: string; completed: number; total: number }> = [];
+
+    let cancelledError: unknown;
+    try {
+      await importSessionRecords(
+        [
+          buildSession("session_import_cancel_a", "saved"),
+          buildSession("session_import_cancel_b", "saved"),
+        ],
+        {
+          signal: controller.signal,
+          onProgress: (next) => {
+            progress.push({
+              phase: next.phase,
+              completed: next.completed,
+              total: next.total,
+            });
+            if (next.phase === "write" && next.completed === 1) {
+              controller.abort();
+            }
+          },
+        },
+      );
+    } catch (error) {
+      cancelledError = error;
+    }
+
+    expect(cancelledError).toMatchObject({
+      name: "AbortError",
+      message: "JSON 가져오기를 취소했습니다.",
+      summary: {
+        addedCount: 1,
+        updatedCount: 0,
+        keptCount: 0,
+        failedCount: 0,
+      },
+    });
+    expect(progress).toEqual(
+      expect.arrayContaining([
+        { phase: "sanitize", completed: 1, total: 2 },
+        { phase: "sanitize", completed: 2, total: 2 },
+        { phase: "compare", completed: 0, total: 2 },
+        { phase: "write", completed: 0, total: 2 },
+        { phase: "write", completed: 1, total: 2 },
+      ]),
+    );
+    expect((await loadSession("session_import_cancel_a"))?.id).toBe("session_import_cancel_a");
+    await expect(loadSession("session_import_cancel_b")).resolves.toBeUndefined();
+  });
+
   it("exports selected entries without changing session-relative SRT timestamps", async () => {
     const session: SessionRecord = {
       ...buildSession("session_partial_export", "saved"),
@@ -825,6 +977,39 @@ describe("session store", () => {
     expect(backup.sessionCount).toBe(2);
     expect(backup.payload.filename.endsWith(".json")).toBe(true);
     expect(parsed.sessions).toHaveLength(2);
+  });
+
+  it("reports backup progress and honors cancellation before download dispatch", async () => {
+    await saveSession(buildSession("session_backup_progress_a", "saved"));
+    await saveSession(buildSession("session_backup_progress_b", "saved"));
+
+    const progress: Array<{ phase: string; completed: number; total: number }> = [];
+    const controller = new AbortController();
+
+    await expect(
+      buildSessionLibraryBackupExport({
+        pageSize: 1,
+        signal: controller.signal,
+        onProgress: (next) => {
+          progress.push({
+            phase: next.phase,
+            completed: next.completed,
+            total: next.total,
+          });
+          if (next.phase === "collect" && next.completed === 1) {
+            controller.abort();
+          }
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: "AbortError",
+      message: "전체 JSON 백업을 취소했습니다.",
+    });
+
+    expect(progress).toEqual([
+      { phase: "prepare", completed: 0, total: 0 },
+      { phase: "collect", completed: 1, total: 2 },
+    ]);
   });
 
   it("deletes all persisted sessions across IndexedDB and fallback storage", async () => {

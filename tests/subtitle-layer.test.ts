@@ -6,12 +6,35 @@ import {
   waitForSubtitleLayer,
 } from "../src/content/subtitle-layer";
 
+function mockVisibleRects(element: HTMLElement): void {
+  Object.defineProperty(element, "getClientRects", {
+    configurable: true,
+    value: () => [
+      {
+        width: 120,
+        height: 24,
+        top: 0,
+        left: 0,
+        right: 120,
+        bottom: 24,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      },
+    ],
+  });
+}
+
 function mountLayer(options: { visible?: boolean; text?: string } = {}): void {
   document.body.innerHTML = `
     <div id="viewSubtit" style="display:${options.visible ? "block" : "none"}">
       <div class="incont">${options.text ?? ""}</div>
     </div>
   `;
+  const layer = document.querySelector<HTMLElement>("#viewSubtit");
+  if (layer) {
+    mockVisibleRects(layer);
+  }
 }
 
 describe("subtitle layer helpers", () => {
@@ -32,6 +55,7 @@ describe("subtitle layer helpers", () => {
     const button = document.createElement("button");
     button.className = "btn_subtit_ai";
     button.textContent = "AI 자막보기";
+    mockVisibleRects(button);
     button.addEventListener("click", () => {
       const layer = document.querySelector<HTMLElement>("#viewSubtit");
       if (layer) {
@@ -69,6 +93,7 @@ describe("subtitle layer helpers", () => {
     const button = document.createElement("button");
     button.className = "btn_subtit_ai on";
     button.textContent = "AI 자막보기";
+    mockVisibleRects(button);
     document.body.append(button);
 
     expect(readSubtitleLayerState()).toEqual({
@@ -126,5 +151,18 @@ describe("subtitle layer helpers", () => {
       controlActive: false,
     });
     vi.useRealTimers();
+  });
+
+  it("treats opacity zero layers as hidden even when layout rects exist", () => {
+    mountLayer({ visible: true, text: "숨겨진 자막" });
+    const layer = document.querySelector<HTMLElement>("#viewSubtit");
+    expect(layer).not.toBeNull();
+    layer!.style.opacity = "0";
+
+    expect(readSubtitleLayerState()).toMatchObject({
+      found: true,
+      visible: false,
+      hasText: true,
+    });
   });
 });

@@ -108,5 +108,15 @@ describe("history view state helpers", () => {
         invalidCount: 4,
       }),
     ).toBe("JSON 가져오기를 완료했습니다. 추가 2건 / 갱신 1건 / 유지 3건 / 실패 1건 / 무효 4건");
+    expect(
+      buildSessionImportMessage({
+        addedCount: 1,
+        updatedCount: 0,
+        keptCount: 0,
+        failedCount: 0,
+        invalidCount: 2,
+        cancelled: true,
+      }),
+    ).toBe("JSON 가져오기를 취소했습니다. 추가 1건 / 갱신 0건 / 유지 0건 / 실패 0건 / 무효 2건");
   });
 });

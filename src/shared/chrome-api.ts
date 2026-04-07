@@ -3,13 +3,22 @@ import type {
   BackgroundCommandResponse,
   PopupToContentMessage,
 } from "./message-types";
+import {
+  createExtensionContextInvalidatedError,
+  markExtensionContextInvalidated,
+} from "./extension-context";
 
 function callbackPromise<T>(executor: (callback: (value: T) => void) => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     executor((value) => {
       const lastError = chrome.runtime.lastError;
       if (lastError) {
-        reject(new Error(lastError.message));
+        const error = new Error(lastError.message);
+        if (markExtensionContextInvalidated(error)) {
+          reject(createExtensionContextInvalidatedError());
+          return;
+        }
+        reject(error);
         return;
       }
       resolve(value);
