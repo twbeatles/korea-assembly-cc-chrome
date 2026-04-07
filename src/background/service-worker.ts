@@ -1,5 +1,14 @@
-import { OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
+import { isSupportedAssemblyUrl, OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
 import { runStartupPersistenceMaintenance } from "./startup-persistence";
+import {
+  handleFrameForwardNonceTabRemoved,
+  handleFrameForwardNonceTabUpdated,
+} from "./frame-forward-nonce-lifecycle";
+import {
+  clearPersistedFrameForwardNonce,
+  getOrCreatePersistedFrameForwardNonce,
+  rotatePersistedFrameForwardNonce,
+} from "./frame-forward-nonce-store";
 import type {
   BackgroundCommandMessage,
   BackgroundCommandResponse,
@@ -7,10 +16,10 @@ import type {
   OffscreenDocumentResponse,
 } from "../shared/message-types";
 import { saveSession, updateRunningSession } from "../storage/session-store";
-import { recordStopPersistSuccess } from "../storage/persist-recovery";
 
 const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
+const frameForwardNonceByTabId = new Map<number, string>();
 const blobDownloadUrls = new Map<number, string>();
 const BLOB_DOWNLOAD_URLS_STORAGE_KEY = "assembly-subtitle-download-blob-urls";
 
@@ -25,6 +34,10 @@ function callbackPromise<T>(executor: (callback: (value: T) => void) => void): P
       resolve(value);
     });
   });
+}
+
+function supportsAssemblyPage(url?: string): boolean {
+  return isSupportedAssemblyUrl(url);
 }
 
 async function persistBlobDownloadUrls(): Promise<void> {
@@ -81,6 +94,13 @@ function toDataUrl(content: string, mimeType: string): string {
   return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
 }
 
+function createNonce(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 function isOffscreenDocumentAlreadyExistsError(error: unknown): boolean {
   const message =
     error instanceof Error
@@ -97,6 +117,74 @@ function isOffscreenDocumentAlreadyExistsError(error: unknown): boolean {
     normalized.includes("already exists") ||
     normalized.includes("single offscreen document")
   );
+}
+
+async function getOrCreateStoredFrameForwardNonce(tabId: number): Promise<string> {
+  return getOrCreatePersistedFrameForwardNonce({
+    tabId,
+    cache: frameForwardNonceByTabId,
+    storage: chrome.storage.local,
+    createNonce,
+  });
+}
+
+async function rotateStoredFrameForwardNonce(tabId: number): Promise<string> {
+  return rotatePersistedFrameForwardNonce({
+    tabId,
+    cache: frameForwardNonceByTabId,
+    storage: chrome.storage.local,
+    createNonce,
+  });
+}
+
+async function clearStoredFrameForwardNonce(tabId: number): Promise<void> {
+  await clearPersistedFrameForwardNonce({
+    tabId,
+    cache: frameForwardNonceByTabId,
+    storage: chrome.storage.local,
+  });
+}
+
+function sleep(delayMs: number): Promise<void> {
+  return new Promise((resolve) => globalThis.setTimeout(resolve, delayMs));
+}
+
+async function pingTopFrame(tabId: number): Promise<void> {
+  await callbackPromise((callback) =>
+    chrome.tabs.sendMessage(tabId, { type: "PING" }, { frameId: 0 }, callback),
+  );
+}
+
+async function waitForTopFrameReady(tabId: number, attempts = 4): Promise<boolean> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      await pingTopFrame(tabId);
+      return true;
+    } catch {
+      if (attempt < attempts - 1) {
+        await sleep(150);
+      }
+    }
+  }
+
+  return false;
+}
+
+async function injectConfiguredContentScripts(tabId: number): Promise<void> {
+  const manifestContentScripts = chrome.runtime.getManifest().content_scripts ?? [];
+  for (const script of manifestContentScripts) {
+    if (!script.js?.length) {
+      continue;
+    }
+
+    await chrome.scripting.executeScript({
+      target: {
+        tabId,
+        allFrames: Boolean(script.all_frames),
+      },
+      files: [...script.js],
+    });
+  }
 }
 
 async function openHistoryPage(): Promise<void> {
@@ -226,6 +314,8 @@ function isBackgroundCommandMessage(message: unknown): message is BackgroundComm
 
   const type = (message as { type?: string }).type;
   return (
+    type === "ENSURE_CONTENT_SCRIPT" ||
+    type === "GET_FRAME_FORWARD_NONCE" ||
     type === "PERSIST_SESSION_RECORD" ||
     type === "DOWNLOAD_REQUEST" ||
     type === "OPEN_HISTORY_PAGE" ||
@@ -239,12 +329,40 @@ async function handleMessage(
   sender: chrome.runtime.MessageSender,
 ): Promise<BackgroundCommandResponse> {
   switch (message.type) {
+    case "ENSURE_CONTENT_SCRIPT":
+      if (!supportsAssemblyPage(message.url)) {
+        return {
+          ok: false,
+          error: "국회 의사중계 페이지에서만 동작합니다.",
+        };
+      }
+      if (await waitForTopFrameReady(message.tabId)) {
+        return { ok: true, ready: true, requiresReload: false };
+      }
+
+      try {
+        await injectConfiguredContentScripts(message.tabId);
+      } catch (error) {
+        console.warn("[service-worker] Failed to inject configured content scripts", error);
+      }
+
+      if (await waitForTopFrameReady(message.tabId)) {
+        return { ok: true, ready: true, requiresReload: false };
+      }
+
+      return { ok: true, ready: false, requiresReload: true };
+    case "GET_FRAME_FORWARD_NONCE": {
+      const tabId = sender.tab?.id;
+      if (typeof tabId !== "number") {
+        return { ok: false, error: "탭 정보를 확인하지 못했습니다." };
+      }
+      return { ok: true, nonce: await getOrCreateStoredFrameForwardNonce(tabId) };
+    }
     case "PERSIST_SESSION_RECORD":
       if (message.record.status === "running") {
         await updateRunningSession(message.record);
       } else {
         await saveSession(message.record);
-        await recordStopPersistSuccess("background", message.record.updatedAt);
       }
       return { ok: true };
     case "DOWNLOAD_REQUEST": {
@@ -314,6 +432,14 @@ chrome.downloads.onChanged.addListener((delta) => {
   blobDownloadUrls.delete(delta.id);
   void persistBlobDownloadUrls();
   void revokeBlobUrl(blobUrl);
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  void handleFrameForwardNonceTabRemoved(tabId, clearStoredFrameForwardNonce);
+});
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
+  void handleFrameForwardNonceTabUpdated(tabId, changeInfo, rotateStoredFrameForwardNonce);
 });
 
 chrome.runtime.onStartup.addListener(() => {

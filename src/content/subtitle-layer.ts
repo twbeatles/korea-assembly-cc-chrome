@@ -1,8 +1,5 @@
-import { isElementActuallyVisible } from "./subtitle-dom";
-
 const SUBTITLE_LAYER_SELECTOR = "#viewSubtit";
 const SUBTITLE_TEXT_SELECTOR = "#viewSubtit .smi_word, #viewSubtit .incont";
-
 const ACTIVATION_CONTROL_SELECTORS = [
   ".btn_subtit_ai",
   ".btn_subtit_def",
@@ -30,7 +27,12 @@ function isHTMLElement(node: Element | null): node is HTMLElement {
 }
 
 function isVisible(element: HTMLElement | null): boolean {
-  return isElementActuallyVisible(element);
+  if (!element) {
+    return false;
+  }
+
+  const style = window.getComputedStyle(element);
+  return style.display !== "none" && style.visibility !== "hidden";
 }
 
 function readText(root: ParentNode): string {

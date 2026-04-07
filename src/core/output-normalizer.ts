@@ -11,11 +11,6 @@ const OUTPUT_DUPLICATE_WINDOW_MS = 12_000;
 const OUTPUT_DUPLICATE_MIN_LENGTH = 20;
 const OUTPUT_DUPLICATE_LOOKBACK = PIPELINE_DEFAULTS.recentHistoryEntries;
 const OUTPUT_MIN_COMPACT_ANCHOR = 10;
-const OUTPUT_SHORT_COMPACT_ANCHOR = 5;
-const OUTPUT_SHORT_ANCHOR_HISTORY_MIN = 30;
-const OUTPUT_TRIM_MAX_PASSES = 3;
-const OUTPUT_MIN_RETAINED_COMPACT = 8;
-const OUTPUT_MAX_SUFFIX_ANCHOR_SCAN = 120;
 
 export interface NormalizeOutputEntriesOptions {
   stripSpeakerMetadata?: boolean;
@@ -114,55 +109,10 @@ function findCarryOverOverlap(
   return 0;
 }
 
-function findHistoryContainmentTrimPoint(
-  historyCompact: string,
-  entryCompact: string,
-): number {
-  if (!historyCompact || !entryCompact || historyCompact.length > entryCompact.length) {
-    return 0;
-  }
-
-  if (historyCompact.length >= OUTPUT_MIN_COMPACT_ANCHOR) {
-    const fullHistoryPos = entryCompact.lastIndexOf(historyCompact);
-    if (fullHistoryPos > 0) {
-      const tailLength = entryCompact.length - (fullHistoryPos + historyCompact.length);
-      if (tailLength === 0 || tailLength >= OUTPUT_MIN_RETAINED_COMPACT) {
-        return fullHistoryPos + historyCompact.length;
-      }
-    }
-  }
-
-  const maxAnchorLength = Math.min(historyCompact.length, OUTPUT_MAX_SUFFIX_ANCHOR_SCAN);
-  for (let length = maxAnchorLength; length >= OUTPUT_MIN_COMPACT_ANCHOR; length -= 1) {
-    const anchor = historyCompact.slice(-length);
-    const anchorPos = entryCompact.lastIndexOf(anchor);
-    if (anchorPos <= 0) {
-      continue;
-    }
-
-    const tailLength = entryCompact.length - (anchorPos + length);
-    if (tailLength === 0 || tailLength >= OUTPUT_MIN_RETAINED_COMPACT) {
-      return anchorPos + length;
-    }
-  }
-
-  if (historyCompact.length >= OUTPUT_SHORT_ANCHOR_HISTORY_MIN) {
-    const shortOverlap = findCarryOverOverlap(
-      historyCompact,
-      entryCompact,
-      OUTPUT_SHORT_COMPACT_ANCHOR,
-    );
-    if (shortOverlap > 0) {
-      return shortOverlap;
-    }
-  }
-
-  return 0;
-}
-
 function trimCarryOverText(text: string, recentEntries: SubtitleEntry[]): string {
-  let nextText = normalizeSubtitleText(text);
-  if (!nextText) {
+  const normalizedText = normalizeSubtitleText(text);
+  const compact = compactSubtitleText(normalizedText);
+  if (!compact) {
     return "";
   }
 
@@ -171,49 +121,19 @@ function trimCarryOverText(text: string, recentEntries: SubtitleEntry[]): string
     PIPELINE_DEFAULTS.recentHistoryCompactLength,
   );
   if (!historyCompact) {
-    return nextText;
+    return normalizedText;
   }
 
-  for (let pass = 0; pass < OUTPUT_TRIM_MAX_PASSES; pass += 1) {
-    const compact = compactSubtitleText(nextText);
-    if (!compact) {
-      return "";
-    }
-
-    if (compact.length >= OUTPUT_DUPLICATE_MIN_LENGTH && historyCompact.includes(compact)) {
-      return "";
-    }
-
-    const containmentTrimPoint = findHistoryContainmentTrimPoint(historyCompact, compact);
-    if (containmentTrimPoint > 0) {
-      const trimmed = sliceFromCompactIndex(nextText, containmentTrimPoint);
-      if (!trimmed) {
-        return "";
-      }
-      if (trimmed === nextText) {
-        break;
-      }
-      nextText = trimmed;
-      continue;
-    }
-
-    const overlap = findCarryOverOverlap(historyCompact, compact);
-    if (overlap > 0) {
-      const trimmed = sliceFromCompactIndex(nextText, overlap);
-      if (!trimmed) {
-        return "";
-      }
-      if (trimmed === nextText) {
-        break;
-      }
-      nextText = trimmed;
-      continue;
-    }
-
-    break;
+  if (compact.length >= OUTPUT_DUPLICATE_MIN_LENGTH && historyCompact.includes(compact)) {
+    return "";
   }
 
-  return nextText;
+  const overlap = findCarryOverOverlap(historyCompact, compact);
+  if (overlap <= 0) {
+    return normalizedText;
+  }
+
+  return sliceFromCompactIndex(normalizedText, overlap);
 }
 
 export function normalizeEntriesForOutput(

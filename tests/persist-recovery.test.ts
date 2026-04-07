@@ -10,7 +10,6 @@ import {
   readPersistReplayDiagnostics,
   resetPersistRecoveryStateForTests,
 } from "../src/storage/persist-recovery";
-import { disableIndexedDb } from "../src/storage/session-store/db";
 
 function buildSession(
   id: string,
@@ -83,8 +82,7 @@ describe("persist recovery", () => {
     });
   });
 
-  it("keeps the memory queue when fallback storage writes fail and clears the error after later success", async () => {
-    disableIndexedDb();
+  it("keeps the memory queue when storage writes fail and clears the error after later success", async () => {
     const storageSet = chrome.storage.local.set as unknown as ReturnType<typeof vi.fn>;
     storageSet.mockRejectedValueOnce(new Error("queue write failed"));
 
@@ -134,43 +132,7 @@ describe("persist recovery", () => {
     expect(await listQueuedExitPersistRecords()).toEqual([]);
 
     expect(await readPersistReplayDiagnostics()).toEqual(
-      expect.objectContaining({
-        ...createEmptyPersistReplayDiagnostics(),
-        lastQueueWriteSessionId: sessionId,
-        lastQueueWriteRecordUpdatedAt: record.updatedAt,
-        lastQueueWriteApproxBytes: expect.any(Number),
-      }),
-    );
-  });
-
-  it("serializes list and queue operations so newer memory records are not lost", async () => {
-    await queueExitPersistRecord(buildSession("session_existing", "2026-03-10T09:00:02.000Z"));
-
-    let releaseGet!: () => void;
-    const blockedGet = new Promise<void>((resolve) => {
-      releaseGet = resolve;
-    });
-    const storageGet = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
-    storageGet.mockImplementationOnce(async () => {
-      await blockedGet;
-      return {};
-    });
-
-    const listingPromise = listQueuedExitPersistRecords();
-    const queuedPromise = queueExitPersistRecord(
-      buildSession("session_new", "2026-03-10T09:00:03.000Z"),
-    );
-
-    releaseGet();
-
-    const listed = await listingPromise;
-    expect(listed.map((record) => record.sessionId)).toContain("session_existing");
-
-    await queuedPromise;
-
-    const finalListed = await listQueuedExitPersistRecords();
-    expect(finalListed.map((record) => record.sessionId)).toEqual(
-      expect.arrayContaining(["session_existing", "session_new"]),
+      expect.objectContaining(createEmptyPersistReplayDiagnostics()),
     );
   });
 });

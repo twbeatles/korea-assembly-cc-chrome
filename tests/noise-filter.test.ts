@@ -26,7 +26,7 @@ describe("noise filter", () => {
     expect(isMeaningfulSubtitleText("123_456")).toBe(false);
   });
 
-  it("keeps treating non-Korean and non-English text as unsupported noise by policy", () => {
+  it("continues to treat non-Korean foreign text as unsupported noise", () => {
     expect(isNoiseOnly("字幕")).toBe(true);
     expect(isMeaningfulSubtitleText("字幕")).toBe(false);
   });

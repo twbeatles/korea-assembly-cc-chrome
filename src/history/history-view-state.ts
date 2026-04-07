@@ -5,7 +5,6 @@ import type { ExtensionSettings } from "../storage/types";
 export interface HistoryViewSettings {
   recentCopyLineCount: number;
   filenamePattern: string;
-  exportTxtWithoutTimestamps: boolean;
 }
 
 export function buildHistoryRefreshMessage(sessionCount: number): string {
@@ -55,15 +54,11 @@ export function buildSessionImportMessage(input: {
 }
 
 export function selectHistoryViewSettings(
-  settings: Pick<
-    ExtensionSettings,
-    "recentCopyLineCount" | "filenamePattern" | "exportTxtWithoutTimestamps"
-  >,
+  settings: Pick<ExtensionSettings, "recentCopyLineCount" | "filenamePattern">,
 ): HistoryViewSettings {
   return {
     recentCopyLineCount: settings.recentCopyLineCount,
     filenamePattern: settings.filenamePattern,
-    exportTxtWithoutTimestamps: settings.exportTxtWithoutTimestamps,
   };
 }
 

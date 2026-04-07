@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "국회 AI 자막 추출기",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "국회 의사중계 페이지에서 AI 자막을 실시간으로 추출하고 TXT/SRT/VTT/JSON으로 내보내는 Chrome 확장프로그램",
   "action": {
     "default_title": "국회 AI 자막 추출기",
@@ -18,7 +18,7 @@
     "type": "module"
   },
   "options_page": "options.html",
-  "permissions": ["storage", "downloads", "offscreen", "unlimitedStorage"],
+  "permissions": ["storage", "downloads", "activeTab", "scripting", "offscreen"],
   "host_permissions": [
     "https://assembly.webcast.go.kr/*",
     "https://webcast.assembly.go.kr/*"
@@ -30,7 +30,8 @@
         "https://webcast.assembly.go.kr/*"
       ],
       "js": ["src/content/content-script.ts"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": true
     }
   ],
   "web_accessible_resources": [

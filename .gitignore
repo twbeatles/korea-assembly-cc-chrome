@@ -46,8 +46,6 @@ legacy/
 tmp_extension_unpacked/
 tmp_extension.crx
 korea-assembly-cc-chrome.zip
-korea-assembly-cc-chrome-*-cws.zip
-dist.zip
 iiadnfahoocbannfpgfgbommblpagacl/
 *.tmp
 *.orig
@@ -57,6 +55,7 @@ iiadnfahoocbannfpgfgbommblpagacl/
 /화면 캡처 *.png
 /스크린샷 *.png
 /확장프로그램 화면 캡처*.png
+/__tmp_*.txt
 /tmp-*.js
 /tmp-*.cjs
 

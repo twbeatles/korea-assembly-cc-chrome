@@ -73,10 +73,6 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
       1,
     ),
-    exportTxtWithoutTimestamps:
-      typeof settings.exportTxtWithoutTimestamps === "boolean"
-        ? settings.exportTxtWithoutTimestamps
-        : DEFAULT_EXTENSION_SETTINGS.exportTxtWithoutTimestamps,
     debugLogging:
       typeof settings.debugLogging === "boolean"
         ? settings.debugLogging

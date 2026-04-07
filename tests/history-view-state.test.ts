@@ -31,12 +31,10 @@ describe("history view state helpers", () => {
       extractHistoryViewSettings({
         recentCopyLineCount: 9,
         filenamePattern: "{committee}_{date}",
-        exportTxtWithoutTimestamps: true,
       }),
     ).toEqual({
       recentCopyLineCount: 9,
       filenamePattern: "{committee}_{date}",
-      exportTxtWithoutTimestamps: true,
     });
 
     expect(
@@ -47,7 +45,6 @@ describe("history view state helpers", () => {
     ).toEqual({
       recentCopyLineCount: DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
       filenamePattern: DEFAULT_EXTENSION_SETTINGS.filenamePattern,
-      exportTxtWithoutTimestamps: DEFAULT_EXTENSION_SETTINGS.exportTxtWithoutTimestamps,
     });
   });
 

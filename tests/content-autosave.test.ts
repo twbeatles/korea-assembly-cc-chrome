@@ -1,7 +1,6 @@
 import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
-  createPreparedEligibilitySnapshot,
   hasPersistableRunningContent,
   resolveRunningPersistDebounceMs,
   scheduleRunningPersistTimer,
@@ -56,43 +55,39 @@ describe("content autosave policy", () => {
   });
 
   it("warns before unload only when a running session has content", () => {
-    const eligibility = createPreparedEligibilitySnapshot({
-      status: "running",
-      preparedEntryCount: 1,
-      previewText: "",
+    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    state.status = "running";
+    state.entries.push({
+      id: "entry_1",
+      text: "테스트 자막",
+      timestamp: "2026-03-10T09:00:00.000Z",
+      startTime: "2026-03-10T09:00:00.000Z",
+      endTime: "2026-03-10T09:00:00.000Z",
     });
 
-    expect(shouldWarnBeforeUnload(true, eligibility)).toBe(true);
-    expect(
-      shouldWarnBeforeUnload(
-        true,
-        createPreparedEligibilitySnapshot({
-          status: "stopped",
-          preparedEntryCount: 1,
-          previewText: "",
-        }),
-      ),
-    ).toBe(false);
-    expect(shouldWarnBeforeUnload(false, eligibility)).toBe(false);
+    expect(shouldWarnBeforeUnload(true, state)).toBe(true);
+
+    state.status = "stopped";
+    expect(shouldWarnBeforeUnload(true, state)).toBe(false);
+    expect(shouldWarnBeforeUnload(false, state)).toBe(false);
   });
 
-  it("does not warn before unload when only raw preview remains but prepared content is empty", () => {
+  it("keeps preview-only unload warnings aligned with the prepared running snapshot", () => {
     const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
     state.status = "running";
     state.previewText = "페이지에만 보이는 자막";
 
     expect(hasPersistableRunningContent(state)).toBe(true);
-    expect(
-      shouldWarnBeforeUnload(
-        true,
-        createPreparedEligibilitySnapshot({
-          status: state.status,
-          preparedEntryCount: 0,
-          previewText: state.previewText,
-          livePreviewText: state.previewText,
-        }),
-      ),
-    ).toBe(false);
+
+    const prepared = flushPendingPreviews(
+      state,
+      Date.parse("2026-03-10T09:00:02.000Z"),
+      DEFAULT_EXTENSION_SETTINGS,
+    );
+    const record = toSessionRecord(prepared, "running");
+
+    expect(record.entries).toHaveLength(1);
+    expect(record.entries[0].text).toBe("페이지에만 보이는 자막");
   });
 
   it("noise-only previewText produces no entries after flush and fails the final save guard", () => {

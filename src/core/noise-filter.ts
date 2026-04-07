@@ -1,6 +1,5 @@
 import { cleanDisplayText } from "./text-normalizer";
 
-// Meaningful-language detection is intentionally limited to Korean and English for now.
 const LANGUAGE_RE = /[가-힣A-Za-z]/;
 const NUMERIC_ONLY_RE = /^[\d\s.,:;+\-*/()%]+$/;
 const SYMBOL_ONLY_RE = /^[\W_]+$/u;

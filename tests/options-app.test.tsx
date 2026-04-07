@@ -2,14 +2,13 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const chromeApiMocks = vi.hoisted(() => ({
+  connectToTab: vi.fn(),
   getTab: vi.fn(),
   queryTabs: vi.fn(),
   sendRuntimeMessage: vi.fn(),
-  sendTabMessage: vi.fn(),
 }));
 
 const persistRecoveryMocks = vi.hoisted(() => ({
-  PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY: "assembly-subtitle-persist-replay-diagnostics",
   createEmptyPersistReplayDiagnostics: vi.fn(() => ({
     lastReplayAt: null,
     lastReplayQueuedCount: 0,
@@ -22,16 +21,10 @@ const persistRecoveryMocks = vi.hoisted(() => ({
     lastCleanupClosedCount: 0,
     lastCleanupFailedCount: 0,
     lastCleanupError: null,
-    lastQueueWriteSessionId: null,
-    lastQueueWriteRecordUpdatedAt: null,
-    lastQueueWriteApproxBytes: null,
     lastQueueWriteError: null,
-    lastStopPersistAt: null,
-    lastStopPersistMode: null,
     lastError: null,
   })),
   readPersistReplayDiagnostics: vi.fn(),
-  sanitizePersistReplayDiagnostics: vi.fn((value: unknown) => value),
 }));
 
 const settingsStoreMocks = vi.hoisted(() => ({
@@ -57,7 +50,6 @@ const defaultSettings = {
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
-  exportTxtWithoutTimestamps: true,
   debugLogging: false,
   autoStartEnabled: true,
   filterUnconfirmedEnabled: true,
@@ -83,12 +75,7 @@ describe("options app", () => {
       lastCleanupClosedCount: 2,
       lastCleanupFailedCount: 1,
       lastCleanupError: "Cleanup failed once",
-      lastQueueWriteSessionId: "session_queue_1",
-      lastQueueWriteRecordUpdatedAt: "2026-03-13T09:29:59.000Z",
-      lastQueueWriteApproxBytes: 4096,
       lastQueueWriteError: "Queue write failed once",
-      lastStopPersistAt: "2026-03-13T09:29:58.000Z",
-      lastStopPersistMode: "background",
       lastError: "Cleanup failed once",
     });
   });
@@ -152,14 +139,25 @@ describe("options app", () => {
     expect(screen.getByText("Queue write failed once")).toBeTruthy();
     expect(screen.getByText("Replay failed once")).toBeTruthy();
     expect(screen.getAllByText("Cleanup failed once").length).toBeGreaterThan(0);
-    expect(screen.getByText("session_queue_1")).toBeTruthy();
-    expect(screen.getByText("4.0 KB")).toBeTruthy();
-    expect(screen.getByText("background")).toBeTruthy();
     expect(screen.getByText("1 / 0")).toBeTruthy();
     expect(screen.getByText("2 / 1")).toBeTruthy();
   });
 
   it("hydrates diagnostics counts from the initial capture status payload", async () => {
+    const messageListeners: Array<(message: unknown) => void> = [];
+    const port = {
+      onMessage: {
+        addListener: vi.fn((listener: (message: unknown) => void) => {
+          messageListeners.push(listener);
+        }),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+
     window.history.replaceState({}, "", "/options.html?view=diagnostics");
     chromeApiMocks.queryTabs.mockResolvedValue([
       {
@@ -168,138 +166,58 @@ describe("options app", () => {
         lastAccessed: Date.now(),
       },
     ]);
-    chromeApiMocks.sendTabMessage.mockResolvedValue({
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValue({
       ok: true,
-      snapshot: {
-        connected: true,
-        requiresReload: false,
-        status: "running",
-        sessionId: "session_options",
-        title: "정무위",
-        committeeName: "정무위원회",
-        sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
-        subtitleCount: 4,
-        charCount: 24,
-        previewText: "실시간 미리보기",
-        recentEntries: [],
-        startedAt: "2026-03-10T09:00:00.000Z",
-        endedAt: null,
-        updatedAt: "2026-03-10T09:00:03.000Z",
-        lastPersistedAt: "2026-03-10T09:00:03.000Z",
-        canPersistPreparedContent: true,
-        persistContext: "running_autosave",
-        stopPersistInFlight: false,
-        observerActive: true,
-        currentSelector: "#viewSubtit",
-        currentFramePath: [],
-        diagnostics: {
-          captureMode: "fallback",
-          observerActive: true,
-          currentSelector: "#viewSubtit",
-          currentFramePath: [],
-          sourceLabel: "fallback",
-        },
-      },
+      ready: true,
+      requiresReload: false,
     });
+    chromeApiMocks.connectToTab.mockReturnValue(port);
 
     render(<App />);
 
     await waitFor(() => {
-      expect(chromeApiMocks.sendTabMessage).toHaveBeenCalledWith(1, {
-        type: "GET_STATUS",
-      });
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalled();
+    });
+
+    act(() => {
+      messageListeners.forEach((listener) =>
+        listener({
+          type: "CAPTURE_STATUS",
+          payload: {
+            connected: true,
+            requiresReload: false,
+            status: "running",
+            sessionId: "session_options",
+            title: "정무위",
+            committeeName: "정무위원회",
+            sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+            subtitleCount: 4,
+            charCount: 24,
+            previewText: "실시간 미리보기",
+            recentEntries: [],
+            startedAt: "2026-03-10T09:00:00.000Z",
+            endedAt: null,
+            updatedAt: "2026-03-10T09:00:03.000Z",
+            lastPersistedAt: "2026-03-10T09:00:03.000Z",
+            observerActive: true,
+            currentSelector: "#viewSubtit",
+            currentFramePath: [],
+            diagnostics: {
+              captureMode: "dom-observer",
+              observerActive: true,
+              currentSelector: "#viewSubtit",
+              currentFramePath: [],
+              sourceLabel: "DOM observer",
+            },
+          },
+        }),
+      );
     });
 
     await waitFor(() => {
       expect(screen.getByText("4문장")).toBeTruthy();
-      expect(screen.getByText("fallback")).toBeTruthy();
+      expect(screen.getByText("DOM observer")).toBeTruthy();
     });
-  });
-
-  it("updates persist replay diagnostics live from chrome.storage.onChanged", async () => {
-    const listeners: Array<
-      (
-        changes: Record<string, chrome.storage.StorageChange>,
-        areaName: string,
-      ) => void
-    > = [];
-    const originalChrome = (globalThis as typeof globalThis & { chrome?: unknown }).chrome;
-
-    Object.defineProperty(globalThis, "chrome", {
-      configurable: true,
-      value: {
-        storage: {
-          onChanged: {
-            addListener: vi.fn((listener) => {
-              listeners.push(listener);
-            }),
-            removeListener: vi.fn((listener) => {
-              const index = listeners.indexOf(listener);
-              if (index >= 0) {
-                listeners.splice(index, 1);
-              }
-            }),
-          },
-        },
-      },
-    });
-
-    window.history.replaceState({}, "", "/options.html?view=diagnostics");
-
-    try {
-      const { unmount } = render(<App />);
-
-      await screen.findByText("저장 복구 상태");
-      act(() => {
-        listeners.forEach((listener) =>
-          listener(
-            {
-              [persistRecoveryMocks.PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY]: {
-                oldValue: null,
-                newValue: {
-                  lastReplayAt: "2026-03-13T10:00:00.000Z",
-                  lastReplayQueuedCount: 3,
-                  lastReplayReplayedCount: 2,
-                  lastReplaySkippedCount: 1,
-                  lastReplayFailedCount: 1,
-                  lastReplayError: "Replay failed again",
-                  lastCleanupAt: "2026-03-13T10:00:00.000Z",
-                  lastCleanupDetectedCount: 4,
-                  lastCleanupClosedCount: 3,
-                  lastCleanupFailedCount: 2,
-                  lastCleanupError: "Cleanup failed again",
-                  lastQueueWriteSessionId: "session_queue_2",
-                  lastQueueWriteRecordUpdatedAt: "2026-03-13T09:59:59.000Z",
-                  lastQueueWriteApproxBytes: 8192,
-                  lastQueueWriteError: "Queue write failed again",
-                  lastStopPersistAt: "2026-03-13T09:59:58.000Z",
-                  lastStopPersistMode: "replay",
-                  lastError: "Cleanup failed again",
-                },
-              },
-            },
-            "local",
-          ),
-        );
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Queue write failed again")).toBeTruthy();
-        expect(screen.getByText("Replay failed again")).toBeTruthy();
-        expect(screen.getAllByText("Cleanup failed again").length).toBeGreaterThan(0);
-        expect(screen.getByText("session_queue_2")).toBeTruthy();
-        expect(screen.getByText("8.0 KB")).toBeTruthy();
-        expect(screen.getByText("replay")).toBeTruthy();
-        expect(screen.getByText("2 / 1")).toBeTruthy();
-        expect(screen.getByText("3 / 2")).toBeTruthy();
-      });
-
-      unmount();
-    } finally {
-      Object.defineProperty(globalThis, "chrome", {
-        configurable: true,
-        value: originalChrome,
-      });
-    }
+    expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_STATUS" });
   });
 });

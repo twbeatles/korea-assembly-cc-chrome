@@ -3,11 +3,11 @@
 > 이 문서는 `CLAUDE.md` 스펙과 실제 코드 구현을 대조하여 잠재적 문제, 스펙 불일치, 엣지 케이스를 정리한 감사 보고서입니다.
 > 기준 커밋: `496fad3` (Harden plenary fallback capture for 1.0.1)
 >
-> 2026-04-01 업데이트: 현재 HEAD 기준으로 `H-1`, `H-2`, `M-1`, `L-7`은 해결되었습니다. 아래 본문은 원래 감사 맥락을 유지하되, 해결된 항목에는 상태 메모를 추가했습니다.
->
-> 2026-04-03 업데이트: 구조 분할 리팩토링과 후속 하드닝이 반영되었습니다. 현재 구현 경로는 `src/content/content-script.ts -> src/content/bootstrap/bootstrap-content-script.ts`, `src/history/App.tsx -> src/history/components/HistoryPage.tsx`, `src/storage/session-store.ts -> src/storage/session-store/operations.ts` 로 읽는 것이 맞습니다. 아래 line/path reference와 심각도 집계는 역사적 감사 스냅샷으로 유지되며, 현재 미해결 건수 집계표로 그대로 사용하면 안 됩니다. 추가로 `deriveCommitteeName`, subtitle visibility 공통화, fallback migration cache, history 전체 transcript 검색은 2026-04-03 후속 작업에서 반영되었습니다.
->
-> 2026-04-06 업데이트: capture runtime 은 top-frame DOM coordinator + activation-only injected helper 구조로 단순화되었습니다. 아래 본문과 표에 남아 있는 frame-forward nonce 관련 항목은 당시 구현 기준의 역사적 기록이며, 현재 아키텍처 설명으로 읽으면 안 됩니다.
+> 2026-04-07 업데이트:
+> - 이 문서는 과거 감사 기준 문서이며, 현재 배포 준비 기준 구현은 이 보고서 작성 시점보다 뒤에 있습니다.
+> - 현재 스토어 제출 준비 버전은 `1.0.6` 입니다.
+> - 현재 수동 저장 / export 경로는 prepared snapshot 전체를 그대로 쓰지 않고, 패널에 보이는 `수집된 자막` row 를 우선 직렬화하며, row 가 없을 때만 현재 `실시간 내용` preview 또는 prepared entry 로 내려갑니다.
+> - 따라서 아래의 save/export 관련 일부 지적은 역사적 참고용으로만 읽어야 하며, 현재 릴리스 기준 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 를 우선합니다.
 
 ---
 
@@ -15,17 +15,15 @@
 
 | 심각도 | 건수 |
 |--------|------|
-| 🔴 HIGH (현재 미해결) | 0 |
-| 🟡 MEDIUM (현재 미해결) | 4 |
-| 🟢 LOW (현재 미해결) | 6 |
+| 🔴 HIGH (스펙 불일치 / 동작 버그) | 2 |
+| 🟡 MEDIUM (잠재적 문제 / 엣지 케이스) | 5 |
+| 🟢 LOW (UX/구조 개선 여지) | 7 |
 
 ---
 
 ## 🔴 HIGH
 
 ### H-1. `ensureSubtitleLayerActive` 반환값이 스펙과 불일치
-
-**2026-04-01 상태:** 해결됨. 현재 구현은 `src/content/content-script.ts`에서 `layer.visible && (layer.hasText || layer.controlActive)`를 반환합니다.
 
 **파일:** `src/content/content-script.ts:767`
 **관련 스펙:** `CLAUDE.md` → "자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다."
@@ -68,8 +66,6 @@ return layer.visible && (layer.hasText || layer.controlActive);
 
 ### H-2. `shouldPersistFinalSession` vs `hasPersistableContent` 불일치
 
-**2026-04-01 상태:** 해결됨. popup/패널 저장 가능 여부와 unload 계열 guard는 raw preview가 아니라 prepared snapshot 기준 `canPersistPreparedContent`로 정렬되었습니다.
-
 **파일:**
 - `src/content/autosave.ts:20-25` — `shouldPersistFinalSession`
 - `src/popup/App.tsx:20-21` — `hasPersistableContent`
@@ -107,8 +103,6 @@ UX 불일치. 빈번한 시나리오는 아니지만, 사용자가 저장 버튼
 ## 🟡 MEDIUM
 
 ### M-1. `listQueuedExitPersistRecords` — 메모리 큐 side effect (잠재적 race condition)
-
-**2026-04-01 상태:** 해결됨. `queue/list/clear` 경로가 직렬화되었고, `listQueuedExitPersistRecords()`가 메모리 큐를 `clear() -> rebuild` 하지 않도록 수정되었습니다.
 
 **파일:** `src/storage/persist-recovery.ts:216-237`
 
@@ -325,8 +319,6 @@ function walkFramesForControl(rootDocument, depth = 0, maxDepth = 3) {
 
 ### L-7. `README.md` 설치/빌드 섹션 누락
 
-**2026-04-01 상태:** 해결됨. 현재 `README.md`에는 `npm install`, `npm run dev`, `npm run build`, unpacked extension 로드 절차가 포함되어 있습니다.
-
 **파일:** `README.md`
 
 `README.md`에 `npm install`, `npm run dev`, `npm run build` 이후 Chrome 확장 로드 방법(unpacked extension 설치 절차)이 기술되어 있지 않습니다. 신규 기여자가 개발 환경을 설정하는 데 불편함이 있습니다. `DEPLOYMENT.md`에 배포 절차가 있지만 개발 환경 셋업은 README에 있는 것이 일반적입니다.
@@ -355,8 +347,8 @@ function walkFramesForControl(rootDocument, depth = 0, maxDepth = 3) {
 | 2026-03-19 | frame-forward nonce 탭 단위 15초 재동기화 | ✅ 구현됨 |
 | 2026-03-19 | replay queue storage+memory merge | ✅ 구현됨 |
 | 2026-03-19 | diagnostics lastQueueWriteError 등 phase별 | ✅ 구현됨 |
-| 2026-03-19 | popup 저장 버튼 persistable content 조건 | ✅ 2026-04-01 기준 prepared snapshot gating으로 해결됨 |
-| 2026-03-19 | 자막 자동 활성화 `visible && (hasText\|\|controlActive)` | ✅ 구현됨 (`ensureSubtitleLayerActive`) |
+| 2026-03-19 | popup 저장 버튼 persistable content 조건 | ⚠️ H-2 참조 |
+| 2026-03-19 | 자막 자동 활성화 `visible && (hasText\|\|controlActive)` | ⚠️ H-1 참조 |
 | 2026-03-16 | `listSessionsPage` store-level paging | ✅ 구현됨 |
 | 2026-03-16 | `filenamePattern` strict validation | ✅ 구현됨 |
 | 2026-03-16 | 최근 N줄 복사 history 의미론 통일 | ✅ 구현됨 |
@@ -364,14 +356,14 @@ function walkFramesForControl(rootDocument, depth = 0, maxDepth = 3) {
 | 2026-03-14 | `saveSession`/`updateRunningSession` starred 보존 | ✅ 구현됨 (`mergeEditableSessionMetadata`) |
 | 2026-03-13 | page-exit stopped snapshot replay queue | ✅ 구현됨 |
 | 2026-03-13 | session import allow-list sanitize | ✅ 구현됨 |
-| 2026-03-12 | prepared snapshot 기준 저장/export/unload gating | ✅ 2026-04-01 기준으로 재정렬됨 |
+| 2026-03-12 | preview-only 저장/export 보존 | ✅ 구현됨 (`flushPendingPreviews`) |
 | 2026-03-12 | failed persist retry + discard confirm | ✅ 구현됨 |
 
 ---
 
 ## 권장 우선순위
 
-1. **우선 검토:** M-2 (`deriveCommitteeName`) — 날짜/하이픈 포함 제목 오파싱 가능성
-2. **중기 검토:** M-3 (`applyPreviewStateOnly`) — module-level state 직접 변이 정리
-3. **중기 검토:** M-4 / M-5 — noise filter와 preview flush 경로 의미론 명확화
-4. **저우선 개선:** L-1 ~ L-6 — UX/구조/문서 보강
+1. **즉시 수정 권장:** H-1 (`ensureSubtitleLayerActive` 반환값) — 스펙 명시 사항 위반, 1줄 수정
+2. **단기 검토:** H-2 (`shouldPersistFinalSession` vs `hasPersistableContent`) — UX 불일치, 조건 통일 필요
+3. **중기 검토:** M-1 (persist-recovery race condition) — 페이지 동시 종료 시나리오 시 발생
+4. **문서화/개선:** M-2 (위원회명 파싱), L-7 (README 개발 설정)

@@ -1,17 +1,8 @@
 import type { SessionRecord } from "../subtitle-models";
 import { formatClockTime } from "../timeline";
 
-export interface ExportTxtOptions {
-  includeTimestamp?: boolean;
-}
-
-export function exportTxt(session: SessionRecord, options: ExportTxtOptions = {}): string {
-  const includeTimestamp = options.includeTimestamp !== false;
+export function exportTxt(session: SessionRecord): string {
   return session.entries
-    .map((entry) =>
-      includeTimestamp
-        ? `[${formatClockTime(entry.timestamp)}] ${entry.text}`
-        : entry.text,
-    )
+    .map((entry) => `[${formatClockTime(entry.timestamp)}] ${entry.text}`)
     .join("\n");
 }

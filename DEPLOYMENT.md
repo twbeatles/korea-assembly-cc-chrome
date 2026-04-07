@@ -30,11 +30,7 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
-2026-04-03 릴리스 준비 기준 현재 배포 후보 버전은 `1.0.5` 입니다.
-
-추가 메모:
-- 엔트리 경로(`src/content/content-script.ts`, `src/history/App.tsx`, `src/storage/session-store.ts`)는 facade 로 유지되고, 실제 구현은 하위 폴더로 분리되어 있습니다.
-- 배포 검증은 facade 경로 안정성과 실제 하위 구현 모듈 변경이 함께 반영된 상태를 기준으로 수행해야 합니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.6` 입니다.
 
 ## 3. 배포 전 검증
 
@@ -49,7 +45,7 @@ npm run build
 ```
 
 설명:
-- `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 activation helper 번들(`public/injected-observer.js`)을 재생성한 뒤 Vite 빌드를 수행합니다.
+- `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
 
 추가 확인 권장:
@@ -60,18 +56,16 @@ npm run build
 - `수집된 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback으로만 잡혀도 `실시간 내용` 누적 원문이 유지되고 `수집된 자막` 목록이 commit된 entry 기준으로 계속 쌓이는지 확인
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구가 저장/export/누적 목록에 들어가지 않는지 확인
-- 화면의 `수집된 자막` 목록과 TXT/SRT/VTT/JSON 내보내기 결과가 동일한 항목 기준으로 나오는지 확인
+- 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
 - 패널의 `저장 / 내보내기` 버튼에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
-- TXT 내보내기가 기본적으로 타임스탬프를 제외하는지, options 토글로 포함 출력도 가능한지 확인
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
-- 탭 숨김 또는 페이지 이탈 직전 prepared snapshot에 실제 entry가 있을 때만 마지막 running/stopped 스냅샷 저장이 시도되는지 확인
-- 장시간 수집(수시간)에서도 화면 표시와 내보내기 결과가 누락 없이 유지되는지 확인
-- service worker 재기동 뒤에도 top-frame DOM coordinator 기반 수집과 startup persistence maintenance 가 정상 복구되는지 확인
+- 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
+- 패널 / popup의 수동 저장과 export 가 현재 화면에 보이는 `수집된 자막` 목록을 우선 반영하고, 목록이 비어 있으면 현재 `실시간 내용` preview 를 단일 항목으로 저장하는지 확인
+- service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
-- popup `지금 저장` 버튼이 prepared snapshot 기준 persistable content가 없으면 비활성화되고, raw preview만 남은 상태에서도 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
+- popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
-- history `전체 기록 검색`이 저장소 전체 transcript 본문 기준으로 동작하고, 결과 선택 시 해당 세션 상세 검색이 같은 질의로 초기화되는지 확인
 - 페이지 패널의 `최근 N줄 복사`가 현재 화면 row가 아니라 누적 세션 기준으로 history와 같은 결과를 주는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
@@ -96,7 +90,7 @@ npm run build
 
 1. 확장 popup 이 열리는지
 2. 국회 페이지 오른쪽에 패널이 자동으로 나타나는지
-3. 기존에 열려 있던 국회 탭에서 content script 수신자가 없을 때 popup 이 새로고침 안내로 안전하게 내려가는지
+3. 기존에 열려 있던 국회 탭에서 popup 연결 오류 없이 재주입 또는 새로고침 안내로 복구되는지
 4. 확장 아이콘의 popup 에서 현재 상태가 보이는지
 
 ## 5. 내부 공유용 배포
@@ -123,7 +117,7 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version>-cws.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.6-cws.zip -Force
 ```
 
 ## 6. Chrome Web Store 배포
@@ -142,7 +136,8 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 - `storage`
 - `downloads`
 - `offscreen`
-- `unlimitedStorage`
+- `activeTab`
+- `scripting`
 - host permission:
   - `https://assembly.webcast.go.kr/*`
   - `https://webcast.assembly.go.kr/*`
@@ -162,8 +157,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 - AI 자막 DOM 을 읽어 사용자가 파일로 저장할 수 있게 함
 - 수집 데이터는 세션 저장 및 내보내기 목적
 - `downloads` 권한은 TXT/SRT/VTT/JSON 파일 저장용
-- `storage` 권한은 설정, 세션 저장 fallback, page-exit replay queue, 저장 복구 diagnostics 용
-- `unlimitedStorage` 권한은 장시간 회의에서 fallback 세션/queue snapshot과 진단 정보가 quota 때문에 조기 실패하지 않도록 하기 위한 용도
+- `storage` 권한은 설정, 세션 저장 fallback, page-exit replay queue, 탭 단위 frame-forward nonce, 저장 복구 diagnostics 용
 - `storage` 는 즐겨찾기/메모 같은 세션 메타와 JSON 가져오기 후 복원된 기록 저장에도 사용됨
 
 ## 7. 릴리스 체크리스트
@@ -177,7 +171,6 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 - `dist/manifest.json` 생성 확인
 - `dist/injected-observer.js` 생성 확인
 - `dist/manifest.json` 의 버전이 루트 `manifest.json` / `package.json` 과 같은지 확인
-- `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`의 구조/기능 설명이 현재 릴리스 코드와 어긋나지 않는지 확인
 - unpacked 로드 테스트 완료
 - 실제 국회 페이지 자막 추출 확인
 - exporter 결과물 확인
@@ -195,32 +188,31 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-<version
 3. observer 실패 시 polling fallback 이 계속 동작하는지
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
-6. options 페이지 `수집 진단` 탭에 마지막 자동 저장 시각과 `저장 복구 상태`가 보이고, diagnostics view가 열린 동안 storage 변경이 즉시 반영되는지
+6. options 페이지 `수집 진단` 탭에 마지막 자동 저장 시각과 `저장 복구 상태`가 보이는지
 7. 브라우저/확장 재시작 뒤 남아 있던 `running` 세션이 `stopped`로 정리되는지
 8. 브라우저/확장 재시작 뒤 page-exit queued stopped snapshot replay가 cleanup보다 먼저 적용되는지
 9. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
 10. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하고, 성공 판정이 `visible && (hasText || controlActive)`와 맞는지 확인
-11. JSON 내보내기에서 내부 발언자 메타가 노출되지 않는지
+11. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
 12. 자막 보정 중에는 패널의 `실시간 내용`과 `수집된 자막`이 바로 갱신되는지
 13. `수집된 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
 14. 본회의 페이지에서는 structured row가 없어도 `수집된 자막` 목록이 commit된 누적 entry를 계속 보여 주는지
 15. `로딩중..`, `로딩 중...`, `Loading...` placeholder가 저장 기록이나 export 결과에 남지 않는지
-16. TXT 내보내기가 기본값으로 타임스탬프를 제외하는지, 옵션 변경 시 즉시 반영되는지
-17. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
-18. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
-19. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
-20. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
-21. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
-22. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
-23. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
-24. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
+16. history 에서 즐겨찾기/메모를 저장한 뒤 새로고침해도 그대로 유지되는지
+17. 부분 선택 `SRT / VTT` export 가 원본 세션 시작 기준 상대 시간 의미론을 유지하는지
+18. 전체 JSON 백업 파일로 다른 기록을 가져올 때 최신 `updatedAt` 레코드 우선 정책이 지켜지는지
+19. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
+20. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
+21. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
+22. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
+23. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
 
 ## 9. 자주 발생하는 문제
 
 ### 9.1 확장을 로드했는데 페이지 패널이 보이지 않음
 
 - 국회 페이지가 이미 열려 있었다면 새로고침이 필요할 수 있습니다.
-- manifest 적용 전에 이미 열려 있던 탭은 content script가 없을 수 있으므로 새로고침이 필요할 수 있습니다.
+- 최신 빌드는 기존 탭에 content script 재주입을 먼저 시도합니다.
 - 대상 URL 이 `https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*` 범위인지 확인합니다.
 
 ### 9.2 zip 업로드가 실패함
@@ -282,26 +274,16 @@ Current release alignment:
 - structured row가 비어 있어도 본회의 fallback capture는 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
 - Chrome Web Store 제출용 압축 예시는 `korea-assembly-cc-chrome-<version>-cws.zip` 형식을 권장합니다.
-- Prepared-entry persistence gating, stopped-session retry guard, and cumulative `수집된 자막` panel behavior are part of current release baseline.
+- 수동 저장 / export 는 현재 화면에 보이는 `수집된 자막` 목록 우선, 목록이 비어 있으면 `실시간 내용` preview 1건 저장 기준으로 검증해야 합니다.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
-
-## 2026-03-26 Release Update
-
-Current release alignment:
-
-- 내보내기/복사는 후단 텍스트 정규화 단계를 추가로 거치지 않고 `수집된 자막` 기준 snapshot을 그대로 사용합니다.
-- 패널 화면의 `수집된 자막` 목록과 export 결과(TXT/SRT/VTT/JSON)가 같은 데이터 경로를 사용합니다.
-- TXT 내보내기에는 타임스탬프 제외 옵션이 추가되었고 기본값은 `제외(ON)`입니다.
-- 장시간 회의를 위해 화면/내보내기 데이터는 무제한 유지하고, 내부 캐시만 주기적으로 압축합니다.
-- release verification에는 장시간 수집 시 메모리 증가 추세와 export 정합성(화면 대비)을 함께 확인해야 합니다.
 
 ## 2026-03-11 Addendum Deployment Notes
 
 Pre-release validation now assumes the addendum closure changes are present:
 
-- Top-frame DOM coordinator simplification
-- Activation-only injected helper reduction
+- Observer bridge token integrity checks
+- Frame-forward nonce rotation on navigation
 - Fallback probing backoff + cached frame path probing
 - Invalidated-context shutdown cleanup
 - Offscreen duplicate-create tolerance
@@ -322,7 +304,7 @@ Deployment documentation consistency sources:
   - history pagination and visible-only selection controls behave as expected
   - options page explains that `autoStartEnabled` defaults to `true`
   - startup cleanup restores persisted Blob download URL tracking safely
-  - options `저장 복구 상태` reflects replay / cleanup diagnostics from startup persistence maintenance and live storage updates while diagnostics view is open
+  - options `저장 복구 상태` reflects replay / cleanup diagnostics from startup persistence maintenance
 
 ## 2026-03-14 Deployment Consistency Update
 
@@ -330,25 +312,13 @@ Deployment documentation consistency sources:
 - Release verification should confirm that favorited / noted sessions keep `starred`, `pinnedAt`, and `note` metadata after autosave, page-exit persistence, and final stop-save flows.
 - page-exit persistence is now ordered as `queue replay record -> background persist request`; regression coverage for that ordering is part of release confidence.
 - History validation should cover store-level paging, live refresh via `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and note-draft preservation during same-session refreshes.
-- Popup and options initial render should be validated from the `GET_STATUS` response snapshot alone, including subtitle count, char count, preview text, and recent entry hydration.
+- Popup and options initial render should be validated from `CAPTURE_STATUS` alone, including subtitle count, char count, preview text, and recent entry hydration.
 - The current pre-release gate remains `npm run verify`.
 
 ## 2026-03-19 Deployment Consistency Update
 
-- Release verification should confirm that top-frame DOM coordinator 기반 observer/probe 조합이 service worker 재기동 뒤에도 유지되고, startup persistence maintenance 와 충돌하지 않습니다.
+- Release verification should confirm that frame-forward nonce state survives MV3 service worker restarts via `chrome.storage.local` and converges again without requiring a page reload.
 - Release verification should confirm that queued exit persist reads merge storage and memory snapshots, and that a storage write failure does not silently drop the in-memory replay candidate.
-- Options validation should confirm that `저장 복구 상태` shows `queue write`, `replay`, `cleanup`, and summary errors separately when they are present, and that live `chrome.storage.onChanged` updates are reflected without reopening the page.
-- Popup validation should confirm that `지금 저장` is disabled whenever prepared entries are absent, including raw-preview-only states, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.
+- Options validation should confirm that `저장 복구 상태` shows `queue write`, `replay`, `cleanup`, and summary errors separately when they are present.
+- Popup validation should confirm that `지금 저장` is disabled when `subtitleCount === 0` and `previewText` is empty, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.
 - Subtitle activation validation should confirm that merely showing `#viewSubtit` is not enough; success requires visible text or an active control signal.
-
-## 2026-04-01 Deployment Consistency Update
-
-- Release verification should confirm that fallback history/list/overview paths use the merged storage + memory fallback view, so memory-only sessions remain visible during the current runtime after storage write failure.
-- Release verification should confirm that queued exit persist reads/writes are serialized and do not drop a newly queued in-memory record while a storage-backed list call is in flight.
-- Release verification should confirm that pagehide/beforeunload warnings and automatic persistence only trigger when prepared entries actually exist.
-
-## 2026-04-03 Deployment Consistency Update
-
-- Current release candidate version is `1.0.5`.
-- Release verification should confirm that facade entry paths remain stable while the actual implementation is split under `src/content/bootstrap/`, `src/history/components/`, `src/storage/session-store/`, and `src/content/inpage-panel/`.
-- Release verification should confirm that history global transcript search, selector profile routing, committee-name parsing, and unified subtitle visibility checks match the documented behavior.

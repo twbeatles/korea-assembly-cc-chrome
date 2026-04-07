@@ -1,64 +1,61 @@
-import {
-  createLivePanelRowFromEntry,
-  type CaptureMode,
-  type LivePanelRow,
-} from "../core/live-capture";
-import { sanitizeCommittedText } from "../core/subtitle-pipeline";
+import type { CaptureMode, LivePanelRow } from "../core/live-capture";
 import type { SubtitleEntry } from "../core/subtitle-models";
 import { isAssemblyPlenaryUrl, PIPELINE_DEFAULTS } from "../shared/constants";
-import type { ExtensionSettings } from "../storage/types";
 
-function cloneOptionalFramePath(framePath?: number[]): number[] | undefined {
-  return framePath ? [...framePath] : undefined;
+function resolveEntryUpdatedAt(entry: SubtitleEntry): number {
+  const endTime = Date.parse(entry.endTime || "");
+  if (Number.isFinite(endTime)) {
+    return endTime;
+  }
+
+  const timestamp = Date.parse(entry.timestamp || "");
+  if (Number.isFinite(timestamp)) {
+    return timestamp;
+  }
+
+  const startTime = Date.parse(entry.startTime || "");
+  return Number.isFinite(startTime) ? startTime : 0;
 }
 
-function resolveIsoTimestamp(value: string | undefined, fallback: string): string {
-  return value && Number.isFinite(Date.parse(value)) ? value : fallback;
-}
-
-export function buildOutputEntriesFromPanelRows(
-  rows: LivePanelRow[],
-  now = Date.now(),
-  settings?: Partial<ExtensionSettings>,
-): SubtitleEntry[] {
-  return rows.flatMap((row, index) => {
-    const sanitizedText = sanitizeCommittedText(row.text, settings);
-    if (!sanitizedText) {
-      return [];
-    }
-
-    const resolvedMs =
-      Number.isFinite(row.updatedAt) && row.updatedAt > 0
-        ? row.updatedAt
-        : now;
-    const fallbackTimestamp = new Date(resolvedMs).toISOString();
-    const timestamp = resolveIsoTimestamp(row.timestamp, fallbackTimestamp);
-    const startTime = resolveIsoTimestamp(row.startTime, timestamp);
-    const endTime = resolveIsoTimestamp(row.endTime, fallbackTimestamp);
-    return [
-      {
-        id: row.entryId || `live:${row.key}:${resolvedMs}:${index}`,
-        text: sanitizedText,
-        timestamp,
-        startTime,
-        endTime,
-        sourceSelector: row.sourceSelector,
-        sourceFramePath: cloneOptionalFramePath(row.sourceFramePath),
-        sourceNodeKey: row.sourceNodeKey || row.key,
-        speakerColor: row.speakerColor,
-        speakerChannel: row.speakerChannel,
-      },
-    ];
-  });
+function toIsoTimestamp(value: number, fallback: number): string {
+  const timestamp = Number.isFinite(value) ? value : fallback;
+  return new Date(timestamp).toISOString();
 }
 
 export function buildCommittedEntryLiveRows(
   entries: SubtitleEntry[],
   maxRows = PIPELINE_DEFAULTS.liveLedgerMaxRows,
 ): LivePanelRow[] {
-  return entries
-    .slice(-maxRows)
-    .map((entry) => createLivePanelRowFromEntry(entry, `entry::${entry.id}`));
+  return entries.slice(-maxRows).map((entry) => ({
+    key: `entry::${entry.id}`,
+    text: entry.text,
+    nodeKey: entry.sourceNodeKey || entry.id,
+    speakerColor: entry.speakerColor || "",
+    speakerChannel: entry.speakerChannel || "unknown",
+    updatedAt: resolveEntryUpdatedAt(entry),
+  }));
+}
+
+export function buildOutputEntriesFromPanelRows(
+  rows: LivePanelRow[],
+  sessionId: string,
+  now = Date.now(),
+): SubtitleEntry[] {
+  return rows
+    .filter((row) => String(row.text || "").trim())
+    .map((row, index) => {
+      const timestamp = toIsoTimestamp(row.updatedAt, now + index);
+      return {
+        id: `${sessionId}::visible::${row.key}::${index}`,
+        text: row.text,
+        timestamp,
+        startTime: timestamp,
+        endTime: timestamp,
+        sourceNodeKey: row.nodeKey,
+        speakerColor: row.speakerColor || undefined,
+        speakerChannel: row.speakerChannel || "unknown",
+      };
+    });
 }
 
 export function resolvePanelLiveRows(input: {
@@ -76,23 +73,4 @@ export function resolvePanelLiveRows(input: {
   }
 
   return buildCommittedEntryLiveRows(input.entries);
-}
-
-export function filterPanelLiveRows(
-  rows: LivePanelRow[],
-  settings?: Partial<ExtensionSettings>,
-): LivePanelRow[] {
-  return rows.flatMap((row) => {
-    const sanitizedText = sanitizeCommittedText(row.text, settings);
-    if (!sanitizedText) {
-      return [];
-    }
-
-    return [
-      {
-        ...row,
-        text: sanitizedText,
-      },
-    ];
-  });
 }

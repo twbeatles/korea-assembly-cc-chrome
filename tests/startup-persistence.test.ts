@@ -65,12 +65,7 @@ describe("startup persistence maintenance", () => {
         lastCleanupClosedCount: 0,
         lastCleanupFailedCount: 0,
         lastCleanupError: null,
-        lastQueueWriteSessionId: null,
-        lastQueueWriteRecordUpdatedAt: null,
-        lastQueueWriteApproxBytes: null,
         lastQueueWriteError: "Queue write failed",
-        lastStopPersistAt: null,
-        lastStopPersistMode: null,
         lastError: "Queue write failed",
       }),
       replay: async () => {

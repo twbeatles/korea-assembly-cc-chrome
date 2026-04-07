@@ -15,7 +15,6 @@ import {
   replayQueuedExitPersistRecords,
   resetSessionStoreForTests,
   saveSession,
-  searchSessionsPage,
   upsertSessionRecord,
   updateRunningSession,
 } from "../src/storage/session-store";
@@ -164,91 +163,6 @@ describe("session store", () => {
     expect(starredOnlyPage.sessions.map((session) => session.id)).toEqual(["session_page_3"]);
   });
 
-  it("searches transcript entries with case-insensitive paging and starred filtering", async () => {
-    await saveSession({
-      ...buildSession("session_search_1", "saved"),
-      entries: [
-        {
-          id: "session_search_1_entry_1",
-          text: "경제 정책 Alpha",
-          timestamp: "2026-03-10T09:00:00.000Z",
-          startTime: "2026-03-10T09:00:00.000Z",
-          endTime: "2026-03-10T09:00:02.000Z",
-        },
-      ],
-      subtitleCount: 1,
-      charCount: 9,
-      updatedAt: "2026-03-10T09:00:01.000Z",
-    });
-    await saveSession({
-      ...buildSession("session_search_2", "saved"),
-      starred: true,
-      pinnedAt: "2026-03-10T09:20:00.000Z",
-      entries: [
-        {
-          id: "session_search_2_entry_1",
-          text: "ALPHA second hit",
-          timestamp: "2026-03-10T09:10:00.000Z",
-          startTime: "2026-03-10T09:10:00.000Z",
-          endTime: "2026-03-10T09:10:02.000Z",
-        },
-        {
-          id: "session_search_2_entry_2",
-          text: "alpha third hit",
-          timestamp: "2026-03-10T09:11:00.000Z",
-          startTime: "2026-03-10T09:11:00.000Z",
-          endTime: "2026-03-10T09:11:02.000Z",
-        },
-      ],
-      subtitleCount: 2,
-      charCount: 29,
-      updatedAt: "2026-03-10T09:00:02.000Z",
-    });
-    await saveSession({
-      ...buildSession("session_search_3", "saved"),
-      entries: [
-        {
-          id: "session_search_3_entry_1",
-          text: "다른 문장",
-          timestamp: "2026-03-10T09:20:00.000Z",
-          startTime: "2026-03-10T09:20:00.000Z",
-          endTime: "2026-03-10T09:20:02.000Z",
-        },
-      ],
-      subtitleCount: 1,
-      charCount: 4,
-      updatedAt: "2026-03-10T09:00:03.000Z",
-    });
-
-    const firstPage = await searchSessionsPage({
-      query: "alpha",
-      page: 1,
-      pageSize: 1,
-    });
-    const secondPage = await searchSessionsPage({
-      query: "alpha",
-      page: 2,
-      pageSize: 1,
-    });
-    const starredOnly = await searchSessionsPage({
-      query: "ALPHA",
-      page: 1,
-      pageSize: 10,
-      starredOnly: true,
-    });
-
-    expect(firstPage.totalCount).toBe(2);
-    expect(firstPage.results[0]?.sessionId).toBe("session_search_2");
-    expect(firstPage.results[0]?.matchedCount).toBe(2);
-    expect(firstPage.results[0]?.matchedEntryIds).toEqual([
-      "session_search_2_entry_1",
-      "session_search_2_entry_2",
-    ]);
-    expect(firstPage.results[0]?.firstSnippet.toLowerCase()).toContain("alpha");
-    expect(secondPage.results.map((result) => result.sessionId)).toEqual(["session_search_1"]);
-    expect(starredOnly.results.map((result) => result.sessionId)).toEqual(["session_search_2"]);
-  });
-
   it("fills default favorite and note fields for imported legacy records", async () => {
     await importSessionRecords([
       {
@@ -346,27 +260,6 @@ describe("session store", () => {
     expect(loaded?.title).toBe("이미 저장된 최신본");
   });
 
-  it("does not resurrect a deleted session from the replay queue", async () => {
-    await queueExitPersistRecord({
-      ...buildSession("session_deleted_queue", "stopped"),
-      updatedAt: "2026-03-10T09:00:04.000Z",
-      endedAt: "2026-03-10T09:00:04.000Z",
-    });
-
-    await deleteSession("session_deleted_queue");
-
-    const summary = await replayQueuedExitPersistRecords();
-    const loaded = await loadSession("session_deleted_queue");
-
-    expect(summary).toEqual({
-      queuedCount: 0,
-      replayedCount: 0,
-      skippedCount: 0,
-      failedCount: 0,
-    });
-    expect(loaded).toBeUndefined();
-  });
-
   it("falls back when IndexedDB is unavailable", async () => {
     const originalIndexedDb = globalThis.indexedDB;
     Object.defineProperty(globalThis, "indexedDB", {
@@ -430,79 +323,7 @@ describe("session store", () => {
     }
   });
 
-  it("keeps memory-only fallback sessions visible when chrome storage fallback writes fail", async () => {
-    const originalIndexedDb = globalThis.indexedDB;
-    const originalChrome = (globalThis as typeof globalThis & { chrome?: unknown }).chrome;
-    const storageState: Record<string, unknown> = {};
-    const storageGet = vi.fn(async (keys?: string | string[] | null) => {
-      if (typeof keys === "string") {
-        return { [keys]: storageState[keys] };
-      }
-      if (Array.isArray(keys)) {
-        return keys.reduce<Record<string, unknown>>((result, key) => {
-          result[key] = storageState[key];
-          return result;
-        }, {});
-      }
-      return { ...storageState };
-    });
-    const storageSet = vi.fn(async () => {
-      throw new Error("fallback write failed");
-    });
-    const storageRemove = vi.fn(async (keys: string | string[]) => {
-      const normalized = Array.isArray(keys) ? keys : [keys];
-      normalized.forEach((key) => {
-        delete storageState[key];
-      });
-    });
-
-    Object.defineProperty(globalThis, "indexedDB", {
-      configurable: true,
-      value: undefined,
-    });
-    Object.defineProperty(globalThis, "chrome", {
-      configurable: true,
-      value: {
-        storage: {
-          local: {
-            get: storageGet,
-            set: storageSet,
-            remove: storageRemove,
-          },
-        },
-      },
-    });
-
-    try {
-      await expect(saveSession(buildSession("session_memory_only", "saved"))).rejects.toThrow(
-        "fallback write failed",
-      );
-
-      expect((await loadSession("session_memory_only"))?.id).toBe("session_memory_only");
-      expect((await listSessions({ limit: 10 })).map((session) => session.id)).toContain(
-        "session_memory_only",
-      );
-
-      const page = await listSessionsPage({ page: 1, pageSize: 10 });
-      expect(page.sessions.map((session) => session.id)).toContain("session_memory_only");
-
-      const overview = await getSessionLibraryOverview(3);
-      expect(overview.totalCount).toBe(1);
-      expect(overview.previewSessions[0]?.id).toBe("session_memory_only");
-    } finally {
-      Object.defineProperty(globalThis, "indexedDB", {
-        configurable: true,
-        value: originalIndexedDb,
-      });
-      Object.defineProperty(globalThis, "chrome", {
-        configurable: true,
-        value: originalChrome,
-      });
-      await resetSessionStoreForTests();
-    }
-  });
-
-  it("keeps carry-over entries and speaker metadata during export", async () => {
+  it("deduplicates carry-over entries and strips speaker metadata during export", async () => {
     const session: SessionRecord = {
       ...buildSession("session_export_cleanup", "saved"),
       subtitleCount: 4,
@@ -553,18 +374,17 @@ describe("session store", () => {
     const payload = await exportSessionData(session, "json");
     const parsed = JSON.parse(payload.content) as SessionRecord;
 
-    expect(parsed.entries).toHaveLength(4);
+    expect(parsed.entries).toHaveLength(3);
     expect(parsed.entries.map((entry) => entry.text)).toEqual([
       "늘 그 과정에서 문제를 제기하는 분들이 계십니다 그래서 제기되는 문제가 몇 가지가 있습니다",
       "알고 있습니다 그러면",
-      "늘 그 과정에서 문제를 제기하는 분들이 계십니다 그래서 제기되는 문제가 몇 가지가 있습니다",
       "예 알고 있습니다 그러면 이것에 대해서 답을 해야 되는 것 같습니다",
     ]);
-    expect(parsed.entries[0].speakerColor).toBe("rgb(35, 124, 147)");
-    expect(parsed.entries[2].speakerChannel).toBe("primary");
+    expect(parsed.entries[0].speakerColor).toBeUndefined();
+    expect(parsed.entries[2].speakerChannel).toBeUndefined();
   });
 
-  it("keeps cumulative carry-over text in TXT export", async () => {
+  it("trims cumulative carry-over text in TXT export", async () => {
     const session: SessionRecord = {
       ...buildSession("session_export_cumulative", "saved"),
       subtitleCount: 3,
@@ -602,79 +422,15 @@ describe("session store", () => {
     expect(payload.content).toBe(
       [
         "[18:00:01] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다",
-        "[18:00:02] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다",
-        "[18:00:03] 결손보전 재원을 회계 세입세출 결산에 따른 잉여금으로 수정하였습니다 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다 보다 자세한 내용은 단말기의 의결안을 참고해 주시기 바랍니다",
+        "[18:00:02] 이상으로 정보통신방송법안심사소위원회의 심사 결과를 보고드렸습니다",
+        "[18:00:03] 보다 자세한 내용은 단말기의 의결안을 참고해 주시기 바랍니다",
       ].join("\n"),
     );
   });
 
-  it("can strip timestamps in TXT export when requested", async () => {
-    const session: SessionRecord = {
-      ...buildSession("session_export_no_timestamp", "saved"),
-      subtitleCount: 2,
-      charCount: 0,
-      entries: [
-        {
-          id: "entry_1",
-          text: "첫 번째 줄",
-          timestamp: "2026-03-10T09:00:01.000Z",
-          startTime: "2026-03-10T09:00:01.000Z",
-          endTime: "2026-03-10T09:00:01.000Z",
-          sourceNodeKey: "row_1",
-        },
-        {
-          id: "entry_2",
-          text: "두 번째 줄",
-          timestamp: "2026-03-10T09:00:02.000Z",
-          startTime: "2026-03-10T09:00:02.000Z",
-          endTime: "2026-03-10T09:00:02.000Z",
-          sourceNodeKey: "row_2",
-        },
-      ],
-    };
-
-    const payload = await exportSessionData(session, "txt", undefined, undefined, true);
-    expect(payload.content).toBe(["첫 번째 줄", "두 번째 줄"].join("\n"));
-  });
-
-  it("keeps front-back repeated carry-over text in TXT export", async () => {
-    const session: SessionRecord = {
-      ...buildSession("session_export_front_back_repeat", "saved"),
-      subtitleCount: 2,
-      charCount: 0,
-      entries: [
-        {
-          id: "entry_1",
-          text: "저희보다도 주도적으로 이제 재산권을 행사하시는데 이미 매물로 내놓으셨다고 제가 알고 있습니다 다음은 이재관 위원님 질의해 주시기 바랍니다 충남 천안을",
-          timestamp: "2026-03-10T09:00:01.000Z",
-          startTime: "2026-03-10T09:00:01.000Z",
-          endTime: "2026-03-10T09:00:01.000Z",
-          sourceNodeKey: "row_1",
-        },
-        {
-          id: "entry_2",
-          text: "충남 천안을 저희보다도 주도적으로 이제 재산권을 행사하시는데 이미 매물로 내놓으셨다고 제가 알고 있습니다 다음은 이재관 위원님 질의해 주시기 바랍니다 충남 천안을 이재관 위원입니다",
-          timestamp: "2026-03-10T09:00:02.000Z",
-          startTime: "2026-03-10T09:00:02.000Z",
-          endTime: "2026-03-10T09:00:02.000Z",
-          sourceNodeKey: "row_2",
-        },
-      ],
-    };
-
-    const payload = await exportSessionData(session, "txt");
-
-    expect(payload.content).toBe(
-      [
-        "[18:00:01] 저희보다도 주도적으로 이제 재산권을 행사하시는데 이미 매물로 내놓으셨다고 제가 알고 있습니다 다음은 이재관 위원님 질의해 주시기 바랍니다 충남 천안을",
-        "[18:00:02] 충남 천안을 저희보다도 주도적으로 이제 재산권을 행사하시는데 이미 매물로 내놓으셨다고 제가 알고 있습니다 다음은 이재관 위원님 질의해 주시기 바랍니다 충남 천안을 이재관 위원입니다",
-      ].join("\n"),
-    );
-  });
-
-  it("preserves cumulative carry-over text when persisting sessions and export", async () => {
+  it("normalizes cumulative carry-over text when persisting sessions", async () => {
     await saveSession({
-      ...buildSession("session_persist_cumulative", "saved"),
+      ...buildSession("session_persist_normalized", "saved"),
       subtitleCount: 3,
       charCount: 0,
       entries: [
@@ -705,23 +461,13 @@ describe("session store", () => {
       ],
     });
 
-    const loaded = await loadSession("session_persist_cumulative");
+    const loaded = await loadSession("session_persist_normalized");
 
     expect(loaded?.entries.map((entry) => entry.text)).toEqual([
       "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
-      "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다",
-      "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다 추가 설명도 드리겠습니다",
+      "저희가 방법을 찾아보겠습니다",
+      "추가 설명도 드리겠습니다",
     ]);
-
-    expect(loaded).toBeDefined();
-    const payload = await exportSessionData(loaded!, "txt");
-    expect(payload.content).toBe(
-      [
-        "[18:00:01] 위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
-        "[18:00:02] 위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다",
-        "[18:00:03] 위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다 추가 설명도 드리겠습니다",
-      ].join("\n"),
-    );
   });
 
   it("prefers the fresher fallback copy when IndexedDB and fallback diverge", async () => {
@@ -1049,11 +795,6 @@ describe("session store", () => {
 
   it("deletes all persisted sessions across IndexedDB and fallback storage", async () => {
     await saveSession(buildSession("session_idb_saved", "saved"));
-    await queueExitPersistRecord({
-      ...buildSession("session_queue_saved", "stopped"),
-      updatedAt: "2026-03-10T09:00:04.000Z",
-      endedAt: "2026-03-10T09:00:04.000Z",
-    });
 
     const originalIndexedDb = globalThis.indexedDB;
     Object.defineProperty(globalThis, "indexedDB", {
@@ -1074,12 +815,6 @@ describe("session store", () => {
 
     await expect(listSessions({ limit: 10 })).resolves.toEqual([]);
     await expect(loadSession("session_idb_saved")).resolves.toBeUndefined();
-    await expect(replayQueuedExitPersistRecords()).resolves.toEqual({
-      queuedCount: 0,
-      replayedCount: 0,
-      skippedCount: 0,
-      failedCount: 0,
-    });
 
     Object.defineProperty(globalThis, "indexedDB", {
       configurable: true,

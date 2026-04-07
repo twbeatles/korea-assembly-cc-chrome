@@ -1,19 +1,18 @@
 import { useEffect, useState } from "react";
 
-import { isSupportedAssemblyUrl } from "../shared/constants";
+import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
 import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
 import { validateFilenamePattern } from "../shared/filename-pattern";
-import { getTab, queryTabs, sendRuntimeMessage, sendTabMessage } from "../shared/chrome-api";
+import { connectToTab, getTab, queryTabs, sendRuntimeMessage } from "../shared/chrome-api";
 import type {
+  ContentToPopupMessage,
+  PopupToContentMessage,
   StatusSnapshot,
-  TabCommandResponse,
 } from "../shared/message-types";
 import { getCaptureStatusLabel, UI_TEXT } from "../shared/ui-labels";
 import {
   createEmptyPersistReplayDiagnostics,
-  PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY,
   readPersistReplayDiagnostics,
-  sanitizePersistReplayDiagnostics,
 } from "../storage/persist-recovery";
 import { getSettings, resetSettings, saveSettings } from "../storage/settings-store";
 import type { ExtensionSettings, PersistReplayDiagnostics } from "../storage/types";
@@ -25,52 +24,6 @@ type NumberDraftState = Record<NumberField, string>;
 type NumberFieldErrorState = Partial<Record<NumberField, string>>;
 
 const NUMBER_FIELDS: NumberField[] = [...BASIC_NUMBER_FIELDS, ...ADVANCED_NUMBER_FIELDS];
-
-function formatByteSize(value: number | null): string {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
-    return "-";
-  }
-
-  if (value < 1024) {
-    return `${value} B`;
-  }
-  if (value < 1024 * 1024) {
-    return `${(value / 1024).toFixed(1)} KB`;
-  }
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatPersistContextLabel(
-  value: StatusSnapshot["persistContext"] | undefined,
-): string {
-  switch (value) {
-    case "running_autosave":
-      return "running autosave";
-    case "stopped_final_save":
-      return "stopped final save";
-    case "page_exit_checkpoint":
-      return "page-exit checkpoint";
-    case "idle":
-      return "idle";
-    default:
-      return "-";
-  }
-}
-
-function formatStopPersistMode(
-  value: PersistReplayDiagnostics["lastStopPersistMode"],
-): string {
-  switch (value) {
-    case "direct":
-      return "direct";
-    case "background":
-      return "background";
-    case "replay":
-      return "replay";
-    default:
-      return "-";
-  }
-}
 
 function getFieldLabel(field: keyof ExtensionSettings): string {
   switch (field) {
@@ -214,14 +167,50 @@ async function resolveDiagnosticsTab(preferredTabId: number | null): Promise<chr
   return candidates[0] ?? null;
 }
 
-function getContentMessageError(error: unknown): string {
-  if (error instanceof Error) {
-    if (error.message.includes("Receiving end does not exist")) {
-      return "현재 탭과 아직 연결되지 않았습니다. 페이지를 새로고침한 뒤 다시 시도해주세요.";
-    }
-    return error.message;
+function mergeSnapshot(
+  current: StatusSnapshot | null,
+  message: Exclude<ContentToPopupMessage, { type: "ERROR" } | { type: "POPUP_FEEDBACK" }>,
+): StatusSnapshot | null {
+  switch (message.type) {
+    case "CAPTURE_STATUS":
+      return {
+        connected: message.payload.connected,
+        requiresReload: message.payload.requiresReload,
+        status: message.payload.status,
+        sessionId: message.payload.sessionId,
+        title: message.payload.title,
+        committeeName: message.payload.committeeName,
+        sourceUrl: message.payload.sourceUrl,
+        subtitleCount: message.payload.subtitleCount,
+        charCount: message.payload.charCount,
+        previewText: message.payload.previewText,
+        recentEntries: message.payload.recentEntries,
+        startedAt: message.payload.startedAt,
+        endedAt: message.payload.endedAt,
+        updatedAt: message.payload.updatedAt,
+        lastPersistedAt: message.payload.lastPersistedAt,
+        observerActive: message.payload.observerActive,
+        currentSelector: message.payload.currentSelector,
+        currentFramePath: message.payload.currentFramePath,
+        diagnostics: message.payload.diagnostics,
+      };
+    case "PREVIEW_UPDATE":
+      return current
+        ? {
+            ...current,
+            previewText: message.payload.previewText,
+            recentEntries: message.payload.recentEntries,
+          }
+        : current;
+    case "SESSION_STATS":
+      return current
+        ? {
+            ...current,
+            subtitleCount: message.payload.subtitleCount,
+            charCount: message.payload.charCount,
+          }
+        : current;
   }
-  return "수집 진단 정보를 준비하지 못했습니다.";
 }
 
 export default function App() {
@@ -245,18 +234,6 @@ export default function App() {
   const [requiresReload, setRequiresReload] = useState(false);
 
   const diagnosticsErrorRows = [
-    {
-      label: "마지막 queue 대상",
-      value: persistReplayDiagnostics.lastQueueWriteSessionId || "-",
-    },
-    {
-      label: "queue 대상 updatedAt",
-      value: persistReplayDiagnostics.lastQueueWriteRecordUpdatedAt || "-",
-    },
-    {
-      label: "마지막 queue 크기",
-      value: formatByteSize(persistReplayDiagnostics.lastQueueWriteApproxBytes),
-    },
     {
       label: "queue 쓰기 오류",
       value: persistReplayDiagnostics.lastQueueWriteError || "-",
@@ -315,41 +292,43 @@ export default function App() {
   }, [diagnosticsReloadToken, view]);
 
   useEffect(() => {
-    if (
-      view !== "diagnostics" ||
-      typeof chrome === "undefined" ||
-      !chrome.storage?.onChanged
-    ) {
-      return;
-    }
-
-    const handleStorageChange = (
-      changes: Record<string, chrome.storage.StorageChange>,
-      areaName: string,
-    ): void => {
-      if (areaName !== "local" || !changes[PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY]) {
-        return;
-      }
-
-      const change = changes[PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY];
-      setPersistReplayDiagnostics(
-        sanitizePersistReplayDiagnostics(change.newValue ?? createEmptyPersistReplayDiagnostics()),
-      );
-    };
-
-    chrome.storage.onChanged.addListener(handleStorageChange);
-    return () => {
-      chrome.storage.onChanged.removeListener(handleStorageChange);
-    };
-  }, [view]);
-
-  useEffect(() => {
     if (view !== "diagnostics") {
       return;
     }
 
     let active = true;
-    const loadSnapshot = async (): Promise<void> => {
+    let reconnectTimer: number | null = null;
+    let reconnectAttempt = 0;
+    let connecting = false;
+    let currentPort: chrome.runtime.Port | null = null;
+
+    const clearReconnectTimer = (): void => {
+      if (reconnectTimer !== null) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+    };
+
+    const scheduleReconnect = (nextMessage: string): void => {
+      if (!active) {
+        return;
+      }
+
+      setDiagnosticsMessage(nextMessage);
+      clearReconnectTimer();
+      const delay = Math.min(5000, 500 * 2 ** reconnectAttempt);
+      reconnectAttempt += 1;
+      reconnectTimer = window.setTimeout(() => {
+        void connect();
+      }, delay);
+    };
+
+    const connect = async (): Promise<void> => {
+      if (!active || connecting || currentPort) {
+        return;
+      }
+      connecting = true;
+
       try {
         const tab = await resolveDiagnosticsTab(diagnosticsTabId);
         if (!active) {
@@ -361,6 +340,7 @@ export default function App() {
           setUnsupported(false);
           setTabReady(false);
           setRequiresReload(false);
+          clearReconnectTimer();
           setDiagnosticsMessage("진단할 국회 의사중계 탭을 찾지 못했습니다. 해당 탭에서 다시 열어주세요.");
           return;
         }
@@ -370,46 +350,102 @@ export default function App() {
           setUnsupported(true);
           setTabReady(false);
           setRequiresReload(false);
+          clearReconnectTimer();
           setDiagnosticsMessage("국회 의사중계 페이지에서만 수집 진단을 볼 수 있습니다.");
           return;
         }
 
         setUnsupported(false);
-        const response = await sendTabMessage<TabCommandResponse>(tab.id, {
-          type: "GET_STATUS",
+
+        const ensure = await sendRuntimeMessage({
+          type: "ENSURE_CONTENT_SCRIPT",
+          tabId: tab.id,
+          url: tab.url,
         });
         if (!active) {
           return;
         }
 
-        if (!response.ok) {
-          setSnapshot(response.snapshot ?? null);
+        if (!ensure.ok) {
           setTabReady(false);
-          setRequiresReload(true);
-          setDiagnosticsMessage(response.error);
+          scheduleReconnect(`${ensure.error} 자동으로 다시 연결을 시도합니다.`);
           return;
         }
 
-        setSnapshot(response.snapshot ?? null);
-        setTabReady(true);
-        setRequiresReload(false);
-        setDiagnosticsMessage("현재 탭의 수집 진단 정보를 불러왔습니다.");
+        setRequiresReload(Boolean(ensure.requiresReload));
+        if (!ensure.ready) {
+          setTabReady(false);
+          scheduleReconnect("현재 탭과 아직 연결되지 않았습니다. 자동으로 다시 연결을 시도합니다.");
+          return;
+        }
+
+        reconnectAttempt = 0;
+        clearReconnectTimer();
+        const nextPort = connectToTab(tab.id, 0, POPUP_PORT_NAME);
+        currentPort = nextPort;
+
+        const onMessage = (nextMessage: ContentToPopupMessage): void => {
+          if (!active) {
+            return;
+          }
+
+          switch (nextMessage.type) {
+            case "ERROR":
+              setDiagnosticsMessage(nextMessage.message);
+              return;
+            case "CAPTURE_STATUS":
+            case "PREVIEW_UPDATE":
+            case "SESSION_STATS":
+              setSnapshot((current) => mergeSnapshot(current, nextMessage));
+              if (nextMessage.type === "CAPTURE_STATUS") {
+                setTabReady(true);
+                setDiagnosticsMessage("현재 탭의 수집 진단 정보를 불러왔습니다.");
+              }
+              return;
+            case "POPUP_FEEDBACK":
+              return;
+          }
+        };
+
+        const onDisconnect = (): void => {
+          const disconnectReason = chrome.runtime.lastError?.message;
+          if (!active) {
+            return;
+          }
+
+          currentPort = null;
+          setTabReady(false);
+          setRequiresReload(true);
+          scheduleReconnect(
+            disconnectReason?.includes("Receiving end does not exist")
+              ? "현재 탭과의 연결이 없습니다. 자동으로 다시 연결을 시도합니다."
+              : disconnectReason || "연결이 끊겼습니다. 자동으로 다시 연결을 시도합니다.",
+          );
+        };
+
+        nextPort.onMessage.addListener(onMessage);
+        nextPort.onDisconnect.addListener(onDisconnect);
+        nextPort.postMessage({ type: "GET_STATUS" } satisfies PopupToContentMessage);
       } catch (error: unknown) {
         if (!active) {
           return;
         }
 
-        setSnapshot(null);
-        setTabReady(false);
-        setRequiresReload(true);
-        setDiagnosticsMessage(getContentMessageError(error));
+        const baseMessage =
+          error instanceof Error ? error.message : "수집 진단 정보를 준비하지 못했습니다.";
+        scheduleReconnect(`${baseMessage} 자동으로 다시 연결을 시도합니다.`);
+      } finally {
+        connecting = false;
       }
     };
 
-    void loadSnapshot();
+    void connect();
 
     return () => {
       active = false;
+      clearReconnectTimer();
+      currentPort?.disconnect();
+      currentPort = null;
     };
   }, [diagnosticsReloadToken, diagnosticsTabId, view]);
 
@@ -591,20 +627,6 @@ export default function App() {
               최근 복사 버튼과 수집 중 자동 저장 타이밍을 여기에서 조정할 수 있습니다.
             </p>
 
-            <label className="setting-card">
-              <div>
-                <strong>TXT 내보내기 타임스탬프 제외</strong>
-                <span>켜면 TXT 파일의 각 줄 앞 시간표시(`[HH:MM:SS]`)를 제거합니다.</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.exportTxtWithoutTimestamps}
-                onChange={(event) =>
-                  updateField("exportTxtWithoutTimestamps", event.target.checked)
-                }
-              />
-            </label>
-
             {BASIC_NUMBER_FIELDS.map((field) => {
               const fieldUnit = getFieldUnit(field);
               return (
@@ -673,7 +695,7 @@ export default function App() {
                   <div>
                     <strong>불필요한 자막 자동 제외</strong>
                     <span>
-                      숫자나 기호만 있는 자막은 저장하지 않습니다. 의미 있는 자막 판정은 현재 한국어/영어 기준이며, 원문을 최대한 남기려면 이 옵션을 끄세요.
+                      숫자나 기호만 있는 자막은 저장하지 않습니다. 원문을 최대한 남기려면 이 옵션을 끄세요.
                     </span>
                   </div>
                   <input
@@ -785,14 +807,6 @@ export default function App() {
               <span>최근 저장</span>
               <strong>{snapshot?.lastPersistedAt ? new Date(snapshot.lastPersistedAt).toLocaleString("ko-KR") : "-"}</strong>
             </div>
-            <div className="meta-row">
-              <span>저장 컨텍스트</span>
-              <strong>{formatPersistContextLabel(snapshot?.persistContext)}</strong>
-            </div>
-            <div className="meta-row">
-              <span>정지 저장 진행 중</span>
-              <strong>{snapshot?.stopPersistInFlight ? "예" : snapshot ? "아니오" : "-"}</strong>
-            </div>
           </div>
 
           <section className="diagnostics-subsection">
@@ -828,18 +842,6 @@ export default function App() {
               <div className="meta-row">
                 <span>startup cleanup 감지</span>
                 <strong>{persistReplayDiagnostics.lastCleanupDetectedCount}</strong>
-              </div>
-              <div className="meta-row">
-                <span>마지막 stopped 저장 시각</span>
-                <strong>
-                  {persistReplayDiagnostics.lastStopPersistAt
-                    ? new Date(persistReplayDiagnostics.lastStopPersistAt).toLocaleString("ko-KR")
-                    : "-"}
-                </strong>
-              </div>
-              <div className="meta-row">
-                <span>마지막 stopped 저장 방식</span>
-                <strong>{formatStopPersistMode(persistReplayDiagnostics.lastStopPersistMode)}</strong>
               </div>
               {diagnosticsErrorRows.map((row) => (
                 <div className="meta-row" key={row.label}>

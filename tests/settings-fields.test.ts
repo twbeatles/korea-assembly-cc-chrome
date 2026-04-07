@@ -16,7 +16,6 @@ describe("options settings field registry", () => {
       "runningAutoSaveEnabled",
       "runningAutoSaveDebounceMs",
       "recentCopyLineCount",
-      "exportTxtWithoutTimestamps",
       "debugLogging",
       "autoStartEnabled",
       "filterUnconfirmedEnabled",

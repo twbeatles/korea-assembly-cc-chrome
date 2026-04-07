@@ -42,6 +42,14 @@ export function getTab(tabId: number): Promise<chrome.tabs.Tab> {
   return callbackPromise((callback) => chrome.tabs.get(tabId, callback));
 }
 
+export function connectToTab(
+  tabId: number,
+  frameId = 0,
+  name = "assembly-subtitle-popup",
+): chrome.runtime.Port {
+  return chrome.tabs.connect(tabId, { frameId, name });
+}
+
 export async function openOptionsPage(): Promise<void> {
   await callbackPromise<void>((callback) => chrome.runtime.openOptionsPage(callback));
 }
