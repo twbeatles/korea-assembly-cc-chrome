@@ -141,8 +141,8 @@ npm run build
 - 동일 raw 유지 시 마지막 entry `endTime` 갱신
 - `subtitle_reset` 시 live ledger 와 pipeline state 를 함께 완전 리셋
 - stop 시 현재 state 기준으로 finalize
-- 수동 저장 / export 는 현재 패널에 보이는 `수집된 자막` row 를 우선 직렬화하고, row 가 비어 있을 때만 정제 규칙을 통과한 preview-only 항목 1건을 materialize
-- unload / stop / page-exit 계열 prepared snapshot 생성 경로에서는 preview-only 텍스트도 flush 후 반영
+- 수동 저장 / export 는 현재 패널에 보이는 확정 `수집된 자막` row 만 직렬화하고, preview-only 텍스트는 materialize 하지 않음
+- unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 flush 후 entry 로 반영하지 않음
 
 ## 7. persistence 규칙
 
@@ -203,7 +203,7 @@ npm run build
 - `SRT`: `HH:MM:SS,mmm`, 세션 시작 기준 상대 시간
 - `VTT`: `HH:MM:SS.mmm`, 세션 시작 기준 상대 시간
 - `JSON`: 세션 전체 복원 가능한 구조
-- 수동 `saveSession` / `exportSessionData` 는 현재 패널에 보이는 `수집된 자막` 목록을 우선 사용하고, 목록이 비어 있을 때만 정제 뒤에도 의미가 남는 preview-only 항목 1건으로 내려갑니다.
+- 수동 `saveSession` / `exportSessionData` 는 현재 패널에 보이는 확정 `수집된 자막` 목록만 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 - 다운로드는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback
 
@@ -245,8 +245,8 @@ Use this delta as the current operational baseline.
 
 Use this delta as the current operational baseline.
 
-- Manual save/export must serialize the visible `수집된 자막` rows first, then the current preview text when no visible rows exist.
-- Pagehide/beforeunload/stop snapshots still use prepared-state materialization for persistence.
+- Manual save/export must serialize only committed visible `수집된 자막` rows.
+- Pagehide/beforeunload/stop snapshots must persist committed entries only and must not materialize preview-only text.
 - Failed stopped-session persistence must retry before `start`/`clear` proceeds.
 - Session reads must merge IndexedDB and fallback storage using freshest `updatedAt`.
 - History view must live-sync settings-driven copy/export behavior.
@@ -332,8 +332,10 @@ Use this delta as the current operational baseline.
 Use this delta as the current operational baseline.
 
 - `수집된 자막` 목록은 bounded live ledger 와 별개로 세션 전체 누적 committed subtitles 를 보여 줍니다. `liveLedgerMaxRows = 300` 은 reconciliation cap 일 뿐 저장/export 기준이 아닙니다.
-- 수동 저장 / export 는 누적 `수집된 자막` 목록을 단일 source of truth 로 사용하며, preview-only fallback 은 정제 후 의미 있는 경우에만 1건으로 materialize 됩니다.
-- popup / in-page panel 의 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일됩니다.
+- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 누적 `수집된 자막` 목록만 source of truth 로 사용하며, preview-only fallback 은 materialize 하지 않습니다.
+- popup / in-page panel 의 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되며, 이는 committed subtitle 존재 여부만 의미합니다.
+- structured + stable row 인 경우에만 commit 이 일어나고, raw/container fallback 또는 unstable row 는 preview 전용입니다.
+- 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 미확정으로 보고 commit/persist/export 대상에서 제외합니다.
 - replay queue 조회는 storage snapshot + memory snapshot 을 freshness 기준으로 merge 하며, 동시 queue insert 를 잃지 않아야 합니다.
 - 회의명 파서는 trailing `|` branding 만 제거하고 날짜 / 회차 / 하이픈 텍스트는 유지합니다.
 - subtitle visibility 판정은 `display:none`, `visibility:hidden`, `opacity:0`, zero-rect 를 모두 hidden 으로 간주하는 공통 helper 를 사용합니다.

@@ -27,12 +27,7 @@ export function shouldPersistFinalSession(
 export function hasPersistableRunningContent(
   state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
 ): boolean {
-  return (
-    state.status === "running" &&
-    (state.entries.length > 0 ||
-      state.pendingPreviews.length > 0 ||
-      Boolean(state.previewText.trim()))
-  );
+  return state.status === "running" && state.entries.length > 0;
 }
 
 export function shouldWarnBeforeUnload(

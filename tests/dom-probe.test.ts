@@ -41,6 +41,23 @@ describe("dom probe unconfirmed filtering", () => {
     expect(result.text).toContain("container fallback subtitle");
   });
 
+  it("blocks container fallback when highlighted in-progress text remains in the container", () => {
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="incont">
+          <span style="background-color: rgb(173, 216, 230)">인식 중 자막</span>
+        </div>
+      </div>
+    `;
+
+    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
+      filterUnconfirmedEnabled: true,
+    });
+
+    expect(result.found).toBe(false);
+    expect(result.text).toBe("");
+  });
+
   it("keeps the full accumulated realtime content on plenary pages", () => {
     const longLines = Array.from(
       { length: 12 },

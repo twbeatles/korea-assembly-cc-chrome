@@ -6,6 +6,13 @@ export const PRIMARY_SPEAKER_COLOR = "rgb(35, 124, 147)";
 export const SECONDARY_SPEAKER_COLOR = "rgb(30, 30, 30)";
 const SPEAKER_COLOR_CACHE_MAX_SIZE = 128;
 const CONFIRMATION_DESCENDANT_SAMPLE_LIMIT = 48;
+const CONTAINER_CONFIRMATION_SELECTORS = [
+  "#viewSubtit .smi_word",
+  "#viewSubtit .incont",
+  "#viewSubtit",
+  ".subtitle_area",
+  ".ai_subtitle",
+] as const;
 const normalizedSpeakerColorCache = new Map<string, string>();
 
 function queryAllSafe(root: ParentNode, selector: string): HTMLElement[] {
@@ -118,6 +125,22 @@ function hasOpaqueBackground(backgroundColor: string): boolean {
   return Boolean(normalized) && normalized !== "transparent" && normalized !== "rgba(0,0,0,0)";
 }
 
+function hasHighlightBackgroundImage(backgroundImage: string): boolean {
+  const normalized = String(backgroundImage || "").trim().toLowerCase();
+  return Boolean(normalized) && normalized !== "none";
+}
+
+function hasVisibleBackgroundHighlight(style: CSSStyleDeclaration): boolean {
+  return (
+    hasOpaqueBackground(style.backgroundColor) ||
+    hasHighlightBackgroundImage(style.backgroundImage)
+  );
+}
+
+function hasMeaningfulNodeText(node: HTMLElement): boolean {
+  return Boolean(compactSubtitleText(node.innerText || node.textContent || ""));
+}
+
 function collectConfirmationCheckTargets(node: HTMLElement): HTMLElement[] {
   const descendants = Array.from(node.querySelectorAll<HTMLElement>("*"));
   if (descendants.length <= CONFIRMATION_DESCENDANT_SAMPLE_LIMIT) {
@@ -147,20 +170,39 @@ function isConfirmedSubtitleNode(node: HTMLElement): boolean {
     return true;
   }
 
-  const bg = window.getComputedStyle(node).backgroundColor;
-  if (hasOpaqueBackground(bg)) {
+  const nodeStyle = window.getComputedStyle(node);
+  if (hasVisibleBackgroundHighlight(nodeStyle)) {
     return false;
   }
 
   const children = collectConfirmationCheckTargets(node);
   for (const child of children) {
-    const childBg = window.getComputedStyle(child).backgroundColor;
-    if (hasOpaqueBackground(childBg)) {
+    if (hasVisibleBackgroundHighlight(window.getComputedStyle(child))) {
       return false;
     }
   }
 
   return true;
+}
+
+export function hasUnconfirmedSubtitleBackground(root: ParentNode): boolean {
+  const seen = new Set<HTMLElement>();
+
+  for (const selector of CONTAINER_CONFIRMATION_SELECTORS) {
+    const nodes = queryAllSafe(root, selector);
+    for (const node of nodes) {
+      if (seen.has(node) || !hasMeaningfulNodeText(node)) {
+        continue;
+      }
+
+      seen.add(node);
+      if (!isConfirmedSubtitleNode(node)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 export function readObservedSubtitleRows(

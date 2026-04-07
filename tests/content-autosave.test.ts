@@ -9,7 +9,6 @@ import {
   shouldWarnBeforeUnload,
 } from "../src/content/autosave";
 import { createEmptySessionState, toSessionRecord } from "../src/core/subtitle-models";
-import { flushPendingPreviews } from "../src/core/subtitle-pipeline";
 import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
 
 describe("content autosave policy", () => {
@@ -42,16 +41,16 @@ describe("content autosave policy", () => {
     expect(shouldPersistFinalSession(true, 0)).toBe(false);
   });
 
-  it("treats running preview or pending content as persistable before navigation", () => {
+  it("does not treat preview-only or pending-only content as persistable before navigation", () => {
     const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
     state.status = "running";
     state.previewText = "새 자막";
 
-    expect(hasPersistableRunningContent(state)).toBe(true);
+    expect(hasPersistableRunningContent(state)).toBe(false);
 
     state.previewText = "";
     state.pendingPreviews = ["대기 중 자막"];
-    expect(hasPersistableRunningContent(state)).toBe(true);
+    expect(hasPersistableRunningContent(state)).toBe(false);
   });
 
   it("warns before unload only when a running session has content", () => {
@@ -72,42 +71,24 @@ describe("content autosave policy", () => {
     expect(shouldWarnBeforeUnload(false, state)).toBe(false);
   });
 
-  it("keeps preview-only unload warnings aligned with the prepared running snapshot", () => {
+  it("does not warn before unload for preview-only content", () => {
     const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
     state.status = "running";
     state.previewText = "페이지에만 보이는 자막";
 
-    expect(hasPersistableRunningContent(state)).toBe(true);
-
-    const prepared = flushPendingPreviews(
-      state,
-      Date.parse("2026-03-10T09:00:02.000Z"),
-      DEFAULT_EXTENSION_SETTINGS,
-    );
-    const record = toSessionRecord(prepared, "running");
-
-    expect(record.entries).toHaveLength(1);
-    expect(record.entries[0].text).toBe("페이지에만 보이는 자막");
+    expect(hasPersistableRunningContent(state)).toBe(false);
+    expect(shouldWarnBeforeUnload(true, state)).toBe(false);
   });
 
-  it("noise-only previewText produces no entries after flush and fails the final save guard", () => {
+  it("still rejects empty final saves even when previewText is present", () => {
     const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
     state.status = "running";
     state.previewText = "123456"; // numeric-only → filtered by noise filter
+    const record = toSessionRecord(state, "saved");
 
-    const prepared = flushPendingPreviews(
-      state,
-      Date.parse("2026-03-10T09:00:02.000Z"),
-      DEFAULT_EXTENSION_SETTINGS,
-    );
-    const record = toSessionRecord(prepared, "saved");
-
-    // Noise-only text must not survive flush into entries
     expect(record.entries).toHaveLength(0);
-    // shouldPersistFinalSession must return false — no data to store
     expect(shouldPersistFinalSession(true, record.entries.length)).toBe(false);
-    // The pre-flush raw state would have enabled the popup save button (previewText != "")
-    // but the post-flush check correctly prevents an empty save
+    expect(hasPersistableRunningContent(state)).toBe(false);
     expect(state.previewText.trim()).not.toBe("");
   });
 

@@ -5,7 +5,11 @@ import {
   OBSERVER_CONFIG_EVENT,
   OBSERVER_STOP_EVENT,
 } from "../shared/constants";
-import { buildObservedSubtitlePreview, readObservedSubtitleRows } from "./subtitle-rows";
+import {
+  buildObservedSubtitlePreview,
+  hasUnconfirmedSubtitleBackground,
+  readObservedSubtitleRows,
+} from "./subtitle-rows";
 import { isElementVisible } from "./visibility";
 const DEFAULT_SELECTORS = [
   "#viewSubtit .smi_word:last-child",
@@ -186,13 +190,17 @@ function shouldBlockContainerFallbackForUnconfirmed(filterUnconfirmedEnabled: bo
 
   const smiNodes = queryAll("#viewSubtit .smi_word");
   if (!smiNodes.length) {
-    return false;
+    return hasUnconfirmedSubtitleBackground(document);
   }
 
   const confirmedRows = readObservedSubtitleRows(document, "#viewSubtit .smi_word", {
     filterUnconfirmedEnabled: true,
   });
-  return confirmedRows.length === 0;
+  if (confirmedRows.length === 0) {
+    return true;
+  }
+
+  return hasUnconfirmedSubtitleBackground(document);
 }
 
 function buildRowSignature(

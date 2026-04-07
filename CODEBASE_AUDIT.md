@@ -6,9 +6,11 @@
 > 2026-04-07 업데이트:
 > - 이 문서는 과거 감사 기준 문서이며, 현재 배포 준비 기준 구현은 이 보고서 작성 시점보다 뒤에 있습니다.
 > - 현재 스토어 제출 준비 버전은 `1.0.6` 입니다.
-> - 현재 수동 저장 / export 경로는 prepared snapshot 전체를 그대로 쓰지 않고, 패널에 보이는 `수집된 자막` row 를 우선 직렬화하며, row 가 없을 때만 정제 뒤에도 의미가 남는 `실시간 내용` preview 1건으로 내려갑니다.
-> - 현재 popup / panel 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되었고, replay queue merge race / title parser / subtitle visibility / history JSON progress+cancel 관련 지적도 이후 배치에서 반영되었습니다.
-> - 따라서 아래의 save/export, replay queue, popup enablement, history long-task 관련 일부 지적은 역사적 참고용으로만 읽어야 하며, 현재 릴리스 기준 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 를 우선합니다.
+> - 현재 수동 저장 / export 와 pagehide/beforeunload/stop persistence 경로는 preview-only 텍스트를 materialize 하지 않고, 확정 `수집된 자막` entry 만 저장합니다.
+> - 현재 popup / panel 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되었고, 이는 committed subtitle 존재 여부만 의미합니다.
+> - 현재 commit 은 structured + stable row 일 때만 허용되며, raw/container fallback 과 unstable row 는 preview 전용입니다.
+> - 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 commit/persist/export 대상에서 제외됩니다.
+> - 따라서 아래의 save/export, popup enablement 관련 일부 지적은 역사적 참고용으로만 읽어야 하며, 현재 릴리스 기준 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 를 우선합니다.
 
 ---
 
@@ -25,6 +27,8 @@
 ## 🔴 HIGH
 
 ### H-1. `ensureSubtitleLayerActive` 반환값이 스펙과 불일치
+
+`2026-04-07 현재 구현 상태: resolved (historical finding)`
 
 **파일:** `src/content/content-script.ts:767`
 **관련 스펙:** `CLAUDE.md` → "자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다."
@@ -66,6 +70,8 @@ return layer.visible && (layer.hasText || layer.controlActive);
 ---
 
 ### H-2. `shouldPersistFinalSession` vs `hasPersistableContent` 불일치
+
+`2026-04-07 현재 구현 상태: resolved (historical finding)`
 
 **파일:**
 - `src/content/autosave.ts:20-25` — `shouldPersistFinalSession`
@@ -348,8 +354,8 @@ function walkFramesForControl(rootDocument, depth = 0, maxDepth = 3) {
 | 2026-03-19 | frame-forward nonce 탭 단위 15초 재동기화 | ✅ 구현됨 |
 | 2026-03-19 | replay queue storage+memory merge | ✅ 구현됨 |
 | 2026-03-19 | diagnostics lastQueueWriteError 등 phase별 | ✅ 구현됨 |
-| 2026-03-19 | popup 저장 버튼 persistable content 조건 | ⚠️ H-2 참조 |
-| 2026-03-19 | 자막 자동 활성화 `visible && (hasText\|\|controlActive)` | ⚠️ H-1 참조 |
+| 2026-03-19 | popup 저장 버튼 persistable content 조건 | ✅ 구현됨 (`committed entries only`) |
+| 2026-03-19 | 자막 자동 활성화 `visible && (hasText\|\|controlActive)` | ✅ 구현됨 |
 | 2026-03-16 | `listSessionsPage` store-level paging | ✅ 구현됨 |
 | 2026-03-16 | `filenamePattern` strict validation | ✅ 구현됨 |
 | 2026-03-16 | 최근 N줄 복사 history 의미론 통일 | ✅ 구현됨 |
@@ -357,14 +363,16 @@ function walkFramesForControl(rootDocument, depth = 0, maxDepth = 3) {
 | 2026-03-14 | `saveSession`/`updateRunningSession` starred 보존 | ✅ 구현됨 (`mergeEditableSessionMetadata`) |
 | 2026-03-13 | page-exit stopped snapshot replay queue | ✅ 구현됨 |
 | 2026-03-13 | session import allow-list sanitize | ✅ 구현됨 |
-| 2026-03-12 | preview-only 저장/export 보존 | ✅ 구현됨 (`flushPendingPreviews`) |
+| 2026-03-12 | preview-only 저장/export 보존 | 역사적 동작, 현재는 미적용 |
+| 2026-04-07 | preview-only persistence 차단 | ✅ 구현됨 |
+| 2026-04-07 | unstable/fallback preview commit 차단 | ✅ 구현됨 |
+| 2026-04-07 | in-progress highlight 배경 차단 | ✅ 구현됨 |
 | 2026-03-12 | failed persist retry + discard confirm | ✅ 구현됨 |
 
 ---
 
 ## 권장 우선순위
 
-1. **즉시 수정 권장:** H-1 (`ensureSubtitleLayerActive` 반환값) — 스펙 명시 사항 위반, 1줄 수정
-2. **단기 검토:** H-2 (`shouldPersistFinalSession` vs `hasPersistableContent`) — UX 불일치, 조건 통일 필요
-3. **중기 검토:** M-1 (persist-recovery race condition) — 페이지 동시 종료 시나리오 시 발생
-4. **문서화/개선:** M-2 (위원회명 파싱), L-7 (README 개발 설정)
+1. **현재 기준:** 이 섹션은 역사적 감사 결과입니다. 현재 릴리스 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`를 우선합니다.
+2. **중기 검토:** M-1 (persist-recovery race condition) — 페이지 동시 종료 시나리오 시 발생
+3. **문서화/개선:** M-2 (위원회명 파싱), L-7 (README 개발 설정)

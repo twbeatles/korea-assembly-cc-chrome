@@ -1,5 +1,5 @@
 import type { CaptureMode, LivePanelRow } from "../core/live-capture";
-import { cloneEntry, type SubtitleEntry } from "../core/subtitle-models";
+import type { SubtitleEntry } from "../core/subtitle-models";
 import { PIPELINE_DEFAULTS } from "../shared/constants";
 
 function resolveEntryUpdatedAt(entry: SubtitleEntry): number {
@@ -29,17 +29,6 @@ export function buildCommittedEntryLiveRows(
     speakerChannel: entry.speakerChannel || "unknown",
     updatedAt: resolveEntryUpdatedAt(entry),
   }));
-}
-
-export function buildPersistableOutputEntries(input: {
-  committedEntries: SubtitleEntry[];
-  previewFallbackEntries: SubtitleEntry[];
-}): SubtitleEntry[] {
-  if (input.committedEntries.length > 0) {
-    return input.committedEntries.map((entry) => cloneEntry(entry));
-  }
-
-  return input.previewFallbackEntries.map((entry) => cloneEntry(entry));
 }
 
 export function resolvePanelLiveRows(input: {

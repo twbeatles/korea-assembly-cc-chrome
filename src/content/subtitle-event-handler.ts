@@ -8,6 +8,13 @@ export function hasOnlyStableRows(rows: ObservedSubtitleRow[]): boolean {
   return rows.length > 0 && rows.every((row) => !row.unstableKey);
 }
 
+export function shouldCommitCaptureEvent(input: {
+  captureMode: CaptureMode;
+  rows: ObservedSubtitleRow[];
+}): boolean {
+  return input.captureMode === "structured" && hasOnlyStableRows(input.rows);
+}
+
 export function resolveRuntimeCaptureNotice(input: {
   captureMode: CaptureMode;
   observerActive: boolean;

@@ -1,8 +1,5 @@
 import type { SubtitleEntry } from "../src/core/subtitle-models";
-import {
-  buildPersistableOutputEntries,
-  resolvePanelLiveRows,
-} from "../src/content/panel-live-rows";
+import { resolvePanelLiveRows } from "../src/content/panel-live-rows";
 
 function createEntry(
   id: string,
@@ -58,68 +55,6 @@ describe("panel live rows", () => {
       key: "entry::entry_2",
       text: "이어지는 발언",
       updatedAt: Date.parse("2026-03-20T08:00:09.000Z"),
-    });
-  });
-
-  it("prefers committed entries over preview-only fallback rows for persistence", () => {
-    const committedEntries = [
-      createEntry("entry_1", "첫 번째 확정 자막", {
-        startTime: "2026-03-20T08:00:01.000Z",
-        endTime: "2026-03-20T08:00:02.000Z",
-      }),
-    ];
-    const previewFallbackEntries = [
-      createEntry("preview_1", "미리보기 전용 자막", {
-        startTime: "2026-03-20T08:00:10.000Z",
-        endTime: "2026-03-20T08:00:11.000Z",
-      }),
-    ];
-
-    const entries = buildPersistableOutputEntries({
-      committedEntries,
-      previewFallbackEntries,
-    });
-
-    expect(entries).toHaveLength(1);
-    expect(entries[0]).toEqual(committedEntries[0]);
-    expect(entries[0]).not.toBe(committedEntries[0]);
-  });
-
-  it("falls back to sanitized preview entries only when no committed subtitles exist", () => {
-    const previewFallbackEntries = [
-      createEntry("preview_1", "미리보기 전용 자막", {
-        startTime: "2026-03-20T08:00:10.000Z",
-        endTime: "2026-03-20T08:00:11.000Z",
-      }),
-    ];
-
-    const entries = buildPersistableOutputEntries({
-      committedEntries: [],
-      previewFallbackEntries,
-    });
-
-    expect(entries).toEqual(previewFallbackEntries);
-    expect(entries[0]).not.toBe(previewFallbackEntries[0]);
-  });
-
-  it("preserves original cue timing when exporting committed subtitles", () => {
-    const committedEntries = [
-      createEntry("entry_1", "두 번째 자막", {
-        timestamp: "2026-03-20T08:00:05.000Z",
-        startTime: "2026-03-20T08:00:05.000Z",
-        endTime: "2026-03-20T08:00:06.000Z",
-      }),
-    ];
-
-    const entries = buildPersistableOutputEntries({
-      committedEntries,
-      previewFallbackEntries: [],
-    });
-
-    expect(entries[0]).toMatchObject({
-      timestamp: "2026-03-20T08:00:05.000Z",
-      startTime: "2026-03-20T08:00:05.000Z",
-      endTime: "2026-03-20T08:00:06.000Z",
     });
   });
 });

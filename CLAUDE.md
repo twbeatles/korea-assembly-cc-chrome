@@ -110,8 +110,8 @@ offscreen.html
 - 동일 raw 유지 시 keepalive 로 마지막 entry 의 `endTime` 만 갱신합니다.
 - `subtitle_reset` 이 오면 grace 이후 live ledger 와 pipeline state 를 함께 완전 리셋합니다.
 - `finalizeSession` 은 현재 state 기준으로 종료 처리합니다.
-- 수동 저장 / export 는 현재 패널에 보이는 `수집된 자막` row 를 우선 직렬화하고, row 가 비어 있을 때만 `prepareSessionState` / `flushPendingPreviews` 와 같은 정제 규칙을 통과한 preview-only 항목 1건을 materialize 합니다.
-- unload / stop / page-exit 계열 prepared snapshot 생성 경로에서는 `flushPendingPreviews` 가 현재 preview-only 텍스트를 clone 상태에 materialize 합니다.
+- 수동 저장 / export 는 현재 패널에 보이는 확정 `수집된 자막` row 만 직렬화하며, preview-only 텍스트는 저장 대상으로 materialize 하지 않습니다.
+- unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 clone state entry 로 승격하지 않고, 확정 entry 만 저장합니다.
 
 ## 6. noise filtering 규칙
 
@@ -135,7 +135,7 @@ offscreen.html
 - `SRT`: 세션 시작 기준 상대 시간, `HH:MM:SS,mmm`
 - `VTT`: 세션 시작 기준 상대 시간, `HH:MM:SS.mmm`
 - `JSON`: 세션 전체 복원 가능한 구조
-- 수동 `saveSession` / `exportSessionData` 경로는 현재 패널에 보이는 `수집된 자막` 목록을 우선 사용하고, 목록이 비어 있을 때만 정제 뒤에도 의미가 남는 preview-only 항목 1건으로 내려갑니다.
+- 수동 `saveSession` / `exportSessionData` 경로는 현재 패널에 보이는 확정 `수집된 자막` 목록만 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 
 ### 7.2 Session Store
@@ -195,7 +195,7 @@ offscreen.html
 - queue write 실패는 메모리 queue를 지우면 안 되며, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`로 phase별로 남겨야 합니다.
 - capture notice 는 `정상 수집`, `자동 조정 중 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
 - 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다.
-- popup `SAVE_SESSION`은 패널과 같은 `hasPersistableContent` 판정으로만 활성화해야 합니다. 즉 누적 `수집된 자막`이 1건 이상 있거나 preview-only fallback 이 정제 후 1건으로 materialize 가능한 경우만 허용되며, 빈 저장 요청은 패널/popup 모두 `저장할 자막이 아직 없습니다.`로 응답해야 합니다.
+- popup `SAVE_SESSION`은 패널과 같은 `hasPersistableContent` 판정으로만 활성화해야 합니다. 즉 누적 `수집된 자막`이 1건 이상 있을 때만 허용되며, preview-only fallback 은 저장 가능 조건에 포함하지 않습니다. 빈 저장 요청은 패널/popup 모두 `저장할 자막이 아직 없습니다.`로 응답해야 합니다.
 - 자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다.
 - options 숫자 필드는 canonical number state 와 별도 draft string state 를 유지하고, invalid draft 는 inline field error 로 표시하며 저장을 막아야 합니다.
 
@@ -250,8 +250,8 @@ When editing this repository, align with the newly implemented behavior below.
 
 When editing this repository, align with the newly implemented behavior below.
 
-- Manual save/export must serialize the visible `수집된 자막` rows first, then the current preview text when no visible rows exist.
-- Pagehide/beforeunload/stop snapshots still use prepared-state materialization for persistence.
+- Manual save/export must serialize only committed visible `수집된 자막` rows.
+- Pagehide/beforeunload/stop snapshots must persist committed entries only and must not materialize preview-only text.
 - Failed stopped-session persistence must retry before destructive continuation and require explicit discard confirmation only after the retry fails.
 - Session storage reads must merge IndexedDB and fallback records, while successful IndexedDB writes heal stale fallback copies.
 - History view must live-sync `recentCopyLineCount` and `filenamePattern` while the page remains open.
@@ -339,8 +339,10 @@ When editing this repository, align with the newly implemented behavior below.
 When editing this repository, align with the newly implemented behavior below.
 
 - `수집된 자막` 목록은 bounded live ledger 와 별개로 세션 전체 누적 committed subtitles 를 보여 주는 뷰입니다. `liveLedgerMaxRows = 300` 은 reconciliation cap 일 뿐 저장/export 기준이 아닙니다.
-- 수동 저장 / export 는 누적 `수집된 자막` 목록을 단일 source of truth 로 사용하며, preview-only fallback 은 정제 후 의미 있는 경우에만 1건으로 materialize 됩니다.
-- popup / in-page panel 의 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되었습니다.
+- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 누적 `수집된 자막` 목록만 source of truth 로 사용하며, preview-only fallback 은 materialize 하지 않습니다.
+- popup / in-page panel 의 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되며, 이는 committed subtitle 존재 여부만 의미합니다.
+- structured + stable row 인 경우에만 commit 이 일어나고, raw/container fallback 또는 unstable row 는 preview 전용입니다.
+- 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 미확정으로 보고 commit/persist/export 대상에서 제외합니다.
 - `listQueuedExitPersistRecords()` 는 storage snapshot + memory snapshot 을 freshness 기준으로 in-place merge 하며, 동시 queue insert 를 잃지 않아야 합니다.
 - 회의명 파서는 trailing `|` branding 만 제거하고 날짜 / 회차 / 하이픈 텍스트는 유지해야 합니다.
 - subtitle visibility 판정은 `display:none`, `visibility:hidden`, `opacity:0`, zero-rect 를 모두 hidden 으로 간주하는 공통 helper 를 사용합니다.

@@ -61,7 +61,7 @@ npm run build
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
-- 패널 / popup의 수동 저장과 export 가 현재 화면에 보이는 `수집된 자막` 목록을 우선 반영하고, 목록이 비어 있으면 placeholder / noise / duplicate 제거 뒤에도 의미가 남는 `실시간 내용` preview 만 단일 항목으로 저장하는지 확인
+- 패널 / popup의 수동 저장과 export 가 현재 화면에 보이는 확정 `수집된 자막` 목록만 반영하고, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는지 확인
 - service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
@@ -277,7 +277,8 @@ Current release alignment:
 - structured row가 비어 있어도 본회의 fallback capture는 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
 - Chrome Web Store 제출용 압축 예시는 `korea-assembly-cc-chrome-<version>-cws.zip` 형식을 권장합니다.
-- 수동 저장 / export 는 현재 화면에 보이는 `수집된 자막` 목록 우선, 목록이 비어 있으면 정제 후에도 의미가 남는 `실시간 내용` preview 1건만 저장 기준으로 검증해야 합니다.
+- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 현재 화면에 보이는 확정 `수집된 자막` 목록만 저장 기준으로 검증해야 합니다.
+- 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 commit/persist/export 대상에서 제외되는지 확인해야 합니다.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - full-library `JSON 백업` / `JSON 가져오기` 는 단계별 진행률과 취소를 제공하며, import cancel 은 partial completion 을 허용합니다.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.

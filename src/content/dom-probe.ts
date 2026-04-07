@@ -4,7 +4,11 @@ import {
   extractTailLines,
   normalizeSubtitleText,
 } from "../core/text-normalizer";
-import { buildObservedSubtitlePreview, readObservedSubtitleRows } from "./subtitle-rows";
+import {
+  buildObservedSubtitlePreview,
+  hasUnconfirmedSubtitleBackground,
+  readObservedSubtitleRows,
+} from "./subtitle-rows";
 
 export interface DomProbeResult {
   text: string;
@@ -117,13 +121,17 @@ function shouldBlockContainerFallbackForUnconfirmed(
 
   const smiNodes = queryAllSafe(root, "#viewSubtit .smi_word");
   if (!smiNodes.length) {
-    return false;
+    return hasUnconfirmedSubtitleBackground(root);
   }
 
   const confirmedRows = readObservedSubtitleRows(root, "#viewSubtit .smi_word", {
     filterUnconfirmedEnabled: true,
   });
-  return confirmedRows.length === 0;
+  if (confirmedRows.length === 0) {
+    return true;
+  }
+
+  return hasUnconfirmedSubtitleBackground(root);
 }
 
 function readContainerFallback(

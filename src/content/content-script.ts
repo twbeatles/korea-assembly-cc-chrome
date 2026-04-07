@@ -1,6 +1,5 @@
 ﻿import {
   applyKeepalive,
-  applyPreview,
   applyReset,
   commitLiveRow,
   finalizeSession,
@@ -81,7 +80,6 @@ import {
   type InPagePanelController,
 } from "./inpage-panel";
 import {
-  buildPersistableOutputEntries,
   resolvePanelLiveRows,
 } from "./panel-live-rows";
 import {
@@ -116,7 +114,7 @@ import {
   buildPreparedSessionState as prepareSessionState,
   createResetSessionState,
 } from "./session-lifecycle";
-import { hasOnlyStableRows, resolveRuntimeCaptureNotice } from "./subtitle-event-handler";
+import { resolveRuntimeCaptureNotice, shouldCommitCaptureEvent } from "./subtitle-event-handler";
 
 const isTopFrame = window.top === window;
 const localFramePath = computeCurrentFramePath();
@@ -295,7 +293,7 @@ function getCaptureMode(): CaptureMode {
 
 function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   const captureMode = getCaptureMode();
-  const hasPersistableContent = buildVisibleOutputEntries().length > 0;
+  const hasPersistableContent = state.entries.length > 0;
   return {
     connected: isSupportedAssemblyUrl(window.location.href),
     requiresReload,
@@ -384,14 +382,8 @@ function buildPreparedSessionState(now = Date.now()): SessionState {
 }
 
 function buildVisibleOutputEntries(now = Date.now()): SubtitleEntry[] {
-  if (state.entries.length > 0) {
-    return state.entries.map((entry) => cloneEntry(entry));
-  }
-
-  return buildPersistableOutputEntries({
-    committedEntries: state.entries,
-    previewFallbackEntries: prepareSessionState(state, settings, now).entries,
-  });
+  void now;
+  return state.entries.map((entry) => cloneEntry(entry));
 }
 
 function buildVisibleSessionState(now = Date.now()): SessionState {
@@ -897,19 +889,21 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       return;
     }
 
-    const hasStableStructuredRows =
-      captureEvent.captureMode === "structured" && hasOnlyStableRows(captureEvent.rows);
+    const shouldCommitEvent = shouldCommitCaptureEvent({
+      captureMode: captureEvent.captureMode,
+      rows: captureEvent.rows,
+    });
     const noticeChanged = setPanelNotice(
       resolveRuntimeCaptureNotice({
         captureMode: captureEvent.captureMode,
         observerActive: state.observerActive,
-        hasStableRows: hasStableStructuredRows,
+        hasStableRows: shouldCommitEvent,
         lastCommittedResetAt: state.lastCommittedResetAt,
         now,
       }),
     );
 
-    if (hasStableStructuredRows) {
+    if (shouldCommitEvent) {
       const changed = applyStructuredRowsEvent(
         captureEvent.rows,
         captureEvent.previewText,
@@ -957,15 +951,8 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       return;
     }
 
-    const result = applyPreview(state, normalized, now, settings, {
-      selector: event.selector,
-      framePath: event.framePath,
-    });
-    state = result.state;
-    if (result.changed) {
-      scheduleRunningPersist();
-    }
-    if (fallbackReconciliation.changed || result.changed || noticeChanged) {
+    const previewChanged = applyPreviewStateOnly(normalized, now);
+    if (fallbackReconciliation.changed || previewChanged || noticeChanged) {
       syncUserInterfaces();
     }
   } catch (error) {

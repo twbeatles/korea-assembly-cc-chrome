@@ -55,4 +55,22 @@ describe("subtitle row helpers", () => {
 
     expect(buildObservedSubtitlePreview(rows)).toBe("둘째 줄 셋째 줄 넷째 줄");
   });
+
+  it("filters rows whose in-progress highlight is expressed as a background image", () => {
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="smi_word row_1">
+          <span style="background-image: linear-gradient(rgb(173, 216, 230), rgb(173, 216, 230));">
+            인식 중 자막
+          </span>
+        </div>
+      </div>
+    `;
+
+    const rows = readObservedSubtitleRows(document, "#viewSubtit .smi_word", {
+      filterUnconfirmedEnabled: true,
+    });
+
+    expect(rows).toHaveLength(0);
+  });
 });

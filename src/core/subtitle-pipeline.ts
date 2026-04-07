@@ -429,20 +429,22 @@ export function flushPendingPreviews(
   now: number,
   settings?: Partial<ExtensionSettings>,
 ): SessionState {
-  const preparedState = cloneState(state);
-  const normalizedPreview = normalizeRawText(preparedState.previewText);
-  if (!normalizedPreview) {
-    return preparedState;
-  }
+  let preparedState = cloneState(state);
+  const pendingPreviews = preparedState.pendingPreviews
+    .map((preview) => normalizeRawText(preview))
+    .filter(Boolean);
 
-  const result = applyPreview(preparedState, normalizedPreview, now, settings, {
-    selector: preparedState.currentSelector || undefined,
-    framePath: preparedState.currentFramePath.length
-      ? preparedState.currentFramePath
-      : undefined,
+  preparedState.pendingPreviews = [];
+  pendingPreviews.forEach((preview, index) => {
+    preparedState = applyPreview(preparedState, preview, now + index, settings, {
+      selector: preparedState.currentSelector || undefined,
+      framePath: preparedState.currentFramePath.length
+        ? preparedState.currentFramePath
+        : undefined,
+    }).state;
   });
 
-  return result.state;
+  return preparedState;
 }
 
 export function applyPreview(

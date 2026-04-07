@@ -60,6 +60,8 @@ iiadnfahoocbannfpgfgbommblpagacl/
 /__tmp_*.txt
 /tmp-*.js
 /tmp-*.cjs
+/marquee.jpg
+/scripts/resize-marquee.js
 
 # -----------------------------------------------------------------------------
 # Local database/state files

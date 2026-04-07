@@ -26,7 +26,7 @@
 - `실시간 내용 / 수집된 자막` 2단 표시
 - `MutationObserver` 우선 + polling fallback
 - `.smi_word` nodeKey + framePath 기반 live row ledger 추적, 같은 row 제자리 보정, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
-- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback에서는 `실시간 내용` 누적 원문을 유지하고, fallback으로 commit된 entry도 `수집된 자막` 목록에 계속 누적 표시
+- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback에서는 `실시간 내용` 누적 원문을 유지하고, 이미 확정된 entry만 `수집된 자막` 목록에 계속 누적 표시
 - `normalized capture event -> live ledger -> preview / normalize / gate`
 - 글로벌 히스토리 + `rfind` suffix 기반 증분 추출
 - keepalive 기반 마지막 자막 `endTime` 갱신
@@ -61,8 +61,9 @@
 - JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
 - 중복 문장은 실시간 수집 단계에서 먼저 차단하고, export 정규화는 마지막 안전망으로만 한 번 더 적용합니다
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
-- 패널 / popup의 수동 저장과 파일 내보내기는 현재 화면에 보이는 `수집된 자막` 누적 목록을 단일 기준으로 사용하고, 목록이 비어 있을 때만 정제된 `실시간 내용` preview를 단일 항목으로 materialize 합니다
-- 자동 저장, 중지, pagehide / beforeunload 직전 snapshot은 prepared state 기준으로 생성합니다
+- 패널 / popup의 수동 저장과 파일 내보내기는 확정되어 `state.entries`에 들어간 `수집된 자막` 누적 목록만 사용합니다
+- 자동 저장, 중지, pagehide / beforeunload 직전 snapshot도 preview-only 텍스트를 materialize 하지 않고 확정 entry만 저장합니다
+- 하늘색 등 배경 highlight 또는 background-image highlight가 남아 있는 `인식 중` 자막은 확정 전까지 commit / 저장 / export 대상에서 제외합니다
 
 ## 1차 범위
 
@@ -165,8 +166,8 @@ npm run build
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
 3. `자막 모으기`를 눌러 수집을 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 표시한다
-5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 누적 목록을 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry가 이 목록에 계속 쌓인다
-6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 현재 패널에 보이는 `수집된 자막` 누적 목록을 기준으로 하고, 목록이 비어 있을 때만 placeholder/noise/duplicate 제거 뒤에도 의미가 남는 `실시간 내용` preview를 단일 항목으로 저장한다
+5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 확정된 누적 목록을 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry만 이 목록에 남는다
+6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
@@ -202,6 +203,8 @@ npm run build
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
 - 본회의 fallback capture에서는 container raw를 잘라내지 않고 유지하며, structured row가 비어 있어도 이미 commit된 entry를 `수집된 자막` 패널 목록으로 재구성합니다
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
+- structured + stable row 인 경우에만 commit이 발생하고, raw/container fallback 또는 unstable row는 `실시간 내용` preview만 갱신합니다
+- 하늘색 등 불투명 배경이나 background-image highlight가 남아 있는 `인식 중` 자막은 미확정으로 보고 fallback/container 읽기와 commit 양쪽에서 제외합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도하며, 실제 성공은 `visible && (hasText || controlActive)` 기준으로 판정합니다
 - 패널 notice는 `정상 수집 / 자동 조정 중 수집 / reset 복구 중`을 구분해 표시하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 경고 문구 대신 중립 안내를 사용합니다
 - 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
@@ -218,14 +221,14 @@ npm run build
 ### pipeline
 
 - `normalized capture event -> live reconcile -> normalize -> preview gate -> history/rfind suffix -> placeholder/noise filter -> merge/add`
-- structured row 가 안정적으로 잡히면 row별 baseline과 글로벌 history를 함께 써서 commit/update를 분리하고, 아니면 raw/container fallback으로 내려갑니다
+- structured row 가 안정적으로 잡히면 row별 baseline과 글로벌 history를 함께 써서 commit/update를 분리하고, 아니면 raw/container fallback preview로만 내려갑니다
 - `confirmedCompact`, `trailingSuffix`, history anchor, overlap fallback, soft resync 의미론을 유지합니다
 - recent compact tail 기반 중복 차단
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 noise filter 설정과 무관하게 commit/persist/export 대상에서 제외합니다
 - 기본 noise filter는 한글/영문 중심으로 언어 텍스트를 판정하며, 외국어 원문을 최대한 보존하려면 options에서 noise filter를 꺼야 합니다
 - export 정규화는 마지막 안전망으로만 exact carry-over duplicate 를 한 번 더 정리합니다
 - keepalive / reset / finalize 처리
-- 자동 저장 / 중지 / pagehide 계열 prepared snapshot은 `flushPendingPreviews`를 통해 현재 preview를 clone 상태에 materialize한 뒤 저장합니다
+- 자동 저장 / 중지 / pagehide 계열 prepared snapshot은 preview-only 텍스트를 materialize 하지 않고 이미 확정된 entry만 저장합니다
 
 ### storage
 

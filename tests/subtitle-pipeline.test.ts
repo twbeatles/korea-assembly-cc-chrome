@@ -185,7 +185,7 @@ describe("subtitle pipeline", () => {
     expect(result.state.confirmedCompact.length).toBe(1000);
   });
 
-  it("materializes preview-only text when preparing a save/export snapshot", () => {
+  it("does not materialize preview-only text when preparing a save/export snapshot", () => {
     const now = Date.parse("2026-03-11T08:35:00.000Z");
     const state = createEmptySessionState("http://test.com", "Test");
     state.status = "running";
@@ -196,13 +196,11 @@ describe("subtitle pipeline", () => {
     const flushed = flushPendingPreviews(state, now);
 
     expect(state.entries).toHaveLength(0);
-    expect(flushed.entries).toHaveLength(1);
-    expect(flushed.entries[0].text).toBe("아직 commit되지 않은 자막");
-    expect(flushed.entries[0].sourceSelector).toBe("#viewSubtit");
-    expect(flushed.entries[0].sourceFramePath).toEqual([0]);
+    expect(flushed.entries).toHaveLength(0);
+    expect(flushed.previewText).toBe("아직 commit되지 않은 자막");
   });
 
-  it("does not materialize duplicate or noise-only preview text when flushing", () => {
+  it("preserves committed entries and ignores preview-only flushes", () => {
     const now = Date.parse("2026-03-11T08:40:00.000Z");
 
     const duplicateState = createEmptySessionState("http://test.com", "Test");
