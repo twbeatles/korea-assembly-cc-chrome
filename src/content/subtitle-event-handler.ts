@@ -1,8 +1,34 @@
-import type { CaptureMode } from "../core/live-capture";
+import type { CaptureMode, NormalizedCaptureEvent } from "../core/live-capture";
 import type { ObservedSubtitleRow } from "../shared/message-types";
 import { resolveCaptureNotice } from "./capture-notice";
 
 export const RESET_CAPTURE_NOTICE_MIN_MS = 2000;
+
+export interface CaptureCommitAnalysis {
+  previewText: string;
+  stableRows: ObservedSubtitleRow[];
+  hasUnstableRows: boolean;
+  shouldCommit: boolean;
+}
+
+export function analyzeCaptureCommit(input: Pick<NormalizedCaptureEvent, "captureMode" | "previewText" | "rows">): CaptureCommitAnalysis {
+  if (input.captureMode !== "structured") {
+    return {
+      previewText: input.previewText,
+      stableRows: [],
+      hasUnstableRows: false,
+      shouldCommit: false,
+    };
+  }
+
+  const stableRows = input.rows.filter((row) => !row.unstableKey);
+  return {
+    previewText: input.previewText,
+    stableRows,
+    hasUnstableRows: stableRows.length !== input.rows.length,
+    shouldCommit: stableRows.length > 0,
+  };
+}
 
 export function hasOnlyStableRows(rows: ObservedSubtitleRow[]): boolean {
   return rows.length > 0 && rows.every((row) => !row.unstableKey);
@@ -11,8 +37,13 @@ export function hasOnlyStableRows(rows: ObservedSubtitleRow[]): boolean {
 export function shouldCommitCaptureEvent(input: {
   captureMode: CaptureMode;
   rows: ObservedSubtitleRow[];
+  previewText?: string;
 }): boolean {
-  return input.captureMode === "structured" && hasOnlyStableRows(input.rows);
+  return analyzeCaptureCommit({
+    captureMode: input.captureMode,
+    rows: input.rows,
+    previewText: input.previewText ?? "",
+  }).shouldCommit;
 }
 
 export function resolveRuntimeCaptureNotice(input: {

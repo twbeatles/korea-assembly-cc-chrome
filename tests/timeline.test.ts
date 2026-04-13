@@ -29,9 +29,9 @@ describe("timeline export filename", () => {
     );
   });
 
-  it("sanitizes invalid characters from the final basename", () => {
-    expect(buildExportFilename(buildSession(), "json", "{committee}/archive")).toBe(
-      "정무위원회archive.json",
+  it("sanitizes every invalid character from the final basename", () => {
+    expect(buildExportFilename(buildSession(), "json", "{committee}/archive:bad|name?")).toBe(
+      "정무위원회archivebadname.json",
     );
   });
 });

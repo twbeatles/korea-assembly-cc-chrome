@@ -49,6 +49,26 @@ describe("settings store", () => {
     );
   });
 
+  it("falls back to defaults when numeric settings are fractional", () => {
+    const sanitized = sanitizeSettings({
+      runningAutoSaveDebounceMs: 800.5,
+      recentCopyLineCount: 2.5,
+      recentDuplicateMinLength: 8.25,
+      keepaliveIntervalMs: 1000.1,
+    });
+
+    expect(sanitized.runningAutoSaveDebounceMs).toBe(
+      DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+    );
+    expect(sanitized.recentCopyLineCount).toBe(
+      DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
+    );
+    expect(sanitized.recentDuplicateMinLength).toBe(
+      DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
+    );
+    expect(sanitized.keepaliveIntervalMs).toBe(DEFAULT_EXTENSION_SETTINGS.keepaliveIntervalMs);
+  });
+
   it("migrates legacy noiseMinLength into the new duplicate setting", () => {
     const sanitized = sanitizeSettings({
       noiseMinLength: 15,

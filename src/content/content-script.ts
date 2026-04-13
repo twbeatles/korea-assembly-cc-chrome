@@ -114,7 +114,7 @@ import {
   buildPreparedSessionState as prepareSessionState,
   createResetSessionState,
 } from "./session-lifecycle";
-import { resolveRuntimeCaptureNotice, shouldCommitCaptureEvent } from "./subtitle-event-handler";
+import { analyzeCaptureCommit, resolveRuntimeCaptureNotice } from "./subtitle-event-handler";
 
 const isTopFrame = window.top === window;
 const localFramePath = computeCurrentFramePath();
@@ -889,24 +889,21 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       return;
     }
 
-    const shouldCommitEvent = shouldCommitCaptureEvent({
-      captureMode: captureEvent.captureMode,
-      rows: captureEvent.rows,
-    });
+    const captureCommit = analyzeCaptureCommit(captureEvent);
     const noticeChanged = setPanelNotice(
       resolveRuntimeCaptureNotice({
         captureMode: captureEvent.captureMode,
         observerActive: state.observerActive,
-        hasStableRows: shouldCommitEvent,
+        hasStableRows: captureCommit.shouldCommit,
         lastCommittedResetAt: state.lastCommittedResetAt,
         now,
       }),
     );
 
-    if (shouldCommitEvent) {
+    if (captureCommit.shouldCommit) {
       const changed = applyStructuredRowsEvent(
-        captureEvent.rows,
-        captureEvent.previewText,
+        captureCommit.stableRows,
+        captureCommit.previewText,
         now,
         event.selector,
         event.framePath,

@@ -1,6 +1,7 @@
 import { DEFAULT_EXTENSION_SETTINGS } from "./constants";
 
 const FILENAME_PATTERN_INVALID_CHAR_REGEX = /[\\/*?:"<>|]/;
+const FILENAME_PATTERN_INVALID_CHAR_GLOBAL_REGEX = /[\\/*?:"<>|]/g;
 const ALLOWED_FILENAME_PLACEHOLDERS = ["{date}", "{time}", "{committee}"] as const;
 
 export function validateFilenamePattern(pattern: string): string | undefined {
@@ -37,5 +38,5 @@ export function sanitizeFilenamePattern(
 }
 
 export function sanitizeFilenameBasename(value: string): string {
-  return value.replace(FILENAME_PATTERN_INVALID_CHAR_REGEX, "").trim();
+  return value.replace(FILENAME_PATTERN_INVALID_CHAR_GLOBAL_REGEX, "").trim();
 }

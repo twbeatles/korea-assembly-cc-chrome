@@ -9,6 +9,11 @@ import {
   getOrCreatePersistedFrameForwardNonce,
   rotatePersistedFrameForwardNonce,
 } from "./frame-forward-nonce-store";
+import {
+  downloadExportWithFallback,
+  handleBackgroundCommand,
+  isBackgroundCommandMessage,
+} from "./service-worker-commands";
 import type {
   BackgroundCommandMessage,
   BackgroundCommandResponse,
@@ -291,102 +296,46 @@ async function downloadExport(
   content: string,
   mimeType: string,
 ): Promise<number> {
-  let blobUrl = "";
-  try {
-    blobUrl = await requestBlobUrl(content, mimeType);
-    const downloadId = await downloadByUrl(blobUrl, filename);
-    blobDownloadUrls.set(downloadId, blobUrl);
-    await persistBlobDownloadUrls();
-    return downloadId;
-  } catch (blobError) {
-    if (blobUrl) {
-      await revokeBlobUrl(blobUrl);
-    }
-    console.warn("[service-worker] Blob export download failed, falling back to data URL", blobError);
-    return downloadByUrl(toDataUrl(content, mimeType), filename);
-  }
-}
-
-function isBackgroundCommandMessage(message: unknown): message is BackgroundCommandMessage {
-  if (!message || typeof message !== "object" || !("type" in message)) {
-    return false;
-  }
-
-  const type = (message as { type?: string }).type;
-  return (
-    type === "ENSURE_CONTENT_SCRIPT" ||
-    type === "GET_FRAME_FORWARD_NONCE" ||
-    type === "PERSIST_SESSION_RECORD" ||
-    type === "DELETE_SESSION_RECORD" ||
-    type === "DOWNLOAD_REQUEST" ||
-    type === "OPEN_HISTORY_PAGE" ||
-    type === "OPEN_OPTIONS_PAGE" ||
-    type === "OPEN_DIAGNOSTICS_PAGE"
-  );
+  return downloadExportWithFallback(filename, content, mimeType, {
+    requestBlobUrl,
+    downloadByUrl,
+    persistBlobDownload: async (downloadId, blobUrl) => {
+      blobDownloadUrls.set(downloadId, blobUrl);
+      await persistBlobDownloadUrls();
+    },
+    revokeBlobUrl,
+    toDataUrl,
+    onBlobFallbackError: (error) => {
+      console.warn("[service-worker] Blob export download failed, falling back to data URL", error);
+    },
+  });
 }
 
 async function handleMessage(
   message: BackgroundCommandMessage,
   sender: chrome.runtime.MessageSender,
 ): Promise<BackgroundCommandResponse> {
-  switch (message.type) {
-    case "ENSURE_CONTENT_SCRIPT":
-      if (!supportsAssemblyPage(message.url)) {
-        return {
-          ok: false,
-          error: "국회 의사중계 페이지에서만 동작합니다.",
-        };
-      }
-      if (await waitForTopFrameReady(message.tabId)) {
-        return { ok: true, ready: true, requiresReload: false };
-      }
-
-      try {
-        await injectConfiguredContentScripts(message.tabId);
-      } catch (error) {
-        console.warn("[service-worker] Failed to inject configured content scripts", error);
-      }
-
-      if (await waitForTopFrameReady(message.tabId)) {
-        return { ok: true, ready: true, requiresReload: false };
-      }
-
-      return { ok: true, ready: false, requiresReload: true };
-    case "GET_FRAME_FORWARD_NONCE": {
-      const tabId = sender.tab?.id;
-      if (typeof tabId !== "number") {
-        return { ok: false, error: "탭 정보를 확인하지 못했습니다." };
-      }
-      return { ok: true, nonce: await getOrCreateStoredFrameForwardNonce(tabId) };
-    }
-    case "PERSIST_SESSION_RECORD": {
+  return handleBackgroundCommand(message, sender, {
+    supportsAssemblyPage,
+    waitForTopFrameReady,
+    injectConfiguredContentScripts,
+    onInjectConfiguredContentScriptsError: (error) => {
+      console.warn("[service-worker] Failed to inject configured content scripts", error);
+    },
+    getOrCreateStoredFrameForwardNonce,
+    persistSessionRecord: async (record) => {
       const saved =
-        message.record.status === "running"
-          ? await updateRunningSession(message.record)
-          : await saveSession(message.record);
-      return { ok: true, updatedAt: saved.updatedAt };
-    }
-    case "DELETE_SESSION_RECORD":
-      await deleteSession(message.sessionId);
-      return { ok: true };
-    case "DOWNLOAD_REQUEST": {
-      const downloadId = await downloadExport(
-        message.filename,
-        message.content,
-        message.mimeType,
-      );
-      return { ok: true, downloadId };
-    }
-    case "OPEN_HISTORY_PAGE":
-      await openHistoryPage();
-      return { ok: true };
-    case "OPEN_OPTIONS_PAGE":
-      await openOptionsPage();
-      return { ok: true };
-    case "OPEN_DIAGNOSTICS_PAGE":
-      await openDiagnosticsPage(message.tabId ?? sender.tab?.id);
-      return { ok: true };
-  }
+        record.status === "running"
+          ? await updateRunningSession(record)
+          : await saveSession(record);
+      return { updatedAt: saved.updatedAt };
+    },
+    deleteSessionRecord: deleteSession,
+    downloadExport,
+    openHistoryPage,
+    openOptionsPage,
+    openDiagnosticsPage,
+  });
 }
 
 async function runStartupSessionCleanup(): Promise<void> {

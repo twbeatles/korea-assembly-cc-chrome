@@ -41,6 +41,7 @@ npm install
 npm run lint
 npm run typecheck
 npm run test
+npm run test:coverage
 npm run build
 ```
 
@@ -55,6 +56,7 @@ npm run build
 - 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
 - `수집된 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback으로만 잡혀도 `실시간 내용` 누적 원문이 유지되고 `수집된 자막` 목록이 commit된 entry 기준으로 계속 쌓이는지 확인
+- structured row snapshot 안에 stable/unstable row가 함께 있을 때 stable row만 `수집된 자막` 목록과 저장/export 대상에 반영되고 unstable row는 preview-only로 남는지 확인
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구가 저장/export/누적 목록에 들어가지 않는지 확인
 - 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
 - 패널의 `저장 / 내보내기` 버튼에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
@@ -70,9 +72,12 @@ npm run build
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
+- history `JSON 가져오기`에서 incoming `running` 레코드가 `saved`로 정규화되어 stale `수집 중` 배지가 남지 않는지 확인
 - history `전체 JSON 백업` / `JSON 가져오기` 중 현재 단계, 진행량, 취소 버튼이 노출되고 중복 JSON 작업만 잠기는지 확인
 - `JSON 가져오기` 취소 시 이미 저장된 일부 레코드는 유지되고 부분 완료 요약 메시지가 표시되는지 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이, 저장 파일 이름 규칙 검증 확인
+- options 숫자 필드가 정수만 허용하고 소수 입력에는 inline 오류를 표시하며 저장을 막는지 확인
+- export filename 생성 시 금지 문자가 여러 개 있어도 모두 제거되는지 확인
 - options noise filter 설명이 한글/영문 중심 판정과 foreign text 보존 시 filter off 필요성을 안내하는지 확인
 - stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
 - popup / 패널의 `수집 진단` 버튼이 options 페이지의 `수집 진단` 탭으로 연결되고, 그 탭에서 수집 방식, observer, selector, frame path 진단이 현재 상태와 맞는지 확인
@@ -170,6 +175,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.6-cw
 - `npm run lint` 통과
 - `npm run typecheck` 통과
 - `npm run test` 통과
+- `npm run test:coverage` 통과
 - `npm run build` 통과
 - `dist/manifest.json` 생성 확인
 - `dist/injected-observer.js` 생성 확인

@@ -143,6 +143,7 @@ npm run build
 - stop 시 현재 state 기준으로 finalize
 - 수동 저장 / export 는 현재 패널에 보이는 확정 `수집된 자막` row 만 직렬화하고, preview-only 텍스트는 materialize 하지 않음
 - unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 flush 후 entry 로 반영하지 않음
+- structured row snapshot 안에 stable/unstable row가 함께 있으면 stable row subset만 commit 대상으로 쓰고, unstable row는 preview-only로 남겨야 함
 
 ## 7. persistence 규칙
 
@@ -197,6 +198,7 @@ npm run build
 - popup `SAVE_SESSION`은 패널과 동일한 `hasPersistableContent` 기준일 때만 활성화되어야 하고, 빈 저장 요청은 `저장할 자막이 아직 없습니다.`로 응답해야 함
 - subtitle auto activation 성공은 `visible && (hasText || controlActive)`로 판정해야 함
 - options 숫자 필드는 draft string + inline validation 패턴을 유지해야 함
+- options / storage 숫자 설정은 모두 정수만 허용해야 하며, UI `step=1` 과 storage sanitize 최소값 정책이 일치해야 함
 
 ## 8. exporter 규칙
 
@@ -206,6 +208,7 @@ npm run build
 - 수동 `saveSession` / `exportSessionData` 는 현재 패널에 보이는 확정 `수집된 자막` 목록만 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 - 다운로드는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback
+- export filename safety sanitize 는 남아 있는 금지 문자를 첫 1회가 아니라 전체 제거해야 합니다.
 
 ## 9. known limits
 
@@ -221,6 +224,16 @@ npm run build
 - `legacy/` 는 로컬 참조 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
 - 변경 후에는 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 실행합니다.
+
+## Sync Delta (2026-04-13)
+
+Use this delta as the current operational baseline.
+
+- structured row snapshot 안에 stable/unstable row가 함께 있어도 stable row만 commit 하고, unstable row는 preview-only 로 남깁니다.
+- `importSessionRecords()` 는 incoming `running` 상태를 모두 `saved` 로 정규화합니다.
+- export filename safety sanitize 는 남아 있는 금지 문자를 첫 1회가 아니라 전체 제거해야 합니다.
+- options / storage numeric settings 는 정수만 허용하며, 소수 입력은 저장 불가입니다.
+- 기본 회귀 검증은 `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:coverage`, `npm run build` 기준으로 유지합니다.
 
 ## Sync Delta (2026-03-19)
 
@@ -334,7 +347,7 @@ Use this delta as the current operational baseline.
 - `수집된 자막` 목록은 bounded live ledger 와 별개로 세션 전체 누적 committed subtitles 를 보여 줍니다. `liveLedgerMaxRows = 300` 은 reconciliation cap 일 뿐 저장/export 기준이 아닙니다.
 - 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 누적 `수집된 자막` 목록만 source of truth 로 사용하며, preview-only fallback 은 materialize 하지 않습니다.
 - popup / in-page panel 의 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되며, 이는 committed subtitle 존재 여부만 의미합니다.
-- structured + stable row 인 경우에만 commit 이 일어나고, raw/container fallback 또는 unstable row 는 preview 전용입니다.
+- structured row snapshot에서는 stable row만 commit 이 일어나고, 같은 snapshot 안의 unstable row와 raw/container fallback은 preview 전용입니다.
 - 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 미확정으로 보고 commit/persist/export 대상에서 제외합니다.
 - replay queue 조회는 storage snapshot + memory snapshot 을 freshness 기준으로 merge 하며, 동시 queue insert 를 잃지 않아야 합니다.
 - 회의명 파서는 trailing `|` branding 만 제거하고 날짜 / 회차 / 하이픈 텍스트는 유지합니다.

@@ -97,6 +97,22 @@ describe("options app", () => {
     expect(screen.getByRole("button", { name: "저장" }).hasAttribute("disabled")).toBe(true);
   });
 
+  it("blocks save and shows a field error for a fractional numeric draft", async () => {
+    render(<App />);
+    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+
+    const recentCopyInput = screen.getByRole("spinbutton", {
+      name: "최근 복사 줄 수",
+    }) as HTMLInputElement;
+
+    fireEvent.change(recentCopyInput, { target: { value: "2.5" } });
+
+    await waitFor(() => {
+      expect(screen.getByText("정수만 입력할 수 있습니다.")).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: "저장" }).hasAttribute("disabled")).toBe(true);
+  });
+
   it("resets numeric drafts and clears field errors after reset", async () => {
     render(<App />);
     await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");

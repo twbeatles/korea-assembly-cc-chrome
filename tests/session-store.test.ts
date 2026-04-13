@@ -203,6 +203,26 @@ describe("session store", () => {
     expect(loaded?.note).toBe("");
   });
 
+  it("normalizes imported running sessions to saved records before storage", async () => {
+    await importSessionRecords([
+      {
+        ...buildSession("session_import_running", "running"),
+        updatedAt: "2026-03-10T09:07:00.000Z",
+      },
+    ]);
+
+    const loaded = await loadSession("session_import_running");
+    const summary = await closeRunningSessionsOnStartup();
+
+    expect(loaded?.status).toBe("saved");
+    expect(loaded?.endedAt).toBe("2026-03-10T09:07:00.000Z");
+    expect(summary).toEqual({
+      detectedCount: 0,
+      closedCount: 0,
+      failedCount: 0,
+    });
+  });
+
   it("closes stale running sessions on startup", async () => {
     await updateRunningSession(buildSession("session_running_1", "running"));
     await saveSession(buildSession("session_saved_1", "saved"));

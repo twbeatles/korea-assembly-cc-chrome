@@ -46,7 +46,8 @@
 - history 상세 entry 체크박스 기반 부분 선택 복사 / 부분 export
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
 - history는 store-level 페이지네이션을 사용하며, 전체 JSON 백업 / JSON 가져오기는 단계별 진행률과 취소를 제공합니다
-- options의 저장 파일 이름 규칙은 금지 문자와 지원하지 않는 placeholder를 저장 전에 검증합니다
+- options의 저장 파일 이름 규칙은 금지 문자와 지원하지 않는 placeholder를 저장 전에 검증하고, export 직전에는 남은 금지 문자를 전역 제거해 한 번 더 정리합니다
+- options의 숫자 설정은 정수만 허용하며, 소수 입력은 inline 오류로 저장을 막습니다
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 수집된 자막/저장/export 대상에서 제외합니다
 - 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각, queue write / replay / cleanup phase별 저장 복구 오류 확인
 - 패널 / popup 에서 수집 진단 화면 진입
@@ -63,6 +64,7 @@
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
 - 패널 / popup의 수동 저장과 파일 내보내기는 확정되어 `state.entries`에 들어간 `수집된 자막` 누적 목록만 사용합니다
 - 자동 저장, 중지, pagehide / beforeunload 직전 snapshot도 preview-only 텍스트를 materialize 하지 않고 확정 entry만 저장합니다
+- structured row snapshot에 stable/unstable row가 함께 있어도 stable row만 commit되고 unstable row는 preview-only로 남습니다
 - 하늘색 등 배경 highlight 또는 background-image highlight가 남아 있는 `인식 중` 자막은 확정 전까지 commit / 저장 / export 대상에서 제외합니다
 
 ## 1차 범위
@@ -141,6 +143,12 @@ npm run test
 npm run build
 ```
 
+커버리지 threshold까지 포함한 회귀 검증은 아래 명령을 추가로 사용합니다.
+
+```bash
+npm run test:coverage
+```
+
 ### 4. 빌드
 
 ```bash
@@ -203,7 +211,7 @@ npm run build
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다
 - 본회의 fallback capture에서는 container raw를 잘라내지 않고 유지하며, structured row가 비어 있어도 이미 commit된 entry를 `수집된 자막` 패널 목록으로 재구성합니다
 - 새 row는 바로 append하지 않고 carry-over trim과 글로벌 히스토리 비교를 거쳐 실제 신규 delta만 확정합니다
-- structured + stable row 인 경우에만 commit이 발생하고, raw/container fallback 또는 unstable row는 `실시간 내용` preview만 갱신합니다
+- structured row snapshot에서는 stable row만 commit이 발생하고, 같은 snapshot 안의 unstable row와 raw/container fallback은 `실시간 내용` preview만 갱신합니다
 - 하늘색 등 불투명 배경이나 background-image highlight가 남아 있는 `인식 중` 자막은 미확정으로 보고 fallback/container 읽기와 commit 양쪽에서 제외합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도하며, 실제 성공은 `visible && (hasText || controlActive)` 기준으로 판정합니다
 - 패널 notice는 `정상 수집 / 자동 조정 중 수집 / reset 복구 중`을 구분해 표시하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 경고 문구 대신 중립 안내를 사용합니다
@@ -242,9 +250,11 @@ npm run build
 - queue write가 실패해도 메모리 queue는 유지되며, `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError` diagnostics를 통해 phase별 실패를 추적합니다
 - 브라우저/확장 cold start 시에는 queued stopped snapshot replay를 먼저 수행한 뒤 남아 있던 `running` 세션 cleanup을 진행하고, replay/cleanup 결과는 `chrome.storage.local` diagnostics snapshot으로 남깁니다
 - JSON import는 허용 필드 재구성 기준으로 sanitize 하며, 지원하지 않는 backup wrapper version과 parse 불가능한 timestamp를 가져오기 단계에서 거부합니다
+- JSON import는 들어오는 `running` 레코드를 모두 `saved`로 정규화해 실제로 종료된 기록이 `수집 중`으로 남지 않게 합니다
 - 전체 JSON 백업은 페이지 단위로 라이브러리를 읽어 진행률을 갱신하고, JSON 가져오기는 파일 읽기 -> JSON 파싱 -> sanitize/dedupe -> 저장 단계로 나눠 진행률과 취소를 처리합니다
 - 설정은 `chrome.storage.local`
-- `filenamePattern` 은 `{date}`, `{committee}`, `{time}` 만 허용하며, 금지 문자가 있으면 options에서 저장을 막고 export 직전에도 한 번 더 안전하게 정리합니다
+- `filenamePattern` 은 `{date}`, `{committee}`, `{time}` 만 허용하며, 금지 문자가 있으면 options에서 저장을 막고 export 직전에도 남은 금지 문자를 모두 제거합니다
+- 숫자 설정은 모두 정수만 허용하며, UI draft 검증과 storage sanitize가 같은 최소값 정책을 공유합니다
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
 - 세션 레코드에는 `starred`, `pinnedAt`, `note` 메타데이터가 포함되며, history의 즐겨찾기/메모 기능과 JSON 백업/복원에서 함께 유지됩니다
 - fallback 레코드가 없을 때 history paging/count 는 IndexedDB index 기반으로 처리해 전체 preload 비용을 줄입니다

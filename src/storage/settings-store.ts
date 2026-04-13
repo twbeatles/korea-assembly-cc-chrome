@@ -18,9 +18,9 @@ function getChromeLocalStorage(): typeof chrome.storage.local | null {
   return chrome.storage.local;
 }
 
-function sanitizeNumber(value: unknown, fallback: number, minimum: number): number {
+function sanitizeInteger(value: unknown, fallback: number, minimum: number): number {
   const parsed = Number(value);
-  if (Number.isFinite(parsed) && parsed >= minimum) {
+  if (Number.isInteger(parsed) && parsed >= minimum) {
     return parsed;
   }
   return fallback;
@@ -34,17 +34,17 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       typeof settings.autoScroll === "boolean"
         ? settings.autoScroll
         : DEFAULT_EXTENSION_SETTINGS.autoScroll,
-    keepaliveIntervalMs: sanitizeNumber(
+    keepaliveIntervalMs: sanitizeInteger(
       settings.keepaliveIntervalMs,
       DEFAULT_EXTENSION_SETTINGS.keepaliveIntervalMs,
       250,
     ),
-    pollingFallbackIntervalMs: sanitizeNumber(
+    pollingFallbackIntervalMs: sanitizeInteger(
       settings.pollingFallbackIntervalMs,
       DEFAULT_EXTENSION_SETTINGS.pollingFallbackIntervalMs,
       100,
     ),
-    maxBufferLength: sanitizeNumber(
+    maxBufferLength: sanitizeInteger(
       settings.maxBufferLength,
       DEFAULT_EXTENSION_SETTINGS.maxBufferLength,
       1000,
@@ -53,7 +53,7 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       typeof settings.noiseFilterEnabled === "boolean"
         ? settings.noiseFilterEnabled
         : DEFAULT_EXTENSION_SETTINGS.noiseFilterEnabled,
-    recentDuplicateMinLength: sanitizeNumber(
+    recentDuplicateMinLength: sanitizeInteger(
       legacyRecentDuplicateMinLength,
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
       1,
@@ -67,12 +67,12 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       typeof settings.runningAutoSaveEnabled === "boolean"
         ? settings.runningAutoSaveEnabled
         : DEFAULT_EXTENSION_SETTINGS.runningAutoSaveEnabled,
-    runningAutoSaveDebounceMs: sanitizeNumber(
+    runningAutoSaveDebounceMs: sanitizeInteger(
       settings.runningAutoSaveDebounceMs,
       DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
       250,
     ),
-    recentCopyLineCount: sanitizeNumber(
+    recentCopyLineCount: sanitizeInteger(
       settings.recentCopyLineCount,
       DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
       1,

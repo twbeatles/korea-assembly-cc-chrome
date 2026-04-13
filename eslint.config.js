@@ -15,6 +15,7 @@ export default tseslint.config(
       "iiadnfahoocbannfpgfgbommblpagacl",
       "tmp-*.js",
       "tmp-*.cjs",
+      "scripts/resize-marquee.js",
     ],
   },
   js.configs.recommended,

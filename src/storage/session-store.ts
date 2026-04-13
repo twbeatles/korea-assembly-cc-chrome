@@ -367,6 +367,16 @@ function normalizeSessionRecord(
   };
 }
 
+function normalizeImportedSessionStatus(
+  status: StoredSessionRecord["status"] | undefined,
+): SessionRecord["status"] {
+  if (status === "running") {
+    return "saved";
+  }
+
+  return status ?? "saved";
+}
+
 function mergeEditableSessionMetadata(
   record: SessionRecord,
   existingRecord?: SessionRecord,
@@ -1376,7 +1386,7 @@ export async function importSessionRecords(
     throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
     const normalized = normalizeSessionRecord(session, {
       preserveTimestamps: true,
-      forceStatus: session.status ?? "saved",
+      forceStatus: normalizeImportedSessionStatus(session.status),
     });
     const current = importedById.get(normalized.id);
     if (!current || normalized.updatedAt.localeCompare(current.updatedAt) > 0) {

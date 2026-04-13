@@ -117,6 +117,10 @@ function validateNumberDraft(field: NumberField, value: string): string | undefi
     return "숫자만 입력할 수 있습니다.";
   }
 
+  if (!Number.isInteger(numericValue)) {
+    return "정수만 입력할 수 있습니다.";
+  }
+
   if (numericValue < getFieldMin(field)) {
     return `${getFieldMin(field)} 이상이어야 합니다.`;
   }
@@ -648,6 +652,7 @@ export default function App() {
                       <input
                         type="number"
                         min={getFieldMin(field)}
+                        step={1}
                         aria-label={getFieldLabel(field)}
                         value={numberDrafts[field]}
                         aria-invalid={Boolean(numberFieldErrors[field])}
@@ -753,6 +758,7 @@ export default function App() {
                           <input
                             type="number"
                             min={getFieldMin(field)}
+                            step={1}
                             aria-label={getFieldLabel(field)}
                             value={numberDrafts[field]}
                             aria-invalid={Boolean(numberFieldErrors[field])}

@@ -112,6 +112,7 @@ offscreen.html
 - `finalizeSession` 은 현재 state 기준으로 종료 처리합니다.
 - 수동 저장 / export 는 현재 패널에 보이는 확정 `수집된 자막` row 만 직렬화하며, preview-only 텍스트는 저장 대상으로 materialize 하지 않습니다.
 - unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 clone state entry 로 승격하지 않고, 확정 entry 만 저장합니다.
+- structured row snapshot 안에 stable/unstable row가 섞여 있으면 stable row subset만 commit 대상으로 내려가고, unstable row는 preview-only로 남겨야 합니다.
 
 ## 6. noise filtering 규칙
 
@@ -167,6 +168,7 @@ offscreen.html
 - replay / cleanup 결과는 `chrome.storage.local` diagnostics snapshot 으로 저장되며 options `저장 복구 상태`에 노출됩니다.
 - `closeRunningSessionsOnStartup` 는 숫자 하나가 아니라 `detected / closed / failed` 요약을 반환해야 합니다.
 - JSON import 는 raw session spread 가 아니라 allow-list sanitize 후 normalize 순서를 유지해야 하며, unsupported wrapper version 과 invalid timestamp 는 reject 해야 합니다.
+- import 경계에서는 incoming `running` 세션을 모두 `saved` 로 정규화해 실제로 종료된 기록이 stale `수집 중` 상태로 남지 않게 해야 합니다.
 
 ### 7.3 UX 보강 규칙
 
@@ -198,6 +200,7 @@ offscreen.html
 - popup `SAVE_SESSION`은 패널과 같은 `hasPersistableContent` 판정으로만 활성화해야 합니다. 즉 누적 `수집된 자막`이 1건 이상 있을 때만 허용되며, preview-only fallback 은 저장 가능 조건에 포함하지 않습니다. 빈 저장 요청은 패널/popup 모두 `저장할 자막이 아직 없습니다.`로 응답해야 합니다.
 - 자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다.
 - options 숫자 필드는 canonical number state 와 별도 draft string state 를 유지하고, invalid draft 는 inline field error 로 표시하며 저장을 막아야 합니다.
+- 옵션 숫자 설정은 모두 정수만 허용해야 하며, UI `step=1` 과 storage sanitize 최소값 정책이 일치해야 합니다.
 
 ## 8. 작업 시 주의사항
 
@@ -215,6 +218,16 @@ offscreen.html
 - 배포 절차: `DEPLOYMENT.md`
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
+
+## Sync Delta (2026-04-13)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- structured row snapshot 안에 stable/unstable row가 함께 있어도 stable row만 commit 하고, unstable row는 preview-only 로 남깁니다.
+- `importSessionRecords()` 는 incoming `running` 상태를 모두 `saved` 로 정규화합니다.
+- export filename safety sanitize 는 남아 있는 금지 문자를 첫 1회가 아니라 전체 제거해야 합니다.
+- options / storage numeric settings 는 정수만 허용하며, 소수 입력은 저장 불가입니다.
+- 기본 회귀 검증은 `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:coverage`, `npm run build` 기준으로 유지합니다.
 
 ## Sync Delta (2026-03-23)
 
@@ -341,7 +354,7 @@ When editing this repository, align with the newly implemented behavior below.
 - `수집된 자막` 목록은 bounded live ledger 와 별개로 세션 전체 누적 committed subtitles 를 보여 주는 뷰입니다. `liveLedgerMaxRows = 300` 은 reconciliation cap 일 뿐 저장/export 기준이 아닙니다.
 - 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 누적 `수집된 자막` 목록만 source of truth 로 사용하며, preview-only fallback 은 materialize 하지 않습니다.
 - popup / in-page panel 의 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되며, 이는 committed subtitle 존재 여부만 의미합니다.
-- structured + stable row 인 경우에만 commit 이 일어나고, raw/container fallback 또는 unstable row 는 preview 전용입니다.
+- structured row snapshot에서는 stable row만 commit 이 일어나고, 같은 snapshot 안의 unstable row와 raw/container fallback은 preview 전용입니다.
 - 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 미확정으로 보고 commit/persist/export 대상에서 제외합니다.
 - `listQueuedExitPersistRecords()` 는 storage snapshot + memory snapshot 을 freshness 기준으로 in-place merge 하며, 동시 queue insert 를 잃지 않아야 합니다.
 - 회의명 파서는 trailing `|` branding 만 제거하고 날짜 / 회차 / 하이픈 텍스트는 유지해야 합니다.
