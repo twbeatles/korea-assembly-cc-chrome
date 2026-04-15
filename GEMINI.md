@@ -180,8 +180,9 @@ npm run build
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
 - session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
+- history 즐겨찾기/메모 저장은 전용 `updateSessionMetadata(sessionId, patch)` 경로를 사용해야 하며, stale detail snapshot 이 최신 `entries` / `subtitleCount` / `status` 를 덮어쓰면 안 됨
 - history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
-- 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원하며, import cancel 은 이미 저장된 부분 완료 레코드를 rollback 하지 않음
+- 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원하며, JSON import read phase 와 backup package phase 도 abort-aware 여야 하고 import cancel 은 이미 저장된 부분 완료 레코드를 rollback 하지 않음
 - history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함
 - 전체 JSON 백업은 view-layer preload 대신 store helper export payload 를 사용해야 함
 - `autoScroll` 이 꺼지면 `실시간 내용` / `수집된 자막` 강제 스크롤 금지
@@ -195,7 +196,9 @@ npm run build
 - session import 는 allow-list sanitize 후 normalize 해야 하며, unsupported wrapper version / invalid timestamp 는 reject 해야 함
 - 패널과 popup 은 `수집 진단` 화면 진입을 제공하고, capture mode, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 의 `수집 진단` 탭에서 표시
 - fallback/polling capture notice 는 실제 수집이 이어질 때 중립적 “수집 중 + 자동 조정” 톤을 유지해야 함
+- capture notice 는 기본 idle 안내만 숨기고, 수동 클릭 안내 / 오류 / 복구 / 액션 feedback 을 실제 텍스트로 보여줘야 함
 - popup `SAVE_SESSION`은 패널과 동일한 `hasPersistableContent` 기준일 때만 활성화되어야 하고, 빈 저장 요청은 `저장할 자막이 아직 없습니다.`로 응답해야 함
+- in-page panel `화면 비우기`는 `hasPersistableContent`와 별도 gating 을 사용해 running 상태이거나 preview/notice-only 상태에서도 직접 reset 가능해야 함
 - subtitle auto activation 성공은 `visible && (hasText || controlActive)`로 판정해야 함
 - options 숫자 필드는 draft string + inline validation 패턴을 유지해야 함
 - options / storage 숫자 설정은 모두 정수만 허용해야 하며, UI `step=1` 과 storage sanitize 최소값 정책이 일치해야 함
@@ -305,6 +308,8 @@ Use this delta as the current operational baseline.
 - `filenamePattern` now rejects forbidden path characters and unsupported placeholders, and invalid stored values are sanitized back to the default pattern.
 - The in-page `최근 N줄 복사` action now uses the prepared cumulative session snapshot instead of transient live rows, so it matches history semantics.
 - History long-running actions keep the shared busy state for 일반 작업 while full-library `JSON 백업` / `JSON 가져오기` use dedicated progress + cancel state and lock only the JSON task controls.
+- History favorite/note writes must patch only `starred` / `pinnedAt` / `note` against the latest stored session record and must not replay stale detail snapshots.
+- Full-library backup packaging and JSON import file reads are now cooperative abort-aware paths and should keep that behavior during future edits.
 - Options tests and inputs now rely on accessible field labels instead of display-text-only selectors.
 
 Keep this file aligned with the implementation closure below:

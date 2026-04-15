@@ -173,9 +173,9 @@ npm run build
 1. `https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*` 페이지를 연다
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
 3. `자막 모으기`를 눌러 수집을 시작한다
-4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 표시한다
+4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 실제 텍스트로 표시한다. 기본 idle 안내만 숨기고, 오류/복구/자동 조정 notice 는 패널에서 바로 확인할 수 있다
 5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 확정된 누적 목록을 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry만 이 목록에 남는다
-6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는다
+6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는다. 반대로 preview-only 상태나 notice-only 오류 상태에서도 `화면 비우기`로 패널을 직접 리셋할 수 있다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
@@ -214,10 +214,11 @@ npm run build
 - structured row snapshot에서는 stable row만 commit이 발생하고, 같은 snapshot 안의 unstable row와 raw/container fallback은 `실시간 내용` preview만 갱신합니다
 - 하늘색 등 불투명 배경이나 background-image highlight가 남아 있는 `인식 중` 자막은 미확정으로 보고 fallback/container 읽기와 commit 양쪽에서 제외합니다
 - 수집 시작 시 page function 호출/버튼 클릭을 통해 AI 자막 레이어 활성화를 먼저 시도하며, 실제 성공은 `visible && (hasText || controlActive)` 기준으로 판정합니다
-- 패널 notice는 `정상 수집 / 자동 조정 중 수집 / reset 복구 중`을 구분해 표시하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 경고 문구 대신 중립 안내를 사용합니다
+- 패널 notice는 기본 idle 안내만 숨기고, `정상 수집 / 자동 조정 중 수집 / reset 복구 중 / 수동 클릭 안내 / 오류·액션 피드백`을 실제 텍스트로 구분해 표시합니다
 - 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 - 저장 가능한 자막이 없을 때 `SAVE_SESSION` 요청은 조용히 무시하지 않고 패널/popup 모두 `저장할 자막이 아직 없습니다.` 피드백을 남깁니다
+- 패널 `화면 비우기`는 저장/복사/export 와 별도 gating을 사용해, running 상태이거나 preview/notice가 남아 있을 때도 수동 reset 을 허용합니다
 
 ### injected observer
 
@@ -251,12 +252,13 @@ npm run build
 - 브라우저/확장 cold start 시에는 queued stopped snapshot replay를 먼저 수행한 뒤 남아 있던 `running` 세션 cleanup을 진행하고, replay/cleanup 결과는 `chrome.storage.local` diagnostics snapshot으로 남깁니다
 - JSON import는 허용 필드 재구성 기준으로 sanitize 하며, 지원하지 않는 backup wrapper version과 parse 불가능한 timestamp를 가져오기 단계에서 거부합니다
 - JSON import는 들어오는 `running` 레코드를 모두 `saved`로 정규화해 실제로 종료된 기록이 `수집 중`으로 남지 않게 합니다
-- 전체 JSON 백업은 페이지 단위로 라이브러리를 읽어 진행률을 갱신하고, JSON 가져오기는 파일 읽기 -> JSON 파싱 -> sanitize/dedupe -> 저장 단계로 나눠 진행률과 취소를 처리합니다
+- 전체 JSON 백업은 페이지 단위로 라이브러리를 읽어 진행률을 갱신한 뒤 세션 단위 incremental packaging 동안에도 abort 를 확인하고, JSON 가져오기는 chunked file read -> JSON 파싱 -> sanitize/dedupe -> 저장 단계로 나눠 진행률과 취소를 처리합니다
 - 설정은 `chrome.storage.local`
 - `filenamePattern` 은 `{date}`, `{committee}`, `{time}` 만 허용하며, 금지 문자가 있으면 options에서 저장을 막고 export 직전에도 남은 금지 문자를 모두 제거합니다
 - 숫자 설정은 모두 정수만 허용하며, UI draft 검증과 storage sanitize가 같은 최소값 정책을 공유합니다
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
 - 세션 레코드에는 `starred`, `pinnedAt`, `note` 메타데이터가 포함되며, history의 즐겨찾기/메모 기능과 JSON 백업/복원에서 함께 유지됩니다
+- history 즐겨찾기/메모 저장은 최신 저장 레코드를 다시 읽어 `starred` / `pinnedAt` / `note` 만 갱신하므로, stale detail view 가 더 최신 `entries` / `status` 를 덮어쓰지 않습니다
 - fallback 레코드가 없을 때 history paging/count 는 IndexedDB index 기반으로 처리해 전체 preload 비용을 줄입니다
 
 ### background

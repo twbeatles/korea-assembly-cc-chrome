@@ -52,6 +52,12 @@ export interface SessionExportOptions {
   txtExportTimestampsEnabled?: boolean;
 }
 
+export interface SessionMetadataPatch {
+  starred?: boolean;
+  pinnedAt?: string | null;
+  note?: string;
+}
+
 export interface SessionImportSummary {
   addedCount: number;
   updatedCount: number;
@@ -135,6 +141,10 @@ export interface LibraryBackupExport {
 export interface SessionStoreApi {
   saveSession: (session: SessionRecord) => Promise<SessionRecord>;
   upsertSessionRecord: (session: SessionRecord) => Promise<SessionRecord>;
+  updateSessionMetadata: (
+    sessionId: string,
+    patch: SessionMetadataPatch,
+  ) => Promise<SessionRecord>;
   loadSession: (id: string) => Promise<SessionRecord | undefined>;
   loadSessionsByIds: (ids: string[]) => Promise<SessionRecord[]>;
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;

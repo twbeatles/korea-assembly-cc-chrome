@@ -19,7 +19,7 @@ import {
   listSessionsPage,
   loadSession,
   loadSessionsByIds,
-  upsertSessionRecord,
+  updateSessionMetadata,
 } from "../storage/session-store";
 import type {
   SessionImportSummary,
@@ -43,6 +43,7 @@ import {
   toggleSelectedEntryId,
   toggleSelectedSessionId,
 } from "./history-view-state";
+import { readBlobTextWithProgress } from "./blob-read";
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
 const HISTORY_PAGE_SIZE = 200;
@@ -617,8 +618,7 @@ export default function App() {
 
   const handleToggleFavorite = async (session: SessionRecord): Promise<void> => {
     try {
-      await upsertSessionRecord({
-        ...session,
+      await updateSessionMetadata(session.id, {
         starred: !session.starred,
         pinnedAt: session.starred ? null : new Date().toISOString(),
       });
@@ -636,8 +636,7 @@ export default function App() {
     }
 
     try {
-      await upsertSessionRecord({
-        ...selectedSession,
+      await updateSessionMetadata(selectedSession.id, {
         note: noteDraft,
       });
       requestRefresh(noteDraft.trim() ? "메모를 저장했습니다." : "메모를 비웠습니다.");
@@ -832,11 +831,20 @@ export default function App() {
     let invalidCount = 0;
 
     try {
-      const fileText = await file.text();
-      if (controller.signal.aborted) {
-        setMessage("JSON 가져오기를 취소했습니다.");
-        return;
-      }
+      const fileText = await readBlobTextWithProgress(file, {
+        signal: controller.signal,
+        onProgress: ({ completed, total }) => {
+          updateLongTaskProgress({
+            kind: "import",
+            phase: "read",
+            completed,
+            total,
+            message: total
+              ? `JSON 파일을 읽고 있습니다. (${completed} / ${total})`
+              : "JSON 파일을 읽고 있습니다.",
+          });
+        },
+      });
 
       updateLongTaskProgress({
         kind: "import",
@@ -878,18 +886,31 @@ export default function App() {
     } catch (error) {
       if (isAbortError(error)) {
         const cancelledSummary = extractCancelledImportSummary(error);
+        const cancelledSummaryData = cancelledSummary ?? {
+          addedCount: 0,
+          updatedCount: 0,
+          keptCount: 0,
+          failedCount: 0,
+        };
+        const hasMeaningfulCancelledSummary =
+          cancelledSummaryData.addedCount > 0 ||
+          cancelledSummaryData.updatedCount > 0 ||
+          cancelledSummaryData.keptCount > 0 ||
+          cancelledSummaryData.failedCount > 0 ||
+          invalidCount > 0;
+
+        if (!hasMeaningfulCancelledSummary) {
+          setMessage("JSON 가져오기를 취소했습니다.");
+          return;
+        }
+
         const cancelledMessage = buildSessionImportMessage({
-          ...(cancelledSummary ?? {
-            addedCount: 0,
-            updatedCount: 0,
-            keptCount: 0,
-            failedCount: 0,
-          }),
+          ...cancelledSummaryData,
           invalidCount,
           cancelled: true,
         });
 
-        if (cancelledSummary && (cancelledSummary.addedCount > 0 || cancelledSummary.updatedCount > 0)) {
+        if (cancelledSummaryData.addedCount > 0 || cancelledSummaryData.updatedCount > 0) {
           requestRefresh(cancelledMessage);
         } else {
           setMessage(cancelledMessage);

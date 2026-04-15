@@ -19,6 +19,7 @@ import {
   replayQueuedExitPersistRecords,
   resetSessionStoreForTests,
   saveSession,
+  updateSessionMetadata,
   upsertSessionRecord,
   updateRunningSession,
 } from "../src/storage/session-store";
@@ -130,6 +131,63 @@ describe("session store", () => {
     expect(loaded?.pinnedAt).toBe("2026-03-10T09:30:00.000Z");
     expect(loaded?.note).toBe("keep this note");
     expect(loaded?.status).toBe("saved");
+  });
+
+  it("updates only metadata against the latest stored session snapshot", async () => {
+    await saveSession({
+      ...buildSession("session_metadata_only", "saved"),
+      updatedAt: "2026-03-10T09:00:03.000Z",
+      entries: [
+        {
+          id: "session_metadata_only_entry_1",
+          text: "기존 자막",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 4,
+    });
+
+    await updateRunningSession({
+      ...buildSession("session_metadata_only", "running"),
+      updatedAt: "2026-03-10T09:05:00.000Z",
+      entries: [
+        {
+          id: "session_metadata_only_entry_1",
+          text: "기존 자막",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+        {
+          id: "session_metadata_only_entry_2",
+          text: "최신 자막",
+          timestamp: "2026-03-10T09:04:00.000Z",
+          startTime: "2026-03-10T09:04:00.000Z",
+          endTime: "2026-03-10T09:04:02.000Z",
+        },
+      ],
+      subtitleCount: 2,
+      charCount: 8,
+    });
+
+    const updated = await updateSessionMetadata("session_metadata_only", {
+      starred: true,
+      pinnedAt: "2026-03-10T09:06:00.000Z",
+      note: "메타데이터만 갱신",
+    });
+    const loaded = await loadSession("session_metadata_only");
+
+    expect(updated.updatedAt > "2026-03-10T09:05:00.000Z").toBe(true);
+    expect(loaded?.status).toBe("running");
+    expect(loaded?.entries).toHaveLength(2);
+    expect(loaded?.entries[1]?.text).toBe("최신 자막");
+    expect(loaded?.subtitleCount).toBe(2);
+    expect(loaded?.starred).toBe(true);
+    expect(loaded?.pinnedAt).toBe("2026-03-10T09:06:00.000Z");
+    expect(loaded?.note).toBe("메타데이터만 갱신");
   });
 
   it("lists paged sessions without preloading the full library into the caller", async () => {
@@ -1030,6 +1088,42 @@ describe("session store", () => {
       { phase: "prepare", completed: 0, total: 0 },
       { phase: "collect", completed: 1, total: 2 },
     ]);
+  });
+
+  it("honors cancellation during incremental backup packaging", async () => {
+    await saveSession(buildSession("session_backup_package_a", "saved"));
+    await saveSession(buildSession("session_backup_package_b", "saved"));
+
+    const progress: Array<{ phase: string; completed: number; total: number }> = [];
+    const controller = new AbortController();
+
+    await expect(
+      buildSessionLibraryBackupExport({
+        signal: controller.signal,
+        onProgress: (next) => {
+          progress.push({
+            phase: next.phase,
+            completed: next.completed,
+            total: next.total,
+          });
+          if (next.phase === "package" && next.completed === 1) {
+            controller.abort();
+          }
+        },
+      }),
+    ).rejects.toMatchObject({
+      name: "AbortError",
+      message: "전체 JSON 백업을 취소했습니다.",
+    });
+
+    expect(progress).toEqual(
+      expect.arrayContaining([
+        { phase: "prepare", completed: 0, total: 0 },
+        { phase: "collect", completed: 2, total: 2 },
+        { phase: "package", completed: 0, total: 2 },
+        { phase: "package", completed: 1, total: 2 },
+      ]),
+    );
   });
 
   it("deletes all persisted sessions across IndexedDB and fallback storage", async () => {

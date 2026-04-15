@@ -185,9 +185,10 @@ offscreen.html
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 `chrome.storage.onChanged` 로 즉시 반영합니다.
 - history 의 `전체 삭제` 는 현재 로드된 1000건만이 아니라 저장소 전체를 비워야 하며, 선택 삭제는 부분 성공/실패 요약을 남긴 뒤 항상 refresh 해야 합니다.
 - history 는 session-level `즐겨찾기`, `메모`, `즐겨찾기만 보기` 필터를 제공하고, 이 메타데이터는 persistence 및 JSON 백업/복원에서 함께 보존되어야 합니다.
+- history 의 즐겨찾기/메모 저장은 전용 `updateSessionMetadata(sessionId, patch)` 경로를 사용해야 하며, stale detail snapshot 이 `entries` / `subtitleCount` / `status` 를 되돌리면 안 됩니다.
 - history detail 은 entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
 - history 상단은 전체 저장소 기준 `JSON 백업` 과 단일 세션/번들 `JSON 가져오기` 를 지원하며, 가져오기는 같은 `id` 충돌 시 더 최신 `updatedAt` 레코드를 유지합니다.
-- history 의 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원해야 합니다. 가져오기 취소는 이미 저장된 부분 완료 레코드를 rollback 하지 않습니다.
+- history 의 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원해야 합니다. JSON import read phase 와 backup package phase 도 abort-aware 여야 하며, 가져오기 취소는 이미 저장된 부분 완료 레코드를 rollback 하지 않습니다.
 - history 의 전체 삭제 확인은 전체 세션 preload 가 아니라 `정확한 총 건수 + 최대 3건 preview` 기준으로 보여 줘야 합니다.
 - history 의 전체 JSON 백업은 view layer preload 가 아니라 store helper export payload 를 사용해야 합니다.
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `수집된 자막` 영역을 강제 스크롤하지 않습니다.
@@ -195,9 +196,10 @@ offscreen.html
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
 - replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 해야 하며, 같은 `sessionId` 충돌 시 `record.updatedAt` 우선, 동률이면 `queuedAt`이 더 늦은 쪽을 유지해야 합니다.
 - queue write 실패는 메모리 queue를 지우면 안 되며, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`로 phase별로 남겨야 합니다.
-- capture notice 는 `정상 수집`, `자동 조정 중 수집`, `reset 복구 중` 상태를 구분해 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
+- capture notice 는 기본 idle 안내만 숨기고, `정상 수집`, `자동 조정 중 수집`, `reset 복구 중`, 수동 클릭 안내, 오류/액션 피드백을 실제 텍스트로 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
 - 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다.
 - popup `SAVE_SESSION`은 패널과 같은 `hasPersistableContent` 판정으로만 활성화해야 합니다. 즉 누적 `수집된 자막`이 1건 이상 있을 때만 허용되며, preview-only fallback 은 저장 가능 조건에 포함하지 않습니다. 빈 저장 요청은 패널/popup 모두 `저장할 자막이 아직 없습니다.`로 응답해야 합니다.
+- in-page panel `화면 비우기` 는 `hasPersistableContent` 와 별도 gating 을 사용해야 하며, running 상태이거나 preview/notice 가 남아 있을 때도 수동 reset 을 허용해야 합니다.
 - 자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다.
 - options 숫자 필드는 canonical number state 와 별도 draft string state 를 유지하고, invalid draft 는 inline field error 로 표시하며 저장을 막아야 합니다.
 - 옵션 숫자 설정은 모두 정수만 허용해야 하며, UI `step=1` 과 storage sanitize 최소값 정책이 일치해야 합니다.
@@ -346,6 +348,8 @@ When editing this repository, align with the newly implemented behavior below.
 - `filenamePattern` validation is now strict: only `{date}`, `{time}`, `{committee}` placeholders are supported, forbidden filename characters are rejected in options, invalid stored values sanitize back to default, and export filename generation performs a final safety sanitize.
 - In-page `최근 N줄 복사` must now match history semantics and copy from the prepared cumulative session snapshot, not temporary live-row timestamps.
 - History long-running actions now keep the existing busy lock for 일반 작업 while full-library `JSON 백업` / `JSON 가져오기` expose dedicated progress + cancel state and only lock the JSON task controls.
+- History favorite/note writes must use metadata-only updates against the latest stored session record; do not re-save stale detail snapshots through `upsertSessionRecord()`.
+- Full-library backup packaging and JSON import file reads must remain cooperative and abort-aware even for large payloads.
 
 ## Sync Delta (2026-04-07)
 

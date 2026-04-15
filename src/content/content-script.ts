@@ -291,6 +291,19 @@ function getCaptureMode(): CaptureMode {
   return liveCaptureLedger.captureMode;
 }
 
+function shouldShowPanelNotice(message: string): boolean {
+  return Boolean(message.trim()) && message !== DEFAULT_IN_PAGE_NOTICE;
+}
+
+function canClearCurrentSession(showNotice = shouldShowPanelNotice(panelNotice)): boolean {
+  return (
+    state.status === "running" ||
+    state.entries.length > 0 ||
+    Boolean(getLivePreviewText().trim()) ||
+    showNotice
+  );
+}
+
 function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   const captureMode = getCaptureMode();
   const hasPersistableContent = state.entries.length > 0;
@@ -421,15 +434,19 @@ function updateInPagePanel(): void {
     return;
   }
 
+  const showNotice = shouldShowPanelNotice(panelNotice);
+
   inPagePanel.update(
     buildInPagePanelState(buildStatusSnapshot(false), {
       collapsed: panelCollapsed,
       previewCollapsed,
       notice: panelNotice,
+      showNotice,
       autoScroll: settings.autoScroll,
       recentCopyLineCount: settings.recentCopyLineCount,
       livePreviewText: getLivePreviewText(),
       liveRows: getPanelLiveRows(),
+      canClearSession: canClearCurrentSession(showNotice),
     }),
   );
 }

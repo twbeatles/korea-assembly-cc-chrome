@@ -28,8 +28,9 @@ import {
   resetExtensionContextInvalidationForTests,
 } from "../shared/extension-context";
 import {
-  buildSessionBackupBundle,
   buildSessionBackupFilename,
+  SESSION_BACKUP_KIND,
+  SESSION_BACKUP_VERSION,
 } from "./session-backup";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -45,6 +46,7 @@ import type {
   LibraryBackupExport,
   PersistReplaySummary,
   SessionExportOptions,
+  SessionMetadataPatch,
   SessionLongTaskProgress,
   SessionImportSummary,
   SessionLibraryOverview,
@@ -393,6 +395,34 @@ function mergeEditableSessionMetadata(
   };
 }
 
+function applySessionMetadataPatch(
+  record: SessionRecord,
+  patch: SessionMetadataPatch,
+  updatedAt: string,
+): SessionRecord {
+  const starred = patch.starred ?? record.starred;
+  const pinnedAt = starred
+    ? patch.pinnedAt !== undefined
+      ? patch.pinnedAt
+      : record.pinnedAt ?? updatedAt
+    : null;
+  const note = patch.note !== undefined ? patch.note : record.note;
+
+  return normalizeSessionRecord(
+    {
+      ...record,
+      starred,
+      pinnedAt,
+      note,
+      updatedAt,
+    },
+    {
+      preserveTimestamps: true,
+      forceStatus: record.status,
+    },
+  );
+}
+
 async function bumpSessionLibraryRevision(): Promise<void> {
   if (hasExtensionContextInvalidated() || typeof chrome === "undefined" || !chrome.storage?.local) {
     return;
@@ -482,6 +512,30 @@ function mergeSessionCollections(
   });
 
   return Array.from(merged.values(), (value) => cloneSessionRecord(value.record));
+}
+
+function stringifySessionBackupBundleIncrementally(
+  sessions: SessionRecord[],
+  exportedAt: string,
+  options: {
+    signal?: AbortSignal;
+    onProgress?: (completed: number, total: number) => void;
+  } = {},
+): string {
+  const total = sessions.length;
+  let content = `{"kind":${JSON.stringify(SESSION_BACKUP_KIND)},"version":${JSON.stringify(
+    SESSION_BACKUP_VERSION,
+  )},"exportedAt":${JSON.stringify(exportedAt)},"sessions":[`;
+
+  sessions.forEach((session, index) => {
+    throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+    content += `${index > 0 ? "," : ""}${JSON.stringify(cloneSessionRecord(session))}`;
+    options.onProgress?.(index + 1, total);
+  });
+
+  throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+  content += "]}";
+  return content;
 }
 
 async function bestEffortDeleteFallbackRecord(id: string): Promise<void> {
@@ -1087,6 +1141,27 @@ export async function upsertSessionRecord(session: SessionRecord): Promise<Sessi
   return writeSessionRecord(record);
 }
 
+export async function updateSessionMetadata(
+  sessionId: string,
+  patch: SessionMetadataPatch,
+): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+  if (!sessionId) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const existingRecord = await loadSession(sessionId);
+  if (!existingRecord) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const record = applySessionMetadataPatch(existingRecord, patch, updatedAt);
+  return writeSessionRecord(record);
+}
+
 export async function loadSession(id: string): Promise<SessionRecord | undefined> {
   if (!id) {
     return undefined;
@@ -1234,15 +1309,28 @@ export async function buildSessionLibraryBackupExport(
   emitLongTaskProgress(options.onProgress, {
     kind: "backup",
     phase: "package",
-    completed: sessions.length,
+    completed: 0,
     total: totalCount,
     message: totalCount
-      ? `전체 JSON 백업 파일을 생성하고 있습니다. (${sessions.length} / ${totalCount})`
+      ? `전체 JSON 백업 파일을 생성하고 있습니다. (0 / ${totalCount})`
       : "백업 파일을 생성하고 있습니다.",
   });
 
   const now = new Date();
-  const backup = buildSessionBackupBundle(sessions, now.toISOString());
+  const content = stringifySessionBackupBundleIncrementally(sessions, now.toISOString(), {
+    signal: options.signal,
+    onProgress: (completed, total) => {
+      emitLongTaskProgress(options.onProgress, {
+        kind: "backup",
+        phase: "package",
+        completed,
+        total,
+        message: total
+          ? `전체 JSON 백업 파일을 생성하고 있습니다. (${completed} / ${total})`
+          : "백업 파일을 생성하고 있습니다.",
+      });
+    },
+  });
   throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
 
   return {
@@ -1251,7 +1339,7 @@ export async function buildSessionLibraryBackupExport(
       filename: buildSessionBackupFilename(now),
       format: "json",
       mimeType: "application/json;charset=utf-8",
-      content: JSON.stringify(backup, null, 2),
+      content,
     },
   };
 }

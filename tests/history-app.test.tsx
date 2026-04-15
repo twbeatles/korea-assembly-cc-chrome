@@ -22,7 +22,7 @@ const sessionStoreMocks = vi.hoisted(() => ({
   listSessionsPage: vi.fn(),
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
-  upsertSessionRecord: vi.fn(),
+  updateSessionMetadata: vi.fn(),
 }));
 
 vi.mock("../src/shared/chrome-api", () => chromeApiMocks);
@@ -160,7 +160,7 @@ describe("history app", () => {
         content: "{}",
       },
     });
-    sessionStoreMocks.upsertSessionRecord.mockResolvedValue(session);
+    sessionStoreMocks.updateSessionMetadata.mockResolvedValue(session);
     chromeApiMocks.sendRuntimeMessage.mockResolvedValue({ ok: true });
   });
 
@@ -377,6 +377,77 @@ describe("history app", () => {
           "JSON 가져오기를 취소했습니다. 추가 1건 / 갱신 0건 / 유지 0건 / 실패 0건 / 무효 0건",
         ),
       ).toBeTruthy();
+    });
+  });
+
+  it("shows a cancellation message when import is aborted during the read phase", async () => {
+    const firstChunk = createDeferred<string>();
+
+    render(<App />);
+    await screen.findByRole("button", { name: "JSON 가져오기" });
+
+    const importInput = document.querySelector(".hidden-file-input") as HTMLInputElement | null;
+    expect(importInput).not.toBeNull();
+
+    const file = {
+      name: "backup.json",
+      type: "application/json",
+      size: 8,
+      slice: vi.fn((start: number, end: number) => ({
+        text: vi.fn(() => {
+          if (start === 0 && end === 8) {
+            return firstChunk.promise;
+          }
+          return Promise.resolve("");
+        }),
+      })),
+      text: vi.fn(),
+    } as unknown as File;
+
+    fireEvent.change(importInput!, {
+      target: {
+        files: [file],
+      },
+    });
+
+    await screen.findByRole("button", { name: "취소" });
+    fireEvent.click(screen.getByRole("button", { name: "취소" }));
+    firstChunk.resolve('{"a":1}');
+
+    await waitFor(() => {
+      expect(screen.getByText("JSON 가져오기를 취소했습니다.")).toBeTruthy();
+    });
+    expect(sessionStoreMocks.importSessionRecords).not.toHaveBeenCalled();
+  });
+
+  it("uses the metadata update helper for favorites and notes", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "즐겨찾기 추가" });
+
+    fireEvent.click(screen.getByRole("button", { name: "즐겨찾기 추가" }));
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.updateSessionMetadata).toHaveBeenCalledWith(
+        "session_history_1",
+        expect.objectContaining({
+          starred: true,
+          pinnedAt: expect.any(String),
+        }),
+      );
+    });
+
+    const noteInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(noteInput).not.toBeNull();
+    fireEvent.change(noteInput!, { target: { value: "새 메모" } });
+    fireEvent.click(screen.getByRole("button", { name: "메모 저장" }));
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.updateSessionMetadata).toHaveBeenCalledWith(
+        "session_history_1",
+        expect.objectContaining({
+          note: "새 메모",
+        }),
+      );
     });
   });
 

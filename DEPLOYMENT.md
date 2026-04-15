@@ -69,12 +69,16 @@ npm run build
 - popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
 - history 검색 / 최근 N줄 복사 / 전체 내용 복사 / 찾은 내용 복사 확인
 - 페이지 패널의 `최근 N줄 복사`가 현재 화면 row가 아니라 누적 세션 기준으로 history와 같은 결과를 주는지 확인
+- 패널 notice 가 기본 idle 상태에서는 숨고, 수동 클릭 안내 / 자동 조정 / reset 복구 / 오류·액션 feedback 은 실제 텍스트로 보이는지 확인
+- preview-only 또는 notice-only 상태에서도 패널 `화면 비우기`는 활성화되고 저장/복사/export 는 계속 비활성화되는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
+- 수집 중이거나 stale selection 상태의 history detail 에서 즐겨찾기/메모를 저장해도 최신 subtitle count / status / entries 가 되돌아가지 않는지 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
 - history `JSON 가져오기`에서 incoming `running` 레코드가 `saved`로 정규화되어 stale `수집 중` 배지가 남지 않는지 확인
 - history `전체 JSON 백업` / `JSON 가져오기` 중 현재 단계, 진행량, 취소 버튼이 노출되고 중복 JSON 작업만 잠기는지 확인
 - `JSON 가져오기` 취소 시 이미 저장된 일부 레코드는 유지되고 부분 완료 요약 메시지가 표시되는지 확인
+- `JSON 가져오기`를 파일 읽기 단계에서 바로 취소하면 0건 요약 대신 즉시 취소 메시지가 보이고, 일부 write 이후 취소일 때만 부분 완료 요약이 보이는지 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이, 저장 파일 이름 규칙 검증 확인
 - options 숫자 필드가 정수만 허용하고 소수 입력에는 inline 오류를 표시하며 저장을 막는지 확인
 - export filename 생성 시 금지 문자가 여러 개 있어도 모두 제거되는지 확인
@@ -213,6 +217,10 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.6-cw
 19. options 페이지 `수집 진단` 탭의 진단 정보가 실제 structured/fallback/polling 상태와 일치하는지
 20. history / popup 주요 액션 실패 시 사용자 메시지가 즉시 노출되는지
 21. history 의 전체 삭제가 한 저장소만 실패해도 다른 저장소 정리를 계속 시도하고, 실패 detail 을 사용자에게 남기는지
+22. 패널 notice 가 기본 idle 상태에서는 숨고, 수동 클릭 안내 / 자동 조정 / reset 복구 / 오류·액션 feedback 은 실제 텍스트로 보이는지
+23. preview-only 또는 notice-only 상태에서도 패널 `화면 비우기`는 활성화되고 저장/복사/export 는 비활성화되는지
+24. 수집 중 history 에서 즐겨찾기/메모를 저장해도 더 최신 subtitle entry / status 가 되돌아가지 않는지
+25. `JSON 가져오기`를 파일 읽기 단계에서 바로 취소하면 즉시 취소 메시지가 보이고, 일부 write 이후 취소일 때만 부분 완료 요약이 노출되는지
 22. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
 23. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
 
@@ -287,6 +295,8 @@ Current release alignment:
 - 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 commit/persist/export 대상에서 제외되는지 확인해야 합니다.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - full-library `JSON 백업` / `JSON 가져오기` 는 단계별 진행률과 취소를 제공하며, import cancel 은 partial completion 을 허용합니다.
+- 기본 idle notice 는 숨기되, 수동 클릭 안내 / 자동 조정 / reset 복구 / 오류·액션 notice 는 패널에 실제 텍스트로 노출됩니다.
+- 패널 `화면 비우기` 는 저장 가능 여부와 별도 gating 을 사용해 preview-only / notice-only 상태에서도 직접 reset 할 수 있습니다.
 - `npm audit` may still report high findings via `@crxjs/vite-plugin` -> `rollup@2.x` upstream pinning.
 
 ## 2026-03-11 Addendum Deployment Notes

@@ -530,6 +530,8 @@ export interface InPagePanelState {
   recentCopyLineCount: number;
   notice: string;
   hasPersistableContent: boolean;
+  canClearSession: boolean;
+  showNotice: boolean;
 }
 
 export interface InPagePanelActions {
@@ -629,10 +631,12 @@ export function buildInPagePanelState(
     collapsed: boolean;
     previewCollapsed: boolean;
     notice: string;
+    showNotice: boolean;
     autoScroll: boolean;
     recentCopyLineCount: number;
     livePreviewText: string;
     liveRows: LivePanelRow[];
+    canClearSession: boolean;
   },
 ): InPagePanelState {
   return {
@@ -654,6 +658,8 @@ export function buildInPagePanelState(
     recentCopyLineCount: options.recentCopyLineCount,
     notice: options.notice,
     hasPersistableContent: snapshot.hasPersistableContent,
+    canClearSession: options.canClearSession,
+    showNotice: options.showNotice,
   };
 }
 
@@ -819,6 +825,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const emptyPreviewText = "자막이 잡히면 이곳에 실시간으로 표시됩니다.";
   const liveRowNodes = new Map<string, HTMLElement>();
   let renderedNotice = "";
+  let renderedShowNotice: boolean | null = null;
   let renderedCollapsed = false;
   let renderedPreviewCollapsed: boolean | null = null;
   let renderedPreviewSignature = "";
@@ -915,14 +922,20 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       }
 
       if (renderedNotice !== nextState.notice) {
-        // Preserve notice state for diagnostics without exposing it in the main UI.
+        notice.textContent = nextState.notice;
         notice.dataset.message = nextState.notice;
         renderedNotice = nextState.notice;
       }
 
+      if (renderedShowNotice !== nextState.showNotice) {
+        notice.hidden = !nextState.showNotice;
+        notice.setAttribute("aria-hidden", String(!nextState.showNotice));
+        renderedShowNotice = nextState.showNotice;
+      }
+
       startButton.style.display = nextState.status === "running" ? "none" : "";
       stopButton.style.display = nextState.status === "running" ? "" : "none";
-      clearButton.disabled = !nextState.hasPersistableContent;
+      clearButton.disabled = !nextState.canClearSession;
       saveButton.disabled = !nextState.hasPersistableContent;
       copyRecentButton.disabled = !nextState.hasPersistableContent;
       exportButtons.forEach((button) => {

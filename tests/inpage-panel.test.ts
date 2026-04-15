@@ -94,10 +94,12 @@ function buildPanelState(input?: {
       collapsed: false,
       previewCollapsed: true,
       notice: "자막을 모으는 중입니다.",
+      showNotice: true,
       autoScroll: true,
       recentCopyLineCount: 5,
       livePreviewText: "안녕하세요",
       liveRows: createLiveRows(),
+      canClearSession: true,
       ...input?.options,
     },
   );
@@ -158,8 +160,9 @@ describe("in-page panel", () => {
     expect(shadowRoot?.querySelector(".preview-box")?.getAttribute("role")).toBe("status");
     expect(shadowRoot?.querySelector(".live-row-list")?.getAttribute("role")).toBe("log");
     expect(notice?.getAttribute("aria-live")).toBe("polite");
-    expect(notice?.hidden).toBe(true);
-    expect(notice?.getAttribute("aria-hidden")).toBe("true");
+    expect(notice?.hidden).toBe(false);
+    expect(notice?.getAttribute("aria-hidden")).toBe("false");
+    expect(notice?.textContent).toBe("자막을 모으는 중입니다.");
     expect(notice?.dataset.message).toBe("자막을 모으는 중입니다.");
     expect(shadowRoot?.querySelector(".preview-toggle")?.textContent).toBe("실시간 내용 펼치기");
 
@@ -211,13 +214,44 @@ describe("in-page panel", () => {
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
     const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
     expect(shadowRoot?.textContent).toContain("실시간 자막");
-    expect(shadowRoot?.textContent).not.toContain(
+    expect(shadowRoot?.textContent).toContain(
       "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
     );
+    expect(notice?.hidden).toBe(false);
     expect(notice?.dataset.message).toBe(
       "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
     );
-    expect(shadowRoot?.textContent).not.toContain("자막 찾는 중");
+    expect(notice?.textContent).toBe(
+      "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
+    );
+
+    controller.destroy();
+  });
+
+  it("keeps the idle notice hidden when showNotice is false", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        snapshot: {
+          status: "idle",
+          hasPersistableContent: false,
+          previewText: "",
+        },
+        options: {
+          notice: "페이지 오른쪽에서 수집된 자막을 바로 보고 있습니다.",
+          showNotice: false,
+          livePreviewText: "",
+          liveRows: [],
+          canClearSession: false,
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
+    expect(notice?.hidden).toBe(true);
+    expect(notice?.getAttribute("aria-hidden")).toBe("true");
 
     controller.destroy();
   });
@@ -533,22 +567,29 @@ describe("in-page panel", () => {
     controller.destroy();
   });
 
-  it("disables save-related actions when there is no persistable content", () => {
+  it("keeps clear available for preview-only state while save-related actions stay disabled", () => {
     const controller = createInPagePanel(createActions());
 
     controller.update(
       buildPanelState({
         snapshot: {
+          status: "idle",
           hasPersistableContent: false,
+          previewText: "미리보기 자막",
         },
         options: {
           liveRows: [],
-          livePreviewText: "",
+          livePreviewText: "미리보기 자막",
+          showNotice: false,
+          canClearSession: true,
         },
       }),
     );
 
     const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const clearButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (element) => element.textContent === "화면 비우기",
+    ) as HTMLButtonElement | undefined;
     const saveButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (element) => element.textContent === "지금 저장",
     ) as HTMLButtonElement | undefined;
@@ -556,8 +597,50 @@ describe("in-page panel", () => {
       (element) => element.textContent === "최근 5줄 복사",
     ) as HTMLButtonElement | undefined;
 
+    expect(clearButton?.disabled).toBe(false);
     expect(saveButton?.disabled).toBe(true);
     expect(copyButton?.disabled).toBe(true);
+
+    controller.destroy();
+  });
+
+  it("keeps clear available for notice-only state while save-related actions stay disabled", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        snapshot: {
+          status: "idle",
+          hasPersistableContent: false,
+          previewText: "",
+        },
+        options: {
+          notice: "AI 자막보기 버튼을 눌러주세요.",
+          showNotice: true,
+          liveRows: [],
+          livePreviewText: "",
+          canClearSession: true,
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const clearButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (element) => element.textContent === "화면 비우기",
+    ) as HTMLButtonElement | undefined;
+    const saveButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (element) => element.textContent === "지금 저장",
+    ) as HTMLButtonElement | undefined;
+    const copyButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (element) => element.textContent === "최근 5줄 복사",
+    ) as HTMLButtonElement | undefined;
+    const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
+
+    expect(clearButton?.disabled).toBe(false);
+    expect(saveButton?.disabled).toBe(true);
+    expect(copyButton?.disabled).toBe(true);
+    expect(notice?.hidden).toBe(false);
+    expect(notice?.textContent).toBe("AI 자막보기 버튼을 눌러주세요.");
 
     controller.destroy();
   });
