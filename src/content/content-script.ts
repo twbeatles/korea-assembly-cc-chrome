@@ -1638,6 +1638,10 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
+  state.title = document.title;
+  state.committeeName = deriveCommitteeName(document.title);
+  bindPopupPort();
+
   try {
     settings = await getSettings();
   } catch (error) {
@@ -1659,7 +1663,6 @@ async function bootstrap(): Promise<void> {
   state.title = document.title;
   state.committeeName = deriveCommitteeName(document.title);
   bindBridgeMessages();
-  bindPopupPort();
   bindSettingsChanges();
   bindNavigationGuards();
   mountInPagePanel();

@@ -360,7 +360,7 @@ export default function App() {
           setTabReady(false);
           setRequiresReload(false);
           clearReconnectTimer();
-          setDiagnosticsMessage("국회 의사중계 페이지에서만 수집 진단을 볼 수 있습니다.");
+          setDiagnosticsMessage("국회 의사중계 플레이어 페이지에서만 수집 진단을 볼 수 있습니다.");
           return;
         }
 

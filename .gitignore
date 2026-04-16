@@ -43,6 +43,10 @@ sessions/
 realtime_output/
 backups/
 legacy/
+/tmp/
+/tmp-*/
+/.tmp/
+/.tmp-*/
 tmp_extension_unpacked/
 tmp_extension.crx
 korea-assembly-cc-chrome.zip

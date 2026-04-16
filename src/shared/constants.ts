@@ -68,15 +68,28 @@ export const ASSEMBLY_HOSTS = [
 ] as const;
 
 export const ASSEMBLY_HOST_MATCH_PATTERNS = [
-  "https://assembly.webcast.go.kr/*",
-  "https://webcast.assembly.go.kr/*",
+  "https://assembly.webcast.go.kr/main/player*",
+  "https://webcast.assembly.go.kr/main/player*",
 ] as const;
 
+const ASSEMBLY_PLAYER_PATH_PREFIX = "/main/player";
 const PLENARY_XCODE = "10";
 const PLENARY_XCGCD_PREFIX = "DCM000010";
 
 export function isSupportedAssemblyUrl(url?: string): boolean {
-  return typeof url === "string" && ASSEMBLY_HOSTS.some((host) => url.startsWith(host));
+  if (typeof url !== "string") {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return (
+      isSupportedAssemblyHostname(parsed.hostname) &&
+      parsed.pathname.toLowerCase().startsWith(ASSEMBLY_PLAYER_PATH_PREFIX)
+    );
+  } catch {
+    return false;
+  }
 }
 
 export function isSupportedAssemblyHostname(hostname: string): boolean {

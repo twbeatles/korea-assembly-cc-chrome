@@ -81,6 +81,27 @@ describe("service worker command helpers", () => {
     expect(dependencies.injectConfiguredContentScripts).toHaveBeenCalledWith(9);
   });
 
+  it("rejects non-player assembly pages before reinjection", async () => {
+    const dependencies = createDependencies();
+    (dependencies.supportsAssemblyPage as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    const response = await handleBackgroundCommand(
+      {
+        type: "ENSURE_CONTENT_SCRIPT",
+        tabId: 9,
+        url: "https://assembly.webcast.go.kr/main/",
+      },
+      {},
+      dependencies,
+    );
+
+    expect(response).toEqual({
+      ok: false,
+      error: "국회 의사중계 플레이어 페이지에서만 동작합니다.",
+    });
+    expect(dependencies.injectConfiguredContentScripts).not.toHaveBeenCalled();
+  });
+
   it("requests reload when the page still is not ready after reinjection", async () => {
     const dependencies = createDependencies();
     (dependencies.waitForTopFrameReady as ReturnType<typeof vi.fn>).mockResolvedValue(false);

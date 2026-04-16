@@ -71,7 +71,7 @@ export default function App() {
           setUnsupported(true);
           setTabReady(false);
           clearReconnectTimer();
-          setStatusMessage("국회 의사중계 페이지에서만 사용할 수 있습니다.");
+          setStatusMessage("국회 의사중계 플레이어 페이지에서만 사용할 수 있습니다.");
           return;
         }
 

@@ -27,6 +27,8 @@ const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위�
 const frameForwardNonceByTabId = new Map<number, string>();
 const blobDownloadUrls = new Map<number, string>();
 const BLOB_DOWNLOAD_URLS_STORAGE_KEY = "assembly-subtitle-download-blob-urls";
+const TOP_FRAME_READY_ATTEMPTS = 8;
+const TOP_FRAME_READY_RETRY_DELAY_MS = 150;
 
 function callbackPromise<T>(executor: (callback: (value: T) => void) => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -160,14 +162,17 @@ async function pingTopFrame(tabId: number): Promise<void> {
   );
 }
 
-async function waitForTopFrameReady(tabId: number, attempts = 4): Promise<boolean> {
+async function waitForTopFrameReady(
+  tabId: number,
+  attempts = TOP_FRAME_READY_ATTEMPTS,
+): Promise<boolean> {
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       await pingTopFrame(tabId);
       return true;
     } catch {
       if (attempt < attempts - 1) {
-        await sleep(150);
+        await sleep(TOP_FRAME_READY_RETRY_DELAY_MS);
       }
     }
   }

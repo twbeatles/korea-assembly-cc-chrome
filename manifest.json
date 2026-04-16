@@ -26,8 +26,8 @@
   "content_scripts": [
     {
       "matches": [
-        "https://assembly.webcast.go.kr/*",
-        "https://webcast.assembly.go.kr/*"
+        "https://assembly.webcast.go.kr/main/player*",
+        "https://webcast.assembly.go.kr/main/player*"
       ],
       "js": ["src/content/content-script.ts"],
       "run_at": "document_idle",

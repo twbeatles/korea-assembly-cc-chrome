@@ -76,7 +76,7 @@ export async function handleBackgroundCommand(
       if (!dependencies.supportsAssemblyPage(message.url)) {
         return {
           ok: false,
-          error: "국회 의사중계 페이지에서만 동작합니다.",
+          error: "국회 의사중계 플레이어 페이지에서만 동작합니다.",
         };
       }
       if (await dependencies.waitForTopFrameReady(message.tabId)) {
