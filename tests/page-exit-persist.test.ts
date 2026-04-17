@@ -53,17 +53,20 @@ describe("page exit persistence", () => {
 
   it("still attempts the background persist after a queue failure", async () => {
     const persistRecordInBackground = vi.fn();
+    const queueRecordInBackground = vi.fn();
     const onQueueError = vi.fn();
 
     await persistQueuedPageExitRecord(buildRecord(), {
       queueRecord: async () => {
         throw new Error("queue failed");
       },
+      queueRecordInBackground,
       persistRecordInBackground,
       onQueueError,
     });
 
     expect(onQueueError).toHaveBeenCalledWith(expect.any(Error));
+    expect(queueRecordInBackground).toHaveBeenCalledTimes(1);
     expect(persistRecordInBackground).toHaveBeenCalledTimes(1);
   });
 });

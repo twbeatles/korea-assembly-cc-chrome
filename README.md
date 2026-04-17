@@ -6,7 +6,7 @@
 
 기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON`으로 저장하는 최소 실용 버전을 제공하는 것입니다.
 
-현재 스토어 배포 준비 기준 버전은 `1.0.6` 입니다.
+현재 스토어 배포 준비 기준 버전은 `1.0.7` 입니다.
 
 
 ## 기술 선택
@@ -247,6 +247,7 @@ npm run build
 - 성공한 `IndexedDB` write/delete는 동일 id의 stale fallback copy를 best-effort로 정리합니다
 - 두 저장소가 모두 실패하는 극단적 상황에서는 현재 런타임 동안 메모리 fallback을 유지합니다
 - pagehide/beforeunload 직전 최종 stopped 스냅샷은 세션별 replay queue에도 함께 적재하고, background 저장이 성공하면 같은 세션의 stale queued snapshot을 즉시 정리합니다
+- content script에서 replay queue storage write가 실패하면, background에도 동일 stopped snapshot queue 적재를 한 번 더 요청해 종료 직전 durable queue를 최대한 보존합니다
 - replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 하며, 같은 `sessionId` 충돌 시 `updatedAt`이 더 최신인 레코드와 동률 시 더 늦은 `queuedAt`을 우선합니다
 - queue write가 실패해도 메모리 queue는 유지되며, `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError` diagnostics를 통해 phase별 실패를 추적합니다
 - 브라우저/확장 cold start 시에는 queued stopped snapshot replay를 먼저 수행한 뒤 남아 있던 `running` 세션 cleanup을 진행하고, replay/cleanup 결과는 `chrome.storage.local` diagnostics snapshot으로 남깁니다
@@ -257,8 +258,10 @@ npm run build
 - `filenamePattern` 은 `{date}`, `{committee}`, `{time}` 만 허용하며, 금지 문자가 있으면 options에서 저장을 막고 export 직전에도 남은 금지 문자를 모두 제거합니다
 - 숫자 설정은 모두 정수만 허용하며, UI draft 검증과 storage sanitize가 같은 최소값 정책을 공유합니다
 - 실행 중 autosave는 옵션에서 켜고 끌 수 있으며, 중지 시 최종 저장은 항상 유지됩니다
+- running autosave는 확정 `수집된 자막`이 있을 때만 동작하며, preview-only/notice-only 상태로 빈 `running` 세션을 영구 저장하지 않습니다
 - 세션 레코드에는 `starred`, `pinnedAt`, `note` 메타데이터가 포함되며, history의 즐겨찾기/메모 기능과 JSON 백업/복원에서 함께 유지됩니다
 - history 즐겨찾기/메모 저장은 최신 저장 레코드를 다시 읽어 `starred` / `pinnedAt` / `note` 만 갱신하므로, stale detail view 가 더 최신 `entries` / `status` 를 덮어쓰지 않습니다
+- history에서 저장하지 않은 메모가 있는 상태로 새로고침/`즐겨찾기만 보기` 전환을 하면서 폐기를 확인하면, draft는 실제 저장값으로 즉시 되돌아갑니다
 - fallback 레코드가 없을 때 history paging/count 는 IndexedDB index 기반으로 처리해 전체 preload 비용을 줄입니다
 
 ### background

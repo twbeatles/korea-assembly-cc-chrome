@@ -5,7 +5,7 @@
 >
 > 2026-04-07 업데이트:
 > - 이 문서는 과거 감사 기준 문서이며, 현재 배포 준비 기준 구현은 이 보고서 작성 시점보다 뒤에 있습니다.
-> - 현재 스토어 제출 준비 버전은 `1.0.6` 입니다.
+> - 현재 스토어 제출 준비 버전은 `1.0.7` 입니다.
 > - 현재 수동 저장 / export 와 pagehide/beforeunload/stop persistence 경로는 preview-only 텍스트를 materialize 하지 않고, 확정 `수집된 자막` entry 만 저장합니다.
 > - 현재 popup / panel 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되었고, 이는 committed subtitle 존재 여부만 의미합니다.
 > - 현재 structured row snapshot에서는 stable row만 commit 되며, 같은 snapshot 안의 raw/container fallback 과 unstable row 는 preview 전용입니다.
@@ -15,6 +15,10 @@
 > - JSON import는 incoming `running` 레코드를 `saved`로 정규화합니다.
 > - export filename sanitize는 금지 문자를 전역 제거하며, options / storage 숫자 설정은 정수만 허용합니다.
 > - lint / coverage baseline은 현재 통과 상태이며, 상세는 `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-13.md`를 우선 참고합니다.
+> 2026-04-17 업데이트:
+> - running autosave는 committed subtitle이 있을 때만 저장되며, preview-only 상태로 빈 `running` 레코드를 남기지 않습니다.
+> - page-exit queue storage write가 content script에서 실패하면 background가 durable queue write를 한 번 더 시도합니다.
+> - history refresh / filter change에서 메모 폐기 확인을 누르면 dirty note draft가 실제 저장값으로 되돌아갑니다.
 > - 따라서 아래의 save/export, popup enablement 관련 일부 지적은 역사적 참고용으로만 읽어야 하며, 현재 릴리스 기준 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 를 우선합니다.
 
 ---

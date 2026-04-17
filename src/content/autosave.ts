@@ -5,10 +5,10 @@ import type { ExtensionSettings } from "../storage/types";
 
 export function shouldScheduleRunningPersist(
   isTopFrame: boolean,
-  state: Pick<SessionState, "status">,
+  state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
   settings: Pick<ExtensionSettings, "runningAutoSaveEnabled">,
 ): boolean {
-  return isTopFrame && state.status === "running" && settings.runningAutoSaveEnabled;
+  return isTopFrame && settings.runningAutoSaveEnabled && hasPersistableRunningContent(state);
 }
 
 export function resolveRunningPersistDebounceMs(
@@ -83,7 +83,7 @@ export function scheduleRunningPersistTimer(
 
   return options.setTimer(() => {
     const snapshot = options.getSnapshot();
-    if (snapshot.status !== "running") {
+    if (snapshot.status !== "running" || snapshot.record.entries.length === 0) {
       return;
     }
 

@@ -21,6 +21,7 @@ import type {
   OffscreenDocumentResponse,
 } from "../shared/message-types";
 import { deleteSession, saveSession, updateRunningSession } from "../storage/session-store";
+import { queueExitPersistRecord } from "../storage/persist-recovery";
 
 const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
@@ -328,6 +329,7 @@ async function handleMessage(
       console.warn("[service-worker] Failed to inject configured content scripts", error);
     },
     getOrCreateStoredFrameForwardNonce,
+    queueExitPersistRecord,
     persistSessionRecord: async (record) => {
       const saved =
         record.status === "running"

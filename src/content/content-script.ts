@@ -673,6 +673,40 @@ function persistSessionRecordInBackground(record: SessionRecord, retryAttempt = 
   }
 }
 
+function queueExitPersistRecordInBackground(record: SessionRecord): void {
+  if (extensionContextInvalidated) {
+    return;
+  }
+
+  try {
+    chrome.runtime.sendMessage(
+      {
+        type: "QUEUE_EXIT_PERSIST_RECORD",
+        record,
+      },
+      (response?: BackgroundCommandResponse) => {
+        const lastError = chrome.runtime.lastError;
+        if (lastError) {
+          console.warn(
+            "[assembly-subtitle] Background queued exit persist request failed",
+            lastError.message,
+          );
+          return;
+        }
+
+        if (!response?.ok) {
+          console.warn(
+            "[assembly-subtitle] Background queued exit persist request was rejected",
+            response,
+          );
+        }
+      },
+    );
+  } catch (error) {
+    console.warn("[assembly-subtitle] Failed to queue exit persist record in background", error);
+  }
+}
+
 function persistRunningSnapshotForVisibilityChange(now = Date.now()): void {
   if (extensionContextInvalidated || !isTopFrame || !canPersistCurrentRunningState()) {
     return;
@@ -705,6 +739,9 @@ function persistStoppedSnapshotForPageExit(now = Date.now()): void {
 
   void persistQueuedPageExitRecord(record, {
     queueRecord: queueExitPersistRecord,
+    queueRecordInBackground: (queuedRecord) => {
+      queueExitPersistRecordInBackground(queuedRecord);
+    },
     persistRecordInBackground: (queuedRecord) => {
       persistSessionRecordInBackground(queuedRecord);
     },

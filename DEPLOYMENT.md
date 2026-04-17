@@ -30,7 +30,7 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
-현재 스토어 제출 준비 기준 버전은 `1.0.6` 입니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.7` 입니다.
 
 ## 3. 배포 전 검증
 
@@ -129,7 +129,7 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.6-cws.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cws.zip -Force
 ```
 
 ## 6. Chrome Web Store 배포
@@ -329,7 +329,7 @@ Deployment documentation consistency sources:
 
 ## 2026-03-14 Deployment Consistency Update
 
-- Release verification should confirm that a fresh `start -> stop` cycle with no captured rows does not leave an orphan persisted `running` session.
+- Release verification should confirm that a fresh `start -> stop` cycle with no captured rows does not leave an orphan persisted `running` session, and that preview-only / keepalive-only runtime activity does not autosave an empty `running` record.
 - Release verification should confirm that favorited / noted sessions keep `starred`, `pinnedAt`, and `note` metadata after autosave, page-exit persistence, and final stop-save flows.
 - page-exit persistence is now ordered as `queue replay record -> background persist request`; regression coverage for that ordering is part of release confidence.
 - History validation should cover store-level paging, live refresh via `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and note-draft preservation during same-session refreshes.
@@ -340,6 +340,8 @@ Deployment documentation consistency sources:
 
 - Release verification should confirm that frame-forward nonce state survives MV3 service worker restarts via `chrome.storage.local` and converges again without requiring a page reload.
 - Release verification should confirm that queued exit persist reads merge storage and memory snapshots, and that a storage write failure does not silently drop the in-memory replay candidate.
+- Release verification should confirm that when content-side queue storage write fails during page exit, the background path still attempts one more durable queue write before only the background persist remains.
+- History validation should confirm that explicit discard confirmation on refresh / `즐겨찾기만 보기` filter change actually restores the saved note instead of leaving the dirty draft in place.
 - Options validation should confirm that `저장 복구 상태` shows `queue write`, `replay`, `cleanup`, and summary errors separately when they are present.
 - Popup validation should confirm that `지금 저장` is disabled when `hasPersistableContent` is false, and that forced empty saves still yield `저장할 자막이 아직 없습니다.` feedback.
 - Subtitle activation validation should confirm that merely showing `#viewSubtit` is not enough; success requires visible text or an active control signal.

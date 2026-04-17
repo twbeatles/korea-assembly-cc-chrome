@@ -45,6 +45,7 @@ function createDependencies(): BackgroundCommandDependencies {
     injectConfiguredContentScripts: vi.fn(async () => undefined),
     onInjectConfiguredContentScriptsError: vi.fn(),
     getOrCreateStoredFrameForwardNonce: vi.fn(async () => "nonce_1"),
+    queueExitPersistRecord: vi.fn(async () => undefined),
     persistSessionRecord: vi.fn(async () => ({ updatedAt: "2026-03-10T09:00:03.000Z" })),
     deleteSessionRecord: vi.fn(async () => undefined),
     downloadExport: vi.fn(async () => 11),
@@ -123,6 +124,14 @@ describe("service worker command helpers", () => {
   it("normalizes diagnostics and persistence commands through injected dependencies", async () => {
     const dependencies = createDependencies();
     const record = buildSession("running");
+    const queued = await handleBackgroundCommand(
+      {
+        type: "QUEUE_EXIT_PERSIST_RECORD",
+        record: buildSession("stopped"),
+      },
+      {},
+      dependencies,
+    );
 
     const persisted = await handleBackgroundCommand(
       {
@@ -144,6 +153,10 @@ describe("service worker command helpers", () => {
       dependencies,
     );
 
+    expect(queued).toEqual({ ok: true });
+    expect(dependencies.queueExitPersistRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "stopped" }),
+    );
     expect(persisted).toEqual({ ok: true, updatedAt: "2026-03-10T09:00:03.000Z" });
     expect(dependencies.persistSessionRecord).toHaveBeenCalledWith(record);
     expect(diagnostics).toEqual({ ok: true });
@@ -212,6 +225,7 @@ describe("service worker command helpers", () => {
       { type: "OPEN_HISTORY_PAGE" },
       { type: "OPEN_OPTIONS_PAGE" },
       { type: "OPEN_DIAGNOSTICS_PAGE", tabId: 5 },
+      { type: "QUEUE_EXIT_PERSIST_RECORD", record: buildSession("stopped") },
       { type: "DELETE_SESSION_RECORD", sessionId: "session_1" },
       {
         type: "DOWNLOAD_REQUEST",

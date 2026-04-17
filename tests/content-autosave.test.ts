@@ -15,6 +15,13 @@ describe("content autosave policy", () => {
   it("schedules running autosave when enabled", () => {
     const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
     state.status = "running";
+    state.entries.push({
+      id: "entry_1",
+      text: "테스트 자막",
+      timestamp: "2026-03-10T09:00:00.000Z",
+      startTime: "2026-03-10T09:00:00.000Z",
+      endTime: "2026-03-10T09:00:00.000Z",
+    });
 
     expect(
       shouldScheduleRunningPersist(true, state, {
@@ -31,6 +38,18 @@ describe("content autosave policy", () => {
     expect(
       shouldScheduleRunningPersist(true, state, {
         runningAutoSaveEnabled: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("does not schedule running autosave without committed entries", () => {
+    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    state.status = "running";
+    state.previewText = "실시간 미리보기만 있음";
+
+    expect(
+      shouldScheduleRunningPersist(true, state, {
+        runningAutoSaveEnabled: true,
       }),
     ).toBe(false);
   });
@@ -146,6 +165,44 @@ describe("content autosave policy", () => {
     expect(timer).not.toBeNull();
 
     state.status = "stopped";
+    await vi.advanceTimersByTimeAsync(800);
+
+    expect(persistRecord).not.toHaveBeenCalled();
+    expect(onPersisted).not.toHaveBeenCalled();
+    expect(onError).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("skips persisting when the running snapshot has no committed entries", async () => {
+    vi.useFakeTimers();
+    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    state.status = "running";
+    state.startedAt = "2026-03-10T09:00:00.000Z";
+    state.createdAt = "2026-03-10T09:00:00.000Z";
+    state.updatedAt = "2026-03-10T09:00:00.000Z";
+    state.previewText = "실시간 텍스트만 있음";
+
+    const persistRecord = vi.fn().mockResolvedValue(toSessionRecord(state, "running"));
+    const onPersisted = vi.fn();
+    const onError = vi.fn();
+
+    const timer = scheduleRunningPersistTimer({
+      currentTimer: null,
+      delayMs: 800,
+      shouldSchedule: true,
+      clearTimer: (timerId) => clearTimeout(timerId),
+      setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
+      getSnapshot: () => ({
+        status: state.status,
+        record: toSessionRecord(state, "running"),
+      }),
+      persistRecord,
+      onPersisted,
+      onError,
+    });
+
+    expect(timer).not.toBeNull();
+
     await vi.advanceTimersByTimeAsync(800);
 
     expect(persistRecord).not.toHaveBeenCalled();

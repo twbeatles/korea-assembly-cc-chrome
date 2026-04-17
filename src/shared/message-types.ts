@@ -110,6 +110,10 @@ export type BackgroundCommandMessage =
   | { type: "ENSURE_CONTENT_SCRIPT"; tabId: number; url?: string }
   | { type: "GET_FRAME_FORWARD_NONCE" }
   | {
+      type: "QUEUE_EXIT_PERSIST_RECORD";
+      record: SessionRecord;
+    }
+  | {
       type: "PERSIST_SESSION_RECORD";
       record: SessionRecord;
     }

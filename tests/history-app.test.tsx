@@ -485,4 +485,49 @@ describe("history app", () => {
     });
     expect(noteInput?.value).toBe("draft note");
   });
+
+  it("discards a dirty note draft after confirmed refresh", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "목록 새로고침" });
+
+    const noteInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(noteInput).not.toBeNull();
+    fireEvent.change(noteInput!, { target: { value: "draft note" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "목록 새로고침" }));
+
+    await waitFor(() => {
+      expect(noteInput?.value).toBe("");
+    });
+  });
+
+  it("discards a dirty note draft after confirmed filter change when the same session remains selected", async () => {
+    const starredSession = buildSession({
+      starred: true,
+    });
+
+    sessionStoreMocks.listSessionsPage.mockImplementation(async () => ({
+      sessions: [starredSession],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    }));
+    sessionStoreMocks.loadSession.mockResolvedValue(starredSession);
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
+      ids.includes(starredSession.id) ? [starredSession] : [],
+    );
+
+    render(<App />);
+    await screen.findByRole("button", { name: "즐겨찾기만 보기" });
+
+    const noteInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+    expect(noteInput).not.toBeNull();
+    fireEvent.change(noteInput!, { target: { value: "draft note" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "즐겨찾기만 보기" }));
+
+    await waitFor(() => {
+      expect(noteInput?.value).toBe("");
+    });
+  });
 });

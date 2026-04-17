@@ -40,6 +40,7 @@ export interface BackgroundCommandDependencies {
   injectConfiguredContentScripts: (tabId: number) => Promise<void>;
   onInjectConfiguredContentScriptsError?: (error: unknown) => void;
   getOrCreateStoredFrameForwardNonce: (tabId: number) => Promise<string>;
+  queueExitPersistRecord: (record: SessionRecord) => Promise<void>;
   persistSessionRecord: (record: SessionRecord) => Promise<{ updatedAt: string }>;
   deleteSessionRecord: (sessionId: string) => Promise<void>;
   downloadExport: (filename: string, content: string, mimeType: string) => Promise<number>;
@@ -57,6 +58,7 @@ export function isBackgroundCommandMessage(message: unknown): message is Backgro
   return (
     type === "ENSURE_CONTENT_SCRIPT" ||
     type === "GET_FRAME_FORWARD_NONCE" ||
+    type === "QUEUE_EXIT_PERSIST_RECORD" ||
     type === "PERSIST_SESSION_RECORD" ||
     type === "DELETE_SESSION_RECORD" ||
     type === "DOWNLOAD_REQUEST" ||
@@ -101,6 +103,9 @@ export async function handleBackgroundCommand(
       }
       return { ok: true, nonce: await dependencies.getOrCreateStoredFrameForwardNonce(tabId) };
     }
+    case "QUEUE_EXIT_PERSIST_RECORD":
+      await dependencies.queueExitPersistRecord(message.record);
+      return { ok: true };
     case "PERSIST_SESSION_RECORD": {
       const saved = await dependencies.persistSessionRecord(message.record);
       return { ok: true, updatedAt: saved.updatedAt };

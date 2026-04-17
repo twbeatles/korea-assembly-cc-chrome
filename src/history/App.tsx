@@ -317,6 +317,10 @@ export default function App() {
     setReloadKey((current) => current + 1);
   };
 
+  const discardUnsavedNoteDraft = (): void => {
+    setNoteDraft(selectedSession?.note ?? "");
+  };
+
   useEffect(() => {
     selectedIdRef.current = selectedId;
   }, [selectedId]);
@@ -500,6 +504,10 @@ export default function App() {
     if (hasUnsavedNote && !confirmDiscardUnsavedNote("목록 새로고침")) {
       setMessage("새로고침을 취소했습니다.");
       return;
+    }
+
+    if (hasUnsavedNote) {
+      discardUnsavedNoteDraft();
     }
 
     requestRefresh();
@@ -951,6 +959,9 @@ export default function App() {
               if (hasUnsavedNote && !confirmDiscardUnsavedNote("필터 변경")) {
                 setMessage("필터 변경을 취소했습니다.");
                 return;
+              }
+              if (hasUnsavedNote) {
+                discardUnsavedNoteDraft();
               }
               setShowStarredOnly((current) => !current);
             }}

@@ -365,3 +365,11 @@ When editing this repository, align with the newly implemented behavior below.
 - subtitle visibility 판정은 `display:none`, `visibility:hidden`, `opacity:0`, zero-rect 를 모두 hidden 으로 간주하는 공통 helper 를 사용합니다.
 - history full-library `JSON 백업` / `JSON 가져오기` 는 단계별 진행률과 취소를 지원합니다. import cancel 은 partial completion 을 허용하며 rollback 하지 않습니다.
 - Options numeric-field tests now query accessible field names instead of concatenated label+unit strings.
+
+## Sync Delta (2026-04-17)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- running autosave는 committed subtitle이 있을 때만 동작해야 하며, preview-only / keepalive-only 상태로 빈 persisted `running` 세션을 만들면 안 됩니다.
+- page-exit queue storage write가 content script에서 실패하면 background가 동일 stopped snapshot에 대해 durable queue write를 한 번 더 시도해야 합니다.
+- history 에서 저장하지 않은 메모를 가진 채 새로고침 / `즐겨찾기만 보기` 전환을 하면서 폐기를 확인하면, dirty draft는 실제 저장값으로 즉시 되돌아가야 합니다.
