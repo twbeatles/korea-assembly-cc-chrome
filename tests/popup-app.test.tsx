@@ -2,8 +2,14 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const chromeApiMocks = vi.hoisted(() => ({
+  addTabActivatedListener: vi.fn(),
+  addTabRemovedListener: vi.fn(),
+  addTabUpdatedListener: vi.fn(),
   connectToTab: vi.fn(),
   queryActiveTab: vi.fn(),
+  removeTabActivatedListener: vi.fn(),
+  removeTabRemovedListener: vi.fn(),
+  removeTabUpdatedListener: vi.fn(),
   sendRuntimeMessage: vi.fn(),
 }));
 
@@ -76,11 +82,13 @@ describe("popup app", () => {
             currentSelector: "#viewSubtit",
             currentFramePath: [],
             diagnostics: {
-              captureMode: "dom-observer",
+              captureMode: "structured",
               observerActive: true,
               currentSelector: "#viewSubtit",
               currentFramePath: [],
-              sourceLabel: "DOM observer",
+              sourceLabel: "structured",
+              persistabilityState: "persistable",
+              persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
             },
             hasPersistableContent: true,
           },
@@ -156,6 +164,8 @@ describe("popup app", () => {
               currentSelector: "",
               currentFramePath: [],
               sourceLabel: "대기 중",
+              persistabilityState: "idle",
+              persistabilityHint: "화면 자막을 기다리고 있습니다.",
             },
             hasPersistableContent: false,
           },
@@ -209,5 +219,69 @@ describe("popup app", () => {
     await waitFor(() => {
       expect(screen.getByText("diagnostics failed")).toBeTruthy();
     });
+  });
+
+  it("reconnects to the current active tab when the active tab changes", async () => {
+    let activatedListener:
+      | ((activeInfo: chrome.tabs.TabActiveInfo) => void)
+      | undefined;
+    chromeApiMocks.addTabActivatedListener.mockImplementationOnce((listener) => {
+      activatedListener = listener;
+    });
+
+    const firstPort = {
+      onMessage: {
+        addListener: vi.fn(),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+    const secondPort = {
+      onMessage: {
+        addListener: vi.fn(),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+
+    chromeApiMocks.queryActiveTab
+      .mockResolvedValueOnce({
+        id: 1,
+        url: "https://assembly.webcast.go.kr/main/player.asp",
+      })
+      .mockResolvedValueOnce({
+        id: 2,
+        url: "https://assembly.webcast.go.kr/main/player.asp?xcode=10",
+      });
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValue({
+      ok: true,
+      ready: true,
+      requiresReload: false,
+    });
+    chromeApiMocks.connectToTab
+      .mockReturnValueOnce(firstPort)
+      .mockReturnValueOnce(secondPort);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      activatedListener?.({ tabId: 2, windowId: 1 });
+    });
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalledTimes(2);
+    });
+    expect(firstPort.disconnect).toHaveBeenCalled();
+    expect(chromeApiMocks.connectToTab).toHaveBeenLastCalledWith(2, 0, "assembly-subtitle-popup");
   });
 });

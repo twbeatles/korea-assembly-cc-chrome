@@ -1,5 +1,6 @@
 import type { CaptureMode, NormalizedCaptureEvent } from "../core/live-capture";
 import type { ObservedSubtitleRow } from "../shared/message-types";
+import type { PersistabilityState } from "../shared/message-types";
 import { resolveCaptureNotice } from "./capture-notice";
 
 export const RESET_CAPTURE_NOTICE_MIN_MS = 2000;
@@ -9,6 +10,13 @@ export interface CaptureCommitAnalysis {
   stableRows: ObservedSubtitleRow[];
   hasUnstableRows: boolean;
   shouldCommit: boolean;
+}
+
+export interface StructuredCommitResult {
+  changed: boolean;
+  committed: boolean;
+  sawDuplicate: boolean;
+  sawFiltered: boolean;
 }
 
 export function analyzeCaptureCommit(input: Pick<NormalizedCaptureEvent, "captureMode" | "previewText" | "rows">): CaptureCommitAnalysis {
@@ -52,7 +60,17 @@ export function resolveRuntimeCaptureNotice(input: {
   hasStableRows: boolean;
   lastCommittedResetAt: number | null;
   now: number;
+  persistabilityState: PersistabilityState;
+  persistabilityHint: string;
 }): string {
+  if (
+    input.captureMode !== "fallback" &&
+    input.persistabilityState !== "idle" &&
+    input.persistabilityState !== "persistable"
+  ) {
+    return input.persistabilityHint;
+  }
+
   return resolveCaptureNotice({
     captureMode: input.captureMode,
     observerActive: input.observerActive,

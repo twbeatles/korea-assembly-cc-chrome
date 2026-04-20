@@ -1,5 +1,5 @@
 import type { CaptureMode } from "../core/live-capture";
-import type { CaptureDiagnostics } from "./message-types";
+import type { CaptureDiagnostics, PersistabilityState } from "./message-types";
 
 export function resolveCaptureSourceLabel(
   captureMode: CaptureMode,
@@ -29,6 +29,8 @@ export function buildCaptureDiagnostics(input: {
   observerActive: boolean;
   currentSelector: string;
   currentFramePath: number[];
+  persistabilityState?: PersistabilityState;
+  persistabilityHint?: string;
 }): CaptureDiagnostics {
   return {
     captureMode: input.captureMode,
@@ -36,5 +38,7 @@ export function buildCaptureDiagnostics(input: {
     currentSelector: input.currentSelector,
     currentFramePath: [...input.currentFramePath],
     sourceLabel: resolveCaptureSourceLabel(input.captureMode, input.observerActive),
+    persistabilityState: input.persistabilityState ?? "idle",
+    persistabilityHint: input.persistabilityHint ?? "",
   };
 }

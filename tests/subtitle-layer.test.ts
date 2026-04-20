@@ -37,6 +37,17 @@ function mountLayer(options: { visible?: boolean; text?: string } = {}): void {
   }
 }
 
+function mountFrameDocument(): Document {
+  const frame = document.createElement("iframe");
+  const frameDoc = document.implementation.createHTMLDocument("frame");
+  Object.defineProperty(frame, "contentDocument", {
+    configurable: true,
+    value: frameDoc,
+  });
+  document.body.append(frame);
+  return frameDoc;
+}
+
 describe("subtitle layer helpers", () => {
   it("reads the current subtitle layer state", () => {
     mountLayer({ visible: true, text: "실시간 자막입니다." });
@@ -164,5 +175,91 @@ describe("subtitle layer helpers", () => {
       visible: false,
       hasText: true,
     });
+  });
+
+  it("aggregates visible subtitle layers that exist only inside an accessible iframe", () => {
+    document.body.innerHTML = "";
+    const frameDoc = mountFrameDocument();
+    frameDoc.body.innerHTML = `
+      <div id="viewSubtit" style="display:block">
+        <div class="incont">iframe 안 자막</div>
+      </div>
+    `;
+    const layer = frameDoc.querySelector<HTMLElement>("#viewSubtit");
+    expect(layer).not.toBeNull();
+    mockVisibleRects(layer!);
+
+    expect(readSubtitleLayerState()).toEqual({
+      found: true,
+      visible: true,
+      hasText: true,
+      controlActive: false,
+      text: "iframe 안 자막",
+    });
+  });
+
+  it("clicks a top-frame activation control even when the subtitle layer lives in a child iframe", () => {
+    document.body.innerHTML = "";
+    const frameDoc = mountFrameDocument();
+    frameDoc.body.innerHTML = `
+      <div id="viewSubtit" style="display:none">
+        <div class="incont">child frame subtitle</div>
+      </div>
+    `;
+    const childLayer = frameDoc.querySelector<HTMLElement>("#viewSubtit");
+    expect(childLayer).not.toBeNull();
+    mockVisibleRects(childLayer!);
+
+    const button = document.createElement("button");
+    button.className = "btn_subtit_ai";
+    button.textContent = "AI 자막보기";
+    mockVisibleRects(button);
+    button.addEventListener("click", () => {
+      childLayer!.style.display = "block";
+    });
+    document.body.append(button);
+
+    const result = tryDomSubtitleActivation();
+
+    expect(result).toEqual({
+      attempted: true,
+      method: "button-click",
+      controlSelector: ".btn_subtit_ai",
+    });
+    expect(readSubtitleLayerState()).toMatchObject({
+      visible: true,
+      hasText: true,
+      text: "child frame subtitle",
+    });
+  });
+
+  it("waits for a subtitle layer that becomes visible inside a frame just before timeout", async () => {
+    vi.useFakeTimers();
+    document.body.innerHTML = "";
+    const frameDoc = mountFrameDocument();
+    frameDoc.body.innerHTML = `
+      <div id="viewSubtit" style="display:none">
+        <div class="incont"></div>
+      </div>
+    `;
+    const layer = frameDoc.querySelector<HTMLElement>("#viewSubtit");
+    const textContainer = frameDoc.querySelector<HTMLElement>("#viewSubtit .incont");
+    expect(layer).not.toBeNull();
+    mockVisibleRects(layer!);
+
+    window.setTimeout(() => {
+      layer!.style.display = "block";
+      textContainer!.textContent = "timeout 직전 자막";
+    }, 180);
+
+    const pending = waitForSubtitleLayer({ timeoutMs: 240, intervalMs: 60 });
+    await vi.advanceTimersByTimeAsync(240);
+
+    await expect(pending).resolves.toMatchObject({
+      visible: true,
+      hasText: true,
+      text: "timeout 직전 자막",
+    });
+    vi.useRealTimers();
   });
 });

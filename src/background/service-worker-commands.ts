@@ -22,16 +22,30 @@ export async function downloadExportWithFallback(
   let blobUrl = "";
   try {
     blobUrl = await dependencies.requestBlobUrl(content, mimeType);
-    const downloadId = await dependencies.downloadByUrl(blobUrl, filename);
-    await dependencies.persistBlobDownload(downloadId, blobUrl);
-    return downloadId;
   } catch (error) {
-    if (blobUrl) {
-      await dependencies.revokeBlobUrl(blobUrl);
-    }
     dependencies.onBlobFallbackError?.(error);
     return dependencies.downloadByUrl(dependencies.toDataUrl(content, mimeType), filename);
   }
+
+  let downloadId: number;
+  try {
+    downloadId = await dependencies.downloadByUrl(blobUrl, filename);
+  } catch (error) {
+    await dependencies.revokeBlobUrl(blobUrl);
+    dependencies.onBlobFallbackError?.(error);
+    return dependencies.downloadByUrl(dependencies.toDataUrl(content, mimeType), filename);
+  }
+
+  try {
+    await dependencies.persistBlobDownload(downloadId, blobUrl);
+  } catch (error) {
+    console.warn(
+      "[background] Blob download metadata persistence failed; keeping runtime mapping only.",
+      error,
+    );
+  }
+
+  return downloadId;
 }
 
 export interface BackgroundCommandDependencies {

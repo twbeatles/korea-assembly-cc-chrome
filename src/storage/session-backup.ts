@@ -11,6 +11,8 @@ import { SESSION_RECORD_VERSION } from "../shared/constants";
 
 export const SESSION_BACKUP_KIND = "assembly-subtitle-session-backup";
 export const SESSION_BACKUP_VERSION = "1";
+export const SESSION_LIBRARY_TRANSFER_LIMIT_BYTES = 25 * 1024 * 1024;
+export const SESSION_LIBRARY_TRANSFER_LIMIT_LABEL = "25 MiB";
 const SUPPORTED_SESSION_BACKUP_VERSIONS = new Set([SESSION_BACKUP_VERSION]);
 
 export interface ParsedSessionImportPayload {
@@ -184,6 +186,27 @@ function normalizeImportList(value: unknown): ParsedSessionImportPayload {
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
+}
+
+export function getUtf8ByteLength(value: string): number {
+  return new TextEncoder().encode(value).length;
+}
+
+export function assertSessionLibraryTransferSizeWithinLimit(
+  byteLength: number,
+  actionLabel: "전체 JSON 백업" | "JSON 가져오기",
+): void {
+  if (!Number.isFinite(byteLength) || byteLength < 0) {
+    return;
+  }
+
+  if (byteLength <= SESSION_LIBRARY_TRANSFER_LIMIT_BYTES) {
+    return;
+  }
+
+  throw new Error(
+    `${actionLabel} 작업은 ${SESSION_LIBRARY_TRANSFER_LIMIT_LABEL} 이하에서만 지원합니다.`,
+  );
 }
 
 export function buildSessionBackupBundle(

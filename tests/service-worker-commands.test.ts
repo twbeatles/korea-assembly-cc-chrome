@@ -220,6 +220,29 @@ describe("service worker command helpers", () => {
     );
   });
 
+  it("does not retry the download when blob metadata persistence fails after download succeeds", async () => {
+    const requestBlobUrl = vi.fn(async () => "blob:test");
+    const downloadByUrl = vi.fn(async () => 35);
+    const persistBlobDownload = vi.fn(async () => {
+      throw new Error("persist failed");
+    });
+    const toDataUrl = vi.fn(() => "data:test");
+
+    const downloadId = await downloadExportWithFallback("session.json", "{}", "application/json", {
+      requestBlobUrl,
+      downloadByUrl,
+      persistBlobDownload,
+      revokeBlobUrl: vi.fn(async () => undefined),
+      toDataUrl,
+      onBlobFallbackError: vi.fn(),
+    });
+
+    expect(downloadId).toBe(35);
+    expect(downloadByUrl).toHaveBeenCalledTimes(1);
+    expect(downloadByUrl).toHaveBeenCalledWith("blob:test", "session.json");
+    expect(toDataUrl).not.toHaveBeenCalled();
+  });
+
   it("accepts the known background command payload union", () => {
     const commands: BackgroundCommandMessage[] = [
       { type: "OPEN_HISTORY_PAGE" },

@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 
 import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
-import { connectToTab, queryActiveTab, sendRuntimeMessage } from "../shared/chrome-api";
+import {
+  addTabActivatedListener,
+  addTabRemovedListener,
+  addTabUpdatedListener,
+  connectToTab,
+  queryActiveTab,
+  removeTabActivatedListener,
+  removeTabRemovedListener,
+  removeTabUpdatedListener,
+  sendRuntimeMessage,
+} from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
   PopupToContentMessage,
@@ -25,6 +35,8 @@ export default function App() {
     let reconnectAttempt = 0;
     let connecting = false;
     let currentPort: chrome.runtime.Port | null = null;
+    let currentTabIdValue: number | null = null;
+    let pendingReconnectMessage: string | null = null;
 
     const clearReconnectTimer = (): void => {
       if (reconnectTimer !== null) {
@@ -33,18 +45,45 @@ export default function App() {
       }
     };
 
-    const scheduleReconnect = (message: string): void => {
+    const disconnectCurrentPort = (): void => {
+      if (!currentPort) {
+        return;
+      }
+
+      const portToDisconnect = currentPort;
+      currentPort = null;
+      setPort(null);
+      portToDisconnect.disconnect();
+    };
+
+    const scheduleReconnect = (message: string, immediate = false): void => {
       if (!active) {
         return;
       }
 
       setStatusMessage(message);
       clearReconnectTimer();
-      const delay = Math.min(5000, 500 * 2 ** reconnectAttempt);
-      reconnectAttempt += 1;
+      const delay = immediate ? 0 : Math.min(5000, 500 * 2 ** reconnectAttempt);
+      reconnectAttempt = immediate ? 0 : reconnectAttempt + 1;
       reconnectTimer = window.setTimeout(() => {
         void connect();
       }, delay);
+    };
+
+    const reconnectToActiveTab = (message: string): void => {
+      if (!active) {
+        return;
+      }
+
+      if (connecting) {
+        pendingReconnectMessage = message;
+        return;
+      }
+
+      disconnectCurrentPort();
+      setTabReady(false);
+      setRequiresReload(false);
+      scheduleReconnect(message, true);
     };
 
     const connect = async (): Promise<void> => {
@@ -60,16 +99,20 @@ export default function App() {
         }
 
         if (!tab?.id || !tab.url) {
+          currentTabIdValue = null;
           setCurrentTabId(null);
           setTabReady(false);
+          setUnsupported(false);
           scheduleReconnect("현재 탭 정보를 읽지 못했습니다. 자동으로 다시 연결을 시도합니다.");
           return;
         }
 
+        currentTabIdValue = tab.id;
         setCurrentTabId(tab.id);
         if (!isSupportedAssemblyUrl(tab.url)) {
           setUnsupported(true);
           setTabReady(false);
+          setRequiresReload(false);
           clearReconnectTimer();
           setStatusMessage("국회 의사중계 플레이어 페이지에서만 사용할 수 있습니다.");
           return;
@@ -175,6 +218,9 @@ export default function App() {
         };
 
         const onDisconnect = (): void => {
+          if (currentPort !== nextPort) {
+            return;
+          }
           const disconnectReason = chrome.runtime.lastError?.message;
           if (!active) {
             return;
@@ -202,16 +248,50 @@ export default function App() {
         scheduleReconnect(`${baseMessage} 자동으로 다시 연결을 시도합니다.`);
       } finally {
         connecting = false;
+        if (pendingReconnectMessage) {
+          const nextMessage = pendingReconnectMessage;
+          pendingReconnectMessage = null;
+          reconnectToActiveTab(nextMessage);
+        }
       }
     };
 
+    const handleTabActivated = (): void => {
+      reconnectToActiveTab("현재 창의 활성 탭으로 다시 연결하고 있습니다.");
+    };
+
+    const handleTabUpdated = (
+      _tabId: number,
+      changeInfo: chrome.tabs.TabChangeInfo,
+      tab: chrome.tabs.Tab,
+    ): void => {
+      if (!tab.active || (!changeInfo.status && !changeInfo.url)) {
+        return;
+      }
+
+      reconnectToActiveTab("현재 창의 활성 탭 정보를 다시 확인하고 있습니다.");
+    };
+
+    const handleTabRemoved = (tabId: number): void => {
+      if (tabId !== currentTabIdValue) {
+        return;
+      }
+
+      reconnectToActiveTab("현재 탭이 닫혀 활성 탭으로 다시 연결하고 있습니다.");
+    };
+
+    addTabActivatedListener(handleTabActivated);
+    addTabUpdatedListener(handleTabUpdated);
+    addTabRemovedListener(handleTabRemoved);
     void connect();
 
     return () => {
       active = false;
       clearReconnectTimer();
-      currentPort?.disconnect();
-      currentPort = null;
+      removeTabActivatedListener(handleTabActivated);
+      removeTabUpdatedListener(handleTabUpdated);
+      removeTabRemovedListener(handleTabRemoved);
+      disconnectCurrentPort();
       setPort(null);
     };
   }, []);

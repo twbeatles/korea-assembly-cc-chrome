@@ -351,3 +351,12 @@ Deployment documentation consistency sources:
 - Release verification should confirm that `수집된 자막` 저장/export 기준이 live ledger cap 과 무관한 세션 전체 누적 committed subtitle 목록임을 유지합니다.
 - Release verification should confirm that 회의명 파서는 trailing `|` branding 만 제거하고 날짜 / 회차 / 하이픈 텍스트를 보존합니다.
 - Release verification should confirm that subtitle visibility 판정은 `display:none`, `visibility:hidden`, `opacity:0`, zero-rect 를 동일하게 hidden 으로 처리합니다.
+
+## 2026-04-20 Deployment Consistency Update
+
+- Release verification should confirm that subtitle auto-activation still succeeds when visible control과 실제 `#viewSubtit` / 자막 텍스트가 서로 다른 accessible frame에 있어도 같은 상태로 집계됩니다.
+- Release verification should confirm that options `수집 진단` 탭이 `persistabilityState` / `persistabilityHint` 를 표시하고, `preview_only`, `unstable_only`, `filtered`, `duplicate`, `persistable` 상태가 실제 런타임과 일치합니다.
+- Release verification should confirm that in-page `수집된 자막` 목록은 최신 `300`건까지만 렌더하지만 저장 / export / history / 최근 N줄 복사 기준은 전체 committed session 을 계속 사용합니다.
+- Release verification should confirm that full-library `JSON 백업` / `JSON 가져오기` 는 `25 MiB` 초과 payload에서 명시적 오류로 즉시 중단됩니다.
+- Release verification should confirm that popup 은 현재 창 active tab 을 따라 재연결하고, diagnostics `tabId` 대상이 닫히거나 unsupported 가 되면 다른 supported assembly tab 으로 fallback 합니다.
+- Release verification should confirm that Blob export fallback 은 Blob URL 생성 실패 또는 Blob download 실패에서만 `data:` 경로로 내려가고, metadata persist 실패만으로 중복 다운로드를 다시 열지 않습니다.

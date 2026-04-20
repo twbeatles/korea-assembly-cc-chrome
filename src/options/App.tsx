@@ -3,7 +3,18 @@ import { useEffect, useState } from "react";
 import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
 import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
 import { validateFilenamePattern } from "../shared/filename-pattern";
-import { connectToTab, getTab, queryTabs, sendRuntimeMessage } from "../shared/chrome-api";
+import {
+  addTabActivatedListener,
+  addTabRemovedListener,
+  addTabUpdatedListener,
+  connectToTab,
+  getTab,
+  queryTabs,
+  removeTabActivatedListener,
+  removeTabRemovedListener,
+  removeTabUpdatedListener,
+  sendRuntimeMessage,
+} from "../shared/chrome-api";
 import type {
   ContentToPopupMessage,
   PopupToContentMessage,
@@ -96,6 +107,25 @@ function getFieldMin(field: keyof ExtensionSettings): number {
   }
 }
 
+function getPersistabilityStateLabel(state?: string): string {
+  switch (state) {
+    case "persistable":
+      return "저장 가능";
+    case "preview_only":
+      return "preview-only";
+    case "unstable_only":
+      return "unstable-only";
+    case "filtered":
+      return "filtered";
+    case "duplicate":
+      return "duplicate";
+    case "idle":
+      return "idle";
+    default:
+      return "-";
+  }
+}
+
 function buildNumberDraftState(settings: ExtensionSettings): NumberDraftState {
   return NUMBER_FIELDS.reduce(
     (drafts, field) => ({
@@ -159,7 +189,14 @@ function updateUrl(view: OptionsView, tabId: number | null): void {
 async function resolveDiagnosticsTab(preferredTabId: number | null): Promise<chrome.tabs.Tab | null> {
   if (typeof preferredTabId === "number") {
     try {
-      return await getTab(preferredTabId);
+      const preferredTab = await getTab(preferredTabId);
+      if (
+        typeof preferredTab.id === "number" &&
+        typeof preferredTab.url === "string" &&
+        isSupportedAssemblyUrl(preferredTab.url)
+      ) {
+        return preferredTab;
+      }
     } catch {
       // Fall back to another matching assembly tab in the current window.
     }
@@ -169,7 +206,12 @@ async function resolveDiagnosticsTab(preferredTabId: number | null): Promise<chr
   const candidates = tabs.filter(
     (tab) => typeof tab.id === "number" && typeof tab.url === "string" && isSupportedAssemblyUrl(tab.url),
   );
-  candidates.sort((left, right) => (right.lastAccessed ?? 0) - (left.lastAccessed ?? 0));
+  candidates.sort((left, right) => {
+    if (Boolean(left.active) !== Boolean(right.active)) {
+      return left.active ? -1 : 1;
+    }
+    return (right.lastAccessed ?? 0) - (left.lastAccessed ?? 0);
+  });
   return candidates[0] ?? null;
 }
 
@@ -310,6 +352,8 @@ export default function App() {
     let reconnectAttempt = 0;
     let connecting = false;
     let currentPort: chrome.runtime.Port | null = null;
+    let currentTabIdValue: number | null = null;
+    let pendingReconnectMessage: string | null = null;
 
     const clearReconnectTimer = (): void => {
       if (reconnectTimer !== null) {
@@ -318,18 +362,44 @@ export default function App() {
       }
     };
 
-    const scheduleReconnect = (nextMessage: string): void => {
+    const disconnectCurrentPort = (): void => {
+      if (!currentPort) {
+        return;
+      }
+
+      const portToDisconnect = currentPort;
+      currentPort = null;
+      portToDisconnect.disconnect();
+    };
+
+    const scheduleReconnect = (nextMessage: string, immediate = false): void => {
       if (!active) {
         return;
       }
 
       setDiagnosticsMessage(nextMessage);
       clearReconnectTimer();
-      const delay = Math.min(5000, 500 * 2 ** reconnectAttempt);
-      reconnectAttempt += 1;
+      const delay = immediate ? 0 : Math.min(5000, 500 * 2 ** reconnectAttempt);
+      reconnectAttempt = immediate ? 0 : reconnectAttempt + 1;
       reconnectTimer = window.setTimeout(() => {
         void connect();
       }, delay);
+    };
+
+    const reconnectDiagnostics = (message: string): void => {
+      if (!active) {
+        return;
+      }
+
+      if (connecting) {
+        pendingReconnectMessage = message;
+        return;
+      }
+
+      disconnectCurrentPort();
+      setTabReady(false);
+      setRequiresReload(false);
+      scheduleReconnect(message, true);
     };
 
     const connect = async (): Promise<void> => {
@@ -345,6 +415,7 @@ export default function App() {
         }
 
         if (!tab?.id || !tab.url) {
+          currentTabIdValue = null;
           setSnapshot(null);
           setUnsupported(false);
           setTabReady(false);
@@ -354,16 +425,7 @@ export default function App() {
           return;
         }
 
-        if (!isSupportedAssemblyUrl(tab.url)) {
-          setSnapshot(null);
-          setUnsupported(true);
-          setTabReady(false);
-          setRequiresReload(false);
-          clearReconnectTimer();
-          setDiagnosticsMessage("국회 의사중계 플레이어 페이지에서만 수집 진단을 볼 수 있습니다.");
-          return;
-        }
-
+        currentTabIdValue = tab.id;
         setUnsupported(false);
 
         const ensure = await sendRuntimeMessage({
@@ -417,6 +479,9 @@ export default function App() {
         };
 
         const onDisconnect = (): void => {
+          if (currentPort !== nextPort) {
+            return;
+          }
           const disconnectReason = chrome.runtime.lastError?.message;
           if (!active) {
             return;
@@ -445,16 +510,75 @@ export default function App() {
         scheduleReconnect(`${baseMessage} 자동으로 다시 연결을 시도합니다.`);
       } finally {
         connecting = false;
+        if (pendingReconnectMessage) {
+          const nextMessage = pendingReconnectMessage;
+          pendingReconnectMessage = null;
+          reconnectDiagnostics(nextMessage);
+        }
       }
     };
 
+    const handleTabActivated = (): void => {
+      if (typeof diagnosticsTabId === "number") {
+        reconnectDiagnostics("선택한 진단 탭 상태를 다시 확인하고 있습니다.");
+        return;
+      }
+
+      reconnectDiagnostics("현재 창의 활성 탭 기준으로 진단을 다시 연결하고 있습니다.");
+    };
+
+    const handleTabUpdated = (
+      _tabId: number,
+      changeInfo: chrome.tabs.TabChangeInfo,
+      tab: chrome.tabs.Tab,
+    ): void => {
+      if (!changeInfo.status && !changeInfo.url) {
+        return;
+      }
+
+      if (typeof diagnosticsTabId === "number") {
+        if (typeof tab.id !== "number" || tab.id !== diagnosticsTabId) {
+          return;
+        }
+        reconnectDiagnostics("지정한 진단 탭 상태가 바뀌어 다시 연결하고 있습니다.");
+        return;
+      }
+
+      if (!tab.active) {
+        return;
+      }
+
+      reconnectDiagnostics("현재 창의 활성 탭 상태가 바뀌어 진단을 다시 연결하고 있습니다.");
+    };
+
+    const handleTabRemoved = (tabId: number): void => {
+      if (typeof diagnosticsTabId === "number") {
+        if (tabId !== diagnosticsTabId) {
+          return;
+        }
+        reconnectDiagnostics("지정한 진단 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.");
+        return;
+      }
+
+      if (tabId !== currentTabIdValue) {
+        return;
+      }
+
+      reconnectDiagnostics("현재 진단 대상 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.");
+    };
+
+    addTabActivatedListener(handleTabActivated);
+    addTabUpdatedListener(handleTabUpdated);
+    addTabRemovedListener(handleTabRemoved);
     void connect();
 
     return () => {
       active = false;
       clearReconnectTimer();
-      currentPort?.disconnect();
-      currentPort = null;
+      removeTabActivatedListener(handleTabActivated);
+      removeTabUpdatedListener(handleTabUpdated);
+      removeTabRemovedListener(handleTabRemoved);
+      disconnectCurrentPort();
     };
   }, [diagnosticsReloadToken, diagnosticsTabId, view]);
 
@@ -828,6 +952,16 @@ export default function App() {
               <strong>
                 {snapshot ? formatCaptureDiagnosticsFramePath(snapshot.diagnostics.currentFramePath) : "-"}
               </strong>
+            </div>
+            <div className="meta-row">
+              <span>저장 판정</span>
+              <strong>
+                {getPersistabilityStateLabel(snapshot?.diagnostics.persistabilityState)}
+              </strong>
+            </div>
+            <div className="meta-row">
+              <span>판정 안내</span>
+              <strong>{snapshot?.diagnostics.persistabilityHint || "-"}</strong>
             </div>
             <div className="meta-row">
               <span>최근 저장</span>

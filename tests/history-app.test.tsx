@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SESSION_LIBRARY_REVISION_STORAGE_KEY } from "../src/shared/constants";
+import { SESSION_LIBRARY_TRANSFER_LIMIT_BYTES } from "../src/storage/session-backup";
 
 const chromeApiMocks = vi.hoisted(() => ({
   createTab: vi.fn(),
@@ -416,6 +417,34 @@ describe("history app", () => {
 
     await waitFor(() => {
       expect(screen.getByText("JSON 가져오기를 취소했습니다.")).toBeTruthy();
+    });
+    expect(sessionStoreMocks.importSessionRecords).not.toHaveBeenCalled();
+  });
+
+  it("blocks oversized JSON imports before parsing or writing", async () => {
+    render(<App />);
+    await screen.findByRole("button", { name: "JSON 가져오기" });
+
+    const importInput = document.querySelector(".hidden-file-input") as HTMLInputElement | null;
+    expect(importInput).not.toBeNull();
+
+    const file = {
+      name: "oversized.json",
+      type: "application/json",
+      size: SESSION_LIBRARY_TRANSFER_LIMIT_BYTES + 1,
+      text: vi.fn(),
+    } as unknown as File;
+
+    fireEvent.change(importInput!, {
+      target: {
+        files: [file],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("JSON 가져오기 작업은 25 MiB 이하에서만 지원합니다."),
+      ).toBeTruthy();
     });
     expect(sessionStoreMocks.importSessionRecords).not.toHaveBeenCalled();
   });

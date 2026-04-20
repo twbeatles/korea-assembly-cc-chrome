@@ -28,11 +28,15 @@ function isHTMLElement(node: Element | null): node is HTMLElement {
   return Boolean(node) && node instanceof HTMLElement;
 }
 
+function normalizeSubtitleText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
 function readText(root: ParentNode): string {
   const raw = Array.from(root.querySelectorAll<HTMLElement>(SUBTITLE_TEXT_SELECTOR))
     .map((node) => node.innerText || node.textContent || "")
     .join(" ");
-  return raw.replace(/\s+/g, " ").trim();
+  return normalizeSubtitleText(raw);
 }
 
 function isActivationControlActive(element: HTMLElement): boolean {
@@ -71,6 +75,36 @@ function findActivationControl(root: ParentNode): { selector: string; element: H
     selector: control.selector,
     element: control.element,
   };
+}
+
+function collectAccessibleDocuments(
+  rootDocument: Document,
+  depth: number = 0,
+  maxDepth: number = 3,
+): Document[] {
+  if (depth > maxDepth) {
+    return [];
+  }
+
+  const documents = [rootDocument];
+  const frames = Array.from(
+    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+  );
+
+  for (const frame of frames) {
+    try {
+      const childDoc = frame.contentDocument;
+      if (!childDoc) {
+        continue;
+      }
+
+      documents.push(...collectAccessibleDocuments(childDoc, depth + 1, maxDepth));
+    } catch {
+      // Cross-origin access ignored
+    }
+  }
+
+  return documents;
 }
 
 function walkFramesForControl(
@@ -143,13 +177,70 @@ function walkFramesForVisibleControl(
   return null;
 }
 
+function findFirstAccessibleLayer(rootDocument: Document): HTMLElement | null {
+  const documents = collectAccessibleDocuments(rootDocument);
+  for (const doc of documents) {
+    const layer = doc.querySelector(SUBTITLE_LAYER_SELECTOR);
+    if (isHTMLElement(layer)) {
+      return layer;
+    }
+  }
+
+  return null;
+}
+
 export function readSubtitleLayerState(root: ParentNode = document): SubtitleLayerState {
   const isDoc = root.nodeType === Node.DOCUMENT_NODE;
+  const documents = isDoc ? collectAccessibleDocuments(root as Document) : [];
   const control = isDoc
     ? walkFramesForVisibleControl(root as Document)
     : findVisibleActivationControl(root);
-  const layer = root.querySelector(SUBTITLE_LAYER_SELECTOR);
-  if (!isHTMLElement(layer)) {
+
+  if (!isDoc) {
+    const layer = root.querySelector(SUBTITLE_LAYER_SELECTOR);
+    if (!isHTMLElement(layer)) {
+      return {
+        found: false,
+        visible: false,
+        hasText: false,
+        controlActive: Boolean(control?.active),
+        text: "",
+      };
+    }
+
+    const text = readText(root);
+    return {
+      found: true,
+      visible: isElementVisible(layer),
+      hasText: Boolean(text),
+      controlActive: Boolean(control?.active),
+      text,
+    };
+  }
+
+  const state = documents.reduce(
+    (accumulator, doc) => {
+      const layer = doc.querySelector(SUBTITLE_LAYER_SELECTOR);
+      const text = readText(doc);
+      if (isHTMLElement(layer)) {
+        accumulator.found = true;
+        accumulator.visible = accumulator.visible || isElementVisible(layer);
+      }
+      if (text) {
+        accumulator.hasText = true;
+        accumulator.texts.push(text);
+      }
+      return accumulator;
+    },
+    {
+      found: false,
+      visible: false,
+      hasText: false,
+      texts: [] as string[],
+    },
+  );
+
+  if (!state.found) {
     return {
       found: false,
       visible: false,
@@ -159,13 +250,12 @@ export function readSubtitleLayerState(root: ParentNode = document): SubtitleLay
     };
   }
 
-  const text = readText(root);
   return {
     found: true,
-    visible: isElementVisible(layer),
-    hasText: Boolean(text),
+    visible: state.visible,
+    hasText: state.hasText,
     controlActive: Boolean(control?.active),
-    text,
+    text: normalizeSubtitleText(state.texts.join(" ")),
   };
 }
 
@@ -189,7 +279,9 @@ export function tryDomSubtitleActivation(root: ParentNode = document): SubtitleA
     };
   }
 
-  const layer = root.querySelector(SUBTITLE_LAYER_SELECTOR);
+  const layer = isDoc
+    ? findFirstAccessibleLayer(root as Document)
+    : root.querySelector(SUBTITLE_LAYER_SELECTOR);
   if (isHTMLElement(layer)) {
     layer.style.display = "block";
     return {

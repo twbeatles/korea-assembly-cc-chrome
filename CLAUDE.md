@@ -373,3 +373,15 @@ When editing this repository, align with the newly implemented behavior below.
 - running autosave는 committed subtitle이 있을 때만 동작해야 하며, preview-only / keepalive-only 상태로 빈 persisted `running` 세션을 만들면 안 됩니다.
 - page-exit queue storage write가 content script에서 실패하면 background가 동일 stopped snapshot에 대해 durable queue write를 한 번 더 시도해야 합니다.
 - history 에서 저장하지 않은 메모를 가진 채 새로고침 / `즐겨찾기만 보기` 전환을 하면서 폐기를 확인하면, dirty draft는 실제 저장값으로 즉시 되돌아가야 합니다.
+
+## Sync Delta (2026-04-20)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- subtitle layer activation/read state는 접근 가능한 frame 전체의 `#viewSubtit`, 자막 텍스트, visible control active 상태를 함께 집계합니다. 성공 조건 자체는 계속 `visible && (hasText || controlActive)` 입니다.
+- capture diagnostics는 `persistabilityState` 와 `persistabilityHint` 를 포함해야 하며, 허용 상태 집합은 `idle`, `persistable`, `preview_only`, `unstable_only`, `filtered`, `duplicate` 입니다.
+- panel notice 우선순위는 `오류/액션 feedback -> 자동 조정/수동 클릭/reset 복구 -> preview-only 정보 -> idle` 순서를 유지해야 합니다. options diagnostics 는 `persistabilityHint` 를 그대로 노출해야 합니다.
+- in-page `수집된 자막` 렌더는 최신 `liveLedgerMaxRows = 300` committed entry window 로 제한됩니다. full session history, persistence, copy/export, JSON payload 는 여전히 전체 committed entry 목록을 source of truth 로 사용합니다.
+- full-library `JSON 백업` 은 전체 preload 대신 page-wise incremental packaging 을 유지해야 하며, full-library backup/import 는 모두 `25 MiB` 를 초과하면 명시적으로 실패해야 합니다.
+- download fallback 은 3단계 경계를 유지해야 합니다. Blob URL 생성 실패 또는 Blob download 실패일 때만 `data:` fallback 으로 내려가고, download 성공 뒤 metadata persist 실패만으로는 재다운로드를 트리거하면 안 됩니다.
+- popup 은 현재 window active tab 을 기준으로 재연결하고 `tabs.onActivated` / `tabs.onUpdated` / `tabs.onRemoved` 변화에 반응해야 합니다. diagnostics 는 `tabId` 가 있으면 그 탭을 우선 추적하되, 대상이 사라지거나 unsupported 가 되면 다른 supported assembly tab 으로 fallback 해야 합니다.
