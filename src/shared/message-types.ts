@@ -7,12 +7,22 @@ import type {
 } from "../core/subtitle-models";
 import type { CaptureMode } from "../core/live-capture";
 
+export type PersistabilityState =
+  | "idle"
+  | "persistable"
+  | "preview_only"
+  | "unstable_only"
+  | "filtered"
+  | "duplicate";
+
 export interface CaptureDiagnostics {
   captureMode: CaptureMode;
   observerActive: boolean;
   currentSelector: string;
   currentFramePath: number[];
   sourceLabel: string;
+  persistabilityState: PersistabilityState;
+  persistabilityHint: string;
 }
 
 export interface ObservedSubtitleRow {

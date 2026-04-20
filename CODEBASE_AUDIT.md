@@ -20,6 +20,12 @@
 > - page-exit queue storage write가 content script에서 실패하면 background가 durable queue write를 한 번 더 시도합니다.
 > - history refresh / filter change에서 메모 폐기 확인을 누르면 dirty note draft가 실제 저장값으로 되돌아갑니다.
 > - 따라서 아래의 save/export, popup enablement 관련 일부 지적은 역사적 참고용으로만 읽어야 하며, 현재 릴리스 기준 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 를 우선합니다.
+> 2026-04-20 업데이트:
+> - iframe 자막 레이어 탐지는 접근 가능한 frame 전체의 layer / text / control 상태를 함께 집계하도록 정리되었습니다.
+> - panel / popup / options 진단에는 `persistabilityState` / `persistabilityHint` 가 추가되어 `preview_only`, `unstable_only`, `filtered`, `duplicate`, `persistable` 상태를 구분합니다.
+> - in-page `수집된 자막` 렌더는 최신 `300`건으로 제한되고, 전체 세션 저장 / export / history 기준은 누적 committed entry 전체를 그대로 유지합니다.
+> - 전체 라이브러리 `JSON 백업` / `JSON 가져오기` 는 `25 MiB` 하드 제한으로 보호되며, 백업은 page-wise incremental packaging 경로를 사용합니다.
+> - popup / diagnostics stale reconnect 및 저커버리지 테스트 보강까지 반영된 최신 구현 메모는 `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-20.md` 를 우선 참고합니다.
 
 ---
 

@@ -2,9 +2,15 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const chromeApiMocks = vi.hoisted(() => ({
+  addTabActivatedListener: vi.fn(),
+  addTabRemovedListener: vi.fn(),
+  addTabUpdatedListener: vi.fn(),
   connectToTab: vi.fn(),
   getTab: vi.fn(),
   queryTabs: vi.fn(),
+  removeTabActivatedListener: vi.fn(),
+  removeTabRemovedListener: vi.fn(),
+  removeTabUpdatedListener: vi.fn(),
   sendRuntimeMessage: vi.fn(),
 }));
 
@@ -236,11 +242,13 @@ describe("options app", () => {
             currentSelector: "#viewSubtit",
             currentFramePath: [],
             diagnostics: {
-              captureMode: "dom-observer",
+              captureMode: "structured",
               observerActive: true,
               currentSelector: "#viewSubtit",
               currentFramePath: [],
-              sourceLabel: "DOM observer",
+              sourceLabel: "structured",
+              persistabilityState: "persistable",
+              persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
             },
             hasPersistableContent: true,
           },
@@ -250,8 +258,86 @@ describe("options app", () => {
 
     await waitFor(() => {
       expect(screen.getByText("4문장")).toBeTruthy();
-      expect(screen.getByText("DOM observer")).toBeTruthy();
+      expect(screen.getByText("structured")).toBeTruthy();
+      expect(screen.getByText("저장 가능한 확정 자막이 누적되고 있습니다.")).toBeTruthy();
     });
     expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_STATUS" });
+  });
+
+  it("falls back to another supported tab when the requested diagnostics tab disappears", async () => {
+    let removedListener:
+      | ((tabId: number, removeInfo: chrome.tabs.TabRemoveInfo) => void)
+      | undefined;
+    chromeApiMocks.addTabRemovedListener.mockImplementationOnce((listener) => {
+      removedListener = listener;
+    });
+
+    const firstPort = {
+      onMessage: {
+        addListener: vi.fn(),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+    const secondPort = {
+      onMessage: {
+        addListener: vi.fn(),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+
+    window.history.replaceState({}, "", "/options.html?view=diagnostics&tabId=9");
+    chromeApiMocks.getTab
+      .mockResolvedValueOnce({
+        id: 9,
+        url: "https://assembly.webcast.go.kr/main/player.asp",
+      })
+      .mockRejectedValueOnce(new Error("tab missing"));
+    chromeApiMocks.queryTabs.mockResolvedValue([
+      {
+        id: 2,
+        url: "https://assembly.webcast.go.kr/main/player.asp?xcode=10",
+        active: true,
+        lastAccessed: Date.now(),
+      },
+    ]);
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValue({
+      ok: true,
+      ready: true,
+      requiresReload: false,
+    });
+    chromeApiMocks.connectToTab
+      .mockReturnValueOnce(firstPort)
+      .mockReturnValueOnce(secondPort);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalledWith(
+        9,
+        0,
+        "assembly-subtitle-popup",
+      );
+    });
+
+    act(() => {
+      removedListener?.(9, { windowId: 1, isWindowClosing: false });
+    });
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalledWith(
+        2,
+        0,
+        "assembly-subtitle-popup",
+      );
+    });
+    expect(firstPort.disconnect).toHaveBeenCalled();
   });
 });

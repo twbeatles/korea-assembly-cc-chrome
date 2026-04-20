@@ -1,5 +1,6 @@
 ﻿import {
   applyKeepalive,
+  applyPreview,
   applyReset,
   commitLiveRow,
   finalizeSession,
@@ -66,6 +67,7 @@ import type {
   FrameForwardMessage,
   ObservedSubtitleRow,
   ObserverBridgeEvent,
+  PersistabilityState,
   PopupToContentMessage,
   StatusSnapshot,
 } from "../shared/message-types";
@@ -115,6 +117,10 @@ import {
   createResetSessionState,
 } from "./session-lifecycle";
 import { analyzeCaptureCommit, resolveRuntimeCaptureNotice } from "./subtitle-event-handler";
+import {
+  buildPersistabilityDiagnostics,
+  resolvePreviewPersistabilityState,
+} from "./persistability";
 
 const isTopFrame = window.top === window;
 const localFramePath = computeCurrentFramePath();
@@ -164,6 +170,7 @@ let lastNavigationSnapshotAt = 0;
 let liveCaptureLedger = createEmptyLiveCaptureLedger();
 let extensionContextInvalidated = false;
 let failedStoppedSessionGuard = createEmptyFailedStoppedSessionGuard();
+let latestPersistabilityState: PersistabilityState = "idle";
 
 function setPanelNotice(message: string): boolean {
   if (panelNotice === message) {
@@ -291,6 +298,43 @@ function getCaptureMode(): CaptureMode {
   return liveCaptureLedger.captureMode;
 }
 
+function setPersistabilityState(stateValue: PersistabilityState): void {
+  latestPersistabilityState = stateValue;
+}
+
+function getPersistabilityDiagnostics() {
+  if (state.status !== "running") {
+    return buildPersistabilityDiagnostics(state.entries.length > 0 ? "persistable" : "idle");
+  }
+
+  if (latestPersistabilityState !== "idle") {
+    return buildPersistabilityDiagnostics(latestPersistabilityState);
+  }
+
+  if (state.entries.length > 0) {
+    return buildPersistabilityDiagnostics("persistable");
+  }
+
+  if (getLivePreviewText().trim()) {
+    return buildPersistabilityDiagnostics("preview_only");
+  }
+
+  return buildPersistabilityDiagnostics("idle");
+}
+
+function resolvePreviewPersistability(previewText: string, now: number): PersistabilityState {
+  if (!previewText.trim()) {
+    return "idle";
+  }
+
+  const previewResult = applyPreview(cloneState(state), previewText, now, settings, {
+    selector: state.currentSelector || undefined,
+    framePath: state.currentFramePath.length ? state.currentFramePath : undefined,
+  });
+
+  return resolvePreviewPersistabilityState(previewResult.reason);
+}
+
 function shouldShowPanelNotice(message: string): boolean {
   return Boolean(message.trim()) && message !== DEFAULT_IN_PAGE_NOTICE;
 }
@@ -307,6 +351,7 @@ function canClearCurrentSession(showNotice = shouldShowPanelNotice(panelNotice))
 function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   const captureMode = getCaptureMode();
   const hasPersistableContent = state.entries.length > 0;
+  const persistability = getPersistabilityDiagnostics();
   return {
     connected: isSupportedAssemblyUrl(window.location.href),
     requiresReload,
@@ -331,6 +376,8 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
       observerActive: state.observerActive,
       currentSelector: state.currentSelector,
       currentFramePath: state.currentFramePath,
+      persistabilityState: persistability.state,
+      persistabilityHint: persistability.hint,
     }),
     hasPersistableContent,
   };
@@ -482,6 +529,7 @@ function scheduleDeferredSubtitleReset(): void {
     }
 
     state = applyReset(state, Date.now(), settings).state;
+    setPersistabilityState("idle");
     clearStructuredRuntimeState();
     setPanelNotice(RESET_CAPTURE_NOTICE);
     scheduleRunningPersist();
@@ -501,13 +549,20 @@ function applyPreviewStateOnly(previewText: string, now: number): boolean {
   return true;
 }
 
+interface StructuredRowsApplyResult {
+  changed: boolean;
+  committed: boolean;
+  sawDuplicate: boolean;
+  sawFiltered: boolean;
+}
+
 function applyStructuredRowsEvent(
   rows: ObservedSubtitleRow[],
   previewText: string,
   now: number,
   selector?: string,
   framePath?: number[],
-): boolean {
+): StructuredRowsApplyResult {
   const captureEvent = normalizeCaptureEvent({
     raw: previewText,
     rows,
@@ -519,6 +574,9 @@ function applyStructuredRowsEvent(
   liveCaptureLedger = reconciliation.ledger;
 
   let changed = reconciliation.changed || applyPreviewStateOnly(captureEvent.previewText, now);
+  let committed = false;
+  let sawDuplicate = false;
+  let sawFiltered = false;
 
   reconciliation.rowChanges.forEach((rowChange) => {
     let liveRow = getLiveRow(liveCaptureLedger, rowChange.key);
@@ -545,6 +603,13 @@ function applyStructuredRowsEvent(
       entryId: liveRow.committedEntryId ?? undefined,
       baselineCompact: liveRow.baselineCompact ?? state.confirmedCompact,
     });
+    committed =
+      committed ||
+      Boolean(result.appendedEntry) ||
+      result.reason === "row_append" ||
+      result.reason === "row_update";
+    sawDuplicate = sawDuplicate || Boolean(result.reason?.includes("duplicate"));
+    sawFiltered = sawFiltered || Boolean(result.reason?.includes("filtered"));
 
     if (result.changed) {
       state = result.state;
@@ -560,7 +625,12 @@ function applyStructuredRowsEvent(
     }
   });
 
-  return changed;
+  return {
+    changed,
+    committed,
+    sawDuplicate,
+    sawFiltered,
+  };
 }
 
 function scheduleRunningPersist(): void {
@@ -940,30 +1010,45 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       timestamp: now,
     });
     if (!captureEvent.previewText) {
+      setPersistabilityState("idle");
       return;
     }
 
     const captureCommit = analyzeCaptureCommit(captureEvent);
-    const noticeChanged = setPanelNotice(
-      resolveRuntimeCaptureNotice({
-        captureMode: captureEvent.captureMode,
-        observerActive: state.observerActive,
-        hasStableRows: captureCommit.shouldCommit,
-        lastCommittedResetAt: state.lastCommittedResetAt,
-        now,
-      }),
-    );
 
     if (captureCommit.shouldCommit) {
-      const changed = applyStructuredRowsEvent(
+      const structuredResult = applyStructuredRowsEvent(
         captureCommit.stableRows,
         captureCommit.previewText,
         now,
         event.selector,
         event.framePath,
       );
+      const persistabilityState =
+        structuredResult.committed
+          ? "persistable"
+          : captureCommit.hasUnstableRows && captureCommit.stableRows.length === 0
+            ? "unstable_only"
+            : structuredResult.sawFiltered
+              ? "filtered"
+              : structuredResult.sawDuplicate
+                ? "duplicate"
+                : "preview_only";
+      setPersistabilityState(persistabilityState);
+      const persistability = buildPersistabilityDiagnostics(persistabilityState);
+      const noticeChanged = setPanelNotice(
+        resolveRuntimeCaptureNotice({
+          captureMode: captureEvent.captureMode,
+          observerActive: state.observerActive,
+          hasStableRows: captureCommit.shouldCommit,
+          lastCommittedResetAt: state.lastCommittedResetAt,
+          now,
+          persistabilityState: persistability.state,
+          persistabilityHint: persistability.hint,
+        }),
+      );
       if (
-        !changed &&
+        !structuredResult.changed &&
         captureEvent.previewText === state.lastObservedRaw &&
         (!state.lastKeepaliveAt || now - state.lastKeepaliveAt >= settings.keepaliveIntervalMs)
       ) {
@@ -972,14 +1057,32 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
         syncUserInterfaces();
         return;
       }
-      if (changed) {
+      if (structuredResult.changed) {
         scheduleRunningPersist();
       }
-      if (changed || noticeChanged) {
+      if (structuredResult.changed || noticeChanged) {
         syncUserInterfaces();
       }
       return;
     }
+
+    const persistabilityState =
+      captureCommit.hasUnstableRows && captureCommit.stableRows.length === 0
+        ? "unstable_only"
+        : resolvePreviewPersistability(captureEvent.previewText, now);
+    setPersistabilityState(persistabilityState);
+    const persistability = buildPersistabilityDiagnostics(persistabilityState);
+    const noticeChanged = setPanelNotice(
+      resolveRuntimeCaptureNotice({
+        captureMode: captureEvent.captureMode,
+        observerActive: state.observerActive,
+        hasStableRows: captureCommit.shouldCommit,
+        lastCommittedResetAt: state.lastCommittedResetAt,
+        now,
+        persistabilityState: persistability.state,
+        persistabilityHint: persistability.hint,
+      }),
+    );
 
     const fallbackReconciliation = reconcileLiveCapture(liveCaptureLedger, {
       ...captureEvent,
@@ -1167,6 +1270,7 @@ function startTopFrameFallback(): void {
 function resetRuntimeState(): void {
   clearRunningPersistTimer();
   clearStructuredRuntimeState();
+  setPersistabilityState("idle");
   state = createResetSessionState(window.location.href, document.title, deriveCommitteeName(document.title));
   topFallbackMissStreak = 0;
   lastSuccessfulFallbackFramePath = null;

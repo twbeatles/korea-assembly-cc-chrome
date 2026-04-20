@@ -8,7 +8,11 @@ import {
   EXTENSION_STORAGE_KEY,
   SESSION_LIBRARY_REVISION_STORAGE_KEY,
 } from "../shared/constants";
-import { parseSessionImportPayload } from "../storage/session-backup";
+import {
+  assertSessionLibraryTransferSizeWithinLimit,
+  getUtf8ByteLength,
+  parseSessionImportPayload,
+} from "../storage/session-backup";
 import {
   buildSessionLibraryBackupExport,
   deleteAllSessions,
@@ -839,6 +843,7 @@ export default function App() {
     let invalidCount = 0;
 
     try {
+      assertSessionLibraryTransferSizeWithinLimit(file.size, "JSON 가져오기");
       const fileText = await readBlobTextWithProgress(file, {
         signal: controller.signal,
         onProgress: ({ completed, total }) => {
@@ -853,6 +858,7 @@ export default function App() {
           });
         },
       });
+      assertSessionLibraryTransferSizeWithinLimit(getUtf8ByteLength(fileText), "JSON 가져오기");
 
       updateLongTaskProgress({
         kind: "import",

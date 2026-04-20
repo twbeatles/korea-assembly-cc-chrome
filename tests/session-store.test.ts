@@ -23,6 +23,7 @@ import {
   upsertSessionRecord,
   updateRunningSession,
 } from "../src/storage/session-store";
+import { SESSION_LIBRARY_TRANSFER_LIMIT_BYTES } from "../src/storage/session-backup";
 
 function buildSession(id: string, status: SessionRecord["status"]): SessionRecord {
   return {
@@ -1057,7 +1058,7 @@ describe("session store", () => {
     expect(parsed.sessions).toHaveLength(2);
   });
 
-  it("reports backup progress and honors cancellation before download dispatch", async () => {
+  it("reports backup progress and honors cancellation during page-wise packaging", async () => {
     await saveSession(buildSession("session_backup_progress_a", "saved"));
     await saveSession(buildSession("session_backup_progress_b", "saved"));
 
@@ -1074,7 +1075,7 @@ describe("session store", () => {
             completed: next.completed,
             total: next.total,
           });
-          if (next.phase === "collect" && next.completed === 1) {
+          if (next.phase === "package" && next.completed === 1) {
             controller.abort();
           }
         },
@@ -1084,10 +1085,13 @@ describe("session store", () => {
       message: "전체 JSON 백업을 취소했습니다.",
     });
 
-    expect(progress).toEqual([
-      { phase: "prepare", completed: 0, total: 0 },
-      { phase: "collect", completed: 1, total: 2 },
-    ]);
+    expect(progress).toEqual(
+      expect.arrayContaining([
+        { phase: "prepare", completed: 0, total: 0 },
+        { phase: "package", completed: 0, total: 0 },
+        { phase: "package", completed: 1, total: 2 },
+      ]),
+    );
   });
 
   it("honors cancellation during incremental backup packaging", async () => {
@@ -1119,10 +1123,32 @@ describe("session store", () => {
     expect(progress).toEqual(
       expect.arrayContaining([
         { phase: "prepare", completed: 0, total: 0 },
-        { phase: "collect", completed: 2, total: 2 },
-        { phase: "package", completed: 0, total: 2 },
+        { phase: "package", completed: 0, total: 0 },
         { phase: "package", completed: 1, total: 2 },
       ]),
+    );
+  });
+
+  it("fails fast when a full-library backup exceeds 25 MiB", async () => {
+    const oversizedText = "a".repeat(SESSION_LIBRARY_TRANSFER_LIMIT_BYTES + 1024);
+
+    await saveSession({
+      ...buildSession("session_backup_oversized", "saved"),
+      subtitleCount: 1,
+      charCount: oversizedText.length,
+      entries: [
+        {
+          id: "session_backup_oversized_entry",
+          text: oversizedText,
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+    });
+
+    await expect(buildSessionLibraryBackupExport()).rejects.toThrow(
+      "전체 JSON 백업 작업은 25 MiB 이하에서만 지원합니다.",
     );
   });
 

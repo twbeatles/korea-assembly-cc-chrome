@@ -59,6 +59,50 @@ export function connectToTab(
   return chrome.tabs.connect(tabId, { frameId, name });
 }
 
+export function addTabActivatedListener(
+  listener: (activeInfo: chrome.tabs.TabActiveInfo) => void,
+): void {
+  chrome.tabs.onActivated.addListener(listener);
+}
+
+export function removeTabActivatedListener(
+  listener: (activeInfo: chrome.tabs.TabActiveInfo) => void,
+): void {
+  chrome.tabs.onActivated.removeListener(listener);
+}
+
+export function addTabUpdatedListener(
+  listener: (
+    tabId: number,
+    changeInfo: chrome.tabs.TabChangeInfo,
+    tab: chrome.tabs.Tab,
+  ) => void,
+): void {
+  chrome.tabs.onUpdated.addListener(listener);
+}
+
+export function removeTabUpdatedListener(
+  listener: (
+    tabId: number,
+    changeInfo: chrome.tabs.TabChangeInfo,
+    tab: chrome.tabs.Tab,
+  ) => void,
+): void {
+  chrome.tabs.onUpdated.removeListener(listener);
+}
+
+export function addTabRemovedListener(
+  listener: (tabId: number, removeInfo: chrome.tabs.TabRemoveInfo) => void,
+): void {
+  chrome.tabs.onRemoved.addListener(listener);
+}
+
+export function removeTabRemovedListener(
+  listener: (tabId: number, removeInfo: chrome.tabs.TabRemoveInfo) => void,
+): void {
+  chrome.tabs.onRemoved.removeListener(listener);
+}
+
 export async function openOptionsPage(): Promise<void> {
   await callbackPromise<void>((callback) => chrome.runtime.openOptionsPage(callback));
 }

@@ -28,7 +28,9 @@ import {
   resetExtensionContextInvalidationForTests,
 } from "../shared/extension-context";
 import {
+  assertSessionLibraryTransferSizeWithinLimit,
   buildSessionBackupFilename,
+  getUtf8ByteLength,
   SESSION_BACKUP_KIND,
   SESSION_BACKUP_VERSION,
 } from "./session-backup";
@@ -514,28 +516,75 @@ function mergeSessionCollections(
   return Array.from(merged.values(), (value) => cloneSessionRecord(value.record));
 }
 
-function stringifySessionBackupBundleIncrementally(
-  sessions: SessionRecord[],
+function appendBackupChunk(
+  chunks: string[],
+  currentByteLength: number,
+  chunk: string,
+): number {
+  const nextByteLength = currentByteLength + getUtf8ByteLength(chunk);
+  assertSessionLibraryTransferSizeWithinLimit(nextByteLength, "전체 JSON 백업");
+  chunks.push(chunk);
+  return nextByteLength;
+}
+
+async function stringifySessionBackupBundleIncrementally(
   exportedAt: string,
   options: {
+    pageSize: number;
     signal?: AbortSignal;
     onProgress?: (completed: number, total: number) => void;
-  } = {},
-): string {
-  const total = sessions.length;
-  let content = `{"kind":${JSON.stringify(SESSION_BACKUP_KIND)},"version":${JSON.stringify(
-    SESSION_BACKUP_VERSION,
-  )},"exportedAt":${JSON.stringify(exportedAt)},"sessions":[`;
+  },
+): Promise<{
+  content: string;
+  sessionCount: number;
+}> {
+  let page = 1;
+  let total = 0;
+  let sessionCount = 0;
+  let currentByteLength = 0;
+  const chunks: string[] = [];
 
-  sessions.forEach((session, index) => {
+  currentByteLength = appendBackupChunk(
+    chunks,
+    currentByteLength,
+    `{"kind":${JSON.stringify(SESSION_BACKUP_KIND)},"version":${JSON.stringify(
+      SESSION_BACKUP_VERSION,
+    )},"exportedAt":${JSON.stringify(exportedAt)},"sessions":[`,
+  );
+
+  while (true) {
     throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
-    content += `${index > 0 ? "," : ""}${JSON.stringify(cloneSessionRecord(session))}`;
-    options.onProgress?.(index + 1, total);
-  });
+    const pageResult = await listSessionsPage({
+      page,
+      pageSize: options.pageSize,
+    });
+    throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+
+    total = pageResult.totalCount;
+    pageResult.sessions.forEach((session) => {
+      throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+      currentByteLength = appendBackupChunk(
+        chunks,
+        currentByteLength,
+        `${sessionCount > 0 ? "," : ""}${JSON.stringify(cloneSessionRecord(session))}`,
+      );
+      sessionCount += 1;
+      options.onProgress?.(sessionCount, total);
+    });
+
+    if (!pageResult.sessions.length || sessionCount >= total) {
+      break;
+    }
+
+    page += 1;
+  }
 
   throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
-  content += "]}";
-  return content;
+  appendBackupChunk(chunks, currentByteLength, "]}");
+  return {
+    content: chunks.join(""),
+    sessionCount,
+  };
 }
 
 async function bestEffortDeleteFallbackRecord(id: string): Promise<void> {
@@ -1266,9 +1315,6 @@ export async function buildSessionLibraryBackupExport(
   options: BuildSessionLibraryBackupExportOptions = {},
 ): Promise<LibraryBackupExport> {
   const pageSize = Math.max(1, options.pageSize ?? 200);
-  const sessions: SessionRecord[] = [];
-  let totalCount = 0;
-  let page = 1;
 
   emitLongTaskProgress(options.onProgress, {
     kind: "backup",
@@ -1278,63 +1324,37 @@ export async function buildSessionLibraryBackupExport(
     message: "전체 JSON 백업을 준비하고 있습니다.",
   });
 
-  while (true) {
-    throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
-    const pageResult = await listSessionsPage({
-      page,
-      pageSize,
-    });
-    throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
-
-    totalCount = pageResult.totalCount;
-    sessions.push(...pageResult.sessions);
-    emitLongTaskProgress(options.onProgress, {
-      kind: "backup",
-      phase: "collect",
-      completed: Math.min(sessions.length, totalCount),
-      total: totalCount,
-      message: totalCount
-        ? `전체 JSON 백업을 준비하고 있습니다. (${Math.min(sessions.length, totalCount)} / ${totalCount})`
-        : "백업할 기록이 없습니다.",
-    });
-
-    if (!pageResult.sessions.length || sessions.length >= totalCount) {
-      break;
-    }
-
-    page += 1;
-  }
-
-  throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
   emitLongTaskProgress(options.onProgress, {
     kind: "backup",
     phase: "package",
     completed: 0,
-    total: totalCount,
-    message: totalCount
-      ? `전체 JSON 백업 파일을 생성하고 있습니다. (0 / ${totalCount})`
-      : "백업 파일을 생성하고 있습니다.",
+    total: 0,
+    message: "전체 JSON 백업 파일을 생성하고 있습니다.",
   });
 
   const now = new Date();
-  const content = stringifySessionBackupBundleIncrementally(sessions, now.toISOString(), {
-    signal: options.signal,
-    onProgress: (completed, total) => {
-      emitLongTaskProgress(options.onProgress, {
-        kind: "backup",
-        phase: "package",
-        completed,
-        total,
-        message: total
-          ? `전체 JSON 백업 파일을 생성하고 있습니다. (${completed} / ${total})`
-          : "백업 파일을 생성하고 있습니다.",
-      });
+  const { content, sessionCount } = await stringifySessionBackupBundleIncrementally(
+    now.toISOString(),
+    {
+      pageSize,
+      signal: options.signal,
+      onProgress: (completed, total) => {
+        emitLongTaskProgress(options.onProgress, {
+          kind: "backup",
+          phase: "package",
+          completed,
+          total,
+          message: total
+            ? `전체 JSON 백업 파일을 생성하고 있습니다. (${completed} / ${total})`
+            : "백업 파일을 생성하고 있습니다.",
+        });
+      },
     },
-  });
+  );
   throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
 
   return {
-    sessionCount: sessions.length,
+    sessionCount,
     payload: {
       filename: buildSessionBackupFilename(now),
       format: "json",

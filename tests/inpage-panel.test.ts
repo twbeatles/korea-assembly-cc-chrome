@@ -8,6 +8,7 @@ import {
   IN_PAGE_PANEL_HOST_ID,
 } from "../src/content/inpage-panel";
 import type { StatusSnapshot } from "../src/shared/message-types";
+import { PIPELINE_DEFAULTS } from "../src/shared/constants";
 
 function createSnapshot(): StatusSnapshot {
   const now = "2026-03-10T09:00:00.000";
@@ -51,6 +52,8 @@ function createSnapshot(): StatusSnapshot {
       currentSelector: "#viewSubtit",
       currentFramePath: [],
       sourceLabel: "structured",
+      persistabilityState: "persistable",
+      persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
     },
     hasPersistableContent: true,
   };
@@ -201,6 +204,8 @@ describe("in-page panel", () => {
           diagnostics: {
             ...createSnapshot().diagnostics,
             captureMode: "fallback",
+            persistabilityState: "preview_only",
+            persistabilityHint: "화면에는 자막이 보이지만 아직 저장 가능한 확정 자막은 없습니다.",
           },
         },
         options: {
@@ -563,6 +568,45 @@ describe("in-page panel", () => {
     const updatedLiveRow = liveRowList?.querySelector(".live-row");
     expect(updatedLiveRow).toBe(firstLiveRow);
     expect(updatedLiveRow?.textContent).toContain("안녕하세요 수정");
+
+    controller.destroy();
+  });
+
+  it("drops rows outside the capped live-row window while keeping overlapping DOM nodes", () => {
+    const controller = createInPagePanel(createActions());
+    const initialRows = createLiveRows(PIPELINE_DEFAULTS.liveLedgerMaxRows);
+
+    controller.update(
+      buildPanelState({
+        options: {
+          liveRows: initialRows,
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const overlappingRow = liveRowList?.querySelector('[data-row-key="top::row_2"]');
+
+    const nextRows = Array.from({ length: PIPELINE_DEFAULTS.liveLedgerMaxRows }, (_, index) => ({
+      key: `top::row_${index + 2}`,
+      text: `${index + 2}번째 자막입니다.`,
+      nodeKey: `row_${index + 2}`,
+      speakerColor: "rgb(35, 124, 147)",
+      speakerChannel: "primary" as const,
+      updatedAt: Date.parse(`2026-03-10T09:${String(index % 60).padStart(2, "0")}:00.000Z`),
+    }));
+
+    controller.update(
+      buildPanelState({
+        options: {
+          liveRows: nextRows,
+        },
+      }),
+    );
+
+    expect(liveRowList?.querySelector('[data-row-key="top::row_1"]')).toBeNull();
+    expect(liveRowList?.querySelector('[data-row-key="top::row_2"]')).toBe(overlappingRow);
 
     controller.destroy();
   });
