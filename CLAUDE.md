@@ -385,3 +385,15 @@ When editing this repository, align with the newly implemented behavior below.
 - full-library `JSON 백업` 은 전체 preload 대신 page-wise incremental packaging 을 유지해야 하며, full-library backup/import 는 모두 `25 MiB` 를 초과하면 명시적으로 실패해야 합니다.
 - download fallback 은 3단계 경계를 유지해야 합니다. Blob URL 생성 실패 또는 Blob download 실패일 때만 `data:` fallback 으로 내려가고, download 성공 뒤 metadata persist 실패만으로는 재다운로드를 트리거하면 안 됩니다.
 - popup 은 현재 window active tab 을 기준으로 재연결하고 `tabs.onActivated` / `tabs.onUpdated` / `tabs.onRemoved` 변화에 반응해야 합니다. diagnostics 는 `tabId` 가 있으면 그 탭을 우선 추적하되, 대상이 사라지거나 unsupported 가 되면 다른 supported assembly tab 으로 fallback 해야 합니다.
+
+## Sync Delta (2026-04-21)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- session import sanitize 는 `sourceUrl` 에 대해 `isSupportedAssemblyUrl()` 검증을 강제하며, 미지원 URL은 항상 빈 문자열로 정규화해야 합니다.
+- history `원본 페이지 열기`는 단순 non-empty 값이 아니라 supported assembly URL일 때만 활성화/실행해야 하며, 핸들러에서도 같은 검증을 재수행해야 합니다.
+- unconfirmed 필터로 container fallback 이 막힌 경우 `blockedByUnconfirmedFilter` 신호를 유지하고, local polling / top fallback / injected observer 모두 `연속 6회` 차단 시 fallback 을 일시 허용하는 동일 로직을 사용해야 합니다.
+- unconfirmed 차단 streak 는 자막 텍스트를 성공적으로 다시 읽는 즉시 0으로 리셋해야 하며, neutral miss에서는 기존 streak를 보존해야 합니다.
+- container fallback 내부 raw는 비교/복원용으로 `4KB tail cap`을 적용해 보존하고, UI preview는 별도 formatter를 통해 `400자/3줄 tail` 의미론으로만 축약 노출해야 합니다.
+- 단일 세션 export 하드 제한은 두지 않으며, runtime message 크기 초과/invalid data URL 계열 실패는 사용자 안내 문구로 매핑해야 합니다.
+- frame-forward nonce mismatch 는 즉시 nonce resync 요청과 빠른 top fallback probe를 함께 트리거해 단기 드롭 구간 복구를 우선해야 합니다.

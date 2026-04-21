@@ -66,6 +66,9 @@ iiadnfahoocbannfpgfgbommblpagacl/
 /tmp-*.cjs
 /marquee.jpg
 /scripts/resize-marquee.js
+/scripts/generate-promo.mjs
+/store_assets/
+/test.html
 
 # -----------------------------------------------------------------------------
 # Local database/state files

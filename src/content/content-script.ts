@@ -40,6 +40,8 @@ import {
   SUBTITLE_SELECTOR_CANDIDATES,
   isSupportedAssemblyUrl,
 } from "../shared/constants";
+import { mapDownloadErrorMessage } from "../shared/download-errors";
+import { normalizeSubtitleText } from "../core/text-normalizer";
 import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
@@ -93,6 +95,11 @@ import {
 import { RESET_CAPTURE_NOTICE } from "./capture-notice";
 import { shouldEmitLocalProbeUpdate } from "./local-polling";
 import { estimateRecentRaw } from "./dom-probe";
+import { formatFallbackPreviewText } from "./fallback-preview";
+import {
+  shouldAllowUnconfirmedContainerFallback,
+  updateUnconfirmedFallbackBlockStreak,
+} from "./unconfirmed-fallback";
 import { exportSessionData } from "../storage/session-store";
 import { queueExitPersistRecord } from "../storage/persist-recovery";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
@@ -157,6 +164,7 @@ let localLastProbeSignature = "";
 let localHadProbeText = false;
 let topFallbackMissStreak = 0;
 let lastSuccessfulFallbackFramePath: number[] | null = null;
+let unconfirmedFallbackBlockStreak = 0;
 let panelCollapsed = false;
 let previewCollapsed = true;
 let panelNotice = DEFAULT_IN_PAGE_NOTICE;
@@ -294,6 +302,31 @@ function getLivePreviewText(): string {
   return liveCaptureLedger.previewText || state.previewText;
 }
 
+function formatPreviewForDisplay(
+  previewText: string,
+  captureMode: CaptureMode,
+  sourceUrl?: string,
+): string {
+  const normalized = normalizeSubtitleText(previewText);
+  if (!normalized) {
+    return "";
+  }
+
+  if (captureMode !== "fallback") {
+    return normalized;
+  }
+
+  return formatFallbackPreviewText(previewText, sourceUrl);
+}
+
+function getLivePreviewTextForDisplay(): string {
+  return formatPreviewForDisplay(
+    getLivePreviewText(),
+    getCaptureMode(),
+    state.sourceUrl || window.location.href,
+  );
+}
+
 function getCaptureMode(): CaptureMode {
   return liveCaptureLedger.captureMode;
 }
@@ -352,6 +385,7 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   const captureMode = getCaptureMode();
   const hasPersistableContent = state.entries.length > 0;
   const persistability = getPersistabilityDiagnostics();
+  const previewText = getLivePreviewTextForDisplay();
   return {
     connected: isSupportedAssemblyUrl(window.location.href),
     requiresReload,
@@ -362,7 +396,7 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
     sourceUrl: state.sourceUrl,
     subtitleCount: state.entries.length,
     charCount: getSessionCharCount(state.entries),
-    previewText: getLivePreviewText(),
+    previewText,
     recentEntries: state.entries.slice(-20),
     startedAt: state.startedAt,
     endedAt: state.endedAt,
@@ -491,7 +525,7 @@ function updateInPagePanel(): void {
       showNotice,
       autoScroll: settings.autoScroll,
       recentCopyLineCount: settings.recentCopyLineCount,
-      livePreviewText: getLivePreviewText(),
+      livePreviewText: getLivePreviewTextForDisplay(),
       liveRows: getPanelLiveRows(),
       canClearSession: canClearCurrentSession(showNotice),
     }),
@@ -908,6 +942,15 @@ function startFrameForwardNonceRefresh(): void {
   }, FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS);
 }
 
+function triggerImmediateTopFallbackProbe(): void {
+  if (!isTopFrame || extensionContextInvalidated) {
+    return;
+  }
+
+  topFallbackMissStreak = Math.max(topFallbackMissStreak, 1);
+  scheduleTopFrameFallbackTick(0);
+}
+
 function dispatchObserverConfig(): void {
   if (extensionContextInvalidated) {
     return;
@@ -1017,6 +1060,7 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     const captureCommit = analyzeCaptureCommit(captureEvent);
 
     if (captureCommit.shouldCommit) {
+      unconfirmedFallbackBlockStreak = 0;
       const structuredResult = applyStructuredRowsEvent(
         captureCommit.stableRows,
         captureCommit.previewText,
@@ -1143,9 +1187,17 @@ function startLocalPolling(): void {
   clearLocalPolling();
   localPollingTimer = window.setInterval(() => {
     try {
+      const allowUnconfirmedContainerFallback = shouldAllowUnconfirmedContainerFallback(
+        unconfirmedFallbackBlockStreak,
+      );
       const probe = estimateRecentRaw(document, state.currentSelector, {
         filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
+        allowUnconfirmedContainerFallback,
       });
+      unconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
+        unconfirmedFallbackBlockStreak,
+        probe,
+      );
       if (!probe.found || !probe.text) {
         if (localHadProbeText) {
           localHadProbeText = false;
@@ -1208,8 +1260,12 @@ function runTopFrameFallbackTick(): void {
   }
 
   try {
+    const allowUnconfirmedContainerFallback = shouldAllowUnconfirmedContainerFallback(
+      unconfirmedFallbackBlockStreak,
+    );
     const probeOptions = {
       filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
+      allowUnconfirmedContainerFallback,
     };
     const cachedFramePath = lastSuccessfulFallbackFramePath;
     const cachedProbe =
@@ -1220,6 +1276,10 @@ function runTopFrameFallbackTick(): void {
       cachedProbe && cachedProbe.found && cachedProbe.text
         ? cachedProbe
         : probeBestAccessibleSubtitle(state.currentSelector, probeOptions);
+    unconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
+      unconfirmedFallbackBlockStreak,
+      probe,
+    );
     if (!probe.found || !probe.text) {
       topFallbackMissStreak += 1;
       if (now - lastSubtitleActivationAttemptAt >= 2000) {
@@ -1273,6 +1333,7 @@ function resetRuntimeState(): void {
   setPersistabilityState("idle");
   state = createResetSessionState(window.location.href, document.title, deriveCommitteeName(document.title));
   topFallbackMissStreak = 0;
+  unconfirmedFallbackBlockStreak = 0;
   lastSuccessfulFallbackFramePath = null;
   lastSubtitleActivationAttemptAt = 0;
   lastNavigationSnapshotAt = 0;
@@ -1404,7 +1465,9 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
     mimeType: payload.mimeType,
   });
   if (!response.ok) {
-    throw new Error(response.error);
+    throw new Error(
+      mapDownloadErrorMessage(response.error) || "파일 저장을 시작하지 못했습니다.",
+    );
   }
   setPanelNotice(`${payload.filename} 파일 저장 창을 열었습니다.`);
   syncUserInterfaces();
@@ -1766,6 +1829,7 @@ function bindBridgeMessages(): void {
       }
 
       requestFrameForwardNonceResync(true);
+      triggerImmediateTopFallbackProbe();
     }
   });
 }

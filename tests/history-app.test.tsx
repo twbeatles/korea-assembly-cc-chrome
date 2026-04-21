@@ -177,6 +177,29 @@ describe("history app", () => {
     });
   });
 
+  it("disables reopen when source url is not a supported assembly player url", async () => {
+    const unsupportedSession = buildSession({
+      sourceUrl: "https://example.com/not-supported",
+    });
+    sessionStoreMocks.listSessionsPage.mockResolvedValueOnce({
+      sessions: [unsupportedSession],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValueOnce(unsupportedSession);
+    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
+      ids.includes(unsupportedSession.id) ? [unsupportedSession] : [],
+    );
+
+    render(<App />);
+    const reopenButton = await screen.findByRole("button", { name: "원본 페이지 열기" });
+
+    expect((reopenButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(reopenButton);
+    expect(chromeApiMocks.createTab).not.toHaveBeenCalled();
+  });
+
   it("shows a user-facing error when exporting fails", async () => {
     sessionStoreMocks.exportSessionData.mockRejectedValueOnce(new Error("export failed"));
 
@@ -186,6 +209,31 @@ describe("history app", () => {
 
     await waitFor(() => {
       expect(screen.getByText("export failed")).toBeTruthy();
+    });
+  });
+
+  it("maps oversized download request errors to a user-facing export message", async () => {
+    sessionStoreMocks.exportSessionData.mockResolvedValueOnce({
+      filename: "session.txt",
+      format: "txt",
+      mimeType: "text/plain;charset=utf-8",
+      content: "본문",
+    });
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValueOnce({
+      ok: false,
+      error: "Message length exceeded",
+    });
+
+    render(<App />);
+    await screen.findByRole("button", { name: "텍스트(TXT)" });
+    fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "내보내기 데이터가 커서 저장 요청을 전송하지 못했습니다. 범위를 나누어 다시 시도해 주세요.",
+        ),
+      ).toBeTruthy();
     });
   });
 

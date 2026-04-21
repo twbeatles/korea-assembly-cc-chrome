@@ -26,6 +26,13 @@
 > - in-page `수집된 자막` 렌더는 최신 `300`건으로 제한되고, 전체 세션 저장 / export / history 기준은 누적 committed entry 전체를 그대로 유지합니다.
 > - 전체 라이브러리 `JSON 백업` / `JSON 가져오기` 는 `25 MiB` 하드 제한으로 보호되며, 백업은 page-wise incremental packaging 경로를 사용합니다.
 > - popup / diagnostics stale reconnect 및 저커버리지 테스트 보강까지 반영된 최신 구현 메모는 `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-20.md` 를 우선 참고합니다.
+> 2026-04-21 업데이트:
+> - session import sanitize 단계에서 미지원 `sourceUrl`은 빈 문자열로 정규화되고, history `원본 페이지 열기`는 지원 URL만 허용하도록 고정되었습니다.
+> - unconfirmed filter 차단 신호(`blockedByUnconfirmedFilter`)가 도입되었고, local polling / top fallback / injected observer 모두 연속 6회 차단 시 container fallback 완화 로직으로 수렴되었습니다.
+> - container fallback 내부 raw와 UI preview가 분리되어 내부 파이프라인은 `4KB` tail raw를 유지하고, 노출 preview만 `400자/3줄` tail 의미론으로 축약합니다.
+> - 단일 세션 export는 하드 제한 대신 오류 품질(`message length exceeded`, invalid data URL 계열) 매핑으로 사용자 안내를 강화했습니다.
+> - frame-forward nonce mismatch 시 즉시 nonce resync + 빠른 top fallback probe 복구 경로가 추가되었습니다.
+> - 최신 구현 메모는 `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-21.md` 를 우선 참고합니다.
 
 ---
 

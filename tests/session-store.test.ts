@@ -262,6 +262,18 @@ describe("session store", () => {
     expect(loaded?.note).toBe("");
   });
 
+  it("normalizes unsupported source urls to empty strings during import", async () => {
+    await importSessionRecords([
+      {
+        ...buildSession("session_invalid_source_import", "saved"),
+        sourceUrl: "https://example.com/not-supported",
+      },
+    ]);
+
+    const loaded = await loadSession("session_invalid_source_import");
+    expect(loaded?.sourceUrl).toBe("");
+  });
+
   it("normalizes imported running sessions to saved records before storage", async () => {
     await importSessionRecords([
       {

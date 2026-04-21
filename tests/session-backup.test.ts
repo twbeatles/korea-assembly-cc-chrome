@@ -110,6 +110,15 @@ describe("session backup helpers", () => {
     ).toThrow("가져온 JSON 형식이 올바르지 않습니다.");
   });
 
+  it("normalizes unsupported source urls to an empty string", () => {
+    const parsed = parseSessionImportPayload({
+      ...buildSession("session_invalid_source", "2026-03-12T12:00:00.000Z"),
+      sourceUrl: "https://example.com/not-supported",
+    });
+
+    expect(parsed.records[0].sourceUrl).toBe("");
+  });
+
   it("builds a timestamped backup filename", () => {
     const filename = buildSessionBackupFilename(new Date(2026, 2, 12, 12, 30, 45));
     expect(filename).toBe("assembly_subtitle_backup_20260312_123045.json");

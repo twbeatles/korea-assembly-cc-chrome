@@ -360,3 +360,12 @@ Deployment documentation consistency sources:
 - Release verification should confirm that full-library `JSON 백업` / `JSON 가져오기` 는 `25 MiB` 초과 payload에서 명시적 오류로 즉시 중단됩니다.
 - Release verification should confirm that popup 은 현재 창 active tab 을 따라 재연결하고, diagnostics `tabId` 대상이 닫히거나 unsupported 가 되면 다른 supported assembly tab 으로 fallback 합니다.
 - Release verification should confirm that Blob export fallback 은 Blob URL 생성 실패 또는 Blob download 실패에서만 `data:` 경로로 내려가고, metadata persist 실패만으로 중복 다운로드를 다시 열지 않습니다.
+
+## 2026-04-21 Deployment Consistency Update
+
+- Release verification should confirm that session import sanitize normalizes unsupported `sourceUrl` to an empty string, and history `원본 페이지 열기` is disabled/blocked for unsupported URLs.
+- Release verification should confirm that unconfirmed container fallback blocking emits the `blockedByUnconfirmedFilter` signal and that local polling / top fallback / injected observer all relax fallback after `6` consecutive blocked probes.
+- Release verification should confirm that unconfirmed block streak resets immediately when subtitle text recovers and is not reset by neutral misses without text.
+- Release verification should confirm that fallback internal raw keeps a `4KB` tail window for pipeline comparison while panel/popup preview still uses the existing `400자/3줄` tail-oriented display semantics.
+- Release verification should confirm that single-session export keeps no hard size cap, and known transport/download failures (`message length exceeded`, `invalid data URL` class) are surfaced as user-friendly guidance.
+- Release verification should confirm that frame-forward nonce mismatch triggers immediate nonce resync plus fast top-frame fallback probing to recover dropped bridge events.

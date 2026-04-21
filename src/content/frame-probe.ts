@@ -16,6 +16,7 @@ function emptyFrameProbe(framePath: number[] = []): FrameProbeResult {
     matchedSelector: "",
     found: false,
     framePath,
+    blockedByUnconfirmedFilter: false,
   };
 }
 
@@ -91,8 +92,11 @@ function probeDocumentRoots(
   }
 
   let best = emptyFrameProbe();
+  let blockedByUnconfirmedFilter = false;
   for (const root of rootCandidates) {
     const result = readSubtitleTextBySelectors(root, selectors, options);
+    blockedByUnconfirmedFilter =
+      blockedByUnconfirmedFilter || Boolean(result.blockedByUnconfirmedFilter);
     if (!result.found) {
       continue;
     }
@@ -100,6 +104,13 @@ function probeDocumentRoots(
     if (result.sourceMode === "smi-window") {
       return best;
     }
+  }
+
+  if (!best.found && blockedByUnconfirmedFilter) {
+    return {
+      ...best,
+      blockedByUnconfirmedFilter: true,
+    };
   }
 
   return best;
@@ -111,6 +122,7 @@ function walkDocuments(
   path: number[],
   depth: number,
   results: FrameProbeResult[],
+  flags: { blockedByUnconfirmedFilter: boolean },
   options?: DomProbeOptions,
 ): void {
   if (
@@ -121,6 +133,9 @@ function walkDocuments(
   }
 
   const current = probeDocumentRoots(rootDocument, selectors, options);
+  if (current.blockedByUnconfirmedFilter) {
+    flags.blockedByUnconfirmedFilter = true;
+  }
   if (current.found) {
     results.push({
       ...current,
@@ -142,7 +157,7 @@ function walkDocuments(
       if (!childDocument) {
         return;
       }
-      walkDocuments(childDocument, selectors, [...path, index], depth + 1, results, options);
+      walkDocuments(childDocument, selectors, [...path, index], depth + 1, results, flags, options);
     } catch {
       // Cross-origin frame access is intentionally ignored.
     }
@@ -180,7 +195,11 @@ export function probeAccessibleFrames(
 ): FrameProbeResult[] {
   const selectors = getSubtitleSelectorCandidates(primarySelector);
   const results: FrameProbeResult[] = [];
-  walkDocuments(document, selectors, [], 0, results, options);
+  const flags = { blockedByUnconfirmedFilter: false };
+  walkDocuments(document, selectors, [], 0, results, flags, options);
+  if (!results.length && flags.blockedByUnconfirmedFilter) {
+    return [{ ...emptyFrameProbe(), blockedByUnconfirmedFilter: true }];
+  }
   return results.sort((left, right) => scoreFrameResult(right, selectors) - scoreFrameResult(left, selectors));
 }
 
@@ -214,7 +233,10 @@ export function probeFramePath(
   const selectors = getSubtitleSelectorCandidates(primarySelector);
   const result = probeDocumentRoots(targetDocument, selectors, options);
   if (!result.found) {
-    return emptyFrameProbe(framePath);
+    return {
+      ...emptyFrameProbe(framePath),
+      blockedByUnconfirmedFilter: Boolean(result.blockedByUnconfirmedFilter),
+    };
   }
 
   return {
@@ -233,5 +255,12 @@ export function probeBestAccessibleSubtitle(
   }
 
   const results = probeAccessibleFrames(primarySelector, options);
-  return results[0] ?? emptyFrameProbe();
+  if (results.length) {
+    return results[0];
+  }
+
+  return {
+    ...emptyFrameProbe(),
+    blockedByUnconfirmedFilter: Boolean(topResult.blockedByUnconfirmedFilter),
+  };
 }

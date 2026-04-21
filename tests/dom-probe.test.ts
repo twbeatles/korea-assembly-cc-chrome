@@ -19,6 +19,28 @@ describe("dom probe unconfirmed filtering", () => {
 
     expect(result.found).toBe(false);
     expect(result.text).toBe("");
+    expect(result.blockedByUnconfirmedFilter).toBe(true);
+  });
+
+  it("allows container fallback after the caller explicitly relaxes unconfirmed blocking", () => {
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="smi_word pending_row" style="background-color: rgb(255, 255, 0)">
+          <span>draft subtitle</span>
+        </div>
+        <div class="incont">container fallback subtitle</div>
+      </div>
+    `;
+
+    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
+      filterUnconfirmedEnabled: true,
+      allowUnconfirmedContainerFallback: true,
+    });
+
+    expect(result.found).toBe(true);
+    expect(result.matchedSelector).toBe("#viewSubtit .incont");
+    expect(result.sourceMode).toBe("container");
+    expect(result.blockedByUnconfirmedFilter).toBe(false);
   });
 
   it("keeps container fallback available when filtering is disabled", () => {
@@ -39,6 +61,7 @@ describe("dom probe unconfirmed filtering", () => {
     expect(result.matchedSelector).toBe("#viewSubtit .incont");
     expect(result.sourceMode).toBe("container");
     expect(result.text).toContain("container fallback subtitle");
+    expect(result.blockedByUnconfirmedFilter).toBe(false);
   });
 
   it("blocks container fallback when highlighted in-progress text remains in the container", () => {
@@ -56,6 +79,7 @@ describe("dom probe unconfirmed filtering", () => {
 
     expect(result.found).toBe(false);
     expect(result.text).toBe("");
+    expect(result.blockedByUnconfirmedFilter).toBe(true);
   });
 
   it("keeps the full accumulated realtime content on plenary pages", () => {
@@ -80,7 +104,7 @@ describe("dom probe unconfirmed filtering", () => {
     expect(result.text).toContain(longLines.at(-1) ?? "");
   });
 
-  it("still trims long container fallback text on committee pages", () => {
+  it("keeps long container fallback text for internal reconciliation on committee pages", () => {
     const longLines = Array.from(
       { length: 12 },
       (_, index) => `[C${String(index + 1).padStart(2, "0")}] 위원회 문장 ${"나".repeat(32)}`,
@@ -98,9 +122,7 @@ describe("dom probe unconfirmed filtering", () => {
     });
 
     expect(result.found).toBe(true);
-    expect(result.text).not.toContain(longLines[0]);
-    expect(result.text).toContain(longLines[9]);
-    expect(result.text).toContain(longLines[10]);
+    expect(result.text).toContain(longLines[0]);
     expect(result.text).toContain(longLines[11]);
   });
 });

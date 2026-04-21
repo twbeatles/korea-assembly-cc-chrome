@@ -1,5 +1,4 @@
 import {
-  isAssemblyPlenaryUrl,
   OBSERVER_ACTIVATE_EVENT,
   OBSERVER_BRIDGE_SOURCE,
   OBSERVER_CONFIG_EVENT,
@@ -11,6 +10,11 @@ import {
   readObservedSubtitleRows,
 } from "./subtitle-rows";
 import { isElementVisible } from "./visibility";
+import { normalizeFallbackInternalRaw } from "./fallback-preview";
+import {
+  shouldAllowUnconfirmedContainerFallback,
+  updateUnconfirmedFallbackBlockStreak,
+} from "./unconfirmed-fallback";
 const DEFAULT_SELECTORS = [
   "#viewSubtit .smi_word:last-child",
   "#viewSubtit .smi_word",
@@ -40,6 +44,7 @@ type SubtitleReadResult = {
     speakerChannel: "primary" | "secondary" | "unknown";
     unstableKey: boolean;
   }[];
+  blockedByUnconfirmedFilter: boolean;
 };
 
 type BridgeState = {
@@ -55,24 +60,12 @@ type BridgeState = {
   observerActive: boolean;
   pollingIntervalMs: number;
   filterUnconfirmedEnabled: boolean;
+  unconfirmedFallbackBlockStreak: number;
   token: string;
 };
 
-function normalizeText(text: string): string {
-  return String(text || "").replace(/\s+/g, " ").trim();
-}
-
 function compactText(text: string): string {
   return String(text || "").replace(/\s+/g, "").trim();
-}
-
-function extractTailLines(text: string, maxLines = 3): string {
-  const lines = String(text || "")
-    .split("\n")
-    .map((line) => normalizeText(line))
-    .filter(Boolean);
-
-  return lines.slice(-maxLines).join(" ");
 }
 
 function queryOne(selector: string): HTMLElement | null {
@@ -173,17 +166,21 @@ function readContainerText(node: HTMLElement | null): string {
   }
 
   const raw = node.innerText || node.textContent || "";
-  const text = normalizeText(raw);
+  const text = normalizeFallbackInternalRaw(raw);
   if (!text) {
     return "";
   }
-  if (text.length <= 400 || isAssemblyPlenaryUrl(window.location.href)) {
-    return text;
-  }
-  return normalizeText(extractTailLines(raw, 3));
+  return text;
 }
 
-function shouldBlockContainerFallbackForUnconfirmed(filterUnconfirmedEnabled: boolean): boolean {
+function shouldBlockContainerFallbackForUnconfirmed(
+  filterUnconfirmedEnabled: boolean,
+  allowUnconfirmedContainerFallback: boolean,
+): boolean {
+  if (allowUnconfirmedContainerFallback) {
+    return false;
+  }
+
   if (!filterUnconfirmedEnabled) {
     return false;
   }
@@ -240,10 +237,12 @@ function readSubtitleText(
   selectors: string[],
   preferredSelector = "",
   filterUnconfirmedEnabled = true,
+  allowUnconfirmedContainerFallback = false,
 ): SubtitleReadResult {
   const orderedSelectors = uniqueSelectors([preferredSelector, ...selectors]);
   const blockContainerFallback = shouldBlockContainerFallbackForUnconfirmed(
     filterUnconfirmedEnabled,
+    allowUnconfirmedContainerFallback,
   );
 
   for (const selector of orderedSelectors) {
@@ -255,6 +254,7 @@ function readSubtitleText(
           text: smiText,
           selector,
           rows,
+          blockedByUnconfirmedFilter: false,
         };
       }
 
@@ -274,6 +274,7 @@ function readSubtitleText(
         text,
         selector,
         rows: [],
+        blockedByUnconfirmedFilter: false,
       };
     }
   }
@@ -289,6 +290,7 @@ function readSubtitleText(
         text,
         selector: fallbackSelector,
         rows: [],
+        blockedByUnconfirmedFilter: false,
       };
     }
   }
@@ -297,6 +299,7 @@ function readSubtitleText(
     text: "",
     selector: preferredSelector,
     rows: [],
+    blockedByUnconfirmedFilter: blockContainerFallback,
   };
 }
 
@@ -350,14 +353,27 @@ function teardownBridge(state: BridgeState): void {
 }
 
 function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void {
+  const allowUnconfirmedContainerFallback = shouldAllowUnconfirmedContainerFallback(
+    state.unconfirmedFallbackBlockStreak,
+  );
   const current = readSubtitleText(
     state.selectors,
     state.observerSelector,
-    state.filterUnconfirmedEnabled
+    state.filterUnconfirmedEnabled,
+    allowUnconfirmedContainerFallback,
   );
   if (current.selector) {
     state.observerSelector = current.selector;
   }
+
+  state.unconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
+    state.unconfirmedFallbackBlockStreak,
+    {
+      blockedByUnconfirmedFilter: current.blockedByUnconfirmedFilter,
+      found: Boolean(current.text),
+      text: current.text,
+    },
+  );
 
   const compact = compactText(current.text);
   if (!compact) {
@@ -507,6 +523,7 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
     observerActive: false,
     pollingIntervalMs: 180,
     filterUnconfirmedEnabled: true,
+    unconfirmedFallbackBlockStreak: 0,
     token: "",
   };
 

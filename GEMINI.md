@@ -379,6 +379,18 @@ Use this delta as part of the current operational baseline.
 - download fallback 은 Blob URL 생성 실패 또는 Blob download 실패에서만 `data:` fallback 으로 내려가야 합니다. download 성공 뒤 metadata persist 실패만으로 중복 다운로드를 다시 열면 안 됩니다.
 - popup 은 현재 window active tab 기준으로 재연결하고, diagnostics 는 `tabId` 대상이 사라지거나 unsupported 가 되면 다른 supported assembly tab 으로 fallback 해야 합니다.
 
+## Sync Delta (2026-04-21)
+
+Use this delta as part of the current operational baseline.
+
+- session import sanitize 는 `sourceUrl` 에 대해 `isSupportedAssemblyUrl()` 검증을 강제하고, 미지원 URL은 항상 빈 문자열로 정규화해야 합니다.
+- history `원본 페이지 열기`는 supported assembly URL일 때만 버튼 활성화/실행이 가능해야 하며, 클릭 핸들러에서도 같은 조건을 재검증해야 합니다.
+- unconfirmed 필터로 container fallback 이 막힐 때 `blockedByUnconfirmedFilter` 신호를 유지하고, local polling / top fallback / injected observer 모두 `연속 6회` 차단 시 fallback 일시 허용 로직을 공통으로 써야 합니다.
+- unconfirmed 차단 streak 는 자막 텍스트 재획득 시 즉시 0으로 리셋하고, neutral miss에서는 streak를 유지해야 합니다.
+- container fallback 내부 raw는 `4KB tail cap` 비교용 텍스트로 유지하고, UI preview는 `400자/3줄 tail` formatter로만 축약 노출해야 합니다.
+- 단일 세션 export 는 하드 제한 없이 시도하며, runtime message 길이 초과/invalid data URL 계열 실패는 사용자 친화 메시지로 매핑해야 합니다.
+- frame-forward nonce mismatch 발생 시 nonce resync와 빠른 top fallback probe를 즉시 트리거해 드롭 구간 복구를 우선해야 합니다.
+
 ## Sync Delta (2026-03-14)
 
 Use this delta as the current operational baseline.

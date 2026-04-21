@@ -48,4 +48,34 @@ describe("probeFramePath", () => {
     expect(result.text).toBe("");
     expect(result.framePath).toEqual([3]);
   });
+
+  it("marks blocked fallback probes when unconfirmed filtering suppresses container text", () => {
+    document.body.innerHTML = `<iframe id="frame-a"></iframe>`;
+    const [frame] = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"));
+    attachFrameDocument(
+      frame,
+      `
+        <div id="viewSubtit">
+          <div class="smi_word pending_row" style="background-color: rgb(255, 255, 0)">
+            <span>draft subtitle</span>
+          </div>
+          <div class="incont">fallback subtitle</div>
+        </div>
+      `,
+    );
+
+    const blocked = probeFramePath([0], "#viewSubtit .incont", {
+      filterUnconfirmedEnabled: true,
+    });
+    const relaxed = probeFramePath([0], "#viewSubtit .incont", {
+      filterUnconfirmedEnabled: true,
+      allowUnconfirmedContainerFallback: true,
+    });
+
+    expect(blocked.found).toBe(false);
+    expect(blocked.blockedByUnconfirmedFilter).toBe(true);
+    expect(relaxed.found).toBe(true);
+    expect(relaxed.blockedByUnconfirmedFilter).toBe(false);
+    expect(relaxed.text).toContain("fallback subtitle");
+  });
 });

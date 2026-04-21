@@ -28,6 +28,11 @@
 - `.smi_word` nodeKey + framePath 기반 live row ledger 추적, 같은 row 제자리 보정, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
 - 접근 가능한 frame 전체의 `#viewSubtit`, 자막 텍스트, 자막 control active 상태를 함께 집계해 레이어 활성화 성공을 판정
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback에서는 `실시간 내용` 누적 원문을 유지하고, 이미 확정된 entry만 `수집된 자막` 목록에 계속 누적 표시
+- history 가져오기 sanitize 단계에서 지원하지 않는 `sourceUrl`은 빈 문자열로 정규화하고, `원본 페이지 열기`는 지원 URL일 때만 허용합니다
+- unconfirmed 필터로 container fallback이 연속 차단되면 6회째부터 fallback을 일시 허용해 수집 복원력을 높입니다
+- container fallback 내부 원문은 `4KB` tail cap으로 유지하고, 패널/팝업 표시용 preview는 `400자/3줄` tail 의미론으로 분리합니다
+- 단일 세션 export는 하드 용량 제한 없이 시도하되, `message length exceeded`/`invalid data URL` 계열 실패는 사용자 안내 문구로 매핑합니다
+- frame-forward nonce mismatch 시 즉시 nonce 재동기화와 빠른 top-frame fallback probe를 함께 수행합니다
 - `normalized capture event -> live ledger -> preview / normalize / gate`
 - 글로벌 히스토리 + `rfind` suffix 기반 증분 추출
 - keepalive 기반 마지막 자막 `endTime` 갱신
@@ -109,13 +114,14 @@ src/
 tests/
 ```
 
-현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-20.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
+현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-20.md`, `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-21.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
 
 - `DEPLOYMENT.md`
 - `CLAUDE.md`
 - `GEMINI.md`
 - `CODEBASE_AUDIT.md`
 - `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-20.md`
+- `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-21.md`
 - `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - `PRIVACY_POLICY_DRAFT_KO.md`
 

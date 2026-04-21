@@ -7,7 +7,7 @@ import {
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../core/subtitle-models";
-import { SESSION_RECORD_VERSION } from "../shared/constants";
+import { SESSION_RECORD_VERSION, isSupportedAssemblyUrl } from "../shared/constants";
 
 export const SESSION_BACKUP_KIND = "assembly-subtitle-session-backup";
 export const SESSION_BACKUP_VERSION = "1";
@@ -123,12 +123,15 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     return undefined;
   }
 
+  const sourceUrlCandidate = sanitizeOptionalString(value.sourceUrl);
+  const sourceUrl = isSupportedAssemblyUrl(sourceUrlCandidate) ? sourceUrlCandidate : "";
+
   return {
     id: value.id,
     version: typeof value.version === "string" && value.version ? value.version : SESSION_RECORD_VERSION,
     title: sanitizeOptionalString(value.title, "국회 자막 세션"),
     committeeName: sanitizeOptionalString(value.committeeName),
-    sourceUrl: sanitizeOptionalString(value.sourceUrl),
+    sourceUrl,
     startedAt,
     endedAt: endedAt ?? null,
     createdAt,

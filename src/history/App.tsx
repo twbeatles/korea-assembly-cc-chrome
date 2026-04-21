@@ -7,7 +7,9 @@ import {
   DEFAULT_EXTENSION_SETTINGS,
   EXTENSION_STORAGE_KEY,
   SESSION_LIBRARY_REVISION_STORAGE_KEY,
+  isSupportedAssemblyUrl,
 } from "../shared/constants";
+import { mapDownloadErrorMessage, resolveDownloadErrorMessage } from "../shared/download-errors";
 import {
   assertSessionLibraryTransferSizeWithinLimit,
   getUtf8ByteLength,
@@ -116,6 +118,10 @@ function formatDate(value: string | null): string {
     return "-";
   }
   return new Date(value).toLocaleString("ko-KR");
+}
+
+function canReopenSourceUrl(sourceUrl: string | null | undefined): sourceUrl is string {
+  return typeof sourceUrl === "string" && isSupportedAssemblyUrl(sourceUrl);
 }
 
 function confirmDeleteSession(target: SessionRecord): boolean {
@@ -658,7 +664,8 @@ export default function App() {
   };
 
   const handleReopen = async (): Promise<void> => {
-    if (!selectedSession?.sourceUrl) {
+    if (!canReopenSourceUrl(selectedSession?.sourceUrl)) {
+      setMessage("지원되는 원본 의사중계 URL이 없습니다.");
       return;
     }
 
@@ -691,7 +698,9 @@ export default function App() {
         mimeType: payload.mimeType,
       });
       if (!response.ok) {
-        setMessage(response.error);
+        setMessage(
+          mapDownloadErrorMessage(response.error) || "파일 저장을 시작하지 못했습니다.",
+        );
         return;
       }
 
@@ -704,7 +713,7 @@ export default function App() {
 
       setMessage(`${getExportFormatLabel(format)} 파일 저장을 시작했습니다.`);
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "파일 저장을 시작하지 못했습니다.");
+      setMessage(resolveDownloadErrorMessage(error, "파일 저장을 시작하지 못했습니다."));
     }
   };
 
@@ -795,7 +804,9 @@ export default function App() {
         mimeType: backupExport.payload.mimeType,
       });
       if (!response.ok) {
-        setMessage(response.error);
+        setMessage(
+          mapDownloadErrorMessage(response.error) || "전체 JSON 백업에 실패했습니다.",
+        );
         return;
       }
 
@@ -806,7 +817,7 @@ export default function App() {
         return;
       }
 
-      setMessage(error instanceof Error ? error.message : "전체 JSON 백업에 실패했습니다.");
+      setMessage(resolveDownloadErrorMessage(error, "전체 JSON 백업에 실패했습니다."));
     } finally {
       clearLongTaskState("backup", controller);
     }
@@ -1182,7 +1193,7 @@ export default function App() {
                         "원본 의사중계 페이지를 열고 있습니다.",
                       )
                     }
-                    disabled={actionButtonsDisabled || !selectedSession.sourceUrl}
+                    disabled={actionButtonsDisabled || !canReopenSourceUrl(selectedSession.sourceUrl)}
                   >
                     원본 페이지 열기
                   </button>

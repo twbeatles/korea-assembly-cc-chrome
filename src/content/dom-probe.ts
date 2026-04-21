@@ -1,14 +1,11 @@
-import { isAssemblyPlenaryUrl, SUBTITLE_SELECTOR_CANDIDATES } from "../shared/constants";
+import { SUBTITLE_SELECTOR_CANDIDATES } from "../shared/constants";
 import type { ObservedSubtitleRow } from "../shared/message-types";
-import {
-  extractTailLines,
-  normalizeSubtitleText,
-} from "../core/text-normalizer";
 import {
   buildObservedSubtitlePreview,
   hasUnconfirmedSubtitleBackground,
   readObservedSubtitleRows,
 } from "./subtitle-rows";
+import { normalizeFallbackInternalRaw } from "./fallback-preview";
 
 export interface DomProbeResult {
   text: string;
@@ -16,10 +13,12 @@ export interface DomProbeResult {
   found: boolean;
   rows?: ObservedSubtitleRow[];
   sourceMode?: "smi-window" | "container";
+  blockedByUnconfirmedFilter?: boolean;
 }
 
 export interface DomProbeOptions {
   filterUnconfirmedEnabled?: boolean;
+  allowUnconfirmedContainerFallback?: boolean;
   sourceUrl?: string;
 }
 
@@ -86,15 +85,13 @@ function queryAllSafe(root: ParentNode, selector: string): HTMLElement[] {
 }
 
 function normalizeContainerText(node: HTMLElement, sourceUrl?: string): string {
+  void sourceUrl;
   const raw = node.innerText || node.textContent || "";
-  const text = normalizeSubtitleText(raw);
+  const text = normalizeFallbackInternalRaw(raw);
   if (!text) {
     return "";
   }
-  if (text.length <= 400 || isAssemblyPlenaryUrl(sourceUrl)) {
-    return text;
-  }
-  return normalizeSubtitleText(extractTailLines(raw, 3));
+  return text;
 }
 
 function readSmiWordWindow(
@@ -115,6 +112,10 @@ function shouldBlockContainerFallbackForUnconfirmed(
   root: ParentNode,
   options?: DomProbeOptions,
 ): boolean {
+  if (options?.allowUnconfirmedContainerFallback) {
+    return false;
+  }
+
   if (!options?.filterUnconfirmedEnabled) {
     return false;
   }
@@ -144,6 +145,7 @@ function readContainerFallback(
       text: "",
       matchedSelector: "",
       found: false,
+      blockedByUnconfirmedFilter: true,
     };
   }
 
@@ -168,6 +170,7 @@ function readContainerFallback(
         matchedSelector: selector,
         found: true,
         sourceMode: "container",
+        blockedByUnconfirmedFilter: false,
       };
     }
   }
@@ -176,6 +179,7 @@ function readContainerFallback(
     text: "",
     matchedSelector: "",
     found: false,
+    blockedByUnconfirmedFilter: false,
   };
 }
 
@@ -198,6 +202,7 @@ export function readSubtitleTextBySelectors(
           found: true,
           rows: smiText.rows,
           sourceMode: "smi-window",
+          blockedByUnconfirmedFilter: false,
         };
       }
 
@@ -225,6 +230,7 @@ export function readSubtitleTextBySelectors(
       matchedSelector: selector,
       found: true,
       sourceMode: "container",
+      blockedByUnconfirmedFilter: false,
     };
   }
 

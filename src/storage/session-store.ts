@@ -40,6 +40,7 @@ import {
   SESSION_RECORD_VERSION,
   SESSION_LIBRARY_REVISION_STORAGE_KEY,
   SESSION_STORE_NAME,
+  isSupportedAssemblyUrl,
 } from "../shared/constants";
 import type {
   BuildSessionLibraryBackupExportOptions,
@@ -356,7 +357,10 @@ function normalizeSessionRecord(
     version: SESSION_RECORD_VERSION,
     title: session.title || "국회 자막 세션",
     committeeName: session.committeeName || "",
-    sourceUrl: typeof session.sourceUrl === "string" ? session.sourceUrl : "",
+    sourceUrl:
+      typeof session.sourceUrl === "string" && isSupportedAssemblyUrl(session.sourceUrl)
+        ? session.sourceUrl
+        : "",
     startedAt,
     endedAt,
     createdAt,
