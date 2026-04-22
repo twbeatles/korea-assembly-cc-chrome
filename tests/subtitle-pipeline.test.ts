@@ -34,6 +34,7 @@ describe("subtitle pipeline", () => {
     );
 
     expect(result.changed).toBe(true);
+    expect(state.entries[0].text).toBe("첫 번째 문장");
     expect(result.state.entries).toHaveLength(1);
     expect(result.state.entries[0].text).toBe("첫 번째 문장 수정");
     expect(result.state.entries[0].sourceNodeKey).toBe("top::row_1");
@@ -162,6 +163,7 @@ describe("subtitle pipeline", () => {
     const keepalive = applyKeepalive(state, now + 1000);
     const finalized = finalizeSession(keepalive.state, now + 5000);
 
+    expect(state.entries[0].endTime).toBe(state.entries[0].startTime);
     expect(keepalive.state.entries[0].endTime).toBeTruthy();
     expect(finalized.state.status).toBe("stopped");
     expect(finalized.state.entries[0].endTime).toBeTruthy();

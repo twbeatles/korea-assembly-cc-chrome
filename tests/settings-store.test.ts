@@ -2,11 +2,14 @@ import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
 import { sanitizeSettings } from "../src/storage/settings-store";
 
 describe("settings store", () => {
-  it("sanitizes new autosave and copy settings", () => {
+  it("sanitizes new autosave, copy, and segmentation settings", () => {
     const sanitized = sanitizeSettings({
       runningAutoSaveEnabled: false,
       runningAutoSaveDebounceMs: 1200,
       recentCopyLineCount: 9,
+      maxEntriesPerSegment: 2500,
+      maxCharsPerSegment: 150000,
+      maxSegmentDurationMinutes: 120,
       recentDuplicateMinLength: 12,
       txtExportTimestampsEnabled: true,
       filterUnconfirmedEnabled: false,
@@ -15,15 +18,21 @@ describe("settings store", () => {
     expect(sanitized.runningAutoSaveEnabled).toBe(false);
     expect(sanitized.runningAutoSaveDebounceMs).toBe(1200);
     expect(sanitized.recentCopyLineCount).toBe(9);
+    expect(sanitized.maxEntriesPerSegment).toBe(2500);
+    expect(sanitized.maxCharsPerSegment).toBe(150000);
+    expect(sanitized.maxSegmentDurationMinutes).toBe(120);
     expect(sanitized.recentDuplicateMinLength).toBe(12);
     expect(sanitized.txtExportTimestampsEnabled).toBe(true);
     expect(sanitized.filterUnconfirmedEnabled).toBe(false);
   });
 
-  it("falls back to defaults when autosave settings are invalid", () => {
+  it("falls back to defaults when autosave and segmentation settings are invalid", () => {
     const sanitized = sanitizeSettings({
       runningAutoSaveDebounceMs: -10,
       recentCopyLineCount: 0,
+      maxEntriesPerSegment: 10,
+      maxCharsPerSegment: 100,
+      maxSegmentDurationMinutes: 1,
       recentDuplicateMinLength: 0,
       filenamePattern: "{date}/bad",
     });
@@ -36,6 +45,15 @@ describe("settings store", () => {
     );
     expect(sanitized.recentCopyLineCount).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
+    );
+    expect(sanitized.maxEntriesPerSegment).toBe(
+      DEFAULT_EXTENSION_SETTINGS.maxEntriesPerSegment,
+    );
+    expect(sanitized.maxCharsPerSegment).toBe(
+      DEFAULT_EXTENSION_SETTINGS.maxCharsPerSegment,
+    );
+    expect(sanitized.maxSegmentDurationMinutes).toBe(
+      DEFAULT_EXTENSION_SETTINGS.maxSegmentDurationMinutes,
     );
     expect(sanitized.recentDuplicateMinLength).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
@@ -53,6 +71,9 @@ describe("settings store", () => {
     const sanitized = sanitizeSettings({
       runningAutoSaveDebounceMs: 800.5,
       recentCopyLineCount: 2.5,
+      maxEntriesPerSegment: 2000.5,
+      maxCharsPerSegment: 120000.5,
+      maxSegmentDurationMinutes: 90.5,
       recentDuplicateMinLength: 8.25,
       keepaliveIntervalMs: 1000.1,
     });
@@ -62,6 +83,15 @@ describe("settings store", () => {
     );
     expect(sanitized.recentCopyLineCount).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
+    );
+    expect(sanitized.maxEntriesPerSegment).toBe(
+      DEFAULT_EXTENSION_SETTINGS.maxEntriesPerSegment,
+    );
+    expect(sanitized.maxCharsPerSegment).toBe(
+      DEFAULT_EXTENSION_SETTINGS.maxCharsPerSegment,
+    );
+    expect(sanitized.maxSegmentDurationMinutes).toBe(
+      DEFAULT_EXTENSION_SETTINGS.maxSegmentDurationMinutes,
     );
     expect(sanitized.recentDuplicateMinLength).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,

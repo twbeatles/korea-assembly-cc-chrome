@@ -1,19 +1,32 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  ASSEMBLY_HOST_MATCH_PATTERNS,
+  ASSEMBLY_CAPTURE_MATCH_PATTERNS,
+  ASSEMBLY_SITE_MATCH_PATTERNS,
+  isSupportedAssemblySiteUrl,
   isAssemblyPlenaryUrl,
   isSupportedAssemblyUrl,
 } from "../src/shared/constants";
 
 describe("assembly host constants", () => {
-  it("supports both fixed assembly webcast player domains only", () => {
+  it("supports the home page and player pages on the fixed assembly webcast domains", () => {
+    expect(isSupportedAssemblySiteUrl("https://assembly.webcast.go.kr/main/")).toBe(true);
+    expect(isSupportedAssemblySiteUrl("https://webcast.assembly.go.kr/main/")).toBe(true);
+    expect(isSupportedAssemblySiteUrl("https://assembly.webcast.go.kr/main/player.do")).toBe(true);
     expect(isSupportedAssemblyUrl("https://assembly.webcast.go.kr/main/player.do")).toBe(true);
     expect(isSupportedAssemblyUrl("https://webcast.assembly.go.kr/main/player.do")).toBe(true);
     expect(isSupportedAssemblyUrl("https://assembly.webcast.go.kr/main/")).toBe(false);
     expect(isSupportedAssemblyUrl("https://assembly.webcast.go.kr/main/sub.do?menu=20")).toBe(false);
+    expect(isSupportedAssemblySiteUrl("https://assembly.webcast.go.kr/main/sub.do?menu=20")).toBe(false);
     expect(isSupportedAssemblyUrl("https://example.com")).toBe(false);
-    expect(ASSEMBLY_HOST_MATCH_PATTERNS).toEqual([
+    expect(isSupportedAssemblySiteUrl("https://example.com")).toBe(false);
+    expect(ASSEMBLY_SITE_MATCH_PATTERNS).toEqual([
+      "https://assembly.webcast.go.kr/main/",
+      "https://webcast.assembly.go.kr/main/",
+      "https://assembly.webcast.go.kr/main/player*",
+      "https://webcast.assembly.go.kr/main/player*",
+    ]);
+    expect(ASSEMBLY_CAPTURE_MATCH_PATTERNS).toEqual([
       "https://assembly.webcast.go.kr/main/player*",
       "https://webcast.assembly.go.kr/main/player*",
     ]);

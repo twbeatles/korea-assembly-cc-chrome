@@ -140,6 +140,18 @@ describe("in-page panel", () => {
     expect(view.captureMode).toBe("structured");
   });
 
+  it("keeps the panel visible even when the current page is not capture-ready", () => {
+    const view = buildPanelState({
+      snapshot: {
+        connected: false,
+        status: "idle",
+        sourceUrl: "https://assembly.webcast.go.kr/main/",
+      },
+    });
+
+    expect(view.visible).toBe(true);
+  });
+
   it("mounts once and renders the live sections with footer menus", () => {
     const controller = createInPagePanel(createActions());
 

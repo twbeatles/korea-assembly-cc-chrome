@@ -10,9 +10,11 @@ import {
   deleteAllSessions,
   deleteSession,
   exportSessionData,
+  exportSessionLineageData,
   getSessionLibraryOverview,
   importSessionRecords,
   listSessions,
+  listSessionLineageSegments,
   listSessionsPage,
   loadSessionsByIds,
   loadSession,
@@ -83,6 +85,34 @@ describe("session store", () => {
 
     expect(updated?.status).toBe("running");
     expect(updated?.endedAt).toBeNull();
+  });
+
+  it("normalizes lineage metadata and lists segments in lineage order", async () => {
+    await saveSession(buildSession("session_standalone", "saved"));
+    await saveSession({
+      ...buildSession("session_segment_2", "saved"),
+      lineageId: "lineage_alpha",
+      segmentNumber: 2,
+      startedAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:12:00.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_segment_1", "saved"),
+      lineageId: "lineage_alpha",
+      segmentNumber: 1,
+      startedAt: "2026-03-10T09:00:00.000Z",
+      updatedAt: "2026-03-10T09:05:00.000Z",
+    });
+
+    const standalone = await loadSession("session_standalone");
+    const segments = await listSessionLineageSegments("lineage_alpha");
+
+    expect(standalone?.lineageId).toBe("session_standalone");
+    expect(standalone?.segmentNumber).toBe(1);
+    expect(segments.map((session) => session.id)).toEqual([
+      "session_segment_1",
+      "session_segment_2",
+    ]);
   });
 
   it("persists favorites and notes and sorts favorites to the top", async () => {
@@ -649,6 +679,59 @@ describe("session store", () => {
     expect(payload.content).toBe(
       ["[18:00:01] 첫 번째 줄", "[18:00:02] 완전히 다른 두 번째 줄"].join("\n"),
     );
+  });
+
+  it("exports a full lineage as a merged session in segment order", async () => {
+    await saveSession({
+      ...buildSession("lineage_export", "saved"),
+      title: "국회 본회의",
+      committeeName: "정무위원회",
+      lineageId: "lineage_export",
+      segmentNumber: 1,
+      entries: [
+        {
+          id: "entry_segment_1",
+          text: "첫 번째 세그먼트",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 8,
+    });
+    await saveSession({
+      ...buildSession("lineage_export_segment_2", "saved"),
+      title: "국회 본회의",
+      committeeName: "정무위원회",
+      startedAt: "2026-03-10T09:10:00.000Z",
+      endedAt: "2026-03-10T09:12:00.000Z",
+      createdAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:12:00.000Z",
+      lineageId: "lineage_export",
+      segmentNumber: 2,
+      entries: [
+        {
+          id: "entry_segment_2",
+          text: "두 번째 세그먼트",
+          timestamp: "2026-03-10T09:11:00.000Z",
+          startTime: "2026-03-10T09:11:00.000Z",
+          endTime: "2026-03-10T09:11:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 8,
+    });
+
+    const payload = await exportSessionLineageData("lineage_export", "json");
+    const parsed = JSON.parse(payload.content) as SessionRecord;
+
+    expect(parsed.id).toBe("lineage_export");
+    expect(parsed.entries.map((entry) => entry.id)).toEqual([
+      "entry_segment_1",
+      "entry_segment_2",
+    ]);
+    expect(parsed.subtitleCount).toBe(2);
   });
 
   it("normalizes cumulative carry-over text when persisting sessions", async () => {

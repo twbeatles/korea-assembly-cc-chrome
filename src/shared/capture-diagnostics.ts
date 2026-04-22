@@ -31,6 +31,8 @@ export function buildCaptureDiagnostics(input: {
   currentFramePath: number[];
   persistabilityState?: PersistabilityState;
   persistabilityHint?: string;
+  segment?: CaptureDiagnostics["segment"];
+  exportEstimates?: CaptureDiagnostics["exportEstimates"];
 }): CaptureDiagnostics {
   return {
     captureMode: input.captureMode,
@@ -40,5 +42,19 @@ export function buildCaptureDiagnostics(input: {
     sourceLabel: resolveCaptureSourceLabel(input.captureMode, input.observerActive),
     persistabilityState: input.persistabilityState ?? "idle",
     persistabilityHint: input.persistabilityHint ?? "",
+    ...(input.segment
+      ? {
+          segment: {
+            ...input.segment,
+          },
+        }
+      : {}),
+    ...(input.exportEstimates
+      ? {
+          exportEstimates: {
+            ...input.exportEstimates,
+          },
+        }
+      : {}),
   };
 }

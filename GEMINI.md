@@ -39,6 +39,7 @@ npm run build
 - `manifest.json`
 - `src/background/service-worker.ts`
 - `src/content/content-script.ts`
+- `src/content/runtime/*`
 - `src/popup/App.tsx`
 - `src/options/App.tsx`
 - `src/history/App.tsx`
@@ -51,12 +52,14 @@ npm run build
 - `src/content/injected-observer.ts`
 - `src/content/panel-live-rows.ts`
 - `src/core/live-capture.ts`
+- `src/core/session-lineage.ts`
 - `src/core/subtitle-pipeline.ts`
 - `src/core/noise-filter.ts`
 
 ### 4.3 저장 / 내보내기
 
 - `src/storage/session-store.ts`
+- `src/storage/session-store/*`
 - `src/storage/session-backup.ts`
 - `src/storage/settings-store.ts`
 - `src/core/exporters/txt.ts`
@@ -141,7 +144,7 @@ npm run build
 - 동일 raw 유지 시 마지막 entry `endTime` 갱신
 - `subtitle_reset` 시 live ledger 와 pipeline state 를 함께 완전 리셋
 - stop 시 현재 state 기준으로 finalize
-- 수동 저장 / export 는 현재 패널에 보이는 확정 `수집된 자막` row 만 직렬화하고, preview-only 텍스트는 materialize 하지 않음
+- 수동 저장 / export 는 현재 패널의 `300건` 렌더 window가 아니라 세션의 committed `entries` 전체를 직렬화하고, preview-only 텍스트는 materialize 하지 않음
 - unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 flush 후 entry 로 반영하지 않음
 - structured row snapshot 안에 stable/unstable row가 함께 있으면 stable row subset만 commit 대상으로 쓰고, unstable row는 preview-only로 남겨야 함
 
@@ -171,6 +174,7 @@ npm run build
 추가 UX 규칙:
 
 - top frame 에 우측 패널이 자동 삽입됨
+- 패널은 지원 사이트의 `main/` 홈과 `main/player*` 플레이어에 모두 붙지만, 실제 `startCapture()` 는 player 페이지에서만 허용됨
 - popup 은 페이지 패널 다시 열기용 보조 화면
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려감
 - 패널은 `실시간 내용`과 `수집된 자막` 2단으로 표시
@@ -208,9 +212,9 @@ npm run build
 - `SRT`: `HH:MM:SS,mmm`, 세션 시작 기준 상대 시간
 - `VTT`: `HH:MM:SS.mmm`, 세션 시작 기준 상대 시간
 - `JSON`: 세션 전체 복원 가능한 구조
-- 수동 `saveSession` / `exportSessionData` 는 현재 패널에 보이는 확정 `수집된 자막` 목록만 사용하며, preview-only 항목으로 내려가지 않습니다.
+- 수동 `saveSession` / `exportSessionData` 는 세션의 committed `entries` 전체를 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
-- 다운로드는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback
+- 다운로드는 `offscreen Blob URL` 우선이며, 실패 시에도 `data:` URL fallback 은 bounded payload 에서만 허용
 - export filename safety sanitize 는 남아 있는 금지 문자를 첫 1회가 아니라 전체 제거해야 합니다.
 
 ## 9. known limits
@@ -341,8 +345,9 @@ Reference consistency set:
 Use this delta as the current operational baseline.
 
 - `ensureSubtitleLayerActive` 성공 판정은 `layer.visible` 단독이 아니라 `layer.visible && (layer.hasText || layer.controlActive)` 조건을 충족할 때만 인정합니다. 이전에는 `visible`만 체크해 텍스트나 control 신호가 없어도 성공으로 처리하던 버그가 수정되었습니다.
-- `saveCurrentSessionSnapshot` / `exportCurrentSession` 은 prepared snapshot 을 그대로 쓰지 않고, 현재 패널에 보이는 `수집된 자막` row 를 우선 직렬화합니다.
-- row 가 없고 preview 만 있으면 placeholder / noise / duplicate 제거 뒤에도 의미가 남을 때만 현재 `실시간 내용` preview 를 단일 항목으로 저장하고, 둘 다 없을 때만 저장 / export 불가 상태로 남습니다.
+- `saveCurrentSessionSnapshot` / `exportCurrentSession` 은 prepared snapshot 의 committed `entries` 전체를 직렬화하며, in-page panel 의 가시 row window 와 저장 범위를 동일시하면 안 됩니다.
+- committed entry 가 1건 이상 있을 때만 저장 / export payload 가 만들어지며, preview-only `실시간 내용`은 저장/export 대상으로 승격되지 않습니다.
+- committed entry 가 없으면 저장 / export 불가 상태로 남습니다.
 - popup 버튼 활성화 조건은 `subtitleCount` / `previewText` 단순 판정이 아니라 `hasPersistableContent` 기준으로 통일됩니다.
 
 ## Sync Delta (2026-04-07)
@@ -390,6 +395,16 @@ Use this delta as part of the current operational baseline.
 - container fallback 내부 raw는 `4KB tail cap` 비교용 텍스트로 유지하고, UI preview는 `400자/3줄 tail` formatter로만 축약 노출해야 합니다.
 - 단일 세션 export 는 하드 제한 없이 시도하며, runtime message 길이 초과/invalid data URL 계열 실패는 사용자 친화 메시지로 매핑해야 합니다.
 - frame-forward nonce mismatch 발생 시 nonce resync와 빠른 top fallback probe를 즉시 트리거해 드롭 구간 복구를 우선해야 합니다.
+
+## Sync Delta (2026-04-22)
+
+Use this delta as part of the current operational baseline.
+
+- content script/panel 은 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드됩니다. 홈(`main/`)에서는 패널/진단 UI만 먼저 보이고, 실제 capture start 는 player 페이지에서만 허용됩니다.
+- runtime segmentation threshold(`maxEntriesPerSegment`, `maxCharsPerSegment`, `maxSegmentDurationMinutes`) 는 settings 로 저장되며 options 숫자 필드와 storage sanitize 최소값 정책을 공유합니다.
+- options `수집 진단`은 현재 segment threshold 사용량과 TXT/SRT/VTT/JSON 예상 export 크기를 표시합니다.
+- lineage 전체 보기/export 는 history 와 background 조립 경로로 동작하며, single-session / lineage export 모두 대형 본문을 content runtime message 로 직접 보내지 않습니다.
+- 매우 큰 export 는 offscreen Blob chunk 경로를 우선 사용하고, `data:` fallback 이 비현실적인 크기에서는 명시적 large-export 오류로 중단해야 합니다.
 
 ## Sync Delta (2026-03-14)
 

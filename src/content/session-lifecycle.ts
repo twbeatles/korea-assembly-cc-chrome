@@ -1,4 +1,5 @@
 import { flushPendingPreviews } from "../core/subtitle-pipeline";
+import { createContinuedSessionState as createContinuedSessionStateBase } from "../core/session-lineage";
 import {
   createEmptySessionState,
   toSessionRecord,
@@ -27,4 +28,20 @@ export function buildPreparedSessionRecord(
 
 export function createResetSessionState(sourceUrl: string, title: string, committeeName: string): SessionState {
   return createEmptySessionState(sourceUrl, title, committeeName);
+}
+
+export function createContinuedSessionState(
+  currentState: SessionState,
+  sourceUrl: string,
+  title: string,
+  committeeName: string,
+  nowIso = new Date().toISOString(),
+): SessionState {
+  return createContinuedSessionStateBase(
+    currentState,
+    sourceUrl,
+    title,
+    committeeName,
+    nowIso,
+  );
 }

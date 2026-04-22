@@ -18,6 +18,12 @@ describe("download error message mapping", () => {
     );
   });
 
+  it("maps disabled large data-url fallback failures to a friendly guidance", () => {
+    expect(mapDownloadErrorMessage("Data URL fallback disabled for large export (4194304 bytes)")).toBe(
+      "내보내기 데이터가 매우 커서 브라우저 fallback 다운로드로 전환할 수 없습니다. 범위를 나누거나 일부만 다시 시도해 주세요.",
+    );
+  });
+
   it("keeps unknown download errors unchanged", () => {
     expect(mapDownloadErrorMessage("some unknown error")).toBe("some unknown error");
     expect(resolveDownloadErrorMessage(new Error("unknown"), "fallback")).toBe("unknown");

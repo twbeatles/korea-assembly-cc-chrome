@@ -7,6 +7,7 @@ import {
   markLiveRowCommitted,
   normalizeCaptureEvent,
   reconcileLiveCapture,
+  resetLiveCaptureLedgerForNewSegment,
   setLiveRowBaseline,
 } from "../src/core/live-capture";
 import { PIPELINE_DEFAULTS } from "../src/shared/constants";
@@ -130,5 +131,39 @@ describe("live capture reducer", () => {
     expect(getLiveRow(ledger, `top::row_${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`)?.text).toBe(
       `문장-${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`,
     );
+  });
+
+  it("keeps row baselines while clearing committed entry ids for a new segment", () => {
+    const first = reconcileLiveCapture(
+      createEmptyLiveCaptureLedger(),
+      normalizeCaptureEvent({
+        raw: "현재 row",
+        rows: [
+          {
+            nodeKey: "row_1",
+            text: "현재 row",
+            speakerColor: "rgb(35, 124, 147)",
+            speakerChannel: "primary",
+            unstableKey: false,
+          },
+        ],
+        framePath: [],
+        timestamp: 10,
+      }),
+    );
+
+    const baselineLedger = markLiveRowCommitted(
+      setLiveRowBaseline(first.ledger, first.liveRows[0].key, "기존기준"),
+      first.liveRows[0].key,
+      "entry_1",
+    );
+    const resetLedger = resetLiveCaptureLedgerForNewSegment(
+      baselineLedger,
+      "fallback 기준",
+    );
+
+    expect(getLiveRow(resetLedger, first.liveRows[0].key)?.committedEntryId).toBeNull();
+    expect(getLiveRow(resetLedger, first.liveRows[0].key)?.baselineCompact).toBe("기존기준");
+    expect(resetLedger.previewText).toBe(baselineLedger.previewText);
   });
 });

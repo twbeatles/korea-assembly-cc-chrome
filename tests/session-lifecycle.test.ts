@@ -5,6 +5,7 @@ import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
 import {
   buildPreparedSessionRecord,
   buildPreparedSessionState,
+  createContinuedSessionState,
   createResetSessionState,
 } from "../src/content/session-lifecycle";
 
@@ -56,5 +57,29 @@ describe("session lifecycle helpers", () => {
     expect(resetState.title).toBe("국회 본회의");
     expect(resetState.committeeName).toBe("정무위원회");
     expect(resetState.entries).toEqual([]);
+  });
+
+  it("creates a continued running segment state inside the same lineage", () => {
+    const currentState = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+      "국회 본회의",
+      "정무위원회",
+    );
+    currentState.lineageId = "lineage_runtime";
+    currentState.segmentNumber = 1;
+
+    const continuedState = createContinuedSessionState(
+      currentState,
+      "https://assembly.webcast.go.kr/main/player.asp",
+      "국회 본회의",
+      "정무위원회",
+      "2026-03-10T09:30:00.000Z",
+    );
+
+    expect(continuedState.sessionId).not.toBe(currentState.sessionId);
+    expect(continuedState.lineageId).toBe("lineage_runtime");
+    expect(continuedState.segmentNumber).toBe(2);
+    expect(continuedState.status).toBe("running");
+    expect(continuedState.startedAt).toBe("2026-03-10T09:30:00.000Z");
   });
 });

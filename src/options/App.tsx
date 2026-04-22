@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
+import { POPUP_PORT_NAME, isSupportedAssemblySiteUrl } from "../shared/constants";
 import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
 import { validateFilenamePattern } from "../shared/filename-pattern";
 import {
@@ -48,6 +48,12 @@ function getFieldLabel(field: keyof ExtensionSettings): string {
       return "대체 확인 주기";
     case "maxBufferLength":
       return "중복 비교 버퍼 길이";
+    case "maxEntriesPerSegment":
+      return "세그먼트 최대 문장 수";
+    case "maxCharsPerSegment":
+      return "세그먼트 최대 글자 수";
+    case "maxSegmentDurationMinutes":
+      return "세그먼트 최대 길이";
     case "recentDuplicateMinLength":
       return "중복 판정 최소 글자 수";
     default:
@@ -67,6 +73,12 @@ function getFieldDescription(field: keyof ExtensionSettings): string {
       return "자동 감시가 놓칠 때 화면을 다시 확인하는 주기입니다.";
     case "maxBufferLength":
       return "중복 비교를 위해 잠시 기억해 둘 텍스트 길이입니다.";
+    case "maxEntriesPerSegment":
+      return "이 문장 수를 넘기면 현재 segment를 저장하고 다음 segment로 넘깁니다.";
+    case "maxCharsPerSegment":
+      return "이 글자 수를 넘기면 현재 segment를 저장하고 다음 segment로 넘깁니다.";
+    case "maxSegmentDurationMinutes":
+      return "이 시간을 넘기면 현재 segment를 저장하고 다음 segment로 넘깁니다.";
     case "recentDuplicateMinLength":
       return "최근 자막과 비교할 때 중복으로 판단할 최소 글자 수입니다.";
     default:
@@ -82,6 +94,12 @@ function getFieldUnit(field: keyof ExtensionSettings): string {
       return "ms";
     case "recentCopyLineCount":
       return "줄";
+    case "maxEntriesPerSegment":
+      return "문장";
+    case "maxCharsPerSegment":
+      return "자";
+    case "maxSegmentDurationMinutes":
+      return "분";
     case "maxBufferLength":
     case "recentDuplicateMinLength":
       return "자";
@@ -98,6 +116,12 @@ function getFieldMin(field: keyof ExtensionSettings): number {
       return 250;
     case "pollingFallbackIntervalMs":
       return 100;
+    case "maxEntriesPerSegment":
+      return 100;
+    case "maxCharsPerSegment":
+      return 5000;
+    case "maxSegmentDurationMinutes":
+      return 10;
     case "maxBufferLength":
       return 1000;
     case "runningAutoSaveDebounceMs":
@@ -124,6 +148,52 @@ function getPersistabilityStateLabel(state?: string): string {
     default:
       return "-";
   }
+}
+
+function formatByteSize(bytes?: number): string {
+  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+
+  if (bytes >= 1024 * 1024) {
+    return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
+  }
+
+  if (bytes >= 1024) {
+    return `${(bytes / 1024).toFixed(1)} KiB`;
+  }
+
+  return `${Math.floor(bytes)} B`;
+}
+
+function formatDurationMs(value?: number | null): string {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return "-";
+  }
+
+  const totalSeconds = Math.floor(value / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  return hours > 0
+    ? `${hours}시간 ${minutes}분 ${seconds}초`
+    : `${minutes}분 ${seconds}초`;
+}
+
+function formatUsage(current?: number, limit?: number, unit = ""): string {
+  if (
+    typeof current !== "number" ||
+    !Number.isFinite(current) ||
+    typeof limit !== "number" ||
+    !Number.isFinite(limit) ||
+    limit <= 0
+  ) {
+    return "-";
+  }
+
+  const percent = Math.min(999, Math.max(0, (current / limit) * 100));
+  return `${current}${unit} / ${limit}${unit} (${percent.toFixed(1)}%)`;
 }
 
 function buildNumberDraftState(settings: ExtensionSettings): NumberDraftState {
@@ -193,7 +263,7 @@ async function resolveDiagnosticsTab(preferredTabId: number | null): Promise<chr
       if (
         typeof preferredTab.id === "number" &&
         typeof preferredTab.url === "string" &&
-        isSupportedAssemblyUrl(preferredTab.url)
+        isSupportedAssemblySiteUrl(preferredTab.url)
       ) {
         return preferredTab;
       }
@@ -204,7 +274,10 @@ async function resolveDiagnosticsTab(preferredTabId: number | null): Promise<chr
 
   const tabs = await queryTabs({ currentWindow: true });
   const candidates = tabs.filter(
-    (tab) => typeof tab.id === "number" && typeof tab.url === "string" && isSupportedAssemblyUrl(tab.url),
+    (tab) =>
+      typeof tab.id === "number" &&
+      typeof tab.url === "string" &&
+      isSupportedAssemblySiteUrl(tab.url),
   );
   candidates.sort((left, right) => {
     if (Boolean(left.active) !== Boolean(right.active)) {
@@ -470,7 +543,11 @@ export default function App() {
               setSnapshot((current) => mergeSnapshot(current, nextMessage));
               if (nextMessage.type === "CAPTURE_STATUS") {
                 setTabReady(true);
-                setDiagnosticsMessage("현재 탭의 수집 진단 정보를 불러왔습니다.");
+                setDiagnosticsMessage(
+                  nextMessage.payload.connected
+                    ? "현재 탭의 수집 진단 정보를 불러왔습니다."
+                    : "국회 의사중계 메인 페이지에는 연결됐지만, 현재 탭은 자막 수집용 플레이어가 아닙니다.",
+                );
               }
               return;
             case "POPUP_FEEDBACK":
@@ -968,6 +1045,100 @@ export default function App() {
               <strong>{snapshot?.lastPersistedAt ? new Date(snapshot.lastPersistedAt).toLocaleString("ko-KR") : "-"}</strong>
             </div>
           </div>
+
+          <section className="diagnostics-subsection">
+            <div className="subsection-header">
+              <h3>세그먼트 상태</h3>
+              <p>현재 탭에서 실행 중인 세그먼트의 threshold 사용량과 남은 여유입니다.</p>
+            </div>
+            <div className="meta-grid">
+              <div className="meta-row">
+                <span>현재 세그먼트</span>
+                <strong>
+                  {snapshot?.diagnostics.segment
+                    ? `세그먼트 ${snapshot.diagnostics.segment.segmentNumber}`
+                    : "-"}
+                </strong>
+              </div>
+              <div className="meta-row">
+                <span>문장 수 사용량</span>
+                <strong>
+                  {formatUsage(
+                    snapshot?.diagnostics.segment?.entryCount,
+                    snapshot?.diagnostics.segment?.maxEntriesPerSegment,
+                    "문장",
+                  )}
+                </strong>
+              </div>
+              <div className="meta-row">
+                <span>글자 수 사용량</span>
+                <strong>
+                  {formatUsage(
+                    snapshot?.diagnostics.segment?.charCount,
+                    snapshot?.diagnostics.segment?.maxCharsPerSegment,
+                    "자",
+                  )}
+                </strong>
+              </div>
+              <div className="meta-row">
+                <span>세그먼트 경과 시간</span>
+                <strong>
+                  {snapshot?.diagnostics.segment
+                    ? `${formatDurationMs(snapshot.diagnostics.segment.elapsedMs)} / ${formatDurationMs(
+                        snapshot.diagnostics.segment.maxDurationMs,
+                      )}`
+                    : "-"}
+                </strong>
+              </div>
+              <div className="meta-row">
+                <span>남은 문장 수</span>
+                <strong>{snapshot?.diagnostics.segment?.remainingEntries ?? "-"}</strong>
+              </div>
+              <div className="meta-row">
+                <span>남은 글자 수</span>
+                <strong>{snapshot?.diagnostics.segment?.remainingChars ?? "-"}</strong>
+              </div>
+              <div className="meta-row">
+                <span>남은 시간</span>
+                <strong>{formatDurationMs(snapshot?.diagnostics.segment?.remainingDurationMs)}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="diagnostics-subsection">
+            <div className="subsection-header">
+              <h3>예상 내보내기 크기</h3>
+              <p>현재 세그먼트를 지금 저장한다고 가정했을 때의 포맷별 대략적인 크기입니다.</p>
+            </div>
+            <div className="meta-grid">
+              <div className="meta-row">
+                <span>TXT</span>
+                <strong>{formatByteSize(snapshot?.diagnostics.exportEstimates?.txtBytes)}</strong>
+              </div>
+              <div className="meta-row">
+                <span>SRT</span>
+                <strong>{formatByteSize(snapshot?.diagnostics.exportEstimates?.srtBytes)}</strong>
+              </div>
+              <div className="meta-row">
+                <span>VTT</span>
+                <strong>{formatByteSize(snapshot?.diagnostics.exportEstimates?.vttBytes)}</strong>
+              </div>
+              <div className="meta-row">
+                <span>JSON</span>
+                <strong>{formatByteSize(snapshot?.diagnostics.exportEstimates?.jsonBytes)}</strong>
+              </div>
+              <div className="meta-row">
+                <span>TXT 타임스탬프</span>
+                <strong>
+                  {snapshot?.diagnostics.exportEstimates
+                    ? snapshot.diagnostics.exportEstimates.txtIncludesTimestamps
+                      ? "포함"
+                      : "제외"
+                    : "-"}
+                </strong>
+              </div>
+            </div>
+          </section>
 
           <section className="diagnostics-subsection">
             <div className="subsection-header">

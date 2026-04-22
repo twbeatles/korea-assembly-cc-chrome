@@ -6,6 +6,9 @@ export const BASIC_NUMBER_FIELDS: Array<keyof ExtensionSettings> = [
 ];
 
 export const ADVANCED_NUMBER_FIELDS: Array<keyof ExtensionSettings> = [
+  "maxEntriesPerSegment",
+  "maxCharsPerSegment",
+  "maxSegmentDurationMinutes",
   "keepaliveIntervalMs",
   "pollingFallbackIntervalMs",
   "maxBufferLength",

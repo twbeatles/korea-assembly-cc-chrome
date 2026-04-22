@@ -640,7 +640,7 @@ export function buildInPagePanelState(
   },
 ): InPagePanelState {
   return {
-    visible: snapshot.connected,
+    visible: true,
     collapsed: options.collapsed,
     previewCollapsed: options.previewCollapsed,
     autoScroll: options.autoScroll,

@@ -19,6 +19,14 @@ export function mapDownloadErrorMessage(rawMessage: string): string {
     return "내보내기 데이터가 커서 저장 요청을 전송하지 못했습니다. 범위를 나누어 다시 시도해 주세요.";
   }
 
+  const largeFallbackPatterns = [
+    "data url fallback disabled for large export",
+    "too large for data url fallback",
+  ];
+  if (includesAny(lower, largeFallbackPatterns)) {
+    return "내보내기 데이터가 매우 커서 브라우저 fallback 다운로드로 전환할 수 없습니다. 범위를 나누거나 일부만 다시 시도해 주세요.";
+  }
+
   const invalidUrlPatterns = [
     "invalid url",
     "url is invalid",

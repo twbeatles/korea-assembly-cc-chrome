@@ -14,8 +14,12 @@ function isOffscreenDocumentMessage(message: unknown): message is OffscreenDocum
   return type === "OFFSCREEN_CREATE_BLOB_URL" || type === "OFFSCREEN_REVOKE_BLOB_URL";
 }
 
-function createBlobUrl(content: string, mimeType: string): string {
-  const blob = new Blob([content], { type: mimeType });
+function createBlobUrl(
+  content: string | undefined,
+  contentParts: string[] | undefined,
+  mimeType: string,
+): string {
+  const blob = new Blob(contentParts?.length ? contentParts : [content ?? ""], { type: mimeType });
   const url = URL.createObjectURL(blob);
   activeBlobUrls.add(url);
   return url;
@@ -40,7 +44,7 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
       case "OFFSCREEN_CREATE_BLOB_URL":
         sendResponse({
           ok: true,
-          url: createBlobUrl(message.content, message.mimeType),
+          url: createBlobUrl(message.content, message.contentParts, message.mimeType),
         } satisfies OffscreenDocumentResponse);
         return true;
       case "OFFSCREEN_REVOKE_BLOB_URL":

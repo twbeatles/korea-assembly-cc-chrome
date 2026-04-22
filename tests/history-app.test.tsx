@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SessionRecord } from "../src/core/subtitle-models";
 import { SESSION_LIBRARY_REVISION_STORAGE_KEY } from "../src/shared/constants";
 import { SESSION_LIBRARY_TRANSFER_LIMIT_BYTES } from "../src/storage/session-backup";
 
@@ -20,6 +21,7 @@ const sessionStoreMocks = vi.hoisted(() => ({
   exportSessionData: vi.fn(),
   getSessionLibraryOverview: vi.fn(),
   importSessionRecords: vi.fn(),
+  listSessionLineageSegments: vi.fn(),
   listSessionsPage: vi.fn(),
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
@@ -46,14 +48,14 @@ function createDeferred<T>() {
   };
 }
 
-function buildSession(overrides: Partial<ReturnType<typeof buildSessionBase>> = {}) {
+function buildSession(overrides: Partial<SessionRecord> = {}) {
   return {
     ...buildSessionBase(),
     ...overrides,
   };
 }
 
-function buildSessionBase() {
+function buildSessionBase(): SessionRecord {
   return {
     id: "session_history_1",
     version: "3",
@@ -117,6 +119,9 @@ describe("history app", () => {
       keepaliveIntervalMs: 1000,
       pollingFallbackIntervalMs: 200,
       maxBufferLength: 50000,
+      maxEntriesPerSegment: 2000,
+      maxCharsPerSegment: 120000,
+      maxSegmentDurationMinutes: 90,
       noiseFilterEnabled: true,
       recentDuplicateMinLength: 8,
       filenamePattern: "{date}_{committee}_{time}",
@@ -137,6 +142,7 @@ describe("history app", () => {
       pageSize: 200,
     });
     sessionStoreMocks.loadSession.mockResolvedValue(session);
+    sessionStoreMocks.listSessionLineageSegments.mockResolvedValue([session]);
     sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
       ids.includes(session.id) ? [session] : [],
     );
@@ -200,8 +206,102 @@ describe("history app", () => {
     expect(chromeApiMocks.createTab).not.toHaveBeenCalled();
   });
 
+  it("shows a segment badge for segmented session records", async () => {
+    const segmentedSession = buildSession({
+      id: "session_segmented_2",
+      lineageId: "lineage_segmented",
+      segmentNumber: 2,
+    });
+    sessionStoreMocks.listSessionsPage.mockResolvedValueOnce({
+      sessions: [segmentedSession],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValueOnce(segmentedSession);
+    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
+      ids.includes(segmentedSession.id) ? [segmentedSession] : [],
+    );
+
+    render(<App />);
+
+    const badges = await screen.findAllByText("세그먼트 2");
+    expect(badges.length).toBeGreaterThan(0);
+  });
+
+  it("switches to lineage-wide export when the merged lineage view is enabled", async () => {
+    const segmentOne = buildSession({
+      id: "lineage_history",
+      title: "국회 본회의",
+      committeeName: "정무위원회",
+      lineageId: "lineage_history",
+      segmentNumber: 1,
+      entries: [
+        {
+          id: "entry_segment_1",
+          text: "첫 번째 세그먼트",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 9,
+    });
+    const segmentTwo = buildSession({
+      id: "lineage_history_2",
+      title: "국회 본회의",
+      committeeName: "정무위원회",
+      startedAt: "2026-03-10T09:10:00.000Z",
+      endedAt: "2026-03-10T09:12:00.000Z",
+      createdAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:12:00.000Z",
+      lineageId: "lineage_history",
+      segmentNumber: 2,
+      entries: [
+        {
+          id: "entry_segment_2",
+          text: "두 번째 세그먼트",
+          timestamp: "2026-03-10T09:11:00.000Z",
+          startTime: "2026-03-10T09:11:00.000Z",
+          endTime: "2026-03-10T09:11:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 9,
+    });
+
+    sessionStoreMocks.listSessionsPage.mockResolvedValueOnce({
+      sessions: [segmentOne, segmentTwo],
+      totalCount: 2,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValueOnce(segmentOne);
+    sessionStoreMocks.listSessionLineageSegments.mockResolvedValueOnce([segmentOne, segmentTwo]);
+    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
+      [segmentOne, segmentTwo].filter((session) => ids.includes(session.id)),
+    );
+
+    render(<App />);
+
+    const toggleButton = await screen.findByRole("button", { name: "연속 캡처 전체 보기" });
+    fireEvent.click(toggleButton);
+    fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
+
+    await waitFor(() => {
+      expect(chromeApiMocks.sendRuntimeMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "DOWNLOAD_SESSION_LINEAGE_EXPORT",
+          lineageId: "lineage_history",
+          format: "txt",
+        }),
+      );
+    });
+  });
+
   it("shows a user-facing error when exporting fails", async () => {
-    sessionStoreMocks.exportSessionData.mockRejectedValueOnce(new Error("export failed"));
+    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(new Error("export failed"));
 
     render(<App />);
     await screen.findByRole("button", { name: "텍스트(TXT)" });
@@ -213,12 +313,6 @@ describe("history app", () => {
   });
 
   it("maps oversized download request errors to a user-facing export message", async () => {
-    sessionStoreMocks.exportSessionData.mockResolvedValueOnce({
-      filename: "session.txt",
-      format: "txt",
-      mimeType: "text/plain;charset=utf-8",
-      content: "본문",
-    });
     chromeApiMocks.sendRuntimeMessage.mockResolvedValueOnce({
       ok: false,
       error: "Message length exceeded",
@@ -238,24 +332,19 @@ describe("history app", () => {
   });
 
   it("passes the TXT timestamp setting through when exporting", async () => {
-    sessionStoreMocks.exportSessionData.mockResolvedValueOnce({
-      filename: "session.txt",
-      format: "txt",
-      mimeType: "text/plain;charset=utf-8",
-      content: "본문",
-    });
-
     render(<App />);
     await screen.findByRole("button", { name: "텍스트(TXT)" });
     fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.exportSessionData).toHaveBeenCalledWith(
-        expect.objectContaining({ id: "session_history_1" }),
-        "txt",
+      expect(chromeApiMocks.sendRuntimeMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          type: "DOWNLOAD_SESSION_EXPORT",
+          sessionId: "session_history_1",
+          format: "txt",
           filenamePattern: "{date}_{committee}_{time}",
           txtExportTimestampsEnabled: false,
+          entryIds: undefined,
         }),
       );
     });

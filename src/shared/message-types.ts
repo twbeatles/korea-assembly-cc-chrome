@@ -15,6 +15,28 @@ export type PersistabilityState =
   | "filtered"
   | "duplicate";
 
+export interface SegmentDiagnostics {
+  lineageId: string;
+  segmentNumber: number;
+  entryCount: number;
+  charCount: number;
+  elapsedMs: number | null;
+  maxEntriesPerSegment: number;
+  maxCharsPerSegment: number;
+  maxDurationMs: number;
+  remainingEntries: number;
+  remainingChars: number;
+  remainingDurationMs: number | null;
+}
+
+export interface ExportEstimateDiagnostics {
+  txtBytes: number;
+  srtBytes: number;
+  vttBytes: number;
+  jsonBytes: number;
+  txtIncludesTimestamps: boolean;
+}
+
 export interface CaptureDiagnostics {
   captureMode: CaptureMode;
   observerActive: boolean;
@@ -23,6 +45,8 @@ export interface CaptureDiagnostics {
   sourceLabel: string;
   persistabilityState: PersistabilityState;
   persistabilityHint: string;
+  segment?: SegmentDiagnostics;
+  exportEstimates?: ExportEstimateDiagnostics;
 }
 
 export interface ObservedSubtitleRow {
@@ -137,6 +161,22 @@ export type BackgroundCommandMessage =
       content: string;
       mimeType: string;
     }
+  | {
+      type: "DOWNLOAD_SESSION_EXPORT";
+      sessionId: string;
+      format: ExportFormat;
+      filenamePattern?: string;
+      txtExportTimestampsEnabled?: boolean;
+      entryIds?: string[];
+    }
+  | {
+      type: "DOWNLOAD_SESSION_LINEAGE_EXPORT";
+      lineageId: string;
+      format: ExportFormat;
+      filenamePattern?: string;
+      txtExportTimestampsEnabled?: boolean;
+      entryIds?: string[];
+    }
   | { type: "OPEN_HISTORY_PAGE" }
   | { type: "OPEN_OPTIONS_PAGE" }
   | { type: "OPEN_DIAGNOSTICS_PAGE"; tabId?: number };
@@ -179,7 +219,8 @@ export interface FrameForwardNonceMessage {
 export type OffscreenDocumentMessage =
   | {
       type: "OFFSCREEN_CREATE_BLOB_URL";
-      content: string;
+      content?: string;
+      contentParts?: string[];
       mimeType: string;
     }
   | {

@@ -24,4 +24,4 @@ Chrome Web Store 제출 폼에 바로 붙여넣을 수 있도록 간략 문안�
 
 ## 호스트 권한 사용 근거
 
-`https://assembly.webcast.go.kr/*` 와 `https://webcast.assembly.go.kr/*` 페이지에서만 AI 자막 DOM을 읽고, 자막 수집 패널을 표시하며, 사용자가 보고 있는 국회 중계 자막을 저장할 수 있도록 하기 위해 사용합니다. 다른 사이트에서는 동작하지 않으며 권한 범위도 해당 두 도메인으로 제한되어 있습니다.
+`https://assembly.webcast.go.kr/*` 와 `https://webcast.assembly.go.kr/*` 호스트 안에서도 실제 동작 범위는 `main/` 홈과 `main/player*` 플레이어에 한정됩니다. 홈에서는 자막 수집 패널과 진단 UI를 표시하고, 플레이어에서는 AI 자막 DOM을 읽어 사용자가 보고 있는 국회 중계 자막을 저장할 수 있도록 합니다. 다른 사이트에서는 동작하지 않으며 권한 범위도 해당 두 도메인으로 제한되어 있습니다.

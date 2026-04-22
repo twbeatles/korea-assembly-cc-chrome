@@ -35,6 +35,8 @@ export interface SessionRecord {
   starred: boolean;
   pinnedAt: string | null;
   note: string;
+  lineageId?: string;
+  segmentNumber?: number;
   entries: SubtitleEntry[];
 }
 
@@ -50,6 +52,8 @@ export interface SessionBackupBundle {
 
 export interface SessionState {
   sessionId: string;
+  lineageId: string;
+  segmentNumber: number;
   status: CaptureStatus;
   title: string;
   committeeName: string;
@@ -82,6 +86,25 @@ export function createId(prefix: string): string {
   }
 
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
+export function resolveSessionLineageId(
+  sessionId: string,
+  lineageId?: string | null,
+): string {
+  return typeof lineageId === "string" && lineageId.trim().length > 0
+    ? lineageId
+    : sessionId;
+}
+
+export function resolveSessionSegmentNumber(
+  segmentNumber?: number | null,
+): number {
+  return typeof segmentNumber === "number" &&
+    Number.isFinite(segmentNumber) &&
+    segmentNumber >= 1
+    ? Math.floor(segmentNumber)
+    : 1;
 }
 
 export function cloneEntry(entry: SubtitleEntry): SubtitleEntry {
@@ -131,8 +154,11 @@ export function createEmptySessionState(
   title = "",
   committeeName = "",
 ): SessionState {
+  const sessionId = createId("session");
   return {
-    sessionId: createId("session"),
+    sessionId,
+    lineageId: sessionId,
+    segmentNumber: 1,
     status: "idle",
     title,
     committeeName,
@@ -186,6 +212,8 @@ export function toSessionRecord(
     starred: false,
     pinnedAt: null,
     note: "",
+    lineageId: resolveSessionLineageId(state.sessionId, state.lineageId),
+    segmentNumber: resolveSessionSegmentNumber(state.segmentNumber),
     entries,
   };
 }

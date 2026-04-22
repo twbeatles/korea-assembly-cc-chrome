@@ -2,7 +2,10 @@ import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
   hasPersistableRunningContent,
+  resolveRunningPersistDelayMs,
   resolveRunningPersistDebounceMs,
+  RUNNING_PERSIST_KEEPALIVE_MIN_INTERVAL_MS,
+  RUNNING_PERSIST_MAX_COMMIT_DELAY_MS,
   scheduleRunningPersistTimer,
   shouldPersistFinalSession,
   shouldScheduleRunningPersist,
@@ -126,6 +129,54 @@ describe("content autosave policy", () => {
       }),
     ).toBe(DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs);
     expect(resolveRunningPersistDebounceMs({ runningAutoSaveDebounceMs: 100 })).toBe(250);
+  });
+
+  it("caps commit-triggered autosave delay during continuous updates", () => {
+    const base = Date.parse("2026-03-10T09:00:00.000Z");
+
+    expect(
+      resolveRunningPersistDelayMs({
+        trigger: "commit",
+        now: base + RUNNING_PERSIST_MAX_COMMIT_DELAY_MS - 500,
+        pendingSince: base,
+        lastPersistedAt: null,
+        settings: {
+          runningAutoSaveDebounceMs: DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+        },
+      }),
+    ).toBe(500);
+  });
+
+  it("skips keepalive-triggered autosave when a recent snapshot already exists", () => {
+    const base = Date.parse("2026-03-10T09:00:00.000Z");
+
+    expect(
+      resolveRunningPersistDelayMs({
+        trigger: "keepalive",
+        now: base + RUNNING_PERSIST_KEEPALIVE_MIN_INTERVAL_MS - 1_000,
+        pendingSince: base,
+        lastPersistedAt: new Date(base).toISOString(),
+        settings: {
+          runningAutoSaveDebounceMs: DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+        },
+      }),
+    ).toBeNull();
+  });
+
+  it("allows keepalive-triggered autosave after the minimum interval", () => {
+    const base = Date.parse("2026-03-10T09:00:00.000Z");
+
+    expect(
+      resolveRunningPersistDelayMs({
+        trigger: "keepalive",
+        now: base + RUNNING_PERSIST_KEEPALIVE_MIN_INTERVAL_MS,
+        pendingSince: base,
+        lastPersistedAt: new Date(base).toISOString(),
+        settings: {
+          runningAutoSaveDebounceMs: DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+        },
+      }),
+    ).toBe(DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs);
   });
 
   it("clears the pending timer handle", () => {

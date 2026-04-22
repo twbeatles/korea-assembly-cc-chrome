@@ -221,6 +221,89 @@ describe("popup app", () => {
     });
   });
 
+  it("connects on the assembly home page but keeps capture disabled until a player page opens", async () => {
+    const messageListeners: Array<(message: unknown) => void> = [];
+    const port = {
+      onMessage: {
+        addListener: vi.fn((listener: (message: unknown) => void) => {
+          messageListeners.push(listener);
+        }),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+
+    chromeApiMocks.queryActiveTab.mockResolvedValue({
+      id: 1,
+      url: "https://assembly.webcast.go.kr/main/",
+    });
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValue({
+      ok: true,
+      ready: true,
+      requiresReload: false,
+    });
+    chromeApiMocks.connectToTab.mockReturnValue(port);
+
+    render(<App />);
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalled();
+    });
+
+    act(() => {
+      messageListeners.forEach((listener) =>
+        listener({
+          type: "CAPTURE_STATUS",
+          payload: {
+            connected: false,
+            requiresReload: false,
+            status: "idle",
+            sessionId: "session_popup_home",
+            title: "국회인터넷의사중계시스템",
+            committeeName: "국회인터넷의사중계시스템",
+            sourceUrl: "https://assembly.webcast.go.kr/main/",
+            subtitleCount: 0,
+            charCount: 0,
+            previewText: "",
+            recentEntries: [],
+            startedAt: null,
+            endedAt: null,
+            updatedAt: null,
+            lastPersistedAt: null,
+            observerActive: false,
+            currentSelector: "",
+            currentFramePath: [],
+            diagnostics: {
+              captureMode: "idle",
+              observerActive: false,
+              currentSelector: "",
+              currentFramePath: [],
+              sourceLabel: "대기 중",
+              persistabilityState: "idle",
+              persistabilityHint: "플레이어 페이지로 이동해 주세요.",
+            },
+            hasPersistableContent: false,
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "국회 의사중계 메인 페이지에 연결했습니다. 플레이어 페이지로 이동하면 수집을 시작할 수 있습니다.",
+        ),
+      ).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: "자막 모으기" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "페이지 패널 열기" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
   it("reconnects to the current active tab when the active tab changes", async () => {
     let activatedListener:
       | ((activeInfo: chrome.tabs.TabActiveInfo) => void)

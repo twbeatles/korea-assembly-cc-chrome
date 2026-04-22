@@ -1,7 +1,11 @@
 import type { SessionState } from "../core/subtitle-models";
 import type { SessionRecord } from "../core/subtitle-models";
-import { cloneState } from "../core/subtitle-models";
 import type { ExtensionSettings } from "../storage/types";
+
+export const RUNNING_PERSIST_MAX_COMMIT_DELAY_MS = 15_000;
+export const RUNNING_PERSIST_KEEPALIVE_MIN_INTERVAL_MS = 30_000;
+
+export type RunningPersistTrigger = "commit" | "keepalive";
 
 export function shouldScheduleRunningPersist(
   isTopFrame: boolean,
@@ -38,9 +42,13 @@ export function shouldWarnBeforeUnload(
 }
 
 export function applyPersistSuccess(state: SessionState, persistedAt: string): SessionState {
-  const next = cloneState(state);
-  next.lastPersistedAt = persistedAt;
-  return next;
+  return {
+    ...state,
+    entries: [...state.entries],
+    pendingPreviews: [...state.pendingPreviews],
+    currentFramePath: [...state.currentFramePath],
+    lastPersistedAt: persistedAt,
+  };
 }
 
 export function clearScheduledRunningPersist(
@@ -56,6 +64,49 @@ export function clearScheduledRunningPersist(
 export interface RunningPersistSnapshot {
   status: SessionState["status"];
   record: SessionRecord;
+}
+
+export interface RunningPersistDelayOptions {
+  trigger: RunningPersistTrigger;
+  now: number;
+  pendingSince: number | null;
+  lastPersistedAt: string | null;
+  settings: Pick<ExtensionSettings, "runningAutoSaveDebounceMs">;
+}
+
+function parsePersistedAtMs(value: string | null): number | null {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function resolveRunningPersistDelayMs(
+  options: RunningPersistDelayOptions,
+): number | null {
+  const debounceMs = resolveRunningPersistDebounceMs(options.settings);
+
+  if (options.trigger === "keepalive") {
+    const lastPersistedAtMs = parsePersistedAtMs(options.lastPersistedAt);
+    if (
+      lastPersistedAtMs !== null &&
+      options.now - lastPersistedAtMs < RUNNING_PERSIST_KEEPALIVE_MIN_INTERVAL_MS
+    ) {
+      return null;
+    }
+
+    return debounceMs;
+  }
+
+  const dirtySince =
+    typeof options.pendingSince === "number"
+      ? Math.min(options.pendingSince, options.now)
+      : options.now;
+  const debounceDeadline = options.now + debounceMs;
+  const maxDeadline = dirtySince + RUNNING_PERSIST_MAX_COMMIT_DELAY_MS;
+  return Math.max(0, Math.min(debounceDeadline, maxDeadline) - options.now);
 }
 
 export interface RunningPersistSchedulerOptions {

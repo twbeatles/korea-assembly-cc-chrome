@@ -10,6 +10,9 @@ export interface ExtensionSettings {
   keepaliveIntervalMs: number;
   pollingFallbackIntervalMs: number;
   maxBufferLength: number;
+  maxEntriesPerSegment: number;
+  maxCharsPerSegment: number;
+  maxSegmentDurationMinutes: number;
   noiseFilterEnabled: boolean;
   recentDuplicateMinLength: number;
   filenamePattern: string;
@@ -49,6 +52,7 @@ export interface SessionPageResult {
 export interface SessionExportOptions {
   filenamePattern?: string;
   entries?: SubtitleEntry[];
+  entryIds?: string[];
   txtExportTimestampsEnabled?: boolean;
 }
 
@@ -147,6 +151,7 @@ export interface SessionStoreApi {
   ) => Promise<SessionRecord>;
   loadSession: (id: string) => Promise<SessionRecord | undefined>;
   loadSessionsByIds: (ids: string[]) => Promise<SessionRecord[]>;
+  listSessionLineageSegments: (lineageId: string) => Promise<SessionRecord[]>;
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;
   listSessionsPage: (options: SessionPageOptions) => Promise<SessionPageResult>;
   getSessionLibraryOverview: (previewLimit?: number) => Promise<SessionLibraryOverview>;
@@ -163,6 +168,11 @@ export interface SessionStoreApi {
   ) => Promise<SessionImportSummary>;
   exportSessionData: (
     session: SessionRecord,
+    format: ExportFormat,
+    options?: SessionExportOptions,
+  ) => Promise<ExportPayload>;
+  exportSessionLineageData: (
+    lineageId: string,
     format: ExportFormat,
     options?: SessionExportOptions,
   ) => Promise<ExportPayload>;

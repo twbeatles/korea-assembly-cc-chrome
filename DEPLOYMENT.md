@@ -51,7 +51,9 @@ npm run build
 
 추가 확인 권장:
 - 국회 의사중계 페이지에서 실제 자막 추출
-- 페이지 오른쪽 패널이 자동으로 뜨는지 확인
+- `main/` 홈에서 페이지 오른쪽 패널이 자동으로 뜨는지 확인
+- 홈(`main/`)에서는 패널이 바로 보이지만 `자막 모으기`를 누르면 플레이어 페이지에서만 수집을 시작할 수 있다는 안내가 나오는지 확인
+- `main/player*` 플레이어 페이지에서는 패널이 계속 보이고 실제 자막 수집이 시작되는지 확인
 - 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
 - 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
 - `수집된 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
@@ -63,7 +65,7 @@ npm run build
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
-- 패널 / popup의 수동 저장과 export 가 현재 화면에 보이는 확정 `수집된 자막` 목록만 반영하고, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는지 확인
+- 패널 / popup의 수동 저장과 export 가 현재 화면 렌더 window와 무관한 세션 전체 committed `entries` 를 기준으로 동작하고, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는지 확인
 - service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
@@ -101,7 +103,7 @@ npm run build
 아래를 확인합니다.
 
 1. 확장 popup 이 열리는지
-2. 국회 페이지 오른쪽에 패널이 자동으로 나타나는지
+2. 국회 `main/` 홈과 `main/player*` 플레이어 페이지에서 패널이 자동으로 나타나는지
 3. 기존에 열려 있던 국회 탭에서 popup 연결 오류 없이 재주입 또는 새로고침 안내로 복구되는지
 4. 확장 아이콘의 popup 에서 현재 상태가 보이는지
 
@@ -197,7 +199,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 배포 후에는 아래를 다시 봅니다.
 
 1. service worker 가 정상 등록되는지
-2. content script 가 `https://assembly.webcast.go.kr/*` 와 `https://webcast.assembly.go.kr/*` 에서 동작하는지
+2. content script 가 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 동작하는지
 3. observer 실패 시 polling fallback 이 계속 동작하는지
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
@@ -230,7 +232,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 
 - 국회 페이지가 이미 열려 있었다면 새로고침이 필요할 수 있습니다.
 - 최신 빌드는 기존 탭에 content script 재주입을 먼저 시도합니다.
-- 대상 URL 이 `https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*` 범위인지 확인합니다.
+- 대상 URL 이 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 범위인지 확인합니다.
 
 ### 9.2 zip 업로드가 실패함
 
@@ -291,7 +293,7 @@ Current release alignment:
 - structured row가 비어 있어도 본회의 fallback capture는 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
 - Chrome Web Store 제출용 압축 예시는 `korea-assembly-cc-chrome-<version>-cws.zip` 형식을 권장합니다.
-- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 현재 화면에 보이는 확정 `수집된 자막` 목록만 저장 기준으로 검증해야 합니다.
+- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 현재 화면에 보이는 `300건` 렌더 window가 아니라 세션 전체 committed subtitle 목록을 기준으로 검증해야 합니다.
 - 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 commit/persist/export 대상에서 제외되는지 확인해야 합니다.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - full-library `JSON 백업` / `JSON 가져오기` 는 단계별 진행률과 취소를 제공하며, import cancel 은 partial completion 을 허용합니다.
@@ -369,3 +371,10 @@ Deployment documentation consistency sources:
 - Release verification should confirm that fallback internal raw keeps a `4KB` tail window for pipeline comparison while panel/popup preview still uses the existing `400자/3줄` tail-oriented display semantics.
 - Release verification should confirm that single-session export keeps no hard size cap, and known transport/download failures (`message length exceeded`, `invalid data URL` class) are surfaced as user-friendly guidance.
 - Release verification should confirm that frame-forward nonce mismatch triggers immediate nonce resync plus fast top-frame fallback probing to recover dropped bridge events.
+
+## 2026-04-22 Deployment Consistency Update
+
+- Release verification should confirm that the in-page panel appears immediately on supported `main/` home URLs, while actual capture start is still allowed only on `main/player*` pages.
+- Release verification should confirm that options `수집 진단` shows current segment threshold usage and TXT/SRT/VTT/JSON estimated export sizes for the active player tab.
+- Release verification should confirm that runtime segmentation thresholds (`세그먼트 최대 문장/글자/시간`) can be edited in options and affect later roll-over decisions.
+- Release verification should confirm that large export downloads use the offscreen Blob chunk path first, and that payloads above the bounded `data:` fallback path surface the explicit large-export guidance instead of attempting an impractical fallback.

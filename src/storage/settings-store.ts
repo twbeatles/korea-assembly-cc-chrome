@@ -49,6 +49,21 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       DEFAULT_EXTENSION_SETTINGS.maxBufferLength,
       1000,
     ),
+    maxEntriesPerSegment: sanitizeInteger(
+      settings.maxEntriesPerSegment,
+      DEFAULT_EXTENSION_SETTINGS.maxEntriesPerSegment,
+      100,
+    ),
+    maxCharsPerSegment: sanitizeInteger(
+      settings.maxCharsPerSegment,
+      DEFAULT_EXTENSION_SETTINGS.maxCharsPerSegment,
+      5000,
+    ),
+    maxSegmentDurationMinutes: sanitizeInteger(
+      settings.maxSegmentDurationMinutes,
+      DEFAULT_EXTENSION_SETTINGS.maxSegmentDurationMinutes,
+      10,
+    ),
     noiseFilterEnabled:
       typeof settings.noiseFilterEnabled === "boolean"
         ? settings.noiseFilterEnabled

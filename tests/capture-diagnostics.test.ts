@@ -20,6 +20,26 @@ describe("capture diagnostics helpers", () => {
       currentFramePath: [0, 2],
       persistabilityState: "persistable",
       persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
+      segment: {
+        lineageId: "lineage_1",
+        segmentNumber: 2,
+        entryCount: 10,
+        charCount: 120,
+        elapsedMs: 1000,
+        maxEntriesPerSegment: 2000,
+        maxCharsPerSegment: 120000,
+        maxDurationMs: 5400000,
+        remainingEntries: 1990,
+        remainingChars: 119880,
+        remainingDurationMs: 5399000,
+      },
+      exportEstimates: {
+        txtBytes: 120,
+        srtBytes: 220,
+        vttBytes: 240,
+        jsonBytes: 420,
+        txtIncludesTimestamps: false,
+      },
     });
 
     expect(formatCaptureDiagnosticsFramePath([])).toBe("top");
@@ -32,6 +52,26 @@ describe("capture diagnostics helpers", () => {
       sourceLabel: "structured",
       persistabilityState: "persistable",
       persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
+      segment: {
+        lineageId: "lineage_1",
+        segmentNumber: 2,
+        entryCount: 10,
+        charCount: 120,
+        elapsedMs: 1000,
+        maxEntriesPerSegment: 2000,
+        maxCharsPerSegment: 120000,
+        maxDurationMs: 5400000,
+        remainingEntries: 1990,
+        remainingChars: 119880,
+        remainingDurationMs: 5399000,
+      },
+      exportEstimates: {
+        txtBytes: 120,
+        srtBytes: 220,
+        vttBytes: 240,
+        jsonBytes: 420,
+        txtIncludesTimestamps: false,
+      },
     });
   });
 });

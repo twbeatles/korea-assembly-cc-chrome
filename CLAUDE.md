@@ -35,6 +35,7 @@ src/
   background/service-worker.ts
     content/
       content-script.ts
+      runtime/
       injected-observer.ts
       dom-probe.ts
       panel-live-rows.ts
@@ -43,6 +44,7 @@ src/
       failed-stopped-session.ts
   core/
     live-capture.ts
+    session-lineage.ts
     subtitle-pipeline.ts
     noise-filter.ts
     exporters/
@@ -50,6 +52,7 @@ src/
     capture-diagnostics.ts
   storage/
     session-store.ts
+    session-store/
     session-backup.ts
     settings-store.ts
   popup/
@@ -110,7 +113,7 @@ offscreen.html
 - 동일 raw 유지 시 keepalive 로 마지막 entry 의 `endTime` 만 갱신합니다.
 - `subtitle_reset` 이 오면 grace 이후 live ledger 와 pipeline state 를 함께 완전 리셋합니다.
 - `finalizeSession` 은 현재 state 기준으로 종료 처리합니다.
-- 수동 저장 / export 는 현재 패널에 보이는 확정 `수집된 자막` row 만 직렬화하며, preview-only 텍스트는 저장 대상으로 materialize 하지 않습니다.
+- 수동 저장 / export 는 현재 패널의 `300건` 렌더 window가 아니라 세션의 committed `entries` 전체를 직렬화하며, preview-only 텍스트는 저장 대상으로 materialize 하지 않습니다.
 - unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 clone state entry 로 승격하지 않고, 확정 entry 만 저장합니다.
 - structured row snapshot 안에 stable/unstable row가 섞여 있으면 stable row subset만 commit 대상으로 내려가고, unstable row는 preview-only로 남겨야 합니다.
 
@@ -136,7 +139,7 @@ offscreen.html
 - `SRT`: 세션 시작 기준 상대 시간, `HH:MM:SS,mmm`
 - `VTT`: 세션 시작 기준 상대 시간, `HH:MM:SS.mmm`
 - `JSON`: 세션 전체 복원 가능한 구조
-- 수동 `saveSession` / `exportSessionData` 경로는 현재 패널에 보이는 확정 `수집된 자막` 목록만 사용하며, preview-only 항목으로 내려가지 않습니다.
+- 수동 `saveSession` / `exportSessionData` 경로는 세션의 committed `entries` 전체를 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 
 ### 7.2 Session Store
@@ -173,6 +176,7 @@ offscreen.html
 ### 7.3 UX 보강 규칙
 
 - top frame 의 content script 가 우측 패널을 자동으로 삽입합니다.
+- 패널은 지원 사이트의 `main/` 홈과 `main/player*` 플레이어에 모두 붙지만, 실제 `startCapture()` 는 player 페이지에서만 허용됩니다.
 - 기본 상태는 `펼쳐짐` 이고, 접으면 오른쪽의 `자막 보기` 탭만 남습니다.
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
@@ -210,7 +214,7 @@ offscreen.html
 - Selenium / PyQt 구조를 다시 가져오면 안 됩니다.
 - `legacy/` 는 로컬 참조용 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - storage 실패, observer 실패, frame 접근 실패, selector 미탐색은 크래시 대신 fallback 으로 내려가야 합니다.
-- export 는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback 을 유지합니다.
+- export 는 `offscreen Blob URL` 우선이며, 실패 시에도 `data:` URL fallback 은 bounded payload 에서만 허용합니다.
 - frame forwarding 은 탭 단위 storage-backed nonce 검증을 통과한 메시지만 top frame 에서 수용해야 하며, content script는 주기 재동기화와 mismatch 즉시 resync를 유지해야 합니다.
 - 코드 수정 후 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 확인합니다.
 
@@ -236,10 +240,10 @@ When editing this repository, align with the newly implemented behavior below.
 When editing this repository, align with the bug fixes below.
 
 - `ensureSubtitleLayerActive` 반환값이 `layer.visible` 단독 → `layer.visible && (layer.hasText || layer.controlActive)` 로 수정되었습니다. 이 조건은 CLAUDE.md 의 subtitle auto activation 성공 판정 기준과 일치합니다.
-- `saveCurrentSessionSnapshot` / `exportCurrentSession` 은 prepared snapshot 을 그대로 쓰지 않고, 현재 패널에 보이는 `수집된 자막` row 를 우선 직렬화합니다.
-  - row 가 있으면 그 목록이 그대로 저장 / 내보내기 payload 가 됩니다.
-  - row 가 없고 preview 만 있으면 placeholder / noise / duplicate 제거 뒤에도 의미가 남을 때만 현재 `실시간 내용` preview 를 단일 항목으로 저장합니다.
-  - 둘 다 없을 때만 저장 / export 불가 상태로 남습니다.
+- `saveCurrentSessionSnapshot` / `exportCurrentSession` 은 in-page panel 의 가시 row window가 아니라 prepared snapshot 의 committed `entries` 전체를 직렬화합니다.
+  - committed entry 가 1건 이상 있을 때만 저장 / export payload 가 만들어집니다.
+  - preview-only `실시간 내용`은 저장/export 대상으로 승격되지 않습니다.
+  - committed entry 가 없으면 저장 / export 불가 상태로 남습니다.
 - popup 버튼 활성화 조건은 `subtitleCount` / `previewText` 단순 판정이 아니라 `hasPersistableContent` 기준으로 통일됩니다.
 
 ## Sync Delta (2026-03-20)
@@ -397,3 +401,13 @@ When editing this repository, align with the newly implemented behavior below.
 - container fallback 내부 raw는 비교/복원용으로 `4KB tail cap`을 적용해 보존하고, UI preview는 별도 formatter를 통해 `400자/3줄 tail` 의미론으로만 축약 노출해야 합니다.
 - 단일 세션 export 하드 제한은 두지 않으며, runtime message 크기 초과/invalid data URL 계열 실패는 사용자 안내 문구로 매핑해야 합니다.
 - frame-forward nonce mismatch 는 즉시 nonce resync 요청과 빠른 top fallback probe를 함께 트리거해 단기 드롭 구간 복구를 우선해야 합니다.
+
+## Sync Delta (2026-04-22)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- content script/panel 은 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드됩니다. 홈(`main/`)에서는 패널/진단 UI만 바로 보이고, 실제 capture start 는 player 페이지에서만 허용됩니다.
+- runtime segmentation threshold(`maxEntriesPerSegment`, `maxCharsPerSegment`, `maxSegmentDurationMinutes`) 는 settings 로 저장되며 options 숫자 필드와 storage sanitize 최소값 정책을 공유합니다.
+- options `수집 진단`은 현재 segment threshold 사용량과 TXT/SRT/VTT/JSON 예상 export 크기를 계산해 노출합니다.
+- lineage 전체 보기/export 는 history 와 background 조립 경로를 통해 동작하며, single-session / lineage export 모두 대형 본문을 content 쪽 runtime message 로 직접 보내지 않습니다.
+- 매우 큰 export 는 offscreen Blob chunk 경로를 우선 사용하고, `data:` fallback 이 비현실적인 크기에서는 명시적 large-export 오류로 중단해야 합니다.

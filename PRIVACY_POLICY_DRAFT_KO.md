@@ -18,7 +18,7 @@
 
 확장프로그램은 다음 정보를 처리할 수 있습니다.
 
-1. 사용자가 `https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*` 페이지에서 보는 AI 자막 텍스트
+1. 사용자가 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 페이지에서 보는 AI 자막 텍스트
 2. 사용자가 확장프로그램에서 설정한 옵션 정보
    예: 자동 저장, 자동 스크롤, 파일명 패턴, 최근 N줄 복사 설정 등
 3. 사용자가 직접 저장한 자막 세션 기록
@@ -74,7 +74,7 @@
 - `activeTab`: 현재 활성 탭 상태 확인
 - `scripting`: 기존 탭에 확장 기능 재연결 또는 재주입
 - `offscreen`: 파일 내보내기용 Blob 처리
-- `https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`: 해당 국회 중계 페이지에서만 자막 표시 및 수집
+- `https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`: 해당 호스트 안에서도 `main/` 홈과 `main/player*` 플레이어에서만 자막 표시 및 수집
 
 ### 8. 이용자 권리
 

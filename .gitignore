@@ -4,6 +4,9 @@
 build/
 dist/
 coverage/
+playwright-report/
+test-results/
+blob-report/
 node_modules/
 .vite/
 .cache/

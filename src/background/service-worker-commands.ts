@@ -1,4 +1,5 @@
-import type { SessionRecord } from "../core/subtitle-models";
+import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
+import type { ExportPayload, SessionExportOptions } from "../storage/types";
 import type {
   BackgroundCommandMessage,
   BackgroundCommandResponse,
@@ -10,6 +11,9 @@ export interface DownloadExportDependencies {
   persistBlobDownload: (downloadId: number, blobUrl: string) => Promise<void>;
   revokeBlobUrl: (url: string) => Promise<void>;
   toDataUrl: (content: string, mimeType: string) => string;
+  getByteLength?: (content: string) => number;
+  dataUrlFallbackMaxBytes?: number;
+  createDataUrlFallbackDisabledError?: (byteLength: number) => Error;
   onBlobFallbackError?: (error: unknown) => void;
 }
 
@@ -19,11 +23,28 @@ export async function downloadExportWithFallback(
   mimeType: string,
   dependencies: DownloadExportDependencies,
 ): Promise<number> {
+  let byteLengthCache: number | null = null;
+  const getByteLength = (): number => {
+    if (byteLengthCache === null) {
+      byteLengthCache = dependencies.getByteLength?.(content) ?? content.length;
+    }
+    return byteLengthCache;
+  };
+  const canUseDataUrlFallback = (): boolean =>
+    typeof dependencies.dataUrlFallbackMaxBytes !== "number" ||
+    getByteLength() <= dependencies.dataUrlFallbackMaxBytes;
+  const resolveDataUrlFallbackError = (): Error =>
+    dependencies.createDataUrlFallbackDisabledError?.(getByteLength()) ??
+    new Error(`Data URL fallback disabled for large export (${getByteLength()} bytes)`);
+
   let blobUrl = "";
   try {
     blobUrl = await dependencies.requestBlobUrl(content, mimeType);
   } catch (error) {
     dependencies.onBlobFallbackError?.(error);
+    if (!canUseDataUrlFallback()) {
+      throw resolveDataUrlFallbackError();
+    }
     return dependencies.downloadByUrl(dependencies.toDataUrl(content, mimeType), filename);
   }
 
@@ -33,6 +54,9 @@ export async function downloadExportWithFallback(
   } catch (error) {
     await dependencies.revokeBlobUrl(blobUrl);
     dependencies.onBlobFallbackError?.(error);
+    if (!canUseDataUrlFallback()) {
+      throw resolveDataUrlFallbackError();
+    }
     return dependencies.downloadByUrl(dependencies.toDataUrl(content, mimeType), filename);
   }
 
@@ -57,6 +81,17 @@ export interface BackgroundCommandDependencies {
   queueExitPersistRecord: (record: SessionRecord) => Promise<void>;
   persistSessionRecord: (record: SessionRecord) => Promise<{ updatedAt: string }>;
   deleteSessionRecord: (sessionId: string) => Promise<void>;
+  loadSessionRecord: (sessionId: string) => Promise<SessionRecord | undefined>;
+  exportSessionRecordData: (
+    session: SessionRecord,
+    format: ExportFormat,
+    options?: SessionExportOptions,
+  ) => Promise<ExportPayload>;
+  exportSessionLineageData: (
+    lineageId: string,
+    format: ExportFormat,
+    options?: SessionExportOptions,
+  ) => Promise<ExportPayload>;
   downloadExport: (filename: string, content: string, mimeType: string) => Promise<number>;
   openHistoryPage: () => Promise<void>;
   openOptionsPage: () => Promise<void>;
@@ -76,6 +111,8 @@ export function isBackgroundCommandMessage(message: unknown): message is Backgro
     type === "PERSIST_SESSION_RECORD" ||
     type === "DELETE_SESSION_RECORD" ||
     type === "DOWNLOAD_REQUEST" ||
+    type === "DOWNLOAD_SESSION_EXPORT" ||
+    type === "DOWNLOAD_SESSION_LINEAGE_EXPORT" ||
     type === "OPEN_HISTORY_PAGE" ||
     type === "OPEN_OPTIONS_PAGE" ||
     type === "OPEN_DIAGNOSTICS_PAGE"
@@ -92,7 +129,7 @@ export async function handleBackgroundCommand(
       if (!dependencies.supportsAssemblyPage(message.url)) {
         return {
           ok: false,
-          error: "국회 의사중계 플레이어 페이지에서만 동작합니다.",
+          error: "국회 의사중계 사이트에서만 동작합니다.",
         };
       }
       if (await dependencies.waitForTopFrameReady(message.tabId)) {
@@ -132,6 +169,40 @@ export async function handleBackgroundCommand(
         message.filename,
         message.content,
         message.mimeType,
+      );
+      return { ok: true, downloadId };
+    }
+    case "DOWNLOAD_SESSION_EXPORT": {
+      const session = await dependencies.loadSessionRecord(message.sessionId);
+      if (!session) {
+        return { ok: false, error: "내보낼 기록을 찾지 못했습니다." };
+      }
+
+      const selectedEntries = Array.isArray(message.entryIds)
+        ? session.entries.filter((entry) => message.entryIds?.includes(entry.id))
+        : undefined;
+      const payload = await dependencies.exportSessionRecordData(session, message.format, {
+        filenamePattern: message.filenamePattern,
+        txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
+        entries: selectedEntries,
+      });
+      const downloadId = await dependencies.downloadExport(
+        payload.filename,
+        payload.content,
+        payload.mimeType,
+      );
+      return { ok: true, downloadId };
+    }
+    case "DOWNLOAD_SESSION_LINEAGE_EXPORT": {
+      const payload = await dependencies.exportSessionLineageData(message.lineageId, message.format, {
+        filenamePattern: message.filenamePattern,
+        txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
+        entryIds: message.entryIds,
+      });
+      const downloadId = await dependencies.downloadExport(
+        payload.filename,
+        payload.content,
+        payload.mimeType,
       );
       return { ok: true, downloadId };
     }

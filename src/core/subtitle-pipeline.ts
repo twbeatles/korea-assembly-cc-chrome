@@ -6,7 +6,6 @@ import {
   isNoiseOnly,
 } from "./noise-filter";
 import {
-  cloneState,
   createId,
   type SessionState,
   type SubtitleEntry,
@@ -60,12 +59,35 @@ export interface IncrementalExtractResult {
     | "full";
 }
 
+function cloneStateStructure(state: SessionState): SessionState {
+  return {
+    ...state,
+    entries: [...state.entries],
+    pendingPreviews: [...state.pendingPreviews],
+    currentFramePath: [...state.currentFramePath],
+  };
+}
+
+function cloneEntryAtIndex(state: SessionState, index: number): SubtitleEntry | undefined {
+  const current = state.entries[index];
+  if (!current) {
+    return undefined;
+  }
+
+  const cloned: SubtitleEntry = {
+    ...current,
+    sourceFramePath: current.sourceFramePath ? [...current.sourceFramePath] : undefined,
+  };
+  state.entries[index] = cloned;
+  return cloned;
+}
+
 function updateStateMetadata(
   state: SessionState,
   now: number,
   meta?: PipelineSourceMeta,
 ): SessionState {
-  const next = cloneState(state);
+  const next = cloneStateStructure(state);
   next.updatedAt = toIsoString(now);
   next.lastObserverEventAt = now;
   if (meta?.selector) {
@@ -351,7 +373,16 @@ function updateEntryById(
   nowIso: string,
   meta?: PipelineSourceMeta,
 ): { entry: SubtitleEntry | undefined; changed: boolean } {
-  const entry = state.entries.find((candidate) => candidate.id === entryId);
+  const entryIndex = state.entries.findIndex((candidate) => candidate.id === entryId);
+  if (entryIndex < 0) {
+    return {
+      entry: undefined,
+      changed: false,
+    };
+  }
+
+  const previous = state.entries[entryIndex];
+  const entry = cloneEntryAtIndex(state, entryIndex);
   if (!entry) {
     return {
       entry: undefined,
@@ -359,10 +390,10 @@ function updateEntryById(
     };
   }
 
-  const beforeText = entry.text;
-  const beforeSelector = entry.sourceSelector ?? "";
-  const beforeSourceNodeKey = entry.sourceNodeKey ?? "";
-  const beforeFramePath = JSON.stringify(entry.sourceFramePath ?? []);
+  const beforeText = previous.text;
+  const beforeSelector = previous.sourceSelector ?? "";
+  const beforeSourceNodeKey = previous.sourceNodeKey ?? "";
+  const beforeFramePath = JSON.stringify(previous.sourceFramePath ?? []);
 
   entry.text = text;
   entry.endTime = nowIso;
@@ -385,7 +416,8 @@ function appendOrMergeEntry(
   nowIso: string,
   meta?: PipelineSourceMeta,
 ): SubtitleEntry {
-  const lastEntry = state.entries.at(-1);
+  const lastEntryIndex = state.entries.length - 1;
+  const lastEntry = lastEntryIndex >= 0 ? state.entries[lastEntryIndex] : undefined;
 
   if (lastEntry && !state.lastCommittedResetAt && !meta?.forceNewEntry) {
     const structuredBoundary = Boolean(
@@ -405,10 +437,13 @@ function appendOrMergeEntry(
       lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
 
     if (canMerge) {
-      lastEntry.text = joinStreamText(lastEntry.text, text);
-      lastEntry.endTime = nowIso;
-      applySourceMeta(lastEntry, meta);
-      return lastEntry;
+      const mergedEntry = cloneEntryAtIndex(state, lastEntryIndex);
+      if (mergedEntry) {
+        mergedEntry.text = joinStreamText(mergedEntry.text, text);
+        mergedEntry.endTime = nowIso;
+        applySourceMeta(mergedEntry, meta);
+        return mergedEntry;
+      }
     }
   }
 
@@ -429,7 +464,7 @@ export function flushPendingPreviews(
   now: number,
   settings?: Partial<ExtensionSettings>,
 ): SessionState {
-  let preparedState = cloneState(state);
+  let preparedState = cloneStateStructure(state);
   const pendingPreviews = preparedState.pendingPreviews
     .map((preview) => normalizeRawText(preview))
     .filter(Boolean);
@@ -633,7 +668,8 @@ export function applyStructuredEntry(
 
 export function applyKeepalive(state: SessionState, now: number): PipelineResult {
   const next = updateStateMetadata(state, now);
-  const lastEntry = next.entries.at(-1);
+  const lastEntryIndex = next.entries.length - 1;
+  const lastEntry = lastEntryIndex >= 0 ? cloneEntryAtIndex(next, lastEntryIndex) : undefined;
   if (!lastEntry) {
     return { state: next, changed: false, reason: "no_entries" };
   }
@@ -674,7 +710,8 @@ export function finalizeSession(
   next.previewText = "";
   next.pendingPreviews = [];
   next.lastCommittedResetAt = null;
-  const lastEntry = next.entries.at(-1);
+  const lastEntryIndex = next.entries.length - 1;
+  const lastEntry = lastEntryIndex >= 0 ? cloneEntryAtIndex(next, lastEntryIndex) : undefined;
   if (lastEntry) {
     lastEntry.endTime = toIsoString(now);
   }

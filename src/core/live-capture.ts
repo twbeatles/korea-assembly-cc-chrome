@@ -121,6 +121,28 @@ export function clearLiveCaptureLedger(): LiveCaptureLedger {
   return createEmptyLiveCaptureLedger();
 }
 
+export function resetLiveCaptureLedgerForNewSegment(
+  ledger: LiveCaptureLedger,
+  fallbackBaselineCompact = "",
+): LiveCaptureLedger {
+  const normalizedFallbackBaseline = normalizeSubtitleText(fallbackBaselineCompact);
+  const nextRows = Object.fromEntries(
+    Object.entries(ledger.rows).map(([key, row]) => [
+      key,
+      {
+        ...row,
+        committedEntryId: null,
+        baselineCompact: row.baselineCompact ?? normalizedFallbackBaseline ?? null,
+      },
+    ]),
+  );
+
+  return {
+    ...ledger,
+    rows: nextRows,
+  };
+}
+
 export function normalizeCaptureEvent(input: {
   raw?: string;
   rows?: ObservedSubtitleRow[];
