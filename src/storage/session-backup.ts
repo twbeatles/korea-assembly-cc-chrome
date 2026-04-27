@@ -50,6 +50,16 @@ function sanitizePersistedStatus(value: unknown): PersistedSessionStatus | undef
   return value === "running" || value === "stopped" || value === "saved" ? value : undefined;
 }
 
+function sanitizeLineageId(value: unknown): string | undefined {
+  const lineageId = sanitizeOptionalString(value).trim();
+  return lineageId ? lineageId : undefined;
+}
+
+function sanitizeSegmentNumber(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : undefined;
+}
+
 function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
   if (!isRecordLike(value)) {
     return undefined;
@@ -148,6 +158,8 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     starred: typeof value.starred === "boolean" ? value.starred : undefined,
     pinnedAt: sanitizeOptionalNullableDateString(value.pinnedAt) ?? undefined,
     note: typeof value.note === "string" ? value.note : undefined,
+    lineageId: sanitizeLineageId(value.lineageId),
+    segmentNumber: sanitizeSegmentNumber(value.segmentNumber),
     entries: entries.map((entry) => cloneEntry(entry!)),
   };
 }
@@ -169,6 +181,8 @@ function cloneImportedRecord(record: StoredSessionRecord): StoredSessionRecord {
     starred: record.starred,
     pinnedAt: record.pinnedAt,
     note: record.note,
+    lineageId: record.lineageId,
+    segmentNumber: record.segmentNumber,
     entries: record.entries.map((entry) => cloneEntry(entry)),
   };
 }

@@ -14,6 +14,7 @@ import {
   handleBackgroundCommand,
   isBackgroundCommandMessage,
 } from "./service-worker-commands";
+import { splitContentForBlobParts } from "./export-content";
 import type {
   BackgroundCommandMessage,
   BackgroundCommandResponse,
@@ -113,18 +114,6 @@ function toDataUrl(content: string, mimeType: string): string {
 
 function getUtf8ByteLength(content: string): number {
   return new TextEncoder().encode(content).length;
-}
-
-function splitContentForBlob(content: string, chunkSize = OFFSCREEN_BLOB_CHUNK_SIZE): string[] {
-  if (content.length <= chunkSize) {
-    return [content];
-  }
-
-  const parts: string[] = [];
-  for (let offset = 0; offset < content.length; offset += chunkSize) {
-    parts.push(content.slice(offset, offset + chunkSize));
-  }
-  return parts;
 }
 
 function createNonce(): string {
@@ -286,7 +275,7 @@ async function sendOffscreenMessage(
 
 async function requestBlobUrl(content: string, mimeType: string): Promise<string> {
   await ensureOffscreenDocument();
-  const contentParts = splitContentForBlob(content);
+  const contentParts = splitContentForBlobParts(content, OFFSCREEN_BLOB_CHUNK_SIZE);
   const response = await sendOffscreenMessage({
     type: "OFFSCREEN_CREATE_BLOB_URL",
     content: contentParts.length === 1 ? contentParts[0] : undefined,

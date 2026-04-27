@@ -5,7 +5,7 @@ export const SESSION_LIBRARY_REVISION_STORAGE_KEY = "assembly-subtitle-session-l
 export const SESSION_DB_NAME = "assembly-subtitle-sessions";
 export const SESSION_STORE_NAME = "sessions";
 export const SESSION_RECORD_VERSION = "3";
-export const SESSION_DB_SCHEMA_VERSION = 4;
+export const SESSION_DB_SCHEMA_VERSION = 5;
 
 export const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";
 export const OBSERVER_STOP_EVENT = "assembly-subtitle-observer:stop";
@@ -78,7 +78,9 @@ export const ASSEMBLY_HOSTS = [
 ] as const;
 
 export const ASSEMBLY_SITE_MATCH_PATTERNS = [
+  "https://assembly.webcast.go.kr/main",
   "https://assembly.webcast.go.kr/main/",
+  "https://webcast.assembly.go.kr/main",
   "https://webcast.assembly.go.kr/main/",
   "https://assembly.webcast.go.kr/main/player*",
   "https://webcast.assembly.go.kr/main/player*",

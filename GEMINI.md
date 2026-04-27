@@ -72,6 +72,8 @@ npm run build
 
 ### popup -> content
 
+- `GET_STATUS`
+- `GET_DIAGNOSTICS_STATUS`
 - `OPEN_INPAGE_PANEL`
 - `START_CAPTURE`
 - `STOP_CAPTURE`
@@ -145,7 +147,7 @@ npm run build
 - `subtitle_reset` 시 live ledger 와 pipeline state 를 함께 완전 리셋
 - stop 시 현재 state 기준으로 finalize
 - 수동 저장 / export 는 현재 패널의 `300건` 렌더 window가 아니라 세션의 committed `entries` 전체를 직렬화하고, preview-only 텍스트는 materialize 하지 않음
-- unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 flush 후 entry 로 반영하지 않음
+- unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 entry 로 반영하지 않고 drop 함
 - structured row snapshot 안에 stable/unstable row가 함께 있으면 stable row subset만 commit 대상으로 쓰고, unstable row는 preview-only로 남겨야 함
 
 ## 7. persistence 규칙
@@ -174,7 +176,7 @@ npm run build
 추가 UX 규칙:
 
 - top frame 에 우측 패널이 자동 삽입됨
-- 패널은 지원 사이트의 `main/` 홈과 `main/player*` 플레이어에 모두 붙지만, 실제 `startCapture()` 는 player 페이지에서만 허용됨
+- 패널은 지원 사이트의 `main` / `main/` 홈과 `main/player*` 플레이어에 모두 붙지만, 실제 `startCapture()` 는 player 페이지에서만 허용됨
 - popup 은 페이지 패널 다시 열기용 보조 화면
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려감
 - 패널은 `실시간 내용`과 `수집된 자막` 2단으로 표시
@@ -184,11 +186,13 @@ npm run build
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
 - session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
+- IndexedDB schema `5` 는 `lineageId` index 를 포함하며, migration 은 기존 record 의 `lineageId`, `segmentNumber` 기본값을 채워야 함
 - history 즐겨찾기/메모 저장은 전용 `updateSessionMetadata(sessionId, patch)` 경로를 사용해야 하며, stale detail snapshot 이 최신 `entries` / `subtitleCount` / `status` 를 덮어쓰면 안 됨
 - history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
 - 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원하며, JSON import read phase 와 backup package phase 도 abort-aware 여야 하고 import cancel 은 이미 저장된 부분 완료 레코드를 rollback 하지 않음
 - history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함
 - 전체 JSON 백업은 view-layer preload 대신 store helper export payload 를 사용해야 함
+- 전체 JSON 백업 다운로드는 history page Blob URL helper 로 시작해야 하며, 대형 `content` 문자열을 `DOWNLOAD_REQUEST` 로 service worker 에 보내면 안 됨
 - `autoScroll` 이 꺼지면 `실시간 내용` / `수집된 자막` 강제 스크롤 금지
 - autosave를 꺼도 `Stop` 시 최종 저장은 유지
 - stopped 세션 최종 저장 실패 시 다음 시작/비우기 전에 1회 재시도 후, 계속 실패하면 폐기 확인
@@ -213,8 +217,10 @@ npm run build
 - `VTT`: `HH:MM:SS.mmm`, 세션 시작 기준 상대 시간
 - `JSON`: 세션 전체 복원 가능한 구조
 - 수동 `saveSession` / `exportSessionData` 는 세션의 committed `entries` 전체를 사용하며, preview-only 항목으로 내려가지 않습니다.
+- JSON single-session export 와 backup/import sanitize 경로는 `lineageId`, `segmentNumber` 를 보존하고, 기존 JSON 에 두 필드가 없으면 기본값을 적용합니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 - 다운로드는 `offscreen Blob URL` 우선이며, 실패 시에도 `data:` URL fallback 은 bounded payload 에서만 허용
+- offscreen Blob chunk split 은 surrogate pair 를 깨지 않는 code point 안전 방식이어야 합니다.
 - export filename safety sanitize 는 남아 있는 금지 문자를 첫 1회가 아니라 전체 제거해야 합니다.
 
 ## 9. known limits
@@ -400,11 +406,24 @@ Use this delta as part of the current operational baseline.
 
 Use this delta as part of the current operational baseline.
 
-- content script/panel 은 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드됩니다. 홈(`main/`)에서는 패널/진단 UI만 먼저 보이고, 실제 capture start 는 player 페이지에서만 허용됩니다.
+- content script/panel 은 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드됩니다. 홈(`main`/`main/`)에서는 패널/진단 UI만 먼저 보이고, 실제 capture start 는 player 페이지에서만 허용됩니다.
 - runtime segmentation threshold(`maxEntriesPerSegment`, `maxCharsPerSegment`, `maxSegmentDurationMinutes`) 는 settings 로 저장되며 options 숫자 필드와 storage sanitize 최소값 정책을 공유합니다.
-- options `수집 진단`은 현재 segment threshold 사용량과 TXT/SRT/VTT/JSON 예상 export 크기를 표시합니다.
+- options `수집 진단`은 `GET_DIAGNOSTICS_STATUS` 로 연결해 현재 segment threshold 사용량과 TXT/SRT/VTT/JSON 예상 export 크기를 표시합니다. popup/panel 기본 status 는 예상 export 크기를 계산하지 않습니다.
 - lineage 전체 보기/export 는 history 와 background 조립 경로로 동작하며, single-session / lineage export 모두 대형 본문을 content runtime message 로 직접 보내지 않습니다.
 - 매우 큰 export 는 offscreen Blob chunk 경로를 우선 사용하고, `data:` fallback 이 비현실적인 크기에서는 명시적 large-export 오류로 중단해야 합니다.
+
+## Sync Delta (2026-04-27)
+
+Use this delta as part of the current operational baseline.
+
+- JSON single-session export, backup sanitize, and import clone paths preserve `lineageId` and `segmentNumber`; older JSON without those fields remains importable.
+- IndexedDB schema `5` adds a `lineageId` index, and migrations must fill lineage defaults for existing records.
+- `listSessionLineageSegments()` should query and hydrate only the target lineage records. Fallback-aware page listing should calculate pages from metadata first and hydrate only the current page.
+- Full-library JSON backup downloads must be started from the history page Blob URL helper, not via a large `DOWNLOAD_REQUEST.content` runtime message.
+- `GET_DIAGNOSTICS_STATUS` is the only status request that should include TXT/SRT/VTT/JSON export estimates. Popup and panel status snapshots stay lightweight.
+- `pendingPreviews` must be dropped from prepared session snapshots and must never be materialized into saved/exported entries.
+- Offscreen Blob content chunking must remain surrogate-pair safe.
+- Supported home URLs include both `/main` and `/main/` for both Assembly webcast hosts.
 
 ## Sync Delta (2026-03-14)
 
@@ -418,4 +437,4 @@ Use this delta as the current operational baseline.
 - History must use store-level paging through `listSessionsPage({ page, pageSize, starredOnly })`; do not reintroduce capped full-library preload behavior.
 - Session-library writes now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
 - Same-session history refreshes must not clobber a dirty note draft.
-- `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
+- `CAPTURE_STATUS` is now a complete lightweight initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`; export estimate calculation must remain opt-in.

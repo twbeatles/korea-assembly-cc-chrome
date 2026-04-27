@@ -59,6 +59,7 @@ import {
   toggleSelectedSessionId,
 } from "./history-view-state";
 import { readBlobTextWithProgress } from "./blob-read";
+import { downloadPageBlobExport } from "./page-blob-download";
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
 const HISTORY_PAGE_SIZE = 200;
@@ -913,18 +914,7 @@ export default function App() {
         return;
       }
 
-      const response = await sendRuntimeMessage({
-        type: "DOWNLOAD_REQUEST",
-        filename: backupExport.payload.filename,
-        content: backupExport.payload.content,
-        mimeType: backupExport.payload.mimeType,
-      });
-      if (!response.ok) {
-        setMessage(
-          mapDownloadErrorMessage(response.error) || "전체 JSON 백업에 실패했습니다.",
-        );
-        return;
-      }
+      await downloadPageBlobExport(backupExport.payload);
 
       setMessage(`저장된 기록 ${backupExport.sessionCount}건의 JSON 백업을 시작했습니다.`);
     } catch (error) {

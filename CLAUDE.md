@@ -33,6 +33,7 @@ npm run build
 manifest.json
 src/
   background/service-worker.ts
+  background/export-content.ts
     content/
       content-script.ts
       runtime/
@@ -58,6 +59,7 @@ src/
   popup/
   options/
   history/
+    page-blob-download.ts
 tests/
 README.md
 CLAUDE.md
@@ -139,6 +141,7 @@ offscreen.html
 - `SRT`: 세션 시작 기준 상대 시간, `HH:MM:SS,mmm`
 - `VTT`: 세션 시작 기준 상대 시간, `HH:MM:SS.mmm`
 - `JSON`: 세션 전체 복원 가능한 구조
+- JSON payload 와 backup/import sanitize 경로는 `lineageId`, `segmentNumber` 를 보존해야 하며, 기존 JSON 에 두 필드가 없으면 기본값 규칙을 적용해야 합니다.
 - 수동 `saveSession` / `exportSessionData` 경로는 세션의 committed `entries` 전체를 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 
@@ -163,6 +166,7 @@ offscreen.html
 
 - record payload version 과 IndexedDB schema version 은 분리해서 관리합니다.
 - 현재 session record schema 는 `version = "3"` 기준이며 `starred`, `pinnedAt`, `note` 필드를 포함합니다.
+- 현재 IndexedDB schema 는 `5` 기준이며 `lineageId` index 를 포함합니다. migration 은 기존 record 에 `lineageId = id`, `segmentNumber = 1` 기본값을 채워야 합니다.
 - `loadSession`/`listSessions` 는 IndexedDB + fallback 을 함께 읽고 `updatedAt` 기준으로 더 최신 레코드를 고릅니다. 동률이면 IndexedDB 를 우선합니다.
 - 개별 IndexedDB transaction/read/write 실패는 현재 연산만 fallback 으로 우회하고, 런타임 전체 disable 은 open/capability failure 에만 허용됩니다.
 - 성공한 IndexedDB write/delete 는 동일 id fallback copy 를 best-effort 로 정리합니다.
@@ -176,7 +180,7 @@ offscreen.html
 ### 7.3 UX 보강 규칙
 
 - top frame 의 content script 가 우측 패널을 자동으로 삽입합니다.
-- 패널은 지원 사이트의 `main/` 홈과 `main/player*` 플레이어에 모두 붙지만, 실제 `startCapture()` 는 player 페이지에서만 허용됩니다.
+- 패널은 지원 사이트의 `main` / `main/` 홈과 `main/player*` 플레이어에 모두 붙지만, 실제 `startCapture()` 는 player 페이지에서만 허용됩니다.
 - 기본 상태는 `펼쳐짐` 이고, 접으면 오른쪽의 `자막 보기` 탭만 남습니다.
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
@@ -195,6 +199,7 @@ offscreen.html
 - history 의 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원해야 합니다. JSON import read phase 와 backup package phase 도 abort-aware 여야 하며, 가져오기 취소는 이미 저장된 부분 완료 레코드를 rollback 하지 않습니다.
 - history 의 전체 삭제 확인은 전체 세션 preload 가 아니라 `정확한 총 건수 + 최대 3건 preview` 기준으로 보여 줘야 합니다.
 - history 의 전체 JSON 백업은 view layer preload 가 아니라 store helper export payload 를 사용해야 합니다.
+- history 의 전체 JSON 백업 다운로드는 page Blob URL helper 를 사용해야 하며, 대형 `content` 문자열을 `DOWNLOAD_REQUEST` 로 service worker 에 보내면 안 됩니다.
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `수집된 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
@@ -215,6 +220,7 @@ offscreen.html
 - `legacy/` 는 로컬 참조용 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - storage 실패, observer 실패, frame 접근 실패, selector 미탐색은 크래시 대신 fallback 으로 내려가야 합니다.
 - export 는 `offscreen Blob URL` 우선이며, 실패 시에도 `data:` URL fallback 은 bounded payload 에서만 허용합니다.
+- offscreen Blob chunk split 은 surrogate pair 를 깨지 않는 code point 안전 방식이어야 합니다.
 - frame forwarding 은 탭 단위 storage-backed nonce 검증을 통과한 메시지만 top frame 에서 수용해야 하며, content script는 주기 재동기화와 mismatch 즉시 resync를 유지해야 합니다.
 - 코드 수정 후 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 확인합니다.
 
@@ -222,6 +228,8 @@ offscreen.html
 
 - 메인 설명: `README.md`
 - 배포 절차: `DEPLOYMENT.md`
+- 안정화 구현 리뷰: `FEATURE_IMPLEMENTATION_REVIEW.md`
+- 장시간 세션 보존/안정성: `CAPTURE_RETENTION_AND_STABILITY.md`
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
 
@@ -340,7 +348,7 @@ When editing this repository, align with the newly implemented behavior below.
 - History must use store-level paging through `listSessionsPage({ page, pageSize, starredOnly })`; do not reintroduce full-library preload with an arbitrary cap.
 - Session-library writes/deletes/imports/startup cleanup now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
 - History detail may load a selected session outside the current page, and same-session refreshes must not clobber a dirty note draft.
-- `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
+- `CAPTURE_STATUS` is now a complete lightweight initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`; export estimate calculation must remain opt-in.
 
 ## 2026-03-16 Sync Update
 
@@ -406,8 +414,21 @@ When editing this repository, align with the newly implemented behavior below.
 
 When editing this repository, align with the newly implemented behavior below.
 
-- content script/panel 은 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드됩니다. 홈(`main/`)에서는 패널/진단 UI만 바로 보이고, 실제 capture start 는 player 페이지에서만 허용됩니다.
+- content script/panel 은 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드됩니다. 홈(`main`/`main/`)에서는 패널/진단 UI만 바로 보이고, 실제 capture start 는 player 페이지에서만 허용됩니다.
 - runtime segmentation threshold(`maxEntriesPerSegment`, `maxCharsPerSegment`, `maxSegmentDurationMinutes`) 는 settings 로 저장되며 options 숫자 필드와 storage sanitize 최소값 정책을 공유합니다.
-- options `수집 진단`은 현재 segment threshold 사용량과 TXT/SRT/VTT/JSON 예상 export 크기를 계산해 노출합니다.
+- options `수집 진단`은 `GET_DIAGNOSTICS_STATUS` 로 연결해 현재 segment threshold 사용량과 TXT/SRT/VTT/JSON 예상 export 크기를 계산해 노출합니다. popup/panel 기본 `CAPTURE_STATUS` 에서는 예상 export 크기를 계산하지 않습니다.
 - lineage 전체 보기/export 는 history 와 background 조립 경로를 통해 동작하며, single-session / lineage export 모두 대형 본문을 content 쪽 runtime message 로 직접 보내지 않습니다.
 - 매우 큰 export 는 offscreen Blob chunk 경로를 우선 사용하고, `data:` fallback 이 비현실적인 크기에서는 명시적 large-export 오류로 중단해야 합니다.
+
+## Sync Delta (2026-04-27)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- JSON single-session export, backup sanitize, and import clone paths preserve `lineageId` and `segmentNumber`; older JSON without those fields remains importable.
+- IndexedDB schema `5` adds a `lineageId` index, and migrations must fill lineage defaults for existing records.
+- `listSessionLineageSegments()` should query and hydrate only the target lineage records. Fallback-aware page listing should calculate pages from metadata first and hydrate only the current page.
+- Full-library JSON backup downloads must be started from the history page Blob URL helper, not via a large `DOWNLOAD_REQUEST.content` runtime message.
+- `GET_DIAGNOSTICS_STATUS` is the only status request that should include TXT/SRT/VTT/JSON export estimates. Popup and panel status snapshots stay lightweight.
+- `pendingPreviews` must be dropped from prepared session snapshots and must never be materialized into saved/exported entries.
+- Offscreen Blob content chunking must remain surrogate-pair safe.
+- Supported home URLs include both `/main` and `/main/` for both Assembly webcast hosts.

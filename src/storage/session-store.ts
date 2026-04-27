@@ -458,6 +458,9 @@ function openDb(): Promise<IDBDatabase> {
         if (!store.indexNames.contains("paging")) {
           store.createIndex("paging", "sortKey");
         }
+        if (!store.indexNames.contains("lineageId")) {
+          store.createIndex("lineageId", "lineageId");
+        }
         if (!chunkStore.indexNames.contains(SESSION_ENTRY_CHUNK_INDEX_NAME)) {
           chunkStore.createIndex(SESSION_ENTRY_CHUNK_INDEX_NAME, ["sessionId", "chunkIndex"]);
         }
@@ -470,11 +473,16 @@ function openDb(): Promise<IDBDatabase> {
           }
 
           const value = cursor.value as Partial<IndexedDbSessionRecord>;
+          const sessionId = typeof value.id === "string" ? value.id : "";
           const expectedStarredIndexKey = value.starred ? 1 : 0;
+          const expectedLineageId = sessionId
+            ? resolveSessionLineageId(sessionId, value.lineageId)
+            : value.lineageId;
+          const expectedSegmentNumber = resolveSessionSegmentNumber(value.segmentNumber);
           const expectedSortKey =
-            typeof value.id === "string" && typeof value.updatedAt === "string"
+            sessionId && typeof value.updatedAt === "string"
               ? buildSessionSortKey({
-                  id: value.id,
+                  id: sessionId,
                   starred: Boolean(value.starred),
                   pinnedAt: typeof value.pinnedAt === "string" ? value.pinnedAt : null,
                   updatedAt: value.updatedAt,
@@ -482,11 +490,15 @@ function openDb(): Promise<IDBDatabase> {
               : "";
           if (
             value.starredIndexKey !== expectedStarredIndexKey ||
-            value.sortKey !== expectedSortKey
+            value.sortKey !== expectedSortKey ||
+            value.lineageId !== expectedLineageId ||
+            value.segmentNumber !== expectedSegmentNumber
           ) {
             cursor.update({
               ...value,
               starredIndexKey: expectedStarredIndexKey,
+              lineageId: expectedLineageId,
+              segmentNumber: expectedSegmentNumber,
               sortKey: expectedSortKey,
             });
           }
@@ -1070,6 +1082,23 @@ async function listIndexedDbSessionPage(
   });
 }
 
+async function listIndexedDbLineageSessions(lineageId: string): Promise<SessionRecord[]> {
+  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
+    const metadataRecords = sessionStore.indexNames.contains("lineageId")
+      ? ((await readCursorRecords(sessionStore.index("lineageId"), {
+          direction: "next",
+          query: lineageId,
+        })) as IndexedDbSessionRecord[])
+      : ((await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[]).filter(
+          (record) => resolveSessionLineageId(record.id, record.lineageId) === lineageId,
+        );
+
+    return Promise.all(
+      metadataRecords.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
+    );
+  });
+}
+
 async function listAllIndexedDbSessions(): Promise<SessionRecord[]> {
   return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
     const all = (await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[];
@@ -1347,33 +1376,19 @@ export async function loadSessionsByIds(ids: string[]): Promise<SessionRecord[]>
   return sessions.filter((session): session is SessionRecord => Boolean(session));
 }
 
-async function listAllSessions(): Promise<SessionRecord[]> {
-  const [indexedDbResult, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () => listAllIndexedDbSessions()),
-    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
-  ]);
-
-  return sortSessions(
-    mergeSessionCollections(
-      indexedDbResult.ok && indexedDbResult.value
-        ? indexedDbResult.value.map((record) =>
-            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-          )
-        : [],
-      fallbackRecords.map((record) =>
-        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-      ),
-    ),
-    { limit: Number.MAX_SAFE_INTEGER },
-  );
-}
-
 function toSessionLibraryPreview(record: SessionRecord): SessionLibraryPreview {
   return {
     id: record.id,
     title: record.title,
     committeeName: record.committeeName,
     updatedAt: record.updatedAt,
+  };
+}
+
+function toSessionMetadataOnly(record: SessionRecord): SessionRecord {
+  return {
+    ...cloneSessionRecord(record),
+    entries: [],
   };
 }
 
@@ -1498,9 +1513,21 @@ export async function listSessionLineageSegments(lineageId: string): Promise<Ses
     return [];
   }
 
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbLineageSessions(safeLineageId)),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+
   return sortSessionSegments(
-    (await listAllSessions()).filter(
-      (session) => resolveSessionLineageId(session.id, session.lineageId) === safeLineageId,
+    mergeSessionCollections(
+      indexedDbResult.ok && indexedDbResult.value ? indexedDbResult.value : [],
+      fallbackRecords
+        .filter(
+          (session) => resolveSessionLineageId(session.id, session.lineageId) === safeLineageId,
+        )
+        .map((record) =>
+          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+        ),
     ),
   );
 }
@@ -1516,18 +1543,41 @@ export async function listSessionsPage(
     }
   }
 
-  const allSessions = await listAllSessions();
+  const [indexedDbMetadataResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER })),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+  const metadataSessions = sortSessions(
+    mergeSessionCollections(
+      indexedDbMetadataResult.ok && indexedDbMetadataResult.value
+        ? indexedDbMetadataResult.value.map(toSessionMetadataOnly)
+        : [],
+      fallbackRecords.map((record) =>
+        toSessionMetadataOnly(
+          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+        ),
+      ),
+    ),
+    { limit: Number.MAX_SAFE_INTEGER },
+  );
   const filteredSessions = options.starredOnly
-    ? allSessions.filter((session) => session.starred)
-    : allSessions;
+    ? metadataSessions.filter((session) => session.starred)
+    : metadataSessions;
   const pageSize = Math.max(1, options.pageSize);
   const totalCount = filteredSessions.length;
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
   const page = Math.min(Math.max(1, options.page), pageCount);
   const start = (page - 1) * pageSize;
+  const pageMetadataSessions = filteredSessions.slice(start, start + pageSize);
+  const loadedPageSessions = await loadSessionsByIds(
+    pageMetadataSessions.map((session) => session.id),
+  );
+  const loadedById = new Map(loadedPageSessions.map((session) => [session.id, session]));
 
   return {
-    sessions: filteredSessions.slice(start, start + pageSize).map(cloneSessionRecord),
+    sessions: pageMetadataSessions.map((session) =>
+      cloneSessionRecord(loadedById.get(session.id) ?? session),
+    ),
     totalCount,
     page,
     pageSize,

@@ -96,6 +96,16 @@ describe("content runtime helpers", () => {
       livePreviewTextForDisplay: "실시간",
       latestPersistabilityState: "duplicate",
     });
+    const diagnosticsSnapshot = buildContentStatusSnapshot({
+      currentUrl: "https://assembly.webcast.go.kr/main/player.asp",
+      sessionState: state,
+      settings: DEFAULT_EXTENSION_SETTINGS,
+      captureMode: "structured",
+      livePreviewTextRaw: "실시간",
+      livePreviewTextForDisplay: "실시간",
+      latestPersistabilityState: "duplicate",
+      includeExportEstimates: true,
+    });
 
     expect(persistability.state).toBe("duplicate");
     expect(snapshot.connected).toBe(true);
@@ -106,7 +116,8 @@ describe("content runtime helpers", () => {
     expect(snapshot.diagnostics.segment?.maxEntriesPerSegment).toBe(
       DEFAULT_EXTENSION_SETTINGS.maxEntriesPerSegment,
     );
-    expect(snapshot.diagnostics.exportEstimates?.jsonBytes).toBeGreaterThan(0);
+    expect(snapshot.diagnostics.exportEstimates).toBeUndefined();
+    expect(diagnosticsSnapshot.diagnostics.exportEstimates?.jsonBytes).toBeGreaterThan(0);
   });
 
   it("keeps clear-session availability rules isolated from UI orchestration", () => {

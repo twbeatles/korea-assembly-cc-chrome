@@ -1,6 +1,6 @@
-import { flushPendingPreviews } from "../core/subtitle-pipeline";
 import { createContinuedSessionState as createContinuedSessionStateBase } from "../core/session-lineage";
 import {
+  cloneState,
   createEmptySessionState,
   toSessionRecord,
   type PersistedSessionStatus,
@@ -14,7 +14,11 @@ export function buildPreparedSessionState(
   settings: ExtensionSettings,
   now = Date.now(),
 ): SessionState {
-  return flushPendingPreviews(state, now, settings);
+  void settings;
+  void now;
+  const preparedState = cloneState(state);
+  preparedState.pendingPreviews = [];
+  return preparedState;
 }
 
 export function buildPreparedSessionRecord(

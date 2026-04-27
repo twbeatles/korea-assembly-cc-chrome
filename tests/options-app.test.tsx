@@ -286,7 +286,7 @@ describe("options app", () => {
       expect(screen.getByText("4문장 / 2000문장 (0.2%)")).toBeTruthy();
       expect(screen.getByText("240 B")).toBeTruthy();
     });
-    expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_STATUS" });
+    expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_DIAGNOSTICS_STATUS" });
   });
 
   it("falls back to another supported tab when the requested diagnostics tab disappears", async () => {

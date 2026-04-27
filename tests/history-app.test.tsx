@@ -10,6 +10,10 @@ const chromeApiMocks = vi.hoisted(() => ({
   sendRuntimeMessage: vi.fn(),
 }));
 
+const pageBlobDownloadMocks = vi.hoisted(() => ({
+  downloadPageBlobExport: vi.fn(),
+}));
+
 const settingsStoreMocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
 }));
@@ -29,6 +33,7 @@ const sessionStoreMocks = vi.hoisted(() => ({
 }));
 
 vi.mock("../src/shared/chrome-api", () => chromeApiMocks);
+vi.mock("../src/history/page-blob-download", () => pageBlobDownloadMocks);
 vi.mock("../src/storage/settings-store", () => settingsStoreMocks);
 vi.mock("../src/storage/session-store", () => sessionStoreMocks);
 
@@ -169,6 +174,7 @@ describe("history app", () => {
     });
     sessionStoreMocks.updateSessionMetadata.mockResolvedValue(session);
     chromeApiMocks.sendRuntimeMessage.mockResolvedValue({ ok: true });
+    pageBlobDownloadMocks.downloadPageBlobExport.mockResolvedValue(101);
   });
 
   it("shows a user-facing error when reopening the source page fails", async () => {
@@ -368,9 +374,14 @@ describe("history app", () => {
 
     await waitFor(() => {
       expect(sessionStoreMocks.buildSessionLibraryBackupExport).toHaveBeenCalled();
-      expect(chromeApiMocks.sendRuntimeMessage).toHaveBeenCalledWith(
+      expect(pageBlobDownloadMocks.downloadPageBlobExport).toHaveBeenCalledWith(
         expect.objectContaining({
           filename: "backup.json",
+        }),
+      );
+      expect(chromeApiMocks.sendRuntimeMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "DOWNLOAD_REQUEST",
         }),
       );
     });

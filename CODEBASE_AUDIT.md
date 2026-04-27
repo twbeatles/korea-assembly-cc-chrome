@@ -1,6 +1,6 @@
 # 코드베이스 감사 메모
 
-업데이트 기준일: `2026-04-22`
+업데이트 기준일: `2026-04-27`
 
 ## 1. 현재 판단
 
@@ -9,11 +9,12 @@
 - 저장소는 세션 메타데이터와 `entries chunk` 를 분리 저장한다.
 - 단일 세션 export 는 content/history 가 대형 본문을 직접 background 로 보내지 않고, `sessionId + 옵션`만 넘긴다.
 - autosave 는 preview-only 변화마다 전체 세션을 다시 쓰지 않는다.
-- 확장 패널은 `main/` 홈에서도 즉시 보이고, 실제 capture start 는 `main/player*` 플레이어에서만 허용된다.
+- 확장 패널은 `main` / `main/` 홈에서도 즉시 보이고, 실제 capture start 는 `main/player*` 플레이어에서만 허용된다.
 - running capture 는 threshold 초과 시 자동으로 다음 segment 로 roll-over 한다.
 - history 는 같은 lineage 의 세그먼트를 묶어 `연속 캡처 전체` 보기와 lineage export 를 지원한다.
-- options diagnostics 는 현재 segment threshold 사용량과 포맷별 예상 export 크기를 보여준다.
+- options diagnostics 는 opt-in `GET_DIAGNOSTICS_STATUS` 경로에서만 현재 segment threshold 사용량과 포맷별 예상 export 크기를 보여준다.
 - 큰 export 는 offscreen Blob chunk 경로를 우선 사용하고, 약 `2 MiB`를 넘는 payload 에 대해서는 무리한 data URL fallback 을 제한한다.
+- 전체 JSON 백업은 history page Blob URL 다운로드를 사용해 대형 본문을 service worker runtime message 로 보내지 않는다.
 
 즉, 가장 급한 메모리 리스크와 운영 가시성 공백은 크게 줄었고, 이제 남은 과제는 `lineage UX polish` 와 `초대형 export 마지막 단계의 브라우저 제약` 쪽에 가깝다.
 
@@ -39,7 +40,8 @@
 
 ### 초대형 단일 세션 export
 
-- background export 로 message size 리스크는 줄었고, offscreen Blob chunk 경로와 bounded data URL fallback 으로 마지막 단계도 한 번 더 안전해졌다.
+- background export 로 단일 세션/lineage message size 리스크는 줄었고, offscreen Blob chunk 경로와 bounded data URL fallback 으로 마지막 단계도 한 번 더 안전해졌다.
+- 전체 라이브러리 JSON 백업은 page Blob 다운로드로 전환되어 service worker message size 리스크가 줄었다.
 - 그래도 최종적으로는 브라우저 다운로드 정책과 blob lifecycle 한계는 남아 있다.
 
 ## 4. 우선순위
@@ -63,8 +65,8 @@
 이번 정리로 step 1은 foundation 이 아니라 실제 phase 1 동작까지 들어갔다.
 
 - 세션 모델은 `lineageId`, `segmentNumber` 메타데이터를 가진다.
-- 저장소 정규화는 기존 세션에도 lineage 기본값을 채운다.
-- store 에서 같은 lineage 의 segment 목록을 조회할 수 있다.
+- 저장소 정규화와 IndexedDB schema `5` migration 은 기존 세션에도 lineage 기본값을 채운다.
+- store 에서 같은 lineage 의 segment 목록을 `lineageId` index 로 조회할 수 있다.
 - runtime segmentation threshold helper 가 실제 roll-over에 연결됐다.
 - 다음 segment state 생성과 live ledger reset 도 실제 동작에 연결됐다.
 

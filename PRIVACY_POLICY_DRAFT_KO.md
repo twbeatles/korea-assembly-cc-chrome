@@ -18,7 +18,7 @@
 
 확장프로그램은 다음 정보를 처리할 수 있습니다.
 
-1. 사용자가 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 페이지에서 보는 AI 자막 텍스트
+1. 사용자가 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 페이지에서 보는 AI 자막 텍스트
 2. 사용자가 확장프로그램에서 설정한 옵션 정보
    예: 자동 저장, 자동 스크롤, 파일명 패턴, 최근 N줄 복사 설정 등
 3. 사용자가 직접 저장한 자막 세션 기록
@@ -44,7 +44,7 @@
 - 저장소는 브라우저의 `IndexedDB` 및 `chrome.storage.local`을 사용합니다.
 - 페이지 종료 직전 저장 복구를 위한 임시 대기 기록, history 화면 동기화를 위한 내부 revision 값, queue write / replay / cleanup 단계별 저장 복구 진단, 프레임 간 메시지 무결성 보호를 위한 탭 단위 nonce 같은 내부 상태도 같은 브라우저 로컬 저장소에서만 처리됩니다.
 - 파일 내보내기는 사용자가 직접 저장 버튼을 눌렀을 때만 동작합니다.
-- 수동 저장 / 파일 내보내기에는 사용자가 현재 패널에서 보고 있는 확정 `수집된 자막` 목록만 반영되며, preview-only `실시간 내용`은 저장 대상으로 승격하지 않습니다.
+- 수동 저장 / 파일 내보내기에는 사용자가 현재 패널에서 보고 있는 확정 `수집된 자막` 목록만 반영되며, preview-only `실시간 내용`과 pending preview 텍스트는 저장 대상으로 승격하지 않습니다.
 - JSON 가져오기는 사용자가 history 화면에서 직접 파일을 선택했을 때만 동작하며, 허용된 형식과 필드만 복원합니다.
 - 확장프로그램은 자막 데이터나 설정 정보를 개발자 서버 또는 제3자 서버로 전송하지 않습니다.
 
@@ -74,7 +74,7 @@
 - `activeTab`: 현재 활성 탭 상태 확인
 - `scripting`: 기존 탭에 확장 기능 재연결 또는 재주입
 - `offscreen`: 파일 내보내기용 Blob 처리
-- `https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`: 해당 호스트 안에서도 `main/` 홈과 `main/player*` 플레이어에서만 자막 표시 및 수집
+- `https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`: 해당 호스트 안에서도 `main` / `main/` 홈과 `main/player*` 플레이어에서만 자막 표시 및 수집
 
 ### 8. 이용자 권리
 

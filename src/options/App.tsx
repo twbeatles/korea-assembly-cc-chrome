@@ -576,7 +576,7 @@ export default function App() {
 
         nextPort.onMessage.addListener(onMessage);
         nextPort.onDisconnect.addListener(onDisconnect);
-        nextPort.postMessage({ type: "GET_STATUS" } satisfies PopupToContentMessage);
+        nextPort.postMessage({ type: "GET_DIAGNOSTICS_STATUS" } satisfies PopupToContentMessage);
       } catch (error: unknown) {
         if (!active) {
           return;

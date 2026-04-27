@@ -26,7 +26,7 @@
 - `실시간 내용 / 수집된 자막` 2단 표시
 - `MutationObserver` 우선 + polling fallback
 - `.smi_word` nodeKey + framePath 기반 live row ledger 추적, 같은 row 제자리 보정, 컨테이너 fallback, 접근 가능한 iframe/frame 순회
-- content script는 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드되며, 패널은 홈(`main/`)에서도 바로 보이고 실제 자막 수집 시작은 플레이어(`main/player*`)에서만 허용됩니다
+- content script는 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드되며, 패널은 홈(`main`/`main/`)에서도 바로 보이고 실제 자막 수집 시작은 플레이어(`main/player*`)에서만 허용됩니다
 - 접근 가능한 frame 전체의 `#viewSubtit`, 자막 텍스트, 자막 control active 상태를 함께 집계해 레이어 활성화 성공을 판정
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback에서는 `실시간 내용` 누적 원문을 유지하고, 이미 확정된 entry만 `수집된 자막` 목록에 계속 누적 표시
 - history 가져오기 sanitize 단계에서 지원하지 않는 `sourceUrl`은 빈 문자열로 정규화하고, `원본 페이지 열기`는 지원 URL일 때만 허용합니다
@@ -71,7 +71,7 @@
 
 - SRT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS,mmm` 형식으로 출력합니다
 - VTT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS.mmm` 형식으로 출력합니다
-- JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
+- JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `lineageId`, `segmentNumber`, `entries`를 항상 포함합니다
 - 중복 문장은 실시간 수집 단계에서 먼저 차단하고, export 정규화는 마지막 안전망으로만 한 번 더 적용합니다
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
 - 패널 / popup의 수동 저장과 파일 내보내기는 확정되어 `state.entries`에 들어간 `수집된 자막` 누적 목록만 사용합니다
@@ -81,7 +81,7 @@
 
 ## 1차 범위
 
-- 이미 열린 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, `https://assembly.webcast.go.kr/main/player*`, `https://webcast.assembly.go.kr/main/player*` 페이지 지원
+- 이미 열린 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, `https://assembly.webcast.go.kr/main/player*`, `https://webcast.assembly.go.kr/main/player*` 페이지 지원
 - 페이지 오른쪽 패널에서 시작 / 중지 / 저장 / 파일 저장
 - options에서 수집 설정 조정
 - history에서 저장된 기록 목록, 삭제, 재열기, 즐겨찾기, 세션 메모, 파일 저장, 기록 내부 검색 / 복사
@@ -116,12 +116,13 @@ src/
 tests/
 ```
 
-현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `RUNTIME_SESSION_SEGMENTATION_PLAN.md`, `CAPTURE_RETENTION_AND_STABILITY.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
+현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `FEATURE_IMPLEMENTATION_REVIEW.md`, `RUNTIME_SESSION_SEGMENTATION_PLAN.md`, `CAPTURE_RETENTION_AND_STABILITY.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
 
 - `DEPLOYMENT.md`
 - `CLAUDE.md`
 - `GEMINI.md`
 - `CODEBASE_AUDIT.md`
+- `FEATURE_IMPLEMENTATION_REVIEW.md`
 - `RUNTIME_SESSION_SEGMENTATION_PLAN.md`
 - `CAPTURE_RETENTION_AND_STABILITY.md`
 - `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
@@ -181,13 +182,13 @@ npm run build
 5. 저장소의 `dist/` 폴더 선택
 6. 확장프로그램 툴바에 새롭게 추가된 **국회 로고+CC(자막)** 아이콘이 표시되는지 확인
 7. 브라우저 우측 상단의 퍼즐 조각 아이콘 확장 프로그램 목록에서 `국회 AI 자막 추출기`를 핀 고정
-8. 국회 의사중계 `main/` 홈 또는 `main/player*` 페이지를 열고 새로고침하면 오른쪽에 패널이 자동으로 나타납니다. 홈(`main/`)에서는 패널/진단 UI가 바로 보이고, 실제 자막 수집은 플레이어(`main/player*`)에서만 시작할 수 있습니다.
+8. 국회 의사중계 `main` / `main/` 홈 또는 `main/player*` 페이지를 열고 새로고침하면 오른쪽에 패널이 자동으로 나타납니다. 홈(`main`/`main/`)에서는 패널/진단 UI가 바로 보이고, 실제 자막 수집은 플레이어(`main/player*`)에서만 시작할 수 있습니다.
 
 ## 사용 방법
 
-1. `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, `https://assembly.webcast.go.kr/main/player*`, `https://webcast.assembly.go.kr/main/player*` 중 지원 페이지를 연다
+1. `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, `https://assembly.webcast.go.kr/main/player*`, `https://webcast.assembly.go.kr/main/player*` 중 지원 페이지를 연다
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
-3. 홈(`main/`)에서는 패널과 진단 UI만 먼저 확인하고, 실제 수집은 플레이어(`main/player*`)로 들어간 뒤 `자막 모으기`를 눌러 시작한다
+3. 홈(`main`/`main/`)에서는 패널과 진단 UI만 먼저 확인하고, 실제 수집은 플레이어(`main/player*`)로 들어간 뒤 `자막 모으기`를 눌러 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어/텍스트/control 신호는 접근 가능한 frame 전체를 기준으로 판정한다. 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 실제 텍스트로 표시한다. 기본 idle 안내만 숨기고, 오류/복구/자동 조정 notice 는 패널에서 바로 확인할 수 있다
 5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 확정된 누적 목록의 최신 `300`건 렌더를 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry만 이 목록에 남고, 전체 세션 기록 / 저장 / export 기준은 누적 committed entry 전체를 그대로 유지한다
 6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는다. 반대로 preview-only 상태나 notice-only 오류 상태에서도 `화면 비우기`로 패널을 직접 리셋할 수 있다
@@ -203,7 +204,7 @@ npm run build
 
 주의:
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
-- 탭이 숨겨지거나 페이지를 떠날 때는 preview flush를 포함한 running/stopped 스냅샷을 background에 넘겨 자동 저장을 시도합니다.
+- 탭이 숨겨지거나 페이지를 떠날 때도 preview-only 텍스트를 entry로 flush 하지 않고, 확정 자막만 포함한 running/stopped 스냅샷을 background에 넘겨 자동 저장을 시도합니다.
 
 ## 권한 설명
 
@@ -262,6 +263,7 @@ npm run build
 
 - 세션 본문은 `IndexedDB`를 우선 사용합니다
 - `IndexedDB`에서는 세션 메타데이터와 `entries` 본문 chunk를 분리해 저장하며, 본문은 기본 `250개` 단위 chunk store로 관리합니다
+- IndexedDB schema `5`부터 `lineageId` index 를 유지하며, migration 에서 기존 세션의 `lineageId` / `segmentNumber` 기본값을 채웁니다
 - `IndexedDB` open/capability 실패 시에만 런타임 전체를 fallback 모드로 내리고, 개별 read/write 실패는 현재 연산만 `chrome.storage.local` per-session fallback으로 우회합니다
 - `loadSession`/`listSessions`는 `IndexedDB`와 fallback 저장소를 함께 읽고, `updatedAt`이 더 최신인 레코드를 우선 사용합니다. 동률이면 `IndexedDB`를 우선합니다
 - 같은 세션을 다시 저장할 때는 chunk digest를 비교해 바뀐 chunk만 갱신하고, 줄어든 세션은 초과 chunk만 삭제합니다
@@ -275,8 +277,10 @@ npm run build
 - JSON import는 허용 필드 재구성 기준으로 sanitize 하며, 지원하지 않는 backup wrapper version과 parse 불가능한 timestamp를 가져오기 단계에서 거부합니다
 - JSON import는 들어오는 `running` 레코드를 모두 `saved`로 정규화해 실제로 종료된 기록이 `수집 중`으로 남지 않게 합니다
 - 전체 JSON 백업은 페이지 단위로 라이브러리를 읽어 진행률을 갱신한 뒤 세션 단위 incremental packaging 동안에도 abort 를 확인하고, JSON 가져오기는 chunked file read -> JSON 파싱 -> sanitize/dedupe -> 저장 단계로 나눠 진행률과 취소를 처리합니다
+- 전체 JSON 백업 다운로드는 history page 에서 Blob URL 로 직접 시작하며, 대형 payload 를 `DOWNLOAD_REQUEST` runtime message 로 service worker 에 보내지 않습니다
 - 단일 세션 export는 content/history가 대형 문자열을 직접 background로 보내지 않고, `sessionId + 옵션`만 전달한 뒤 service worker가 저장소에서 세션을 읽어 조립합니다
 - lineage 전체 export도 history가 `lineageId + 옵션`만 넘기고, service worker가 segment들을 병합해 조립합니다
+- 단일 JSON export 와 backup/import sanitize 경로는 `lineageId`, `segmentNumber` 를 보존하고, 기존 JSON 에 두 필드가 없으면 기본값을 적용합니다
 - 전체 라이브러리 `JSON 백업` / `JSON 가져오기` 는 모두 `25 MiB` 하드 제한으로 보호되며, 이를 넘기면 부분 진행 없이 명시적 오류로 중단합니다
 - 설정은 `chrome.storage.local`
 - `filenamePattern` 은 `{date}`, `{committee}`, `{time}` 만 허용하며, 금지 문자가 있으면 options에서 저장을 막고 export 직전에도 남은 금지 문자를 모두 제거합니다
@@ -292,7 +296,8 @@ npm run build
 
 ### background
 
-- offscreen Blob 우선 + bounded data URL fallback 다운로드 처리
+- 단일 세션 / lineage export 는 offscreen Blob 우선 + bounded data URL fallback 다운로드 처리
+- 전체 JSON 백업은 history page Blob URL 다운로드를 사용하고 완료/실패 또는 timeout 뒤 URL을 revoke 합니다
 - Blob URL 다운로드가 이미 성공한 뒤 metadata persist만 실패하면 fallback 재다운로드를 다시 열지 않고 경고만 남깁니다
 - 매우 큰 export는 offscreen Blob URL을 chunked part 기준으로 만들고, data URL fallback이 비현실적인 크기에서는 명시적 오류로 중단합니다
 - history/options 페이지 열기

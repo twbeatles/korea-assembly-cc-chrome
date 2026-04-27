@@ -126,6 +126,7 @@ export interface PopupFeedbackPayload {
 export type PopupToContentMessage =
   | { type: "PING" }
   | { type: "GET_STATUS" }
+  | { type: "GET_DIAGNOSTICS_STATUS" }
   | { type: "OPEN_INPAGE_PANEL" }
   | { type: "START_CAPTURE" }
   | { type: "STOP_CAPTURE" }

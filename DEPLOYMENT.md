@@ -51,8 +51,8 @@ npm run build
 
 추가 확인 권장:
 - 국회 의사중계 페이지에서 실제 자막 추출
-- `main/` 홈에서 페이지 오른쪽 패널이 자동으로 뜨는지 확인
-- 홈(`main/`)에서는 패널이 바로 보이지만 `자막 모으기`를 누르면 플레이어 페이지에서만 수집을 시작할 수 있다는 안내가 나오는지 확인
+- `main` / `main/` 홈에서 페이지 오른쪽 패널이 자동으로 뜨는지 확인
+- 홈(`main`/`main/`)에서는 패널이 바로 보이지만 `자막 모으기`를 누르면 플레이어 페이지에서만 수집을 시작할 수 있다는 안내가 나오는지 확인
 - `main/player*` 플레이어 페이지에서는 패널이 계속 보이고 실제 자막 수집이 시작되는지 확인
 - 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
 - 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
@@ -77,6 +77,7 @@ npm run build
 - 수집 중이거나 stale selection 상태의 history detail 에서 즐겨찾기/메모를 저장해도 최신 subtitle count / status / entries 가 되돌아가지 않는지 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
+- history `전체 JSON 백업` 이 service worker `DOWNLOAD_REQUEST` 대형 본문 전달 없이 page Blob URL 다운로드로 시작되는지 확인
 - history `JSON 가져오기`에서 incoming `running` 레코드가 `saved`로 정규화되어 stale `수집 중` 배지가 남지 않는지 확인
 - history `전체 JSON 백업` / `JSON 가져오기` 중 현재 단계, 진행량, 취소 버튼이 노출되고 중복 JSON 작업만 잠기는지 확인
 - `JSON 가져오기` 취소 시 이미 저장된 일부 레코드는 유지되고 부분 완료 요약 메시지가 표시되는지 확인
@@ -103,7 +104,7 @@ npm run build
 아래를 확인합니다.
 
 1. 확장 popup 이 열리는지
-2. 국회 `main/` 홈과 `main/player*` 플레이어 페이지에서 패널이 자동으로 나타나는지
+2. 국회 `main` / `main/` 홈과 `main/player*` 플레이어 페이지에서 패널이 자동으로 나타나는지
 3. 기존에 열려 있던 국회 탭에서 popup 연결 오류 없이 재주입 또는 새로고침 안내로 복구되는지
 4. 확장 아이콘의 popup 에서 현재 상태가 보이는지
 
@@ -199,7 +200,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 배포 후에는 아래를 다시 봅니다.
 
 1. service worker 가 정상 등록되는지
-2. content script 가 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 동작하는지
+2. content script 가 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 동작하는지
 3. observer 실패 시 polling fallback 이 계속 동작하는지
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
@@ -232,7 +233,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 
 - 국회 페이지가 이미 열려 있었다면 새로고침이 필요할 수 있습니다.
 - 최신 빌드는 기존 탭에 content script 재주입을 먼저 시도합니다.
-- 대상 URL 이 `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 범위인지 확인합니다.
+- 대상 URL 이 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 범위인지 확인합니다.
 
 ### 9.2 zip 업로드가 실패함
 
@@ -335,7 +336,7 @@ Deployment documentation consistency sources:
 - Release verification should confirm that favorited / noted sessions keep `starred`, `pinnedAt`, and `note` metadata after autosave, page-exit persistence, and final stop-save flows.
 - page-exit persistence is now ordered as `queue replay record -> background persist request`; regression coverage for that ordering is part of release confidence.
 - History validation should cover store-level paging, live refresh via `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and note-draft preservation during same-session refreshes.
-- Popup and options initial render should be validated from `CAPTURE_STATUS` alone, including subtitle count, char count, preview text, and recent entry hydration.
+- Popup and options initial render should be validated from lightweight `CAPTURE_STATUS` alone, including subtitle count, char count, preview text, and recent entry hydration. Export estimates should be validated only through `GET_DIAGNOSTICS_STATUS`.
 - The current pre-release gate remains `npm run verify`.
 
 ## 2026-03-19 Deployment Consistency Update
@@ -374,7 +375,10 @@ Deployment documentation consistency sources:
 
 ## 2026-04-22 Deployment Consistency Update
 
-- Release verification should confirm that the in-page panel appears immediately on supported `main/` home URLs, while actual capture start is still allowed only on `main/player*` pages.
+- Release verification should confirm that the in-page panel appears immediately on supported `main` and `main/` home URLs, while actual capture start is still allowed only on `main/player*` pages.
 - Release verification should confirm that options `수집 진단` shows current segment threshold usage and TXT/SRT/VTT/JSON estimated export sizes for the active player tab.
 - Release verification should confirm that runtime segmentation thresholds (`세그먼트 최대 문장/글자/시간`) can be edited in options and affect later roll-over decisions.
 - Release verification should confirm that large export downloads use the offscreen Blob chunk path first, and that payloads above the bounded `data:` fallback path surface the explicit large-export guidance instead of attempting an impractical fallback.
+- Release verification should confirm that full-library JSON backup uses the history page Blob URL helper and revokes the Blob URL after completion, interruption, or timeout.
+- Release verification should confirm that JSON single-session export and backup/import preserve `lineageId` and `segmentNumber`, while older JSON without those fields still imports.
+- Release verification should confirm that `pendingPreviews` are not materialized into saved or exported entries.

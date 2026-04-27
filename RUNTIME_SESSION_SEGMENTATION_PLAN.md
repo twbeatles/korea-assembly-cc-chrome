@@ -1,6 +1,6 @@
 # Runtime Session Segmentation Plan
 
-업데이트 기준일: `2026-04-22`
+업데이트 기준일: `2026-04-27`
 
 ## 1. 목표
 
@@ -9,11 +9,12 @@
 현재 상태:
 
 - phase 1 기본 roll-over 는 구현됨
-- content script/panel 은 지원 사이트의 `main/` 홈과 `main/player*` 에서 로드되며, segmentation 판단은 실제 player capture 중에만 의미를 가진다
+- content script/panel 은 지원 사이트의 `main` / `main/` 홈과 `main/player*` 에서 로드되며, segmentation 판단은 실제 player capture 중에만 의미를 가진다
 - history 에는 `세그먼트 N`, lineage summary, `연속 캡처 전체 보기` 토글이 들어감
 - lineage 전체 TXT/SRT/VTT/JSON export 도 background 병합 경로로 연결됨
-- diagnostics 에 현재 segment threshold 사용량과 예상 export 크기가 표시됨
+- popup/panel diagnostics 는 lightweight status 를 유지하고, options diagnostics 에만 현재 segment threshold 사용량과 예상 export 크기가 표시됨
 - threshold 는 options 설정으로 조정 가능
+- store 는 `lineageId` index 로 같은 lineage segment 조회 비용을 줄임
 
 ## 2. 비목표
 
@@ -41,6 +42,8 @@
 - 분할되지 않은 기존 세션은 `lineageId = id`, `segmentNumber = 1`
 - 같은 연속 캡처에서 분리된 segment 는 같은 `lineageId` 를 공유한다
 - 순서는 `segmentNumber` 로 표현한다
+- 단일 JSON export 와 backup/import sanitize 경로는 두 필드를 보존한다
+- 기존 JSON 에 두 필드가 없어도 import 가능하며, 누락 시 위 기본 규칙을 적용한다
 
 왜 이 구조를 택했는가:
 
@@ -94,6 +97,7 @@ boundary 를 넘으면 현재 구현은 아래 순서로 처리한다.
 - detail / list 화면에 `세그먼트 N` 표시
 - 같은 lineage 의 segment 목록 조회 API 사용 가능
 - detail 화면에서 lineage summary, segment 전환 버튼, `연속 캡처 전체 보기` 토글
+- `listSessionLineageSegments()` 는 `lineageId` index 를 사용해 대상 lineage record 만 hydrate 한다
 
 ### export
 

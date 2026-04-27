@@ -175,6 +175,7 @@ let settings: ExtensionSettings = {
 };
 let state: SessionState = createEmptySessionState(window.location.href, document.title);
 const popupPorts = new Set<chrome.runtime.Port>();
+const diagnosticsPorts = new Set<chrome.runtime.Port>();
 let localPollingTimer: number | null = null;
 let topFallbackTimer: number | null = null;
 let persistTimer: number | null = null;
@@ -400,7 +401,10 @@ function canClearCurrentSession(showNotice = shouldShowPanelNotice(panelNotice))
   });
 }
 
-function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
+function buildStatusSnapshot(
+  requiresReload = false,
+  includeExportEstimates = false,
+): StatusSnapshot {
   const previewTextRaw = getLivePreviewText();
   return buildContentStatusSnapshot({
     currentUrl: window.location.href,
@@ -414,6 +418,7 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
       state.sourceUrl || window.location.href,
     ),
     latestPersistabilityState,
+    includeExportEstimates,
     requiresReload,
   });
 }
@@ -423,9 +428,11 @@ function broadcastPopupState(requiresReload = false): void {
     return;
   }
 
-  const messages = createPopupMessages(buildStatusSnapshot(requiresReload));
   popupPorts.forEach((port) => {
     try {
+      const messages = createPopupMessages(
+        buildStatusSnapshot(requiresReload, diagnosticsPorts.has(port)),
+      );
       messages.forEach((message) => postToPopupPort(port, message));
     } catch {
       // Ignore Invalidated context errors on ports
@@ -433,9 +440,13 @@ function broadcastPopupState(requiresReload = false): void {
   });
 }
 
-function syncPortState(port: chrome.runtime.Port, requiresReload = false): void {
-  createPopupMessages(buildStatusSnapshot(requiresReload)).forEach((message) =>
-    postToPopupPort(port, message),
+function syncPortState(
+  port: chrome.runtime.Port,
+  requiresReload = false,
+  includeExportEstimates = diagnosticsPorts.has(port),
+): void {
+  createPopupMessages(buildStatusSnapshot(requiresReload, includeExportEstimates)).forEach(
+    (message) => postToPopupPort(port, message),
   );
 }
 
@@ -798,7 +809,7 @@ function persistSessionRecordInBackground(record: SessionRecord, retryAttempt = 
         }
 
         if (record.status === "running" && state.sessionId === record.id) {
-          state = applyPersistSuccess(state, record.updatedAt);
+          state = applyPersistSuccess(state, response.updatedAt ?? record.updatedAt);
           if (document.visibilityState === "visible") {
             syncUserInterfaces();
           }
@@ -1770,7 +1781,12 @@ async function handleCommand(
       syncPortState(port);
       return;
     case "GET_STATUS":
+      diagnosticsPorts.delete(port);
       syncPortState(port);
+      return;
+    case "GET_DIAGNOSTICS_STATUS":
+      diagnosticsPorts.add(port);
+      syncPortState(port, false, true);
       return;
     case "OPEN_INPAGE_PANEL": {
       const feedback = openInPagePanel();
@@ -1843,6 +1859,7 @@ function bindPopupPort(): void {
 
     port.onDisconnect.addListener(() => {
       popupPorts.delete(port);
+      diagnosticsPorts.delete(port);
     });
   });
 
@@ -1854,6 +1871,10 @@ function bindPopupPort(): void {
     }
     if (typedMessage.type === "GET_STATUS") {
       sendResponse(buildStatusSnapshot(false));
+      return true;
+    }
+    if (typedMessage.type === "GET_DIAGNOSTICS_STATUS") {
+      sendResponse(buildStatusSnapshot(false, true));
       return true;
     }
     return undefined;

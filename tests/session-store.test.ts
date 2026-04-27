@@ -3,6 +3,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../src/shared/extension-context";
+import { SESSION_DB_NAME } from "../src/shared/constants";
 import { queueExitPersistRecord } from "../src/storage/persist-recovery";
 import {
   buildSessionLibraryBackupExport,
@@ -26,6 +27,10 @@ import {
   updateRunningSession,
 } from "../src/storage/session-store";
 import { SESSION_LIBRARY_TRANSFER_LIMIT_BYTES } from "../src/storage/session-backup";
+import {
+  buildSessionEntryChunkKey,
+  SESSION_ENTRY_CHUNK_STORE_NAME,
+} from "../src/storage/session-store/entry-chunks";
 
 function buildSession(id: string, status: SessionRecord["status"]): SessionRecord {
   return {
@@ -54,6 +59,32 @@ function buildSession(id: string, status: SessionRecord["status"]): SessionRecor
       },
     ],
   };
+}
+
+function deleteIndexedDbEntryChunk(sessionId: string, chunkIndex: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(SESSION_DB_NAME);
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(SESSION_ENTRY_CHUNK_STORE_NAME, "readwrite");
+      transaction.objectStore(SESSION_ENTRY_CHUNK_STORE_NAME).delete(
+        buildSessionEntryChunkKey(sessionId, chunkIndex),
+      );
+      transaction.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        db.close();
+        reject(transaction.error ?? new Error("IndexedDB transaction failed"));
+      };
+      transaction.onabort = () => {
+        db.close();
+        reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
+      };
+    };
+  });
 }
 
 describe("session store", () => {
@@ -113,6 +144,25 @@ describe("session store", () => {
       "session_segment_1",
       "session_segment_2",
     ]);
+  });
+
+  it("lists lineage segments without hydrating unrelated session bodies", async () => {
+    await saveSession({
+      ...buildSession("session_target_segment", "saved"),
+      lineageId: "lineage_target",
+      segmentNumber: 1,
+    });
+    await saveSession({
+      ...buildSession("session_unrelated_broken", "saved"),
+      lineageId: "lineage_unrelated",
+      segmentNumber: 1,
+    });
+    await deleteIndexedDbEntryChunk("session_unrelated_broken", 0);
+
+    const segments = await listSessionLineageSegments("lineage_target");
+
+    expect(segments.map((session) => session.id)).toEqual(["session_target_segment"]);
+    expect(segments[0]?.entries).toHaveLength(1);
   });
 
   it("persists favorites and notes and sorts favorites to the top", async () => {

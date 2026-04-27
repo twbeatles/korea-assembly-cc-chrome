@@ -28,6 +28,7 @@ interface BuildContentStatusSnapshotOptions {
   livePreviewTextRaw: string;
   livePreviewTextForDisplay: string;
   latestPersistabilityState: PersistabilityState;
+  includeExportEstimates?: boolean;
   requiresReload?: boolean;
 }
 
@@ -78,6 +79,7 @@ export function buildContentStatusSnapshot(
     livePreviewTextRaw,
     livePreviewTextForDisplay,
     latestPersistabilityState,
+    includeExportEstimates = false,
     requiresReload = false,
   } = options;
   const persistability = resolveContentPersistabilityDiagnostics({
@@ -114,7 +116,9 @@ export function buildContentStatusSnapshot(
       persistabilityState: persistability.state,
       persistabilityHint: persistability.hint,
       segment: buildSegmentDiagnostics(sessionState, settings),
-      exportEstimates: buildExportEstimateDiagnostics(sessionState, settings),
+      exportEstimates: includeExportEstimates
+        ? buildExportEstimateDiagnostics(sessionState, settings)
+        : undefined,
     }),
     hasPersistableContent: sessionState.entries.length > 0,
   };
