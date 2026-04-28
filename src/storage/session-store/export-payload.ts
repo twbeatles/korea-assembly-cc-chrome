@@ -36,6 +36,7 @@ export function createSessionExportPayload(
   const {
     entries,
     filenamePattern,
+    filenameSuffix,
     txtExportTimestampsEnabled = false,
   } = exportOptions;
   const baseSession = entries ? withSessionEntries(session, entries) : session;
@@ -46,10 +47,23 @@ export function createSessionExportPayload(
     }),
   );
 
+  const buildFilename = (): string => {
+    const filename = buildExportFilename(normalized, format, filenamePattern);
+    const suffix = String(filenameSuffix ?? "").trim();
+    if (!suffix) {
+      return filename;
+    }
+
+    const extension = `.${format}`;
+    return filename.endsWith(extension)
+      ? `${filename.slice(0, -extension.length)}_${suffix}${extension}`
+      : `${filename}_${suffix}`;
+  };
+
   switch (format) {
     case "txt":
       return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
+        filename: buildFilename(),
         format,
         mimeType: "text/plain;charset=utf-8",
         content: exportTxt(normalized, {
@@ -58,21 +72,21 @@ export function createSessionExportPayload(
       };
     case "srt":
       return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
+        filename: buildFilename(),
         format,
         mimeType: "application/x-subrip;charset=utf-8",
         content: exportSrt(normalized),
       };
     case "vtt":
       return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
+        filename: buildFilename(),
         format,
         mimeType: "text/vtt;charset=utf-8",
         content: exportVtt(normalized),
       };
     case "json":
       return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
+        filename: buildFilename(),
         format,
         mimeType: "application/json;charset=utf-8",
         content: exportJson(normalized),

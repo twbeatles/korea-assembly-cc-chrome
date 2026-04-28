@@ -4,6 +4,7 @@ export type ExportFormat = "txt" | "srt" | "vtt" | "json";
 export type CaptureStatus = "idle" | "running" | "stopped" | "error";
 export type PersistedSessionStatus = "running" | "stopped" | "saved";
 export type SpeakerChannel = "primary" | "secondary" | "unknown";
+export type SubtitleCaptureMode = "structured" | "fallback";
 
 export interface SubtitleEntry {
   id: string;
@@ -14,6 +15,7 @@ export interface SubtitleEntry {
   sourceSelector?: string;
   sourceFramePath?: number[];
   sourceNodeKey?: string;
+  sourceCaptureMode?: SubtitleCaptureMode;
   speakerColor?: string;
   speakerChannel?: SpeakerChannel;
   speakerChanged?: boolean;

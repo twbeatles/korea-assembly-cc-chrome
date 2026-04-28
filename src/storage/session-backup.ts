@@ -90,6 +90,10 @@ function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
         : undefined,
     sourceNodeKey:
       "sourceNodeKey" in value ? sanitizeOptionalString(value.sourceNodeKey, "") || undefined : undefined,
+    sourceCaptureMode:
+      value.sourceCaptureMode === "structured" || value.sourceCaptureMode === "fallback"
+        ? value.sourceCaptureMode
+        : undefined,
     speakerColor:
       "speakerColor" in value ? sanitizeOptionalString(value.speakerColor, "") || undefined : undefined,
     speakerChannel:

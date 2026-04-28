@@ -6,6 +6,7 @@ import {
 } from "../shared/constants";
 import {
   buildObservedSubtitlePreview,
+  countFilteredUnconfirmedSubtitleRows,
   hasUnconfirmedSubtitleBackground,
   readObservedSubtitleRows,
 } from "./subtitle-rows";
@@ -43,8 +44,10 @@ type SubtitleReadResult = {
     speakerColor: string;
     speakerChannel: "primary" | "secondary" | "unknown";
     unstableKey: boolean;
+    nodeKeySource?: "attribute" | "class" | "generated";
   }[];
   blockedByUnconfirmedFilter: boolean;
+  filteredUnconfirmedCount: number;
 };
 
 type BridgeState = {
@@ -166,7 +169,9 @@ function readContainerText(node: HTMLElement | null): string {
   }
 
   const raw = node.innerText || node.textContent || "";
-  const text = normalizeFallbackInternalRaw(raw);
+  const text = normalizeFallbackInternalRaw(raw, {
+    sourceUrl: window.location.href,
+  });
   if (!text) {
     return "";
   }
@@ -207,12 +212,13 @@ function buildRowSignature(
     speakerColor: string;
     speakerChannel: "primary" | "secondary" | "unknown";
     unstableKey: boolean;
+    nodeKeySource?: "attribute" | "class" | "generated";
   }[],
 ): string {
   return rows
     .map(
       (row) =>
-        `${row.nodeKey}|${compactText(row.text)}|${row.speakerColor}|${row.speakerChannel}|${row.unstableKey}`,
+        `${row.nodeKey}|${compactText(row.text)}|${row.speakerColor}|${row.speakerChannel}|${row.unstableKey}|${row.nodeKeySource ?? ""}`,
     )
     .join("||");
 }
@@ -244,6 +250,9 @@ function readSubtitleText(
     filterUnconfirmedEnabled,
     allowUnconfirmedContainerFallback,
   );
+  const filteredUnconfirmedCount = filterUnconfirmedEnabled
+    ? countFilteredUnconfirmedSubtitleRows(document, "#viewSubtit .smi_word")
+    : 0;
 
   for (const selector of orderedSelectors) {
     if (selector.includes(".smi_word")) {
@@ -255,6 +264,7 @@ function readSubtitleText(
           selector,
           rows,
           blockedByUnconfirmedFilter: false,
+          filteredUnconfirmedCount,
         };
       }
 
@@ -275,6 +285,7 @@ function readSubtitleText(
         selector,
         rows: [],
         blockedByUnconfirmedFilter: false,
+        filteredUnconfirmedCount,
       };
     }
   }
@@ -291,6 +302,7 @@ function readSubtitleText(
         selector: fallbackSelector,
         rows: [],
         blockedByUnconfirmedFilter: false,
+        filteredUnconfirmedCount,
       };
     }
   }
@@ -300,6 +312,7 @@ function readSubtitleText(
     selector: preferredSelector,
     rows: [],
     blockedByUnconfirmedFilter: blockContainerFallback,
+    filteredUnconfirmedCount,
   };
 }
 
@@ -403,6 +416,7 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
       rows: current.rows,
       selector: state.observerSelector,
       observerActive,
+      filteredUnconfirmedCount: current.filteredUnconfirmedCount,
     });
     return;
   }
@@ -421,6 +435,7 @@ function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void 
     rows: current.rows,
     selector: state.observerSelector,
     observerActive,
+    filteredUnconfirmedCount: current.filteredUnconfirmedCount,
   });
 }
 

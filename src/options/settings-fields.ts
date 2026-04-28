@@ -29,6 +29,7 @@ export const TEXT_FIELDS: Array<keyof ExtensionSettings> = ["filenamePattern"];
 
 export const EXPOSED_OPTION_FIELDS = [
   ...TOGGLE_FIELDS,
+  "segmentPreset",
   ...BASIC_NUMBER_FIELDS,
   ...ADVANCED_NUMBER_FIELDS,
   ...TEXT_FIELDS,

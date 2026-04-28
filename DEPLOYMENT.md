@@ -38,16 +38,18 @@
 
 ```bash
 npm install
+npm run check:version
+npm run check:injected
 npm run lint
 npm run typecheck
 npm run test
-npm run test:coverage
 npm run build
 ```
 
 설명:
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
+- 전체 release gate 는 `npm run verify` 로 실행할 수 있으며, 로컬 Chrome 확장 smoke 는 `npm run test:e2e:extension` 으로 별도 실행합니다.
 
 추가 확인 권장:
 - 국회 의사중계 페이지에서 실제 자막 추출
@@ -57,7 +59,8 @@ npm run build
 - 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
 - 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
 - `수집된 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
-- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback으로만 잡혀도 `실시간 내용` 누적 원문이 유지되고 `수집된 자막` 목록이 commit된 entry 기준으로 계속 쌓이는지 확인
+- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback 내부 raw가 commit/diff 용으로 전체 보존되고, 화면 preview 는 `400자/3줄` tail 로 짧게 표시되는지 확인
+- fallback-only 자막은 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측된 뒤 `sourceCaptureMode: "fallback"` entry 로 commit 되고, 그 전에는 저장/export 대상이 아닌지 확인
 - structured row snapshot 안에 stable/unstable row가 함께 있을 때 stable row만 `수집된 자막` 목록과 저장/export 대상에 반영되고 unstable row는 preview-only로 남는지 확인
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구가 저장/export/누적 목록에 들어가지 않는지 확인
 - 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
@@ -65,7 +68,7 @@ npm run build
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
-- 패널 / popup의 수동 저장과 export 가 현재 화면 렌더 window와 무관한 세션 전체 committed `entries` 를 기준으로 동작하고, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는지 확인
+- 패널 / popup의 수동 저장과 export 가 현재 화면 렌더 window와 무관한 세션 전체 committed `entries` 를 기준으로 동작하고, 안정 관측 전 preview-only `실시간 내용`은 저장 대상으로 승격하지 않는지 확인
 - service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
@@ -76,6 +79,8 @@ npm run build
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - 수집 중이거나 stale selection 상태의 history detail 에서 즐겨찾기/메모를 저장해도 최신 subtitle count / status / entries 가 되돌아가지 않는지 확인
 - history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
+- history 목록이 lineage summary 기준으로 표시되고, 즐겨찾기/핀/메모/삭제/export 작업이 lineage 전체 segment 에 적용되는지 확인
+- lineage export 예상 용량이 `8 MiB` 를 넘는 경우 `segment-001` suffix 기반 분할 저장 액션이 보이는지 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
 - history `전체 JSON 백업` 이 service worker `DOWNLOAD_REQUEST` 대형 본문 전달 없이 page Blob URL 다운로드로 시작되는지 확인
 - history `JSON 가져오기`에서 incoming `running` 레코드가 `saved`로 정규화되어 stale `수집 중` 배지가 남지 않는지 확인
@@ -84,6 +89,7 @@ npm run build
 - `JSON 가져오기`를 파일 읽기 단계에서 바로 취소하면 0건 요약 대신 즉시 취소 메시지가 보이고, 일부 write 이후 취소일 때만 부분 완료 요약이 보이는지 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이, 저장 파일 이름 규칙 검증 확인
 - options 숫자 필드가 정수만 허용하고 소수 입력에는 inline 오류를 표시하며 저장을 막는지 확인
+- options segment preset(`stability` / `balanced` / `capacity` / `custom`)이 threshold 값을 반영하고, 숫자 필드를 직접 수정하면 `custom`으로 전환되는지 확인
 - export filename 생성 시 금지 문자가 여러 개 있어도 모두 제거되는지 확인
 - options noise filter 설명이 한글/영문 중심 판정과 foreign text 보존 시 filter off 필요성을 안내하는지 확인
 - stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
@@ -179,11 +185,14 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 
 - `package.json` 버전 증가
 - `manifest.json` 버전 증가
+- `npm run check:version` 통과
+- `npm run check:injected` 통과
 - `npm run lint` 통과
 - `npm run typecheck` 통과
 - `npm run test` 통과
-- `npm run test:coverage` 통과
 - `npm run build` 통과
+- `npm run verify` 통과
+- `npm run test:e2e:extension` 통과
 - `dist/manifest.json` 생성 확인
 - `dist/injected-observer.js` 생성 확인
 - `dist/manifest.json` 의 버전이 루트 `manifest.json` / `package.json` 과 같은지 확인
@@ -268,10 +277,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 Before packaging a release ZIP, run the full validation path:
 
 ```bash
-npm run lint
-npm run typecheck
-npm run test:coverage
-npm run build
+npm run verify
 ```
 
 Or run the one-shot command:
@@ -290,8 +296,8 @@ Additional release notes:
 
 Current release alignment:
 
-- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback에서는 `실시간 내용` 원문 누적을 유지합니다.
-- structured row가 비어 있어도 본회의 fallback capture는 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
+- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback에서는 commit/diff 용 내부 raw 원문을 전체 보존하고, 화면 preview 는 tail formatter 로 짧게 유지합니다.
+- structured row가 비어 있어도 본회의 fallback capture는 안정 관측 뒤 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
 - Chrome Web Store 제출용 압축 예시는 `korea-assembly-cc-chrome-<version>-cws.zip` 형식을 권장합니다.
 - 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 현재 화면에 보이는 `300건` 렌더 window가 아니라 세션 전체 committed subtitle 목록을 기준으로 검증해야 합니다.
@@ -369,7 +375,7 @@ Deployment documentation consistency sources:
 - Release verification should confirm that session import sanitize normalizes unsupported `sourceUrl` to an empty string, and history `원본 페이지 열기` is disabled/blocked for unsupported URLs.
 - Release verification should confirm that unconfirmed container fallback blocking emits the `blockedByUnconfirmedFilter` signal and that local polling / top fallback / injected observer all relax fallback after `6` consecutive blocked probes.
 - Release verification should confirm that unconfirmed block streak resets immediately when subtitle text recovers and is not reset by neutral misses without text.
-- Release verification should confirm that fallback internal raw keeps a `4KB` tail window for pipeline comparison while panel/popup preview still uses the existing `400자/3줄` tail-oriented display semantics.
+- Release verification should confirm that non-plenary fallback internal raw keeps a `4KB` tail window, plenary fallback internal raw preserves the full diff/commit raw, and panel/popup preview still uses the `400자/3줄` tail-oriented display semantics.
 - Release verification should confirm that single-session export keeps no hard size cap, and known transport/download failures (`message length exceeded`, `invalid data URL` class) are surfaced as user-friendly guidance.
 - Release verification should confirm that frame-forward nonce mismatch triggers immediate nonce resync plus fast top-frame fallback probing to recover dropped bridge events.
 
@@ -382,3 +388,13 @@ Deployment documentation consistency sources:
 - Release verification should confirm that full-library JSON backup uses the history page Blob URL helper and revokes the Blob URL after completion, interruption, or timeout.
 - Release verification should confirm that JSON single-session export and backup/import preserve `lineageId` and `segmentNumber`, while older JSON without those fields still imports.
 - Release verification should confirm that `pendingPreviews` are not materialized into saved or exported entries.
+
+## 2026-04-28 Deployment Consistency Update
+
+- Release verification should include `check:version`, `check:injected`, `lint`, `typecheck`, `test`, and `build` via `npm run verify`.
+- Local Chrome extension smoke should be run with `npm run test:e2e:extension` before store submission or large capture-path changes.
+- Release verification should confirm fallback-only conservative commit behavior: 2 repeated observations or 400ms stable raw before `sourceCaptureMode: "fallback"` entry creation.
+- Release verification should confirm structured rows clear pending fallback candidates and committed structured entries carry `sourceCaptureMode: "structured"`.
+- Release verification should confirm SPA URL transitions start/stop capture pipeline once, and running sessions are stopped/persisted before changing capture URL state.
+- Release verification should confirm history defaults to lineage summary list and lineage metadata/delete/export operations apply to all segments.
+- Release verification should confirm lineage export split download uses segment suffixes such as `segment-001`.

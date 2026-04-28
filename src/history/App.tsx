@@ -11,7 +11,13 @@ import {
 import {
   isSegmentedSessionRecord,
   mergeSessionSegments,
+  sortSessionSegments,
 } from "../core/session-lineage";
+import { exportJson } from "../core/exporters/json";
+import { normalizeSessionForExport } from "../core/exporters/normalize-session";
+import { exportSrt } from "../core/exporters/srt";
+import { exportTxt } from "../core/exporters/txt";
+import { exportVtt } from "../core/exporters/vtt";
 import {
   DEFAULT_EXTENSION_SETTINGS,
   EXTENSION_STORAGE_KEY,
@@ -27,18 +33,17 @@ import {
 import {
   buildSessionLibraryBackupExport,
   deleteAllSessions,
-  deleteSession,
+  deleteSessionLineage,
   getSessionLibraryOverview,
   importSessionRecords,
+  listSessionLineagesPage,
   listSessionLineageSegments,
-  listSessionsPage,
-  loadSession,
-  loadSessionsByIds,
-  updateSessionMetadata,
+  updateSessionLineageMetadata,
 } from "../storage/session-store";
 import type {
   SessionImportSummary,
   SessionLibraryPreview,
+  SessionLineageSummary,
   SessionLongTaskKind,
   SessionLongTaskProgress,
 } from "../storage/types";
@@ -63,6 +68,7 @@ import { downloadPageBlobExport } from "./page-blob-download";
 
 const EXPORT_FORMATS: ExportFormat[] = ["txt", "srt", "vtt", "json"];
 const HISTORY_PAGE_SIZE = 200;
+const LARGE_LINEAGE_EXPORT_WARNING_BYTES = 8 * 1024 * 1024;
 
 type HistoryLongTaskState = SessionLongTaskProgress & {
   cancellable: boolean;
@@ -138,6 +144,19 @@ function getSessionSegmentLabel(
 
 function canReopenSourceUrl(sourceUrl: string | null | undefined): sourceUrl is string {
   return typeof sourceUrl === "string" && isSupportedAssemblyUrl(sourceUrl);
+}
+
+function estimateSessionExportBytes(
+  session: SessionRecord,
+  txtExportTimestampsEnabled: boolean,
+): number {
+  const normalized = normalizeSessionForExport(session);
+  return Math.max(
+    getUtf8ByteLength(exportTxt(normalized, { includeTimestamps: txtExportTimestampsEnabled })),
+    getUtf8ByteLength(exportSrt(normalized)),
+    getUtf8ByteLength(exportVtt(normalized)),
+    getUtf8ByteLength(exportJson(normalized)),
+  );
 }
 
 function confirmDeleteSession(target: SessionRecord): boolean {
@@ -218,9 +237,11 @@ export default function App() {
   const checkedIdsRef = useRef<string[]>([]);
   const noteDraftRef = useRef("");
   const previousSelectedSessionRef = useRef<SessionRecord | null>(null);
-  const [pageSessions, setPageSessions] = useState<SessionRecord[]>([]);
+  const [pageLineages, setPageLineages] = useState<SessionLineageSummary[]>([]);
   const [totalSessionCount, setTotalSessionCount] = useState(0);
   const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
+  const [selectedLineageSummary, setSelectedLineageSummary] =
+    useState<SessionLineageSummary | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const [checkedEntryIds, setCheckedEntryIds] = useState<string[]>([]);
@@ -241,9 +262,11 @@ export default function App() {
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [longTask, setLongTask] = useState<HistoryLongTaskState | null>(null);
 
-  const selectedLineageId = selectedSession
-    ? resolveSessionLineageId(selectedSession.id, selectedSession.lineageId)
-    : "";
+  const selectedLineageId =
+    selectedLineageSummary?.lineageId ??
+    (selectedSession
+      ? resolveSessionLineageId(selectedSession.id, selectedSession.lineageId)
+      : "");
   const availableLineageSessions = useMemo(
     () =>
       selectedSession
@@ -261,6 +284,13 @@ export default function App() {
   );
   const displaySession =
     lineageViewEnabled && lineageAggregateSession ? lineageAggregateSession : selectedSession;
+  const displayExportEstimateBytes = useMemo(
+    () =>
+      displaySession
+        ? estimateSessionExportBytes(displaySession, txtExportTimestampsEnabled)
+        : 0,
+    [displaySession, txtExportTimestampsEnabled],
+  );
   const filteredEntries = useMemo(
     () => filterEntriesByQuery(displaySession?.entries ?? [], searchQuery),
     [displaySession, searchQuery],
@@ -273,12 +303,14 @@ export default function App() {
     [checkedEntryIdSet, displaySession],
   );
   const currentPageSessionsChecked =
-    pageSessions.length > 0 && pageSessions.every((session) => checkedIdSet.has(session.id));
+    pageLineages.length > 0 && pageLineages.every((lineage) => checkedIdSet.has(lineage.lineageId));
   const allVisibleEntriesChecked =
     filteredEntries.length > 0 &&
     filteredEntries.every((entry) => checkedEntryIdSet.has(entry.id));
   const hasUnsavedNote =
-    selectedSession ? noteDraft !== selectedSession.note : noteDraft.trim().length > 0;
+    selectedSession
+      ? noteDraft !== (selectedLineageSummary?.note ?? selectedSession.note)
+      : noteDraft.trim().length > 0;
   const actionButtonsDisabled = busyAction !== null;
   const jsonTaskButtonsDisabled = busyAction !== null || longTask !== null;
   const heroMessage = longTask?.message ?? message;
@@ -287,6 +319,8 @@ export default function App() {
       ? `${Math.min(longTask.completed, longTask.total)} / ${longTask.total}`
       : null;
   const showingLineageView = lineageViewEnabled && hasLineageSegments && !!lineageAggregateSession;
+  const shouldOfferSplitExport =
+    showingLineageView && displayExportEstimateBytes > LARGE_LINEAGE_EXPORT_WARNING_BYTES;
   const shouldShowSelectedSegmentLabel =
     !!selectedSession && (hasLineageSegments || isSegmentedSessionRecord(selectedSession));
 
@@ -369,7 +403,7 @@ export default function App() {
   };
 
   const discardUnsavedNoteDraft = (): void => {
-    setNoteDraft(selectedSession?.note ?? "");
+    setNoteDraft(selectedLineageSummary?.note ?? selectedSession?.note ?? "");
   };
 
   useEffect(() => {
@@ -389,16 +423,16 @@ export default function App() {
     const selectedSessionIdChanged = previousSelectedSession?.id !== selectedSession?.id;
 
     if (selectedSessionIdChanged) {
-      setNoteDraft(selectedSession?.note ?? "");
+      setNoteDraft(selectedLineageSummary?.note ?? selectedSession?.note ?? "");
     } else if (
       previousSelectedSession &&
       selectedSession &&
       noteDraftRef.current === previousSelectedSession.note
     ) {
-      setNoteDraft(selectedSession.note);
+      setNoteDraft(selectedLineageSummary?.note ?? selectedSession.note);
     }
     previousSelectedSessionRef.current = selectedSession;
-  }, [selectedSession]);
+  }, [selectedLineageSummary, selectedSession]);
 
   useEffect(() => {
     let active = true;
@@ -443,6 +477,8 @@ export default function App() {
   useEffect(() => {
     if (!lineageLoading && availableLineageSessions.length <= 1) {
       setLineageViewEnabled(false);
+    } else if (!lineageLoading && availableLineageSessions.length > 1) {
+      setLineageViewEnabled(true);
     }
   }, [availableLineageSessions.length, lineageLoading]);
 
@@ -469,7 +505,7 @@ export default function App() {
 
     void (async () => {
       try {
-        const pageResult = await listSessionsPage({
+        const pageResult = await listSessionLineagesPage({
           page: sessionPage,
           pageSize: HISTORY_PAGE_SIZE,
           starredOnly: showStarredOnly,
@@ -478,45 +514,33 @@ export default function App() {
           return;
         }
 
-        setPageSessions(pageResult.sessions);
+        setPageLineages(pageResult.lineages);
         setTotalSessionCount(pageResult.totalCount);
         if (pageResult.page !== sessionPage) {
           setSessionPage(pageResult.page);
         }
 
         if (checkedIdsRef.current.length > 0) {
-          const existingCheckedSessions = await loadSessionsByIds(checkedIdsRef.current);
-          if (!active) {
-            return;
-          }
-          setCheckedIds(existingCheckedSessions.map((session) => session.id));
+          const visibleLineageIds = new Set(pageResult.lineages.map((lineage) => lineage.lineageId));
+          setCheckedIds((current) => current.filter((lineageId) => visibleLineageIds.has(lineageId)));
         }
 
-        let nextSelectedId = selectedIdRef.current || pageResult.sessions[0]?.id || "";
-        let nextSelectedSession =
-          pageResult.sessions.find((session) => session.id === nextSelectedId) ?? null;
+        let nextSelectedId = selectedIdRef.current || pageResult.lineages[0]?.lineageId || "";
+        let nextSelectedLineage =
+          pageResult.lineages.find((lineage) => lineage.lineageId === nextSelectedId) ?? null;
 
-        if (!nextSelectedSession && nextSelectedId) {
-          const loadedSelectedSession = await loadSession(nextSelectedId);
-          if (!active) {
-            return;
-          }
-          if (loadedSelectedSession && (!showStarredOnly || loadedSelectedSession.starred)) {
-            nextSelectedSession = loadedSelectedSession;
-          }
+        if (!nextSelectedLineage && pageResult.lineages.length > 0) {
+          nextSelectedLineage = pageResult.lineages[0];
+          nextSelectedId = nextSelectedLineage.lineageId;
         }
 
-        if (!nextSelectedSession && pageResult.sessions.length > 0) {
-          nextSelectedSession = pageResult.sessions[0];
-          nextSelectedId = nextSelectedSession.id;
-        }
-
-        if (!nextSelectedSession) {
+        if (!nextSelectedLineage) {
           nextSelectedId = "";
         }
 
         setSelectedId(nextSelectedId);
-        setSelectedSession(nextSelectedSession);
+        setSelectedLineageSummary(nextSelectedLineage);
+        setSelectedSession(nextSelectedLineage?.representativeSession ?? null);
 
         if (!preserveMessage) {
           setMessage(messageOnSuccess ?? buildHistoryRefreshMessage(pageResult.totalCount));
@@ -613,7 +637,7 @@ export default function App() {
   };
 
   const handleDelete = async (): Promise<void> => {
-    if (!selectedSession) {
+    if (!selectedLineageId || !selectedSession) {
       return;
     }
     if (!confirmDeleteSession(selectedSession)) {
@@ -622,20 +646,22 @@ export default function App() {
     }
 
     try {
-      await deleteSession(selectedSession.id);
+      await deleteSessionLineage(selectedLineageId);
       requestRefresh("선택한 기록을 삭제했습니다.");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "기록 삭제에 실패했습니다.");
     }
   };
 
-  const deleteSessionIds = async (
-    ids: string[],
+  const deleteLineageIds = async (
+    lineageIds: string[],
   ): Promise<{
     deletedCount: number;
     failedCount: number;
   }> => {
-    const results = await Promise.allSettled(ids.map((id) => deleteSession(id)));
+    const results = await Promise.allSettled(
+      lineageIds.map((lineageId) => deleteSessionLineage(lineageId)),
+    );
     return results.reduce(
       (summary, result) => ({
         deletedCount: summary.deletedCount + (result.status === "fulfilled" ? 1 : 0),
@@ -653,24 +679,31 @@ export default function App() {
       return;
     }
 
-    const targetSessions = await loadSessionsByIds(checkedIds);
-    if (!targetSessions.length) {
+    const targetLineages = pageLineages.filter((lineage) =>
+      checkedIds.includes(lineage.lineageId),
+    );
+    if (!targetLineages.length) {
       setCheckedIds([]);
       requestRefresh(undefined, { preserveMessage: true });
       return;
     }
 
-    if (!confirmDeleteSessions(targetSessions, "선택한")) {
+    if (
+      !confirmDeleteSessions(
+        targetLineages.map((lineage) => lineage.representativeSession),
+        "선택한 회의",
+      )
+    ) {
       setMessage("선택 삭제를 취소했습니다.");
       return;
     }
 
     try {
-      const result = await deleteSessionIds(targetSessions.map((session) => session.id));
+      const result = await deleteLineageIds(targetLineages.map((lineage) => lineage.lineageId));
       setCheckedIds([]);
       requestRefresh(
         buildSelectedDeleteMessage(
-          targetSessions.length,
+          targetLineages.length,
           result.deletedCount,
           result.failedCount,
         ),
@@ -718,19 +751,26 @@ export default function App() {
   const handleToggleCheckAll = (): void => {
     setCheckedIds((current) =>
       currentPageSessionsChecked
-        ? current.filter((id) => !pageSessions.some((session) => session.id === id))
-        : [...new Set([...current, ...selectAllSessionIds(pageSessions)])],
+        ? current.filter((id) => !pageLineages.some((lineage) => lineage.lineageId === id))
+        : [
+            ...new Set([
+              ...current,
+              ...selectAllSessionIds(
+                pageLineages.map((lineage) => ({ id: lineage.lineageId })),
+              ),
+            ]),
+          ],
     );
   };
 
-  const handleToggleFavorite = async (session: SessionRecord): Promise<void> => {
+  const handleToggleFavorite = async (lineage: SessionLineageSummary): Promise<void> => {
     try {
-      await updateSessionMetadata(session.id, {
-        starred: !session.starred,
-        pinnedAt: session.starred ? null : new Date().toISOString(),
+      await updateSessionLineageMetadata(lineage.lineageId, {
+        starred: !lineage.starred,
+        pinnedAt: lineage.starred ? null : new Date().toISOString(),
       });
       requestRefresh(
-        session.starred ? "즐겨찾기를 해제했습니다." : "즐겨찾기에 추가했습니다.",
+        lineage.starred ? "즐겨찾기를 해제했습니다." : "즐겨찾기에 추가했습니다.",
       );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "즐겨찾기 저장에 실패했습니다.");
@@ -738,12 +778,12 @@ export default function App() {
   };
 
   const handleSaveNote = async (): Promise<void> => {
-    if (!selectedSession) {
+    if (!selectedLineageId) {
       return;
     }
 
     try {
-      await updateSessionMetadata(selectedSession.id, {
+      await updateSessionLineageMetadata(selectedLineageId, {
         note: noteDraft,
       });
       requestRefresh(noteDraft.trim() ? "메모를 저장했습니다." : "메모를 비웠습니다.");
@@ -818,6 +858,39 @@ export default function App() {
     }
   };
 
+  const handleSplitLineageExport = async (format: ExportFormat): Promise<void> => {
+    if (!selectedLineageId || availableLineageSessions.length <= 1) {
+      return;
+    }
+
+    try {
+      const segments = sortSessionSegments(availableLineageSessions);
+      for (const [index, segment] of segments.entries()) {
+        const response = await sendRuntimeMessage({
+          type: "DOWNLOAD_SESSION_EXPORT",
+          sessionId: segment.id,
+          format,
+          filenamePattern,
+          txtExportTimestampsEnabled,
+          filenameSuffix: `segment-${String(index + 1).padStart(3, "0")}`,
+        });
+        if (!response.ok) {
+          setMessage(
+            mapDownloadErrorMessage(response.error) ||
+              `세그먼트 ${index + 1} 저장을 시작하지 못했습니다.`,
+          );
+          return;
+        }
+      }
+
+      setMessage(
+        `연속 캡처 ${segments.length}개 세그먼트의 ${getExportFormatLabel(format)} 분할 저장을 시작했습니다.`,
+      );
+    } catch (error) {
+      setMessage(resolveDownloadErrorMessage(error, "분할 저장을 시작하지 못했습니다."));
+    }
+  };
+
   const handleCopy = async (text: string, label: string): Promise<void> => {
     try {
       await copyTextToClipboard(text);
@@ -844,15 +917,16 @@ export default function App() {
     handleSelectVisibleEntries();
   };
 
-  const handleSelectSession = (sessionId: string): void => {
-    if (sessionId !== selectedSession?.id && hasUnsavedNote && !confirmDiscardUnsavedNote("세션 전환")) {
+  const handleSelectSession = (lineageId: string): void => {
+    if (lineageId !== selectedLineageId && hasUnsavedNote && !confirmDiscardUnsavedNote("세션 전환")) {
       setMessage("세션 전환을 취소했습니다.");
       return;
     }
 
-    const nextSelectedSession = pageSessions.find((session) => session.id === sessionId) ?? null;
-    setSelectedId(sessionId);
-    setSelectedSession(nextSelectedSession);
+    const nextSelectedLineage = pageLineages.find((lineage) => lineage.lineageId === lineageId) ?? null;
+    setSelectedId(lineageId);
+    setSelectedLineageSummary(nextSelectedLineage);
+    setSelectedSession(nextSelectedLineage?.representativeSession ?? null);
   };
 
   const handleSelectLineageSegment = (sessionId: string): void => {
@@ -867,7 +941,7 @@ export default function App() {
       return;
     }
 
-    setSelectedId(sessionId);
+    setSelectedId(resolveSessionLineageId(nextSelectedSession.id, nextSelectedSession.lineageId));
     setSelectedSession(nextSelectedSession);
   };
 
@@ -1146,13 +1220,13 @@ export default function App() {
         <aside className="session-list">
           <div className="session-list-toolbar">
             <span>
-              현재 필터 {totalSessionCount}개 / 현재 페이지 {pageSessions.length}개 / 선택 {checkedIds.length}개
+              현재 필터 {totalSessionCount}개 / 현재 페이지 {pageLineages.length}개 / 선택 {checkedIds.length}개
             </span>
             <div className="session-list-actions">
               <button
                 className="secondary"
                 onClick={handleToggleCheckAll}
-                disabled={actionButtonsDisabled || !pageSessions.length}
+                disabled={actionButtonsDisabled || !pageLineages.length}
               >
                 {currentPageSessionsChecked ? "현재 페이지 선택 해제" : "현재 페이지 전체 선택"}
               </button>
@@ -1186,57 +1260,57 @@ export default function App() {
               </button>
             </div>
           </div>
-          {pageSessions.length ? (
-            pageSessions.map((session) => (
-              <div key={session.id} className="session-item-row">
+          {pageLineages.length ? (
+            pageLineages.map((lineage) => (
+              <div key={lineage.lineageId} className="session-item-row">
                 <label className="session-check">
                   <input
                     type="checkbox"
-                    checked={checkedIdSet.has(session.id)}
-                    onChange={() => handleToggleChecked(session.id)}
+                    checked={checkedIdSet.has(lineage.lineageId)}
+                    onChange={() => handleToggleChecked(lineage.lineageId)}
                     disabled={actionButtonsDisabled}
-                    aria-label={`${session.committeeName || session.title} 선택`}
+                    aria-label={`${lineage.committeeName || lineage.title} 선택`}
                   />
                 </label>
                 <button
                   type="button"
-                  className={`favorite-toggle ${session.starred ? "active" : ""}`}
+                  className={`favorite-toggle ${lineage.starred ? "active" : ""}`}
                   onClick={() =>
                     runBusyHistoryAction(
-                      `favorite_${session.id}`,
-                      () => handleToggleFavorite(session),
+                      `favorite_${lineage.lineageId}`,
+                      () => handleToggleFavorite(lineage),
                       "즐겨찾기 저장에 실패했습니다.",
-                      session.starred
+                      lineage.starred
                         ? "즐겨찾기 해제를 저장하고 있습니다."
                         : "즐겨찾기를 저장하고 있습니다.",
                     )
                   }
                   disabled={actionButtonsDisabled}
                   aria-label={
-                    session.starred
-                      ? `${session.committeeName || session.title} 즐겨찾기 해제`
-                      : `${session.committeeName || session.title} 즐겨찾기 추가`
+                    lineage.starred
+                      ? `${lineage.committeeName || lineage.title} 즐겨찾기 해제`
+                      : `${lineage.committeeName || lineage.title} 즐겨찾기 추가`
                   }
                 >
-                  {session.starred ? "★" : "☆"}
+                  {lineage.starred ? "★" : "☆"}
                 </button>
                 <button
-                  className={`session-item ${selectedSession?.id === session.id ? "active" : ""}`}
-                  onClick={() => handleSelectSession(session.id)}
+                  className={`session-item ${selectedLineageId === lineage.lineageId ? "active" : ""}`}
+                  onClick={() => handleSelectSession(lineage.lineageId)}
                   disabled={actionButtonsDisabled}
                 >
                   <div className="session-item-heading">
-                    <strong>{session.committeeName || session.title}</strong>
-                    {isSegmentedSessionRecord(session) ? (
-                      <span className="segment-badge">{getSessionSegmentLabel(session)}</span>
+                    <strong>{lineage.committeeName || lineage.title}</strong>
+                    {lineage.segmentCount > 1 ? (
+                      <span className="segment-badge">세그먼트 {lineage.segmentCount}개</span>
                     ) : null}
                   </div>
-                  <span>{formatDate(session.startedAt)}</span>
+                  <span>{formatDate(lineage.startedAt)}</span>
                   <span>
-                    {session.subtitleCount}문장 / {session.charCount}자
+                    {lineage.subtitleCount}문장 / {lineage.charCount}자
                   </span>
-                  <small>{getPersistedStatusLabel(session.status)}</small>
-                  {session.note.trim() ? <small>메모 있음</small> : null}
+                  <small>{getPersistedStatusLabel(lineage.status)}</small>
+                  {lineage.note.trim() ? <small>메모 있음</small> : null}
                 </button>
               </div>
             ))
@@ -1290,17 +1364,20 @@ export default function App() {
                     className="secondary"
                     onClick={() =>
                       runBusyHistoryAction(
-                        `favorite_${selectedSession.id}`,
-                        () => handleToggleFavorite(selectedSession),
+                        `favorite_${selectedLineageId}`,
+                        () =>
+                          selectedLineageSummary
+                            ? handleToggleFavorite(selectedLineageSummary)
+                            : Promise.resolve(),
                         "즐겨찾기 저장에 실패했습니다.",
-                        selectedSession.starred
+                        selectedLineageSummary?.starred
                           ? "즐겨찾기 해제를 저장하고 있습니다."
                           : "즐겨찾기를 저장하고 있습니다.",
                       )
                     }
                     disabled={actionButtonsDisabled}
                   >
-                    {selectedSession.starred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
+                    {selectedLineageSummary?.starred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
                   </button>
                   <button
                     onClick={() =>
@@ -1444,7 +1521,7 @@ export default function App() {
                         "메모를 저장하고 있습니다.",
                       )
                     }
-                    disabled={actionButtonsDisabled || noteDraft === selectedSession.note}
+                    disabled={actionButtonsDisabled || noteDraft === (selectedLineageSummary?.note ?? selectedSession.note)}
                   >
                     메모 저장
                   </button>
@@ -1548,6 +1625,34 @@ export default function App() {
                     </button>
                   ))}
                 </div>
+
+                {shouldOfferSplitExport ? (
+                  <div className="warning-box">
+                    이 연속 캡처는 예상 내보내기 크기가 커서 브라우저 다운로드 제한에 걸릴 수 있습니다. 분할 저장을 사용하면 세그먼트별 파일로 저장합니다.
+                  </div>
+                ) : null}
+
+                {showingLineageView ? (
+                  <div className="export-row partial-export-row">
+                    {EXPORT_FORMATS.map((format) => (
+                      <button
+                        key={`split_${format}`}
+                        className="secondary"
+                        onClick={() =>
+                          runBusyHistoryAction(
+                            `split_export_${format}`,
+                            () => handleSplitLineageExport(format),
+                            `분할 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
+                            `분할 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
+                          )
+                        }
+                        disabled={actionButtonsDisabled || !hasLineageSegments}
+                      >
+                        분할 {format.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <p className="section-heading">

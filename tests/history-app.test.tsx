@@ -21,15 +21,18 @@ const settingsStoreMocks = vi.hoisted(() => ({
 const sessionStoreMocks = vi.hoisted(() => ({
   buildSessionLibraryBackupExport: vi.fn(),
   deleteAllSessions: vi.fn(),
+  deleteSessionLineage: vi.fn(),
   deleteSession: vi.fn(),
   exportSessionData: vi.fn(),
   getSessionLibraryOverview: vi.fn(),
   importSessionRecords: vi.fn(),
+  listSessionLineagesPage: vi.fn(),
   listSessionLineageSegments: vi.fn(),
   listSessionsPage: vi.fn(),
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
   updateSessionMetadata: vi.fn(),
+  updateSessionLineageMetadata: vi.fn(),
 }));
 
 vi.mock("../src/shared/chrome-api", () => chromeApiMocks);
@@ -89,6 +92,29 @@ function buildSessionBase(): SessionRecord {
   };
 }
 
+function buildLineageSummary(session: SessionRecord) {
+  const lineageId = session.lineageId ?? session.id;
+  return {
+    lineageId,
+    representativeSessionId: session.id,
+    title: session.title,
+    committeeName: session.committeeName,
+    sourceUrl: session.sourceUrl,
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+    updatedAt: session.updatedAt,
+    segmentCount: 1,
+    subtitleCount: session.subtitleCount,
+    charCount: session.charCount,
+    status: session.status,
+    starred: session.starred,
+    pinnedAt: session.pinnedAt,
+    note: session.note,
+    sessionIds: [session.id],
+    representativeSession: session,
+  };
+}
+
 describe("history app", () => {
   const storageListeners: Array<
     (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void
@@ -121,6 +147,7 @@ describe("history app", () => {
 
     settingsStoreMocks.getSettings.mockResolvedValue({
       autoScroll: true,
+      segmentPreset: "balanced",
       keepaliveIntervalMs: 1000,
       pollingFallbackIntervalMs: 200,
       maxBufferLength: 50000,
@@ -140,6 +167,12 @@ describe("history app", () => {
     });
 
     const session = buildSession();
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(session)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.listSessionsPage.mockResolvedValue({
       sessions: [session],
       totalCount: 1,
@@ -163,6 +196,7 @@ describe("history app", () => {
       ],
     });
     sessionStoreMocks.deleteAllSessions.mockResolvedValue(undefined);
+    sessionStoreMocks.deleteSessionLineage.mockResolvedValue(undefined);
     sessionStoreMocks.buildSessionLibraryBackupExport.mockResolvedValue({
       sessionCount: 1,
       payload: {
@@ -173,6 +207,7 @@ describe("history app", () => {
       },
     });
     sessionStoreMocks.updateSessionMetadata.mockResolvedValue(session);
+    sessionStoreMocks.updateSessionLineageMetadata.mockResolvedValue([session]);
     chromeApiMocks.sendRuntimeMessage.mockResolvedValue({ ok: true });
     pageBlobDownloadMocks.downloadPageBlobExport.mockResolvedValue(101);
   });
@@ -199,6 +234,12 @@ describe("history app", () => {
       page: 1,
       pageSize: 200,
     });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
+      lineages: [buildLineageSummary(unsupportedSession)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.loadSession.mockResolvedValueOnce(unsupportedSession);
     sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
       ids.includes(unsupportedSession.id) ? [unsupportedSession] : [],
@@ -220,6 +261,12 @@ describe("history app", () => {
     });
     sessionStoreMocks.listSessionsPage.mockResolvedValueOnce({
       sessions: [segmentedSession],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
+      lineages: [buildLineageSummary(segmentedSession)],
       totalCount: 1,
       page: 1,
       pageSize: 200,
@@ -283,6 +330,23 @@ describe("history app", () => {
       page: 1,
       pageSize: 200,
     });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
+      lineages: [
+        {
+          ...buildLineageSummary(segmentTwo),
+          lineageId: "lineage_history",
+          representativeSessionId: segmentOne.id,
+          representativeSession: segmentOne,
+          segmentCount: 2,
+          subtitleCount: 2,
+          charCount: 18,
+          sessionIds: [segmentOne.id, segmentTwo.id],
+        },
+      ],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.loadSession.mockResolvedValueOnce(segmentOne);
     sessionStoreMocks.listSessionLineageSegments.mockResolvedValueOnce([segmentOne, segmentTwo]);
     sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
@@ -291,8 +355,7 @@ describe("history app", () => {
 
     render(<App />);
 
-    const toggleButton = await screen.findByRole("button", { name: "연속 캡처 전체 보기" });
-    fireEvent.click(toggleButton);
+    await screen.findByRole("button", { name: "현재 세그먼트 보기" });
     fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
 
     await waitFor(() => {
@@ -604,7 +667,7 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "즐겨찾기 추가" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.updateSessionMetadata).toHaveBeenCalledWith(
+      expect(sessionStoreMocks.updateSessionLineageMetadata).toHaveBeenCalledWith(
         "session_history_1",
         expect.objectContaining({
           starred: true,
@@ -619,7 +682,7 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "메모 저장" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.updateSessionMetadata).toHaveBeenCalledWith(
+      expect(sessionStoreMocks.updateSessionLineageMetadata).toHaveBeenCalledWith(
         "session_history_1",
         expect.objectContaining({
           note: "새 메모",
@@ -636,12 +699,17 @@ describe("history app", () => {
     expect(noteInput).not.toBeNull();
     fireEvent.change(noteInput!, { target: { value: "draft note" } });
 
-    sessionStoreMocks.loadSession.mockResolvedValueOnce(
-      buildSession({
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
+      lineages: [
+        buildLineageSummary(buildSession({
         note: "saved note",
         updatedAt: "2026-03-10T09:00:10.000Z",
-      }),
-    );
+        })),
+      ],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
 
     act(() => {
       storageListeners.forEach((listener) =>
@@ -658,7 +726,7 @@ describe("history app", () => {
     });
 
     await waitFor(() => {
-      expect(sessionStoreMocks.listSessionsPage).toHaveBeenCalledTimes(2);
+      expect(sessionStoreMocks.listSessionLineagesPage).toHaveBeenCalledTimes(2);
     });
     expect(noteInput?.value).toBe("draft note");
   });
@@ -685,6 +753,12 @@ describe("history app", () => {
 
     sessionStoreMocks.listSessionsPage.mockImplementation(async () => ({
       sessions: [starredSession],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    }));
+    sessionStoreMocks.listSessionLineagesPage.mockImplementation(async () => ({
+      lineages: [buildLineageSummary(starredSession)],
       totalCount: 1,
       page: 1,
       pageSize: 200,

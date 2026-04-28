@@ -184,6 +184,7 @@ export async function handleBackgroundCommand(
       const payload = await dependencies.exportSessionRecordData(session, message.format, {
         filenamePattern: message.filenamePattern,
         txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
+        filenameSuffix: message.filenameSuffix,
         entries: selectedEntries,
       });
       const downloadId = await dependencies.downloadExport(
@@ -198,6 +199,7 @@ export async function handleBackgroundCommand(
         filenamePattern: message.filenamePattern,
         txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
         entryIds: message.entryIds,
+        filenameSuffix: message.filenameSuffix,
       });
       const downloadId = await dependencies.downloadExport(
         payload.filename,

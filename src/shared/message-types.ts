@@ -15,6 +15,16 @@ export type PersistabilityState =
   | "filtered"
   | "duplicate";
 
+export type RowKeySource = "attribute" | "class" | "generated";
+
+export type FallbackCommitState =
+  | "idle"
+  | "pending"
+  | "stable"
+  | "committed"
+  | "duplicate"
+  | "filtered";
+
 export interface SegmentDiagnostics {
   lineageId: string;
   segmentNumber: number;
@@ -45,6 +55,11 @@ export interface CaptureDiagnostics {
   sourceLabel: string;
   persistabilityState: PersistabilityState;
   persistabilityHint: string;
+  stableRowCount: number;
+  unstableRowCount: number;
+  filteredUnconfirmedCount: number;
+  rowKeySources: Partial<Record<RowKeySource, number>>;
+  fallbackCommitState: FallbackCommitState;
   segment?: SegmentDiagnostics;
   exportEstimates?: ExportEstimateDiagnostics;
 }
@@ -55,6 +70,7 @@ export interface ObservedSubtitleRow {
   speakerColor: string;
   speakerChannel: SpeakerChannel;
   unstableKey: boolean;
+  nodeKeySource?: RowKeySource;
 }
 
 export interface StatusSnapshot {
@@ -169,6 +185,7 @@ export type BackgroundCommandMessage =
       filenamePattern?: string;
       txtExportTimestampsEnabled?: boolean;
       entryIds?: string[];
+      filenameSuffix?: string;
     }
   | {
       type: "DOWNLOAD_SESSION_LINEAGE_EXPORT";
@@ -177,6 +194,7 @@ export type BackgroundCommandMessage =
       filenamePattern?: string;
       txtExportTimestampsEnabled?: boolean;
       entryIds?: string[];
+      filenameSuffix?: string;
     }
   | { type: "OPEN_HISTORY_PAGE" }
   | { type: "OPEN_OPTIONS_PAGE" }
@@ -204,6 +222,7 @@ export interface ObserverBridgeEvent {
   timestamp: number;
   sourceUrl: string;
   observerActive?: boolean;
+  filteredUnconfirmedCount?: number;
 }
 
 export interface FrameForwardMessage {

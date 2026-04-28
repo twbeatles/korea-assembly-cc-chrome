@@ -51,6 +51,8 @@ import type {
   SessionImportSummary,
   SessionLibraryOverview,
   SessionLibraryPreview,
+  SessionLineagePageResult,
+  SessionLineageSummary,
   SessionListOptions,
   SessionPageOptions,
   SessionPageResult,
@@ -663,6 +665,81 @@ function sortSessions(records: SessionRecord[], options: SessionListOptions = {}
     .sort((left, right) => buildSessionSortKey(right).localeCompare(buildSessionSortKey(left)))
     .slice(0, limit)
     .map(cloneSessionRecord);
+}
+
+function compareLineageSummaries(left: SessionLineageSummary, right: SessionLineageSummary): number {
+  const leftKey = buildSessionSortKey({
+    id: left.lineageId,
+    starred: left.starred,
+    pinnedAt: left.pinnedAt,
+    updatedAt: left.updatedAt,
+  });
+  const rightKey = buildSessionSortKey({
+    id: right.lineageId,
+    starred: right.starred,
+    pinnedAt: right.pinnedAt,
+    updatedAt: right.updatedAt,
+  });
+  return rightKey.localeCompare(leftKey);
+}
+
+function cloneLineageSummary(summary: SessionLineageSummary): SessionLineageSummary {
+  return {
+    ...summary,
+    sessionIds: [...summary.sessionIds],
+    representativeSession: cloneSessionRecord(summary.representativeSession),
+  };
+}
+
+function buildSessionLineageSummaries(sessions: SessionRecord[]): SessionLineageSummary[] {
+  const groups = new Map<string, SessionRecord[]>();
+  sessions.forEach((session) => {
+    const lineageId = resolveSessionLineageId(session.id, session.lineageId);
+    const group = groups.get(lineageId) ?? [];
+    group.push(session);
+    groups.set(lineageId, group);
+  });
+
+  return [...groups.entries()]
+    .map(([lineageId, groupSessions]) => {
+      const sorted = sortSessionSegments(groupSessions);
+      const first = sorted[0]!;
+      const last = sorted[sorted.length - 1]!;
+      const representative = cloneSessionRecord(last);
+      const commonNote = sorted.every((session) => session.note === first.note)
+        ? first.note
+        : "";
+      const latestPinnedAt = sorted
+        .map((session) => session.pinnedAt)
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1) ?? null;
+
+      return {
+        lineageId,
+        representativeSessionId: representative.id,
+        title: representative.title || first.title,
+        committeeName: representative.committeeName || first.committeeName,
+        sourceUrl: representative.sourceUrl || first.sourceUrl,
+        startedAt: first.startedAt,
+        endedAt: last.endedAt ?? last.updatedAt,
+        updatedAt: sorted
+          .map((session) => session.updatedAt)
+          .sort()
+          .at(-1) ?? last.updatedAt,
+        segmentCount: sorted.length,
+        subtitleCount: sorted.reduce((sum, session) => sum + session.subtitleCount, 0),
+        charCount: sorted.reduce((sum, session) => sum + session.charCount, 0),
+        status: last.status,
+        starred: sorted.some((session) => session.starred),
+        pinnedAt: latestPinnedAt,
+        note: commonNote,
+        sessionIds: sorted.map((session) => session.id),
+        representativeSession: representative,
+      } satisfies SessionLineageSummary;
+    })
+    .sort(compareLineageSummaries)
+    .map(cloneLineageSummary);
 }
 
 async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<IndexedDbAttempt<T>> {
@@ -1339,6 +1416,32 @@ export async function updateSessionMetadata(
   return writeSessionRecord(record);
 }
 
+export async function updateSessionLineageMetadata(
+  lineageId: string,
+  patch: SessionMetadataPatch,
+): Promise<SessionRecord[]> {
+  const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
+  if (!safeLineageId) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const segments = await listSessionLineageSegments(safeLineageId);
+  if (!segments.length) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const records = await Promise.all(
+    segments.map((segment) =>
+      writeSessionRecord(applySessionMetadataPatch(segment, patch, updatedAt), {
+        notifyRevision: false,
+      }),
+    ),
+  );
+  await bumpSessionLibraryRevision();
+  return records.map(cloneSessionRecord);
+}
+
 export async function loadSession(id: string): Promise<SessionRecord | undefined> {
   if (!id) {
     return undefined;
@@ -1584,6 +1687,41 @@ export async function listSessionsPage(
   };
 }
 
+export async function listSessionLineagesPage(
+  options: SessionPageOptions,
+): Promise<SessionLineagePageResult> {
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listAllIndexedDbSessions()),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+  const allSessions = mergeSessionCollections(
+    indexedDbResult.ok && indexedDbResult.value
+      ? indexedDbResult.value.map((record) =>
+          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+        )
+      : [],
+    fallbackRecords.map((record) =>
+      normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+    ),
+  );
+  const summaries = buildSessionLineageSummaries(allSessions);
+  const filteredSummaries = options.starredOnly
+    ? summaries.filter((summary) => summary.starred)
+    : summaries;
+  const pageSize = Math.max(1, options.pageSize);
+  const totalCount = filteredSummaries.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, options.page), pageCount);
+  const start = (page - 1) * pageSize;
+
+  return {
+    lineages: filteredSummaries.slice(start, start + pageSize).map(cloneLineageSummary),
+    totalCount,
+    page,
+    pageSize,
+  };
+}
+
 export async function deleteSession(id: string): Promise<void> {
   if (!id) {
     return;
@@ -1614,6 +1752,21 @@ export async function deleteSession(id: string): Promise<void> {
 
   await deleteFallbackRecord(id);
   await bumpSessionLibraryRevision();
+}
+
+export async function deleteSessionLineage(lineageId: string): Promise<void> {
+  const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
+  if (!safeLineageId) {
+    return;
+  }
+
+  const segments = await listSessionLineageSegments(safeLineageId);
+  const ids = segments.map((session) => session.id);
+  if (!ids.length) {
+    return;
+  }
+
+  await Promise.all(ids.map((id) => deleteSession(id)));
 }
 
 export async function deleteAllSessions(): Promise<void> {

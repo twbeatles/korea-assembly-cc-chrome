@@ -1,6 +1,10 @@
 import { useEffect, useState } from "react";
 
-import { POPUP_PORT_NAME, isSupportedAssemblySiteUrl } from "../shared/constants";
+import {
+  POPUP_PORT_NAME,
+  SESSION_SEGMENT_PRESETS,
+  isSupportedAssemblySiteUrl,
+} from "../shared/constants";
 import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
 import { validateFilenamePattern } from "../shared/filename-pattern";
 import {
@@ -26,7 +30,7 @@ import {
   readPersistReplayDiagnostics,
 } from "../storage/persist-recovery";
 import { getSettings, resetSettings, saveSettings } from "../storage/settings-store";
-import type { ExtensionSettings, PersistReplayDiagnostics } from "../storage/types";
+import type { ExtensionSettings, PersistReplayDiagnostics, SegmentPreset } from "../storage/types";
 import { ADVANCED_NUMBER_FIELDS, BASIC_NUMBER_FIELDS } from "./settings-fields";
 
 type OptionsView = "settings" | "diagnostics";
@@ -35,6 +39,32 @@ type NumberDraftState = Record<NumberField, string>;
 type NumberFieldErrorState = Partial<Record<NumberField, string>>;
 
 const NUMBER_FIELDS: NumberField[] = [...BASIC_NUMBER_FIELDS, ...ADVANCED_NUMBER_FIELDS];
+const SEGMENT_PRESET_OPTIONS: Array<{
+  value: SegmentPreset;
+  label: string;
+  description: string;
+}> = [
+  {
+    value: "stability",
+    label: "안정성 우선",
+    description: "1000문장 / 60000자 / 45분",
+  },
+  {
+    value: "balanced",
+    label: "기본",
+    description: "2000문장 / 120000자 / 90분",
+  },
+  {
+    value: "capacity",
+    label: "긴 회의",
+    description: "4000문장 / 240000자 / 120분",
+  },
+  {
+    value: "custom",
+    label: "직접 설정",
+    description: "아래 숫자 값을 그대로 사용",
+  },
+];
 
 function getFieldLabel(field: keyof ExtensionSettings): string {
   switch (field) {
@@ -690,8 +720,55 @@ export default function App() {
     });
 
     if (!nextError) {
-      updateField(field, Number(value) as ExtensionSettings[typeof field]);
+      setSettings((current) =>
+        current
+          ? {
+              ...current,
+              [field]: Number(value),
+              ...(field === "maxEntriesPerSegment" ||
+              field === "maxCharsPerSegment" ||
+              field === "maxSegmentDurationMinutes"
+                ? { segmentPreset: "custom" as SegmentPreset }
+                : {}),
+            }
+          : current,
+      );
     }
+  };
+
+  const handleSegmentPresetChange = (preset: SegmentPreset): void => {
+    if (preset === "custom") {
+      updateField("segmentPreset", preset);
+      return;
+    }
+
+    const thresholds = SESSION_SEGMENT_PRESETS[preset];
+    setSettings((current) =>
+      current
+        ? {
+            ...current,
+            segmentPreset: preset,
+            ...thresholds,
+          }
+        : current,
+    );
+    setNumberDrafts((current) =>
+      current
+        ? {
+            ...current,
+            maxEntriesPerSegment: String(thresholds.maxEntriesPerSegment),
+            maxCharsPerSegment: String(thresholds.maxCharsPerSegment),
+            maxSegmentDurationMinutes: String(thresholds.maxSegmentDurationMinutes),
+          }
+        : current,
+    );
+    setNumberFieldErrors((current) => {
+      const next = { ...current };
+      delete next.maxEntriesPerSegment;
+      delete next.maxCharsPerSegment;
+      delete next.maxSegmentDurationMinutes;
+      return next;
+    });
   };
 
   const handleSave = async (): Promise<void> => {
@@ -943,6 +1020,31 @@ export default function App() {
                   />
                 </label>
 
+                <div className="setting-card input-card full-width">
+                  <div>
+                    <strong>세그먼트 분할 프리셋</strong>
+                    <span>긴 회의를 저장할 때 한 세그먼트에 담을 문장 수, 글자 수, 시간을 묶어서 조정합니다.</span>
+                  </div>
+                  <div className="preset-grid" role="radiogroup" aria-label="세그먼트 분할 프리셋">
+                    {SEGMENT_PRESET_OPTIONS.map((preset) => (
+                      <button
+                        type="button"
+                        key={preset.value}
+                        className={
+                          settings.segmentPreset === preset.value
+                            ? "preset-option active"
+                            : "preset-option"
+                        }
+                        onClick={() => handleSegmentPresetChange(preset.value)}
+                        aria-pressed={settings.segmentPreset === preset.value}
+                      >
+                        <strong>{preset.label}</strong>
+                        <span>{preset.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {ADVANCED_NUMBER_FIELDS.map((field) => {
                   const fieldUnit = getFieldUnit(field);
                   return (
@@ -1039,6 +1141,32 @@ export default function App() {
             <div className="meta-row">
               <span>판정 안내</span>
               <strong>{snapshot?.diagnostics.persistabilityHint || "-"}</strong>
+            </div>
+            <div className="meta-row">
+              <span>안정/불안정 행</span>
+              <strong>
+                {snapshot
+                  ? `${snapshot.diagnostics.stableRowCount} / ${snapshot.diagnostics.unstableRowCount}`
+                  : "-"}
+              </strong>
+            </div>
+            <div className="meta-row">
+              <span>필터된 미확정 행</span>
+              <strong>{snapshot?.diagnostics.filteredUnconfirmedCount ?? "-"}</strong>
+            </div>
+            <div className="meta-row">
+              <span>Fallback 저장 상태</span>
+              <strong>{snapshot?.diagnostics.fallbackCommitState ?? "-"}</strong>
+            </div>
+            <div className="meta-row">
+              <span>Row key 출처</span>
+              <strong>
+                {snapshot
+                  ? Object.entries(snapshot.diagnostics.rowKeySources ?? {})
+                      .map(([key, value]) => `${key}:${value}`)
+                      .join(" / ") || "-"
+                  : "-"}
+              </strong>
             </div>
             <div className="meta-row">
               <span>최근 저장</span>

@@ -233,6 +233,34 @@ input[type="number"]:focus {
   text-align: left;
 }
 
+.preset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  width: 100%;
+}
+
+.preset-option {
+  background: #e7f0f4;
+  color: #183248;
+  border: 1px solid rgba(13, 91, 114, 0.12);
+  border-radius: 10px;
+  box-shadow: none;
+  padding: 10px;
+  text-align: left;
+}
+
+.preset-option.active {
+  background: #0d5b72;
+  color: #fff;
+  border-color: #0d5b72;
+}
+
+.preset-option span {
+  color: inherit;
+  opacity: 0.78;
+}
+
 .full-width {
   grid-column: 1 / -1;
 }

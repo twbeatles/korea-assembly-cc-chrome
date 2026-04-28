@@ -15,6 +15,7 @@ import {
   getSessionLibraryOverview,
   importSessionRecords,
   listSessions,
+  listSessionLineagesPage,
   listSessionLineageSegments,
   listSessionsPage,
   loadSessionsByIds,
@@ -23,6 +24,7 @@ import {
   resetSessionStoreForTests,
   saveSession,
   updateSessionMetadata,
+  updateSessionLineageMetadata,
   upsertSessionRecord,
   updateRunningSession,
 } from "../src/storage/session-store";
@@ -163,6 +165,41 @@ describe("session store", () => {
 
     expect(segments.map((session) => session.id)).toEqual(["session_target_segment"]);
     expect(segments[0]?.entries).toHaveLength(1);
+  });
+
+  it("lists and updates sessions by lineage summary", async () => {
+    await saveSession({
+      ...buildSession("lineage_summary_1", "saved"),
+      lineageId: "lineage_summary",
+      segmentNumber: 1,
+      subtitleCount: 1,
+      charCount: 8,
+    });
+    await saveSession({
+      ...buildSession("lineage_summary_2", "saved"),
+      lineageId: "lineage_summary",
+      segmentNumber: 2,
+      startedAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:12:00.000Z",
+      subtitleCount: 1,
+      charCount: 8,
+    });
+
+    const page = await listSessionLineagesPage({ page: 1, pageSize: 20 });
+    const summary = page.lineages.find((lineage) => lineage.lineageId === "lineage_summary");
+
+    expect(summary?.segmentCount).toBe(2);
+    expect(summary?.subtitleCount).toBe(2);
+    expect(summary?.sessionIds).toEqual(["lineage_summary_1", "lineage_summary_2"]);
+
+    await updateSessionLineageMetadata("lineage_summary", {
+      starred: true,
+      note: "회의 전체 메모",
+    });
+    const updatedSegments = await listSessionLineageSegments("lineage_summary");
+
+    expect(updatedSegments.every((session) => session.starred)).toBe(true);
+    expect(updatedSegments.every((session) => session.note === "회의 전체 메모")).toBe(true);
   });
 
   it("persists favorites and notes and sorts favorites to the top", async () => {

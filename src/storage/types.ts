@@ -5,8 +5,11 @@ import type {
   SubtitleEntry,
 } from "../core/subtitle-models";
 
+export type SegmentPreset = "stability" | "balanced" | "capacity" | "custom";
+
 export interface ExtensionSettings {
   autoScroll: boolean;
+  segmentPreset: SegmentPreset;
   keepaliveIntervalMs: number;
   pollingFallbackIntervalMs: number;
   maxBufferLength: number;
@@ -49,11 +52,39 @@ export interface SessionPageResult {
   pageSize: number;
 }
 
+export interface SessionLineageSummary {
+  lineageId: string;
+  representativeSessionId: string;
+  title: string;
+  committeeName: string;
+  sourceUrl: string;
+  startedAt: string;
+  endedAt: string | null;
+  updatedAt: string;
+  segmentCount: number;
+  subtitleCount: number;
+  charCount: number;
+  status: SessionRecord["status"];
+  starred: boolean;
+  pinnedAt: string | null;
+  note: string;
+  sessionIds: string[];
+  representativeSession: SessionRecord;
+}
+
+export interface SessionLineagePageResult {
+  lineages: SessionLineageSummary[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface SessionExportOptions {
   filenamePattern?: string;
   entries?: SubtitleEntry[];
   entryIds?: string[];
   txtExportTimestampsEnabled?: boolean;
+  filenameSuffix?: string;
 }
 
 export interface SessionMetadataPatch {
@@ -154,12 +185,20 @@ export interface SessionStoreApi {
   listSessionLineageSegments: (lineageId: string) => Promise<SessionRecord[]>;
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;
   listSessionsPage: (options: SessionPageOptions) => Promise<SessionPageResult>;
+  listSessionLineagesPage: (
+    options: SessionPageOptions,
+  ) => Promise<SessionLineagePageResult>;
   getSessionLibraryOverview: (previewLimit?: number) => Promise<SessionLibraryOverview>;
   buildSessionLibraryBackupExport: (
     options?: BuildSessionLibraryBackupExportOptions,
   ) => Promise<LibraryBackupExport>;
   deleteSession: (id: string) => Promise<void>;
+  deleteSessionLineage: (lineageId: string) => Promise<void>;
   deleteAllSessions: () => Promise<void>;
+  updateSessionLineageMetadata: (
+    lineageId: string,
+    patch: SessionMetadataPatch,
+  ) => Promise<SessionRecord[]>;
   updateRunningSession: (session: SessionRecord) => Promise<SessionRecord>;
   replayQueuedExitPersistRecords: () => Promise<PersistReplaySummary>;
   importSessionRecords: (

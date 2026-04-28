@@ -52,6 +52,11 @@ describe("capture diagnostics helpers", () => {
       sourceLabel: "structured",
       persistabilityState: "persistable",
       persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
+      stableRowCount: 0,
+      unstableRowCount: 0,
+      filteredUnconfirmedCount: 0,
+      rowKeySources: {},
+      fallbackCommitState: "idle",
       segment: {
         lineageId: "lineage_1",
         segmentNumber: 2,

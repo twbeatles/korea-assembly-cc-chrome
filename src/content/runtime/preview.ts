@@ -12,7 +12,6 @@ export function resolveLivePreviewText(
 export function formatPreviewForDisplay(
   previewText: string,
   captureMode: CaptureMode,
-  sourceUrl?: string,
 ): string {
   const normalized = normalizeSubtitleText(previewText);
   if (!normalized) {
@@ -23,5 +22,5 @@ export function formatPreviewForDisplay(
     return normalized;
   }
 
-  return formatFallbackPreviewText(previewText, sourceUrl);
+  return formatFallbackPreviewText(previewText);
 }

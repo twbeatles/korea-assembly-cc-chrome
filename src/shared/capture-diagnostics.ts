@@ -1,5 +1,10 @@
 import type { CaptureMode } from "../core/live-capture";
-import type { CaptureDiagnostics, PersistabilityState } from "./message-types";
+import type {
+  CaptureDiagnostics,
+  FallbackCommitState,
+  PersistabilityState,
+  RowKeySource,
+} from "./message-types";
 
 export function resolveCaptureSourceLabel(
   captureMode: CaptureMode,
@@ -31,6 +36,11 @@ export function buildCaptureDiagnostics(input: {
   currentFramePath: number[];
   persistabilityState?: PersistabilityState;
   persistabilityHint?: string;
+  stableRowCount?: number;
+  unstableRowCount?: number;
+  filteredUnconfirmedCount?: number;
+  rowKeySources?: Partial<Record<RowKeySource, number>>;
+  fallbackCommitState?: FallbackCommitState;
   segment?: CaptureDiagnostics["segment"];
   exportEstimates?: CaptureDiagnostics["exportEstimates"];
 }): CaptureDiagnostics {
@@ -42,6 +52,13 @@ export function buildCaptureDiagnostics(input: {
     sourceLabel: resolveCaptureSourceLabel(input.captureMode, input.observerActive),
     persistabilityState: input.persistabilityState ?? "idle",
     persistabilityHint: input.persistabilityHint ?? "",
+    stableRowCount: input.stableRowCount ?? 0,
+    unstableRowCount: input.unstableRowCount ?? 0,
+    filteredUnconfirmedCount: input.filteredUnconfirmedCount ?? 0,
+    rowKeySources: {
+      ...(input.rowKeySources ?? {}),
+    },
+    fallbackCommitState: input.fallbackCommitState ?? "idle",
     ...(input.segment
       ? {
           segment: {

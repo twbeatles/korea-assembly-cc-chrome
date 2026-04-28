@@ -1,5 +1,5 @@
 import type { SpeakerChannel } from "../core/subtitle-models";
-import type { ObservedSubtitleRow } from "../shared/message-types";
+import type { ObservedSubtitleRow, RowKeySource } from "../shared/message-types";
 import { compactSubtitleText, normalizeSubtitleText } from "../core/text-normalizer";
 
 export const PRIMARY_SPEAKER_COLOR = "rgb(35, 124, 147)";
@@ -242,6 +242,11 @@ export function readObservedSubtitleRows(
       : attrNodeKey
         ? `attr:${attrNodeKey}`
         : ensureGeneratedNodeKey(node);
+    const nodeKeySource: RowKeySource = hasUniqueClassNodeKey
+      ? "class"
+      : attrNodeKey
+        ? "attribute"
+        : "generated";
     const speakerColor = readSpeakerColor(node);
     const nextRow: ObservedSubtitleRow = {
       nodeKey,
@@ -249,6 +254,7 @@ export function readObservedSubtitleRows(
       speakerColor,
       speakerChannel: classifySpeakerChannel(speakerColor),
       unstableKey: !hasUniqueClassNodeKey && !attrNodeKey,
+      nodeKeySource,
     };
 
     const previousRow = rows.at(-1);
@@ -266,6 +272,13 @@ export function readObservedSubtitleRows(
   });
 
   return rows;
+}
+
+export function countFilteredUnconfirmedSubtitleRows(
+  root: ParentNode,
+  selector = "#viewSubtit .smi_word",
+): number {
+  return getSmiWordNodes(root, selector).filter((node) => !isConfirmedSubtitleNode(node)).length;
 }
 
 export function buildObservedSubtitlePreview(

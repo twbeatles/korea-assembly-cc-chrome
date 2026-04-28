@@ -2,7 +2,12 @@ import type { CaptureMode } from "../../core/live-capture";
 import { getSessionCharCount, type SessionState } from "../../core/subtitle-models";
 import { buildCaptureDiagnostics } from "../../shared/capture-diagnostics";
 import { isSupportedAssemblyUrl } from "../../shared/constants";
-import type { PersistabilityState, StatusSnapshot } from "../../shared/message-types";
+import type {
+  CaptureDiagnostics,
+  FallbackCommitState,
+  PersistabilityState,
+  StatusSnapshot,
+} from "../../shared/message-types";
 import type { ExtensionSettings } from "../../storage/types";
 import {
   buildPersistabilityDiagnostics,
@@ -28,6 +33,11 @@ interface BuildContentStatusSnapshotOptions {
   livePreviewTextRaw: string;
   livePreviewTextForDisplay: string;
   latestPersistabilityState: PersistabilityState;
+  rowDiagnostics?: Pick<
+    CaptureDiagnostics,
+    "stableRowCount" | "unstableRowCount" | "filteredUnconfirmedCount" | "rowKeySources"
+  >;
+  fallbackCommitState?: FallbackCommitState;
   includeExportEstimates?: boolean;
   requiresReload?: boolean;
 }
@@ -79,6 +89,8 @@ export function buildContentStatusSnapshot(
     livePreviewTextRaw,
     livePreviewTextForDisplay,
     latestPersistabilityState,
+    rowDiagnostics,
+    fallbackCommitState,
     includeExportEstimates = false,
     requiresReload = false,
   } = options;
@@ -115,6 +127,11 @@ export function buildContentStatusSnapshot(
       currentFramePath: sessionState.currentFramePath,
       persistabilityState: persistability.state,
       persistabilityHint: persistability.hint,
+      stableRowCount: rowDiagnostics?.stableRowCount,
+      unstableRowCount: rowDiagnostics?.unstableRowCount,
+      filteredUnconfirmedCount: rowDiagnostics?.filteredUnconfirmedCount,
+      rowKeySources: rowDiagnostics?.rowKeySources,
+      fallbackCommitState,
       segment: buildSegmentDiagnostics(sessionState, settings),
       exportEstimates: includeExportEstimates
         ? buildExportEstimateDiagnostics(sessionState, settings)

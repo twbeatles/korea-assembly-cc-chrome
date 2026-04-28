@@ -7,6 +7,7 @@ import {
 } from "./noise-filter";
 import {
   createId,
+  type SubtitleCaptureMode,
   type SessionState,
   type SubtitleEntry,
 } from "./subtitle-models";
@@ -25,6 +26,7 @@ export interface PipelineSourceMeta {
   selector?: string;
   framePath?: number[];
   sourceNodeKey?: string;
+  sourceCaptureMode?: SubtitleCaptureMode;
   forceNewEntry?: boolean;
 }
 
@@ -111,6 +113,9 @@ function applySourceMeta(entry: SubtitleEntry, meta?: PipelineSourceMeta): void 
   }
   if (meta.sourceNodeKey) {
     entry.sourceNodeKey = meta.sourceNodeKey;
+  }
+  if (meta.sourceCaptureMode) {
+    entry.sourceCaptureMode = meta.sourceCaptureMode;
   }
 }
 

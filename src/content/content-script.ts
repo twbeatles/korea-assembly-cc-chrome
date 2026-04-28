@@ -65,9 +65,11 @@ import {
 import type {
   BackgroundCommandResponse,
   FrameForwardMessage,
+  FallbackCommitState,
   ObservedSubtitleRow,
   ObserverBridgeEvent,
   PersistabilityState,
+  RowKeySource,
   PopupToContentMessage,
   StatusSnapshot,
 } from "../shared/message-types";
@@ -153,9 +155,12 @@ const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-scrip
 const SUBTITLE_RESET_GRACE_MS = 1000;
 const INVALIDATED_CONTEXT_NOTICE = "Extension was updated. Please refresh the page (F5).";
 const FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS = 15_000;
+const FALLBACK_COMMIT_STABLE_MS = 400;
+const FALLBACK_COMMIT_OBSERVATION_THRESHOLD = 2;
 
 let settings: ExtensionSettings = {
   autoScroll: true,
+  segmentPreset: "balanced",
   keepaliveIntervalMs: PIPELINE_DEFAULTS.keepaliveIntervalMs,
   pollingFallbackIntervalMs: 200,
   maxBufferLength: PIPELINE_DEFAULTS.confirmedCompactMaxLength,
@@ -201,9 +206,34 @@ let liveCaptureLedger = createEmptyLiveCaptureLedger();
 let extensionContextInvalidated = false;
 let failedStoppedSessionGuard = createEmptyFailedStoppedSessionGuard();
 let latestPersistabilityState: PersistabilityState = "idle";
+let latestRowDiagnostics = createEmptyRowDiagnostics();
+let latestFallbackCommitState: FallbackCommitState = "idle";
 let segmentRolloverInFlight = false;
 let queuedSegmentRolloverEvent: ObserverBridgeEvent | null = null;
 let segmentRolloverToken = 0;
+let fallbackCommitCandidate: FallbackCommitCandidate | null = null;
+let fallbackCommitTimer: number | null = null;
+let fallbackCommitToken = 0;
+let capturePipelineStarted = false;
+let urlChangePollingTimer: number | null = null;
+let lastKnownUrl = window.location.href;
+
+interface RowDiagnosticsState {
+  stableRowCount: number;
+  unstableRowCount: number;
+  filteredUnconfirmedCount: number;
+  rowKeySources: Partial<Record<RowKeySource, number>>;
+}
+
+interface FallbackCommitCandidate {
+  raw: string;
+  selector?: string;
+  framePath?: number[];
+  firstSeenAt: number;
+  lastSeenAt: number;
+  observationCount: number;
+  token: number;
+}
 
 function isCapturePage(): boolean {
   return isSupportedAssemblyUrl(window.location.href);
@@ -282,10 +312,30 @@ function clearTopFallbackTimer(): void {
   }
 }
 
+function clearFallbackCommitTimer(): void {
+  if (fallbackCommitTimer) {
+    window.clearTimeout(fallbackCommitTimer);
+    fallbackCommitTimer = null;
+  }
+}
+
+function clearFallbackCommitCandidate(nextState: FallbackCommitState = "idle"): void {
+  clearFallbackCommitTimer();
+  fallbackCommitCandidate = null;
+  setFallbackCommitState(nextState);
+}
+
 function clearFrameForwardNonceRefresh(): void {
   if (frameForwardNonceRefreshTimer) {
     window.clearInterval(frameForwardNonceRefreshTimer);
     frameForwardNonceRefreshTimer = null;
+  }
+}
+
+function clearUrlChangePolling(): void {
+  if (urlChangePollingTimer) {
+    window.clearInterval(urlChangePollingTimer);
+    urlChangePollingTimer = null;
   }
 }
 
@@ -298,7 +348,9 @@ function shutdownForInvalidatedContext(): void {
   invalidateExtensionContext();
   clearLocalPolling();
   clearTopFallbackTimer();
+  clearFallbackCommitTimer();
   clearFrameForwardNonceRefresh();
+  clearUrlChangePolling();
   clearRunningPersistTimer();
   clearPendingReset();
   state.observerActive = false;
@@ -360,11 +412,7 @@ function getLivePreviewText(): string {
 }
 
 function getLivePreviewTextForDisplay(): string {
-  return formatPreviewForDisplay(
-    getLivePreviewText(),
-    getCaptureMode(),
-    state.sourceUrl || window.location.href,
-  );
+  return formatPreviewForDisplay(getLivePreviewText(), getCaptureMode());
 }
 
 function getCaptureMode(): CaptureMode {
@@ -373,6 +421,37 @@ function getCaptureMode(): CaptureMode {
 
 function setPersistabilityState(stateValue: PersistabilityState): void {
   latestPersistabilityState = stateValue;
+}
+
+function createEmptyRowDiagnostics(): RowDiagnosticsState {
+  return {
+    stableRowCount: 0,
+    unstableRowCount: 0,
+    filteredUnconfirmedCount: 0,
+    rowKeySources: {},
+  };
+}
+
+function updateRowDiagnostics(
+  rows: ObservedSubtitleRow[] = [],
+  filteredUnconfirmedCount = 0,
+): void {
+  const rowKeySources: Partial<Record<RowKeySource, number>> = {};
+  rows.forEach((row) => {
+    const source = row.nodeKeySource ?? (row.unstableKey ? "generated" : "attribute");
+    rowKeySources[source] = (rowKeySources[source] ?? 0) + 1;
+  });
+
+  latestRowDiagnostics = {
+    stableRowCount: rows.filter((row) => !row.unstableKey).length,
+    unstableRowCount: rows.filter((row) => row.unstableKey).length,
+    filteredUnconfirmedCount,
+    rowKeySources,
+  };
+}
+
+function setFallbackCommitState(stateValue: FallbackCommitState): void {
+  latestFallbackCommitState = stateValue;
 }
 
 function resolvePreviewPersistability(previewText: string, now: number): PersistabilityState {
@@ -412,12 +491,10 @@ function buildStatusSnapshot(
     settings,
     captureMode: getCaptureMode(),
     livePreviewTextRaw: previewTextRaw,
-    livePreviewTextForDisplay: formatPreviewForDisplay(
-      previewTextRaw,
-      getCaptureMode(),
-      state.sourceUrl || window.location.href,
-    ),
+    livePreviewTextForDisplay: formatPreviewForDisplay(previewTextRaw, getCaptureMode()),
     latestPersistabilityState,
+    rowDiagnostics: latestRowDiagnostics,
+    fallbackCommitState: latestFallbackCommitState,
     includeExportEstimates,
     requiresReload,
   });
@@ -550,9 +627,11 @@ function clearPendingReset(): void {
 
 function clearStructuredRuntimeState(): void {
   clearPendingReset();
+  clearFallbackCommitCandidate();
   liveCaptureLedger = clearLiveCaptureLedger();
   localLastProbeSignature = "";
   localHadProbeText = false;
+  latestRowDiagnostics = createEmptyRowDiagnostics();
 }
 
 function scheduleDeferredSubtitleReset(): void {
@@ -637,6 +716,7 @@ function applyStructuredRowsEvent(
       selector,
       framePath,
       sourceNodeKey: liveRow.key,
+      sourceCaptureMode: "structured",
       entryId: liveRow.committedEntryId ?? undefined,
       baselineCompact: liveRow.baselineCompact ?? state.confirmedCompact,
     });
@@ -668,6 +748,123 @@ function applyStructuredRowsEvent(
     sawDuplicate,
     sawFiltered,
   };
+}
+
+function scheduleFallbackCommitCandidate(candidate: FallbackCommitCandidate): void {
+  clearFallbackCommitTimer();
+  const delayMs = Math.max(0, FALLBACK_COMMIT_STABLE_MS - (Date.now() - candidate.firstSeenAt));
+  fallbackCommitTimer = window.setTimeout(() => {
+    fallbackCommitTimer = null;
+    commitFallbackCandidate(candidate.token, Date.now());
+  }, delayMs);
+}
+
+function resolveFallbackResultState(reason?: string): FallbackCommitState {
+  if (reason?.includes("duplicate")) {
+    return "duplicate";
+  }
+  if (reason?.includes("filtered")) {
+    return "filtered";
+  }
+  return "stable";
+}
+
+function commitFallbackCandidate(token: number, now = Date.now()): boolean {
+  const candidate = fallbackCommitCandidate;
+  if (!candidate || candidate.token !== token || state.status !== "running") {
+    return false;
+  }
+
+  const result = applyPreview(state, candidate.raw, now, settings, {
+    selector: candidate.selector,
+    framePath: candidate.framePath,
+    sourceCaptureMode: "fallback",
+  });
+  const committed = Boolean(result.appendedEntry);
+  if (result.changed) {
+    state = result.state;
+  }
+
+  clearFallbackCommitCandidate(committed ? "committed" : resolveFallbackResultState(result.reason));
+  setPersistabilityState(committed ? "persistable" : resolvePreviewPersistabilityState(result.reason));
+  const persistability = buildPersistabilityDiagnostics(latestPersistabilityState);
+  setPanelNotice(
+    resolveRuntimeCaptureNotice({
+      captureMode: "fallback",
+      observerActive: state.observerActive,
+      hasStableRows: false,
+      lastCommittedResetAt: state.lastCommittedResetAt,
+      now,
+      persistabilityState: persistability.state,
+      persistabilityHint: persistability.hint,
+    }),
+  );
+
+  if (committed) {
+    const segmentationReason = resolveRuntimeSessionSegmentationReason(
+      state,
+      now,
+      resolveRuntimeSessionSegmentationThresholds(settings),
+    );
+    if (segmentationReason) {
+      segmentRolloverInFlight = true;
+      queuedSegmentRolloverEvent = null;
+      const rolloverToken = ++segmentRolloverToken;
+      setPanelNotice("현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.");
+      syncUserInterfaces();
+      void rollOverRunningSessionSegment(segmentationReason, now, rolloverToken);
+      return true;
+    }
+    scheduleRunningPersist("commit", now);
+  }
+
+  syncUserInterfaces();
+  return committed;
+}
+
+function observeFallbackCommitCandidate(
+  raw: string,
+  now: number,
+  selector?: string,
+  framePath?: number[],
+): boolean {
+  const normalizedRaw = raw.trim();
+  if (!normalizedRaw) {
+    clearFallbackCommitCandidate();
+    return false;
+  }
+
+  if (fallbackCommitCandidate?.raw === normalizedRaw) {
+    fallbackCommitCandidate = {
+      ...fallbackCommitCandidate,
+      selector,
+      framePath: framePath ? [...framePath] : undefined,
+      lastSeenAt: now,
+      observationCount: fallbackCommitCandidate.observationCount + 1,
+    };
+  } else {
+    fallbackCommitCandidate = {
+      raw: normalizedRaw,
+      selector,
+      framePath: framePath ? [...framePath] : undefined,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      observationCount: 1,
+      token: ++fallbackCommitToken,
+    };
+  }
+
+  setFallbackCommitState("pending");
+
+  if (
+    fallbackCommitCandidate.observationCount >= FALLBACK_COMMIT_OBSERVATION_THRESHOLD ||
+    now - fallbackCommitCandidate.firstSeenAt >= FALLBACK_COMMIT_STABLE_MS
+  ) {
+    return commitFallbackCandidate(fallbackCommitCandidate.token, now);
+  }
+
+  scheduleFallbackCommitCandidate(fallbackCommitCandidate);
+  return false;
 }
 
 function scheduleRunningPersist(
@@ -1107,8 +1304,10 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     }
 
     const captureCommit = analyzeCaptureCommit(captureEvent);
+    updateRowDiagnostics(captureEvent.rows, event.filteredUnconfirmedCount ?? 0);
 
     if (captureCommit.shouldCommit) {
+      clearFallbackCommitCandidate();
       unconfirmedFallbackBlockStreak = 0;
       const structuredResult = applyStructuredRowsEvent(
         captureCommit.stableRows,
@@ -1213,8 +1412,17 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     }
 
     const previewChanged = applyPreviewStateOnly(normalized, now);
+    const fallbackCommitted = observeFallbackCommitCandidate(
+      normalized,
+      now,
+      event.selector,
+      event.framePath,
+    );
     if (fallbackReconciliation.changed || previewChanged || noticeChanged) {
       syncUserInterfaces();
+    }
+    if (fallbackCommitted) {
+      return;
     }
   } catch (error) {
     reportRuntimeError("자막 파이프라인 처리 중 오류가 발생했습니다.", error);
@@ -1226,6 +1434,7 @@ function emitLocalProbeEvent(
   raw?: string,
   selector?: string,
   rows?: ObservedSubtitleRow[],
+  filteredUnconfirmedCount = 0,
 ): void {
   forwardToTop({
     source: OBSERVER_BRIDGE_SOURCE,
@@ -1238,6 +1447,7 @@ function emitLocalProbeEvent(
     timestamp: Date.now(),
     sourceUrl: window.location.href,
     observerActive: false,
+    filteredUnconfirmedCount,
   });
 }
 
@@ -1256,16 +1466,23 @@ function startLocalPolling(): void {
       const probe = estimateRecentRaw(document, state.currentSelector, {
         filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
         allowUnconfirmedContainerFallback,
+        sourceUrl: window.location.href,
       });
       unconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
         unconfirmedFallbackBlockStreak,
         probe,
       );
       if (!probe.found || !probe.text) {
+        if (probe.blockedByUnconfirmedFilter) {
+          updateRowDiagnostics([], probe.filteredUnconfirmedCount ?? 0);
+          setPersistabilityState("filtered");
+          setPanelNotice(buildPersistabilityDiagnostics("filtered").hint);
+          syncUserInterfaces();
+        }
         if (localHadProbeText) {
           localHadProbeText = false;
           localLastProbeSignature = "";
-          emitLocalProbeEvent("subtitle:reset");
+          emitLocalProbeEvent("subtitle:reset", undefined, undefined, undefined, probe.filteredUnconfirmedCount);
         }
         return;
       }
@@ -1277,7 +1494,13 @@ function startLocalPolling(): void {
 
       localHadProbeText = true;
       localLastProbeSignature = decision.signature;
-      emitLocalProbeEvent("subtitle:update", probe.text, probe.matchedSelector, probe.rows);
+      emitLocalProbeEvent(
+        "subtitle:update",
+        probe.text,
+        probe.matchedSelector,
+        probe.rows,
+        probe.filteredUnconfirmedCount,
+      );
     } catch (error) {
       reportRuntimeError("로컬 자막 감지 중 오류가 발생했습니다.", error);
     }
@@ -1329,6 +1552,7 @@ function runTopFrameFallbackTick(): void {
     const probeOptions = {
       filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
       allowUnconfirmedContainerFallback,
+      sourceUrl: window.location.href,
     };
     const cachedFramePath = lastSuccessfulFallbackFramePath;
     const cachedProbe =
@@ -1344,6 +1568,12 @@ function runTopFrameFallbackTick(): void {
       probe,
     );
     if (!probe.found || !probe.text) {
+      if (probe.blockedByUnconfirmedFilter) {
+        updateRowDiagnostics([], probe.filteredUnconfirmedCount ?? 0);
+        setPersistabilityState("filtered");
+        setPanelNotice(buildPersistabilityDiagnostics("filtered").hint);
+        syncUserInterfaces();
+      }
       topFallbackMissStreak += 1;
       if (now - lastSubtitleActivationAttemptAt >= 2000) {
         requestSubtitleLayerActivation();
@@ -1367,6 +1597,7 @@ function runTopFrameFallbackTick(): void {
       timestamp: now,
       sourceUrl: window.location.href,
       observerActive: false,
+      filteredUnconfirmedCount: probe.filteredUnconfirmedCount,
     });
   } catch (error) {
     topFallbackMissStreak += 1;
@@ -1388,6 +1619,87 @@ function startTopFrameFallback(): void {
   scheduleTopFrameFallbackTick(
     resolveTopFallbackDelayMs(topFallbackMissStreak, settings.pollingFallbackIntervalMs),
   );
+}
+
+function stopCapturePipelineForCurrentPage(): void {
+  clearLocalPolling();
+  clearTopFallbackTimer();
+  clearFallbackCommitCandidate();
+  capturePipelineStarted = false;
+  try {
+    window.dispatchEvent(new CustomEvent(OBSERVER_STOP_EVENT));
+  } catch {
+    // no-op
+  }
+}
+
+async function startCapturePipelineForCurrentPage(): Promise<void> {
+  if (extensionContextInvalidated || !isCapturePage()) {
+    stopCapturePipelineForCurrentPage();
+    return;
+  }
+
+  if (!capturePipelineStarted) {
+    try {
+      await injectObserverScript();
+    } catch (error) {
+      reportRuntimeError("MutationObserver 주입에 실패해 polling fallback으로 계속 진행합니다.", error);
+    }
+    capturePipelineStarted = true;
+  } else {
+    dispatchObserverConfig();
+  }
+
+  if (extensionContextInvalidated) {
+    return;
+  }
+
+  startLocalPolling();
+  startTopFrameFallback();
+  syncUserInterfaces();
+
+  if (isTopFrame && settings.autoStartEnabled && state.status !== "running") {
+    void startCapture().catch((error: unknown) => {
+      reportRuntimeError("자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.", error);
+    });
+  }
+}
+
+async function reconcileCapturePipelineForCurrentUrl(): Promise<void> {
+  const currentUrl = window.location.href;
+  const urlChanged = currentUrl !== lastKnownUrl;
+  if (!urlChanged && capturePipelineStarted === isCapturePage()) {
+    return;
+  }
+
+  const previousUrl = lastKnownUrl;
+  lastKnownUrl = currentUrl;
+
+  if (urlChanged && state.status === "running") {
+    try {
+      await stopCapture();
+    } catch (error) {
+      reportRuntimeError("페이지 이동 전 실행 중인 세션 저장에 실패했습니다.", error);
+      return;
+    }
+  }
+
+  if (urlChanged && state.status !== "running") {
+    resetRuntimeState();
+  }
+
+  setPanelNotice(resolveDefaultPanelNotice());
+  if (!isCapturePage()) {
+    stopCapturePipelineForCurrentPage();
+    syncUserInterfaces();
+    logDebug("capture pipeline stopped after URL change", {
+      previousUrl,
+      currentUrl,
+    });
+    return;
+  }
+
+  await startCapturePipelineForCurrentPage();
 }
 
 function resetRuntimeState(): void {
@@ -1941,6 +2253,45 @@ function bindNavigationGuards(): void {
   });
 }
 
+function bindUrlChangeDetection(): void {
+  if (!isTopFrame) {
+    return;
+  }
+
+  const scheduleReconcile = (): void => {
+    window.setTimeout(() => {
+      void reconcileCapturePipelineForCurrentUrl().catch((error: unknown) => {
+        reportRuntimeError("페이지 주소 변경 후 캡처 상태를 갱신하지 못했습니다.", error);
+      });
+    }, 0);
+  };
+
+  const originalPushState = window.history.pushState.bind(window.history);
+  const originalReplaceState = window.history.replaceState.bind(window.history);
+
+  window.history.pushState = ((...args: Parameters<History["pushState"]>) => {
+    const result = originalPushState(...args);
+    scheduleReconcile();
+    return result;
+  }) as History["pushState"];
+
+  window.history.replaceState = ((...args: Parameters<History["replaceState"]>) => {
+    const result = originalReplaceState(...args);
+    scheduleReconcile();
+    return result;
+  }) as History["replaceState"];
+
+  window.addEventListener("popstate", scheduleReconcile);
+  window.addEventListener("hashchange", scheduleReconcile);
+
+  clearUrlChangePolling();
+  urlChangePollingTimer = window.setInterval(() => {
+    if (window.location.href !== lastKnownUrl) {
+      scheduleReconcile();
+    }
+  }, 500);
+}
+
 function bindBridgeMessages(): void {
   window.addEventListener("message", (event) => {
     const data = event.data as Partial<ObserverBridgeEvent> | Partial<FrameForwardMessage> | undefined;
@@ -2010,6 +2361,7 @@ async function bootstrap(): Promise<void> {
   bindBridgeMessages();
   bindSettingsChanges();
   bindNavigationGuards();
+  bindUrlChangeDetection();
   mountInPagePanel();
   updateInPagePanel();
   startFrameForwardNonceRefresh();
@@ -2024,29 +2376,13 @@ async function bootstrap(): Promise<void> {
     return;
   }
 
-  try {
-    await injectObserverScript();
-  } catch (error) {
-    reportRuntimeError("MutationObserver 주입에 실패해 polling fallback으로 계속 진행합니다.", error);
-  }
-  if (extensionContextInvalidated) {
-    return;
-  }
-
-  startLocalPolling();
-  startTopFrameFallback();
+  await startCapturePipelineForCurrentPage();
   syncUserInterfaces();
   logDebug("content script bootstrapped", {
     isTopFrame,
     localFramePath,
     nonceSource: FRAME_FORWARD_NONCE_SOURCE,
   });
-
-  if (isTopFrame && settings.autoStartEnabled && state.status !== "running") {
-    void startCapture().catch((error: unknown) => {
-      reportRuntimeError("자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.", error);
-    });
-  }
 }
 
 const bootstrapRoot = document.documentElement;

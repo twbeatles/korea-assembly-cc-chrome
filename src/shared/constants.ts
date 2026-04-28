@@ -18,6 +18,23 @@ export const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 export const DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES = 2000;
 export const DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS = 120000;
 export const DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES = 90;
+export const SESSION_SEGMENT_PRESETS = {
+  stability: {
+    maxEntriesPerSegment: 1000,
+    maxCharsPerSegment: 60000,
+    maxSegmentDurationMinutes: 45,
+  },
+  balanced: {
+    maxEntriesPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
+    maxCharsPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS,
+    maxSegmentDurationMinutes: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
+  },
+  capacity: {
+    maxEntriesPerSegment: 4000,
+    maxCharsPerSegment: 240000,
+    maxSegmentDurationMinutes: 120,
+  },
+} as const;
 
 export const SUBTITLE_SELECTOR_CANDIDATES = [
   "#viewSubtit .smi_word:last-child",
@@ -32,6 +49,7 @@ export const SUBTITLE_SELECTOR_CANDIDATES = [
 
 export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   autoScroll: true,
+  segmentPreset: "balanced",
   keepaliveIntervalMs: 1000,
   pollingFallbackIntervalMs: 200,
   maxBufferLength: 50000,
