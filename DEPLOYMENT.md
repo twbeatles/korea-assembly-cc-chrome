@@ -369,3 +369,13 @@ Deployment documentation consistency sources:
 - Release verification should confirm that fallback internal raw keeps a `4KB` tail window for pipeline comparison while panel/popup preview still uses the existing `400자/3줄` tail-oriented display semantics.
 - Release verification should confirm that single-session export keeps no hard size cap, and known transport/download failures (`message length exceeded`, `invalid data URL` class) are surfaced as user-friendly guidance.
 - Release verification should confirm that frame-forward nonce mismatch triggers immediate nonce resync plus fast top-frame fallback probing to recover dropped bridge events.
+
+## 2026-05-03 Deployment Consistency Update
+
+- Release verification should confirm that preview-only text is never promoted through removed `pendingPreviews`/`flushPendingPreviews` paths during save, export, page-exit, or stop flows.
+- Release verification should confirm that plenary and committee fallback UI previews both use `400자/3줄 tail`, while internal fallback raw still keeps the `4KB` tail window.
+- Release verification should confirm that single-session export payloads over `8 MiB` show a confirmation warning before download and mention saved-history partial export as the fallback path.
+- Release verification should confirm that history paging with fallback records merges fallback records with only the needed IndexedDB window/id lookups and preserves starred-first ordering.
+- Release verification should confirm that local polling and top fallback unconfirmed streaks relax container fallback independently after their own `6` consecutive blocked probes.
+- Release verification should confirm that options storage recovery status shows the latest page-exit persist attempt timestamp, session id, entry count, and error when present.
+- Release packaging should keep generated artifacts (`dist/`, `coverage/`, tsbuildinfo, root exports) ignored, and `.gitignore` now also protects local env files and signing material.

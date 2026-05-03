@@ -342,7 +342,7 @@ When editing this repository, align with the newly implemented behavior below.
 
 When editing this repository, align with the newly implemented behavior below.
 
-- `listSessionsPage({ page, pageSize, starredOnly })` now uses store-level paging semantics. When fallback records are absent, the primary path is IndexedDB paging/index based; when fallback records exist, keep correctness-first merged paging behavior.
+- `listSessionsPage({ page, pageSize, starredOnly })` now uses store-level paging semantics. When fallback records are absent, the primary path is IndexedDB paging/index based; when fallback records exist, merge fallback records with only the required IndexedDB page/id lookups instead of full IndexedDB preload.
 - Session ordering semantics remain fixed as `starred first -> pinnedAt || updatedAt desc -> updatedAt desc -> id`.
 - `deleteAllSessions()` now attempts IndexedDB and fallback cleanup independently and may report partial-failure detail even when one backend was cleared successfully.
 - `filenamePattern` validation is now strict: only `{date}`, `{time}`, `{committee}` placeholders are supported, forbidden filename characters are rejected in options, invalid stored values sanitize back to default, and export filename generation performs a final safety sanitize.
@@ -397,3 +397,16 @@ When editing this repository, align with the newly implemented behavior below.
 - container fallback 내부 raw는 비교/복원용으로 `4KB tail cap`을 적용해 보존하고, UI preview는 별도 formatter를 통해 `400자/3줄 tail` 의미론으로만 축약 노출해야 합니다.
 - 단일 세션 export 하드 제한은 두지 않으며, runtime message 크기 초과/invalid data URL 계열 실패는 사용자 안내 문구로 매핑해야 합니다.
 - frame-forward nonce mismatch 는 즉시 nonce resync 요청과 빠른 top fallback probe를 함께 트리거해 단기 드롭 구간 복구를 우선해야 합니다.
+
+## Sync Delta (2026-05-03)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- `SessionState` must not include `pendingPreviews`, and save/export/pagehide/stop prepared snapshots must never materialize preview-only text into committed entries.
+- Fallback UI preview must use the same `400자/3줄 tail` display policy for plenary and committee pages. Internal fallback raw used for comparison/recovery keeps the `4KB tail` policy.
+- Single-session export has no hard block, but payloads over `8 MiB` must ask for user confirmation before the download request. The warning must mention browser message limits and the saved-history partial export alternative.
+- Download error mapping must distinguish single-session export, history partial export, full-library backup/import, and generic contexts.
+- `listSessionsPage({ page, pageSize, starredOnly })` must avoid full IndexedDB preload when fallback records exist. Merge all fallback records with only the needed IndexedDB window/id lookups, and preserve `starred first -> pinnedAt || updatedAt desc -> updatedAt desc -> id` ordering.
+- Unconfirmed fallback streaks in the top content script are separated between `localPolling` and `topFallback`; each path may relax container fallback only after its own `6` consecutive blocked probes. Stable commits or successful text reads reset the related streak.
+- `PersistReplayDiagnostics` includes the last page-exit persist attempt timestamp, session id, entry count, and error. Options must show those page-exit diagnostics in the storage recovery state.
+- Temporary functional review documents are not part of the tracked documentation set; keep `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, and `CODEBASE_AUDIT.md` as the current implementation references.

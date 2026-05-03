@@ -78,7 +78,12 @@ export async function runStartupPersistenceMaintenance(
     lastCleanupClosedCount: cleanupSummary.closedCount,
     lastCleanupFailedCount: cleanupSummary.failedCount,
     lastCleanupError,
-    lastError: lastCleanupError ?? lastReplayError ?? existingDiagnostics.lastQueueWriteError ?? null,
+    lastError:
+      lastCleanupError ??
+      lastReplayError ??
+      existingDiagnostics.lastPageExitPersistError ??
+      existingDiagnostics.lastQueueWriteError ??
+      null,
   };
   await writeDiagnostics(diagnostics);
 

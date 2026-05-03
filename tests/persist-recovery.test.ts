@@ -7,6 +7,7 @@ import {
   createEmptyPersistReplayDiagnostics,
   listQueuedExitPersistRecords,
   queueExitPersistRecord,
+  recordPageExitPersistAttempt,
   readPersistReplayDiagnostics,
   resetPersistRecoveryStateForTests,
 } from "../src/storage/persist-recovery";
@@ -168,5 +169,24 @@ describe("persist recovery", () => {
     expect(await readPersistReplayDiagnostics()).toEqual(
       expect.objectContaining(createEmptyPersistReplayDiagnostics()),
     );
+  });
+
+  it("records the last page-exit persist attempt and error detail", async () => {
+    const record = buildSession(
+      "session_page_exit",
+      "2026-03-10T09:00:02.000Z",
+      "page-exit",
+    );
+
+    await recordPageExitPersistAttempt(record, new Error("page-exit failed"));
+
+    const diagnostics = await readPersistReplayDiagnostics();
+    expect(diagnostics.lastPageExitPersistSessionId).toBe("session_page_exit");
+    expect(diagnostics.lastPageExitPersistEntryCount).toBe(1);
+    expect(diagnostics.lastPageExitPersistError).toBe("page-exit failed");
+    expect(diagnostics.lastError).toBe("page-exit failed");
+
+    await recordPageExitPersistAttempt(record);
+    expect((await readPersistReplayDiagnostics()).lastPageExitPersistError).toBeNull();
   });
 });

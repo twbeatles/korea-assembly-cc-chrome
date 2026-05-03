@@ -60,7 +60,6 @@ export interface SessionState {
   updatedAt: string | null;
   entries: SubtitleEntry[];
   previewText: string;
-  pendingPreviews: string[];
   confirmedCompact: string;
   trailingSuffix: string;
   lastObservedRaw: string;
@@ -104,7 +103,6 @@ export function cloneState(state: SessionState): SessionState {
   return {
     ...state,
     entries: state.entries.map(cloneEntry),
-    pendingPreviews: [...state.pendingPreviews],
     currentFramePath: [...state.currentFramePath],
   };
 }
@@ -143,7 +141,6 @@ export function createEmptySessionState(
     updatedAt: null,
     entries: [],
     previewText: "",
-    pendingPreviews: [],
     confirmedCompact: "",
     trailingSuffix: "",
     lastObservedRaw: "",

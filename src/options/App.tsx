@@ -298,6 +298,10 @@ export default function App() {
       value: persistReplayDiagnostics.lastCleanupError || "-",
     },
     {
+      label: "page-exit 저장 오류",
+      value: persistReplayDiagnostics.lastPageExitPersistError || "-",
+    },
+    {
       label: "오류 요약",
       value: persistReplayDiagnostics.lastError || "-",
     },
@@ -1002,6 +1006,20 @@ export default function App() {
               <div className="meta-row">
                 <span>startup cleanup 감지</span>
                 <strong>{persistReplayDiagnostics.lastCleanupDetectedCount}</strong>
+              </div>
+              <div className="meta-row">
+                <span>마지막 page-exit 저장 시도</span>
+                <strong>
+                  {persistReplayDiagnostics.lastPageExitPersistAttemptAt
+                    ? new Date(persistReplayDiagnostics.lastPageExitPersistAttemptAt).toLocaleString("ko-KR")
+                    : "-"}
+                </strong>
+              </div>
+              <div className="meta-row">
+                <span>page-exit 세션/자막 수</span>
+                <strong>
+                  {persistReplayDiagnostics.lastPageExitPersistSessionId ?? "-"} / {persistReplayDiagnostics.lastPageExitPersistEntryCount}
+                </strong>
               </div>
               {diagnosticsErrorRows.map((row) => (
                 <div className="meta-row" key={row.label}>

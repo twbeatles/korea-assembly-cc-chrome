@@ -30,10 +30,10 @@ import {
 import {
   assertSessionLibraryTransferSizeWithinLimit,
   buildSessionBackupFilename,
-  getUtf8ByteLength,
   SESSION_BACKUP_KIND,
   SESSION_BACKUP_VERSION,
 } from "./session-backup";
+import { getUtf8ByteLength } from "../shared/byte-size";
 import {
   SESSION_DB_SCHEMA_VERSION,
   SESSION_DB_NAME,
@@ -956,6 +956,23 @@ async function listIndexedDbSessionIds(): Promise<string[]> {
   });
 }
 
+async function loadIndexedDbSessionsByIds(ids: string[]): Promise<SessionRecord[]> {
+  const uniqueIds = [...new Set(ids.filter((id) => id.length > 0))];
+  if (!uniqueIds.length) {
+    return [];
+  }
+
+  return withTransaction("readonly", async (store) => {
+    const records = await Promise.all(
+      uniqueIds.map(async (id) => {
+        const record = await withRequest(store.get(id));
+        return record as SessionRecord | undefined;
+      }),
+    );
+    return records.filter((record): record is SessionRecord => Boolean(record));
+  });
+}
+
 async function listFallbackSessionIds(): Promise<string[]> {
   const index = await readChromeFallbackIndex();
   if (index) {
@@ -1400,6 +1417,71 @@ export async function listSessionsPage(
     }
   }
 
+  const pageSize = Math.max(1, options.pageSize);
+  const fallbackRecords = fallbackIds.length
+    ? await listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER })
+    : [];
+  const filteredFallbackRecords = options.starredOnly
+    ? fallbackRecords.filter((session) => session.starred)
+    : fallbackRecords;
+  const expandedWindowSize =
+    Math.max(1, Math.max(1, options.page) * pageSize + filteredFallbackRecords.length);
+  const [indexedDbPageResult, indexedDbFallbackResult, indexedDbIdsResult] = await Promise.all([
+    tryIndexedDb(async () =>
+      listIndexedDbSessionPage({
+        page: 1,
+        pageSize: expandedWindowSize,
+        starredOnly: options.starredOnly,
+      }),
+    ),
+    tryIndexedDb(async () => loadIndexedDbSessionsByIds(fallbackIds)),
+    tryIndexedDb(async () => listIndexedDbSessionIds()),
+  ]);
+
+  if (!indexedDbPageResult.ok || !indexedDbPageResult.value) {
+    return listSessionsPageByFullMerge(options);
+  }
+
+  const indexedDbRecords = [
+    ...indexedDbPageResult.value.sessions,
+    ...(indexedDbFallbackResult.ok && indexedDbFallbackResult.value
+      ? indexedDbFallbackResult.value
+      : []),
+  ].map((record) => normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }));
+
+  const mergedSessions = sortSessions(
+    mergeSessionCollections(
+      indexedDbRecords,
+      filteredFallbackRecords.map((record) =>
+        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+      ),
+    ),
+    { limit: Number.MAX_SAFE_INTEGER },
+  );
+  const indexedDbIds = new Set(
+    indexedDbIdsResult.ok && indexedDbIdsResult.value ? indexedDbIdsResult.value : [],
+  );
+  const fallbackOnlyCount = fallbackIds.filter((id) => !indexedDbIds.has(id)).length;
+  const fallbackOnlyFilteredCount = options.starredOnly
+    ? filteredFallbackRecords.filter((record) => !indexedDbIds.has(record.id)).length
+    : fallbackOnlyCount;
+  const totalCount = indexedDbPageResult.value.totalCount + fallbackOnlyFilteredCount;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, options.page), pageCount);
+  const start = (page - 1) * pageSize;
+
+  return {
+    sessions: mergedSessions.slice(start, start + pageSize).map(cloneSessionRecord),
+    totalCount,
+    page,
+    pageSize,
+  };
+}
+
+/* istanbul ignore next -- retained as a correctness fallback when IndexedDB paging fails. */
+async function listSessionsPageByFullMerge(
+  options: SessionPageOptions,
+): Promise<SessionPageResult> {
   const allSessions = await listAllSessions();
   const filteredSessions = options.starredOnly
     ? allSessions.filter((session) => session.starred)

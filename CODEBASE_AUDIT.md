@@ -14,7 +14,7 @@
 > - mixed structured snapshot에서는 stable row만 commit되고 unstable row는 preview-only로 남습니다.
 > - JSON import는 incoming `running` 레코드를 `saved`로 정규화합니다.
 > - export filename sanitize는 금지 문자를 전역 제거하며, options / storage 숫자 설정은 정수만 허용합니다.
-> - lint / coverage baseline은 현재 통과 상태이며, 상세는 `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-13.md`를 우선 참고합니다.
+> - lint / coverage baseline은 현재 통과 상태이며, 상세 구현 기준은 Git에 남아 있는 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`와 회귀 테스트를 우선 참고합니다.
 > 2026-04-17 업데이트:
 > - running autosave는 committed subtitle이 있을 때만 저장되며, preview-only 상태로 빈 `running` 레코드를 남기지 않습니다.
 > - page-exit queue storage write가 content script에서 실패하면 background가 durable queue write를 한 번 더 시도합니다.
@@ -25,14 +25,20 @@
 > - panel / popup / options 진단에는 `persistabilityState` / `persistabilityHint` 가 추가되어 `preview_only`, `unstable_only`, `filtered`, `duplicate`, `persistable` 상태를 구분합니다.
 > - in-page `수집된 자막` 렌더는 최신 `300`건으로 제한되고, 전체 세션 저장 / export / history 기준은 누적 committed entry 전체를 그대로 유지합니다.
 > - 전체 라이브러리 `JSON 백업` / `JSON 가져오기` 는 `25 MiB` 하드 제한으로 보호되며, 백업은 page-wise incremental packaging 경로를 사용합니다.
-> - popup / diagnostics stale reconnect 및 저커버리지 테스트 보강까지 반영된 최신 구현 메모는 `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-20.md` 를 우선 참고합니다.
+> - popup / diagnostics stale reconnect 및 저커버리지 테스트 보강까지 반영된 구현 기준은 현재 Git 추적 문서와 회귀 테스트를 우선 참고합니다.
 > 2026-04-21 업데이트:
 > - session import sanitize 단계에서 미지원 `sourceUrl`은 빈 문자열로 정규화되고, history `원본 페이지 열기`는 지원 URL만 허용하도록 고정되었습니다.
 > - unconfirmed filter 차단 신호(`blockedByUnconfirmedFilter`)가 도입되었고, local polling / top fallback / injected observer 모두 연속 6회 차단 시 container fallback 완화 로직으로 수렴되었습니다.
 > - container fallback 내부 raw와 UI preview가 분리되어 내부 파이프라인은 `4KB` tail raw를 유지하고, 노출 preview만 `400자/3줄` tail 의미론으로 축약합니다.
 > - 단일 세션 export는 하드 제한 대신 오류 품질(`message length exceeded`, invalid data URL 계열) 매핑으로 사용자 안내를 강화했습니다.
 > - frame-forward nonce mismatch 시 즉시 nonce resync + 빠른 top fallback probe 복구 경로가 추가되었습니다.
-> - 최신 구현 메모는 `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-21.md` 를 우선 참고합니다.
+> 2026-05-03 업데이트:
+> - 임시 기능 검토 문서는 Git 추적 대상에서 제거되었으므로, 현재 기준은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, 코드, 테스트를 우선합니다.
+> - `pendingPreviews`/`flushPendingPreviews` 계열 레거시 preview 승격 경로를 제거해 저장/export/page-exit/stop 준비 경로가 확정 entry만 사용하도록 정리했습니다.
+> - fallback UI preview는 본회의/위원회 구분 없이 `400자/3줄 tail` 정책으로 통일하고, 내부 비교/복원 raw는 `4KB tail` 보존 정책을 유지합니다.
+> - 단일 세션 export는 `8 MiB` 초과 시 사용자 확인을 거친 뒤 기존 다운로드 경로를 시도하며, transport/data URL 실패 문구를 단일 export와 history 부분 export 맥락에 맞게 분리했습니다.
+> - fallback record가 있어도 history paging은 전체 IndexedDB preload로 후퇴하지 않고 fallback 전체와 IndexedDB window/id 조회를 병합합니다.
+> - local polling/top fallback unconfirmed streak를 분리했고, page-exit persist 마지막 시도 diagnostics를 options 저장 복구 상태에 노출합니다.
 
 ---
 

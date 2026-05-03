@@ -1,5 +1,5 @@
-import { flushPendingPreviews } from "../core/subtitle-pipeline";
 import {
+  cloneState,
   createEmptySessionState,
   toSessionRecord,
   type PersistedSessionStatus,
@@ -13,7 +13,9 @@ export function buildPreparedSessionState(
   settings: ExtensionSettings,
   now = Date.now(),
 ): SessionState {
-  return flushPendingPreviews(state, now, settings);
+  void settings;
+  void now;
+  return cloneState(state);
 }
 
 export function buildPreparedSessionRecord(

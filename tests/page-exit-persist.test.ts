@@ -43,12 +43,15 @@ describe("page exit persistence", () => {
         await Promise.resolve();
         steps.push("queue:end");
       },
+      onPersistAttempt: async () => {
+        steps.push("attempt");
+      },
       persistRecordInBackground: () => {
         steps.push("background");
       },
     });
 
-    expect(steps).toEqual(["queue:start", "queue:end", "background"]);
+    expect(steps).toEqual(["attempt", "queue:start", "queue:end", "background"]);
   });
 
   it("still attempts the background persist after a queue failure", async () => {

@@ -60,15 +60,11 @@ describe("content autosave policy", () => {
     expect(shouldPersistFinalSession(true, 0)).toBe(false);
   });
 
-  it("does not treat preview-only or pending-only content as persistable before navigation", () => {
+  it("does not treat preview-only content as persistable before navigation", () => {
     const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
     state.status = "running";
     state.previewText = "새 자막";
 
-    expect(hasPersistableRunningContent(state)).toBe(false);
-
-    state.previewText = "";
-    state.pendingPreviews = ["대기 중 자막"];
     expect(hasPersistableRunningContent(state)).toBe(false);
   });
 

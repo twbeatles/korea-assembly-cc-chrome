@@ -28,6 +28,10 @@ const persistRecoveryMocks = vi.hoisted(() => ({
     lastCleanupFailedCount: 0,
     lastCleanupError: null,
     lastQueueWriteError: null,
+    lastPageExitPersistAttemptAt: null,
+    lastPageExitPersistSessionId: null,
+    lastPageExitPersistEntryCount: 0,
+    lastPageExitPersistError: null,
     lastError: null,
   })),
   readPersistReplayDiagnostics: vi.fn(),
@@ -83,6 +87,10 @@ describe("options app", () => {
       lastCleanupFailedCount: 1,
       lastCleanupError: "Cleanup failed once",
       lastQueueWriteError: "Queue write failed once",
+      lastPageExitPersistAttemptAt: "2026-03-13T09:31:00.000Z",
+      lastPageExitPersistSessionId: "session_exit",
+      lastPageExitPersistEntryCount: 7,
+      lastPageExitPersistError: "Page exit failed once",
       lastError: "Cleanup failed once",
     });
   });
@@ -177,9 +185,20 @@ describe("options app", () => {
     await screen.findByText("저장 복구 상태");
     expect(screen.getByText("Queue write failed once")).toBeTruthy();
     expect(screen.getByText("Replay failed once")).toBeTruthy();
+    expect(screen.getByText("Page exit failed once")).toBeTruthy();
+    expect(screen.getByText("session_exit / 7")).toBeTruthy();
     expect(screen.getAllByText("Cleanup failed once").length).toBeGreaterThan(0);
     expect(screen.getByText("1 / 0")).toBeTruthy();
     expect(screen.getByText("2 / 1")).toBeTruthy();
+  });
+
+  it("renders the foreign-language noise filter guidance", async () => {
+    render(<App />);
+    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+
+    expect(
+      screen.getByText(/외국어 원문을 최대한 남기려면 이 옵션을 끄세요/),
+    ).toBeTruthy();
   });
 
   it("hydrates diagnostics counts from the initial capture status payload", async () => {

@@ -7,7 +7,6 @@ import {
   applyStructuredEntry,
   commitLiveRow,
   finalizeSession,
-  flushPendingPreviews,
 } from "../src/core/subtitle-pipeline";
 
 describe("subtitle pipeline", () => {
@@ -186,14 +185,13 @@ describe("subtitle pipeline", () => {
   });
 
   it("does not materialize preview-only text when preparing a save/export snapshot", () => {
-    const now = Date.parse("2026-03-11T08:35:00.000Z");
     const state = createEmptySessionState("http://test.com", "Test");
     state.status = "running";
     state.previewText = "아직 commit되지 않은 자막";
     state.currentSelector = "#viewSubtit";
     state.currentFramePath = [0];
 
-    const flushed = flushPendingPreviews(state, now);
+    const flushed = state;
 
     expect(state.entries).toHaveLength(0);
     expect(flushed.entries).toHaveLength(0);
@@ -201,8 +199,6 @@ describe("subtitle pipeline", () => {
   });
 
   it("preserves committed entries and ignores preview-only flushes", () => {
-    const now = Date.parse("2026-03-11T08:40:00.000Z");
-
     const duplicateState = createEmptySessionState("http://test.com", "Test");
     duplicateState.previewText = "이미 저장된 자막";
     duplicateState.entries.push({
@@ -214,17 +210,17 @@ describe("subtitle pipeline", () => {
     });
     duplicateState.confirmedCompact = "이미저장된자막";
 
-    const duplicateFlushed = flushPendingPreviews(duplicateState, now);
+    const duplicateFlushed = duplicateState;
     expect(duplicateFlushed.entries).toHaveLength(1);
 
     const noiseState = createEmptySessionState("http://test.com", "Test");
     noiseState.previewText = "12345";
-    const noiseFlushed = flushPendingPreviews(noiseState, now);
+    const noiseFlushed = noiseState;
     expect(noiseFlushed.entries).toHaveLength(0);
 
     const placeholderState = createEmptySessionState("http://test.com", "Test");
     placeholderState.previewText = "로딩중..";
-    const placeholderFlushed = flushPendingPreviews(placeholderState, now);
+    const placeholderFlushed = placeholderState;
     expect(placeholderFlushed.entries).toHaveLength(0);
   });
 

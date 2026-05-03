@@ -112,6 +112,10 @@ export interface PersistReplayDiagnostics {
   lastCleanupFailedCount: number;
   lastCleanupError: string | null;
   lastQueueWriteError: string | null;
+  lastPageExitPersistAttemptAt: string | null;
+  lastPageExitPersistSessionId: string | null;
+  lastPageExitPersistEntryCount: number;
+  lastPageExitPersistError: string | null;
   lastError: string | null;
 }
 

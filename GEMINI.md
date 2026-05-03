@@ -302,7 +302,7 @@ Use this delta as the current operational baseline.
 
 Use this delta as the current operational baseline.
 
-- `listSessionsPage({ page, pageSize, starredOnly })` now uses IndexedDB-level paging when fallback session records are absent, but must preserve the existing merged path when fallback records exist.
+- `listSessionsPage({ page, pageSize, starredOnly })` now uses IndexedDB-level paging when fallback session records are absent. When fallback records exist, merge fallback records with only the needed IndexedDB window/id lookups instead of loading every IndexedDB session.
 - Session ordering remains `starred` first, then `pinnedAt || updatedAt` descending for starred sessions, then `updatedAt` descending, then `id`.
 - `deleteAllSessions()` must attempt IndexedDB and fallback cleanup independently and surface partial-failure detail when only one store fails.
 - `filenamePattern` now rejects forbidden path characters and unsupported placeholders, and invalid stored values are sanitized back to the default pattern.
@@ -390,6 +390,19 @@ Use this delta as part of the current operational baseline.
 - container fallback 내부 raw는 `4KB tail cap` 비교용 텍스트로 유지하고, UI preview는 `400자/3줄 tail` formatter로만 축약 노출해야 합니다.
 - 단일 세션 export 는 하드 제한 없이 시도하며, runtime message 길이 초과/invalid data URL 계열 실패는 사용자 친화 메시지로 매핑해야 합니다.
 - frame-forward nonce mismatch 발생 시 nonce resync와 빠른 top fallback probe를 즉시 트리거해 드롭 구간 복구를 우선해야 합니다.
+
+## Sync Delta (2026-05-03)
+
+Use this delta as part of the current operational baseline.
+
+- `pendingPreviews` compatibility is removed from `SessionState`; prepared save/export/page-exit/stop snapshots use committed `entries` only.
+- Plenary and committee fallback UI previews share the same `400자/3줄 tail` policy, while internal fallback raw remains capped to the trailing `4KB` for comparison/recovery.
+- Single-session export warns at `8 MiB` before sending the browser download message, but still lets the user continue. The message must point users to saved-history partial export if the large transfer fails.
+- Download error copy is context-aware for panel single export, history partial export, full-library operations, and generic failures.
+- History paging with fallback records must merge fallback records with only the required IndexedDB page/id lookups instead of loading every IndexedDB session.
+- Local polling and top fallback unconfirmed streaks are independent; each path needs its own `6` consecutive blocked probes before fallback relaxation.
+- Persist replay diagnostics track the latest page-exit persist attempt timestamp, session id, entry count, and error, and options renders that summary.
+- Deleted temporary implementation review documents should not be reintroduced as canonical docs. Keep tracked `.md` references aligned with the actual Git-tracked document set.
 
 ## Sync Delta (2026-03-14)
 

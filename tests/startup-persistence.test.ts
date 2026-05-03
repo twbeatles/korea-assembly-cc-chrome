@@ -66,6 +66,10 @@ describe("startup persistence maintenance", () => {
         lastCleanupFailedCount: 0,
         lastCleanupError: null,
         lastQueueWriteError: "Queue write failed",
+        lastPageExitPersistAttemptAt: null,
+        lastPageExitPersistSessionId: null,
+        lastPageExitPersistEntryCount: 0,
+        lastPageExitPersistError: null,
         lastError: "Queue write failed",
       }),
       replay: async () => {

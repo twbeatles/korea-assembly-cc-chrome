@@ -1,5 +1,5 @@
 import { extractTailLines, normalizeSubtitleText } from "../core/text-normalizer";
-import { PIPELINE_DEFAULTS, isAssemblyPlenaryUrl } from "../shared/constants";
+import { PIPELINE_DEFAULTS } from "../shared/constants";
 
 export function normalizeFallbackInternalRaw(
   rawText: string,
@@ -23,14 +23,22 @@ export function formatFallbackPreviewText(rawText: string, sourceUrl?: string): 
     return "";
   }
 
+  void sourceUrl;
+
+  const tailPreview = normalizeSubtitleText(
+    extractTailLines(rawText, PIPELINE_DEFAULTS.fallbackPreviewMaxLines),
+  );
+
   if (
-    normalized.length <= PIPELINE_DEFAULTS.fallbackPreviewMaxChars ||
-    isAssemblyPlenaryUrl(sourceUrl)
+    normalized.length <= PIPELINE_DEFAULTS.fallbackPreviewMaxChars &&
+    tailPreview === normalized
   ) {
     return normalized;
   }
 
-  return normalizeSubtitleText(
-    extractTailLines(rawText, PIPELINE_DEFAULTS.fallbackPreviewMaxLines),
-  );
+  if (tailPreview.length <= PIPELINE_DEFAULTS.fallbackPreviewMaxChars) {
+    return tailPreview;
+  }
+
+  return tailPreview.slice(-PIPELINE_DEFAULTS.fallbackPreviewMaxChars).trim();
 }

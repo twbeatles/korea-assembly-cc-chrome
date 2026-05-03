@@ -5,7 +5,7 @@ import type { ExtensionSettings } from "../storage/types";
 
 export function shouldScheduleRunningPersist(
   isTopFrame: boolean,
-  state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
+  state: Pick<SessionState, "status" | "entries" | "previewText">,
   settings: Pick<ExtensionSettings, "runningAutoSaveEnabled">,
 ): boolean {
   return isTopFrame && settings.runningAutoSaveEnabled && hasPersistableRunningContent(state);
@@ -25,14 +25,14 @@ export function shouldPersistFinalSession(
 }
 
 export function hasPersistableRunningContent(
-  state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
+  state: Pick<SessionState, "status" | "entries" | "previewText">,
 ): boolean {
   return state.status === "running" && state.entries.length > 0;
 }
 
 export function shouldWarnBeforeUnload(
   isTopFrame: boolean,
-  state: Pick<SessionState, "status" | "entries" | "previewText" | "pendingPreviews">,
+  state: Pick<SessionState, "status" | "entries" | "previewText">,
 ): boolean {
   return isTopFrame && hasPersistableRunningContent(state);
 }

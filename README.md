@@ -56,7 +56,7 @@
 - options의 저장 파일 이름 규칙은 금지 문자와 지원하지 않는 placeholder를 저장 전에 검증하고, export 직전에는 남은 금지 문자를 전역 제거해 한 번 더 정리합니다
 - options의 숫자 설정은 정수만 허용하며, 소수 입력은 inline 오류로 저장을 막습니다
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구는 수집된 자막/저장/export 대상에서 제외합니다
-- 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각, queue write / replay / cleanup phase별 저장 복구 오류 확인
+- 실행 중 자동 저장 설정 및 수집 진단 화면에서 최근 저장 시각, queue write / replay / cleanup / page-exit phase별 저장 복구 오류 확인
 - 수집 진단은 `persistabilityState` / `persistabilityHint`를 포함해 `preview_only`, `unstable_only`, `filtered`, `duplicate`, `persistable` 상태를 구분합니다
 - 패널 / popup 에서 수집 진단 화면 진입
 - popup / options 수집 진단은 현재 창의 활성 탭을 기준으로 재연결하며, 지정한 진단 탭이 사라지면 다른 지원 탭으로 fallback 합니다
@@ -114,14 +114,12 @@ src/
 tests/
 ```
 
-현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-20.md`, `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-21.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
+현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 구현 검토용 임시 문서는 Git 추적 대상에서 제외하며, 현재 동작 기준은 아래 문서들과 코드/테스트를 우선합니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
 
 - `DEPLOYMENT.md`
 - `CLAUDE.md`
 - `GEMINI.md`
 - `CODEBASE_AUDIT.md`
-- `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-20.md`
-- `FUNCTIONAL_IMPLEMENTATION_REVIEW_2026-04-21.md`
 - `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - `PRIVACY_POLICY_DRAFT_KO.md`
 
@@ -264,7 +262,7 @@ npm run build
 - pagehide/beforeunload 직전 최종 stopped 스냅샷은 세션별 replay queue에도 함께 적재하고, background 저장이 성공하면 같은 세션의 stale queued snapshot을 즉시 정리합니다
 - content script에서 replay queue storage write가 실패하면, background에도 동일 stopped snapshot queue 적재를 한 번 더 요청해 종료 직전 durable queue를 최대한 보존합니다
 - replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 하며, 같은 `sessionId` 충돌 시 `updatedAt`이 더 최신인 레코드와 동률 시 더 늦은 `queuedAt`을 우선합니다
-- queue write가 실패해도 메모리 queue는 유지되며, `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError` diagnostics를 통해 phase별 실패를 추적합니다
+- queue write가 실패해도 메모리 queue는 유지되며, `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastPageExitPersistError`, `lastError` diagnostics를 통해 phase별 실패를 추적합니다
 - 브라우저/확장 cold start 시에는 queued stopped snapshot replay를 먼저 수행한 뒤 남아 있던 `running` 세션 cleanup을 진행하고, replay/cleanup 결과는 `chrome.storage.local` diagnostics snapshot으로 남깁니다
 - JSON import는 허용 필드 재구성 기준으로 sanitize 하며, 지원하지 않는 backup wrapper version과 parse 불가능한 timestamp를 가져오기 단계에서 거부합니다
 - JSON import는 들어오는 `running` 레코드를 모두 `saved`로 정규화해 실제로 종료된 기록이 `수집 중`으로 남지 않게 합니다
@@ -278,7 +276,8 @@ npm run build
 - 세션 레코드에는 `starred`, `pinnedAt`, `note` 메타데이터가 포함되며, history의 즐겨찾기/메모 기능과 JSON 백업/복원에서 함께 유지됩니다
 - history 즐겨찾기/메모 저장은 최신 저장 레코드를 다시 읽어 `starred` / `pinnedAt` / `note` 만 갱신하므로, stale detail view 가 더 최신 `entries` / `status` 를 덮어쓰지 않습니다
 - history에서 저장하지 않은 메모가 있는 상태로 새로고침/`즐겨찾기만 보기` 전환을 하면서 폐기를 확인하면, draft는 실제 저장값으로 즉시 되돌아갑니다
-- fallback 레코드가 없을 때 history paging/count 는 IndexedDB index 기반으로 처리해 전체 preload 비용을 줄입니다
+- history paging/count 는 fallback 레코드가 없으면 IndexedDB index 기반으로 처리하고, fallback 레코드가 있으면 fallback 전체와 IndexedDB의 필요한 window/id 조회만 병합해 전체 preload 비용을 줄입니다. 정렬은 `starred first -> pinnedAt || updatedAt desc -> updatedAt desc -> id`를 유지합니다
+- 단일 세션 export payload가 `8 MiB`를 넘으면 다운로드 요청 전에 확인을 띄우며, 실패 시 저장된 기록에서 선택 export를 사용할 수 있음을 안내합니다. 전체 라이브러리 백업/가져오기의 `25 MiB` 하드 제한은 그대로 유지됩니다
 
 ### background
 

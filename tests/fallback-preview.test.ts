@@ -16,14 +16,16 @@ describe("fallback preview helpers", () => {
     expect(normalized.endsWith(suffix)).toBe(true);
   });
 
-  it("keeps full preview on plenary urls", () => {
+  it("shows only the trailing three lines on long plenary fallback preview", () => {
     const lines = Array.from({ length: 12 }, (_, index) => `plenary line ${index + 1}`);
     const formatted = formatFallbackPreviewText(
       lines.join("\n"),
       "https://assembly.webcast.go.kr/main/player.asp?xcode=10",
     );
 
-    expect(formatted).toContain("plenary line 1");
+    expect(formatted).not.toContain("plenary line 8");
+    expect(formatted).toContain("plenary line 10");
+    expect(formatted).toContain("plenary line 11");
     expect(formatted).toContain("plenary line 12");
   });
 

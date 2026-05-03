@@ -424,29 +424,6 @@ function appendOrMergeEntry(
   return entry;
 }
 
-export function flushPendingPreviews(
-  state: SessionState,
-  now: number,
-  settings?: Partial<ExtensionSettings>,
-): SessionState {
-  let preparedState = cloneState(state);
-  const pendingPreviews = preparedState.pendingPreviews
-    .map((preview) => normalizeRawText(preview))
-    .filter(Boolean);
-
-  preparedState.pendingPreviews = [];
-  pendingPreviews.forEach((preview, index) => {
-    preparedState = applyPreview(preparedState, preview, now + index, settings, {
-      selector: preparedState.currentSelector || undefined,
-      framePath: preparedState.currentFramePath.length
-        ? preparedState.currentFramePath
-        : undefined,
-    }).state;
-  });
-
-  return preparedState;
-}
-
 export function applyPreview(
   state: SessionState,
   raw: string,
@@ -651,7 +628,6 @@ export function applyReset(
   void settings;
   const next = updateStateMetadata(state, now);
   next.previewText = "";
-  next.pendingPreviews = [];
   next.confirmedCompact = "";
   next.trailingSuffix = "";
   next.lastObservedRaw = "";
@@ -672,7 +648,6 @@ export function finalizeSession(
   next.status = "stopped";
   next.endedAt = toIsoString(now);
   next.previewText = "";
-  next.pendingPreviews = [];
   next.lastCommittedResetAt = null;
   const lastEntry = next.entries.at(-1);
   if (lastEntry) {

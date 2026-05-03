@@ -54,6 +54,7 @@ function resolvePersistReplayLastError(diagnostics: PersistReplayDiagnostics): s
   return (
     diagnostics.lastCleanupError ??
     diagnostics.lastReplayError ??
+    diagnostics.lastPageExitPersistError ??
     diagnostics.lastQueueWriteError ??
     null
   );
@@ -118,6 +119,10 @@ export function createEmptyPersistReplayDiagnostics(): PersistReplayDiagnostics 
     lastCleanupFailedCount: 0,
     lastCleanupError: null,
     lastQueueWriteError: null,
+    lastPageExitPersistAttemptAt: null,
+    lastPageExitPersistSessionId: null,
+    lastPageExitPersistEntryCount: 0,
+    lastPageExitPersistError: null,
     lastError: null,
   };
 }
@@ -160,6 +165,22 @@ function sanitizePersistReplayDiagnostics(value: unknown): PersistReplayDiagnost
     lastQueueWriteError:
       typeof candidate.lastQueueWriteError === "string" && candidate.lastQueueWriteError
         ? candidate.lastQueueWriteError
+        : null,
+    lastPageExitPersistAttemptAt: isValidDateString(candidate.lastPageExitPersistAttemptAt)
+      ? candidate.lastPageExitPersistAttemptAt
+      : null,
+    lastPageExitPersistSessionId:
+      typeof candidate.lastPageExitPersistSessionId === "string" &&
+      candidate.lastPageExitPersistSessionId
+        ? candidate.lastPageExitPersistSessionId
+        : null,
+    lastPageExitPersistEntryCount:
+      typeof candidate.lastPageExitPersistEntryCount === "number"
+        ? candidate.lastPageExitPersistEntryCount
+        : 0,
+    lastPageExitPersistError:
+      typeof candidate.lastPageExitPersistError === "string" && candidate.lastPageExitPersistError
+        ? candidate.lastPageExitPersistError
         : null,
     lastError: typeof candidate.lastError === "string" && candidate.lastError ? candidate.lastError : null,
   };
@@ -211,6 +232,24 @@ export async function queueExitPersistRecord(record: SessionRecord): Promise<voi
     });
     throw error;
   }
+}
+
+export async function recordPageExitPersistAttempt(
+  record: SessionRecord,
+  error?: unknown,
+): Promise<void> {
+  await updatePersistReplayDiagnostics((current) => ({
+    ...current,
+    lastPageExitPersistAttemptAt: new Date().toISOString(),
+    lastPageExitPersistSessionId: record.id || null,
+    lastPageExitPersistEntryCount: record.entries.length,
+    lastPageExitPersistError:
+      error === undefined
+        ? null
+        : error instanceof Error
+          ? error.message
+          : String(error || "page-exit persist failed"),
+  }));
 }
 
 export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistRecord[]> {

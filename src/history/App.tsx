@@ -12,9 +12,12 @@ import {
 import { mapDownloadErrorMessage, resolveDownloadErrorMessage } from "../shared/download-errors";
 import {
   assertSessionLibraryTransferSizeWithinLimit,
-  getUtf8ByteLength,
   parseSessionImportPayload,
 } from "../storage/session-backup";
+import {
+  getUtf8ByteLength,
+  SINGLE_SESSION_EXPORT_WARNING_BYTES,
+} from "../shared/byte-size";
 import {
   buildSessionLibraryBackupExport,
   deleteAllSessions,
@@ -691,6 +694,17 @@ export default function App() {
         filenamePattern,
         txtExportTimestampsEnabled,
       });
+      const isPartialExport = Boolean(entries?.length);
+      if (
+        !isPartialExport &&
+        getUtf8ByteLength(payload.content) > SINGLE_SESSION_EXPORT_WARNING_BYTES &&
+        !window.confirm(
+          `${payload.filename} 파일이 커서 브라우저 메시지 한계로 저장에 실패할 수 있습니다. 계속 시도할까요?\n\n실패하면 이 화면에서 필요한 항목만 체크한 뒤 선택 저장을 사용해 주세요.`,
+        )
+      ) {
+        setMessage("파일 저장을 취소했습니다.");
+        return;
+      }
       const response = await sendRuntimeMessage({
         type: "DOWNLOAD_REQUEST",
         filename: payload.filename,
@@ -699,7 +713,8 @@ export default function App() {
       });
       if (!response.ok) {
         setMessage(
-          mapDownloadErrorMessage(response.error) || "파일 저장을 시작하지 못했습니다.",
+          mapDownloadErrorMessage(response.error, isPartialExport ? "partial" : "single-session") ||
+            "파일 저장을 시작하지 못했습니다.",
         );
         return;
       }
@@ -713,7 +728,13 @@ export default function App() {
 
       setMessage(`${getExportFormatLabel(format)} 파일 저장을 시작했습니다.`);
     } catch (error) {
-      setMessage(resolveDownloadErrorMessage(error, "파일 저장을 시작하지 못했습니다."));
+      setMessage(
+        resolveDownloadErrorMessage(
+          error,
+          "파일 저장을 시작하지 못했습니다.",
+          entries?.length ? "partial" : "single-session",
+        ),
+      );
     }
   };
 
@@ -805,7 +826,7 @@ export default function App() {
       });
       if (!response.ok) {
         setMessage(
-          mapDownloadErrorMessage(response.error) || "전체 JSON 백업에 실패했습니다.",
+          mapDownloadErrorMessage(response.error, "library") || "전체 JSON 백업에 실패했습니다.",
         );
         return;
       }
@@ -817,7 +838,7 @@ export default function App() {
         return;
       }
 
-      setMessage(resolveDownloadErrorMessage(error, "전체 JSON 백업에 실패했습니다."));
+      setMessage(resolveDownloadErrorMessage(error, "전체 JSON 백업에 실패했습니다.", "library"));
     } finally {
       clearLongTaskState("backup", controller);
     }

@@ -191,10 +191,6 @@ function pad(value: number): string {
   return String(value).padStart(2, "0");
 }
 
-export function getUtf8ByteLength(value: string): number {
-  return new TextEncoder().encode(value).length;
-}
-
 export function assertSessionLibraryTransferSizeWithinLimit(
   byteLength: number,
   actionLabel: "전체 JSON 백업" | "JSON 가져오기",

@@ -41,6 +41,10 @@ import {
   isSupportedAssemblyUrl,
 } from "../shared/constants";
 import { mapDownloadErrorMessage } from "../shared/download-errors";
+import {
+  getUtf8ByteLength,
+  SINGLE_SESSION_EXPORT_WARNING_BYTES,
+} from "../shared/byte-size";
 import { normalizeSubtitleText } from "../core/text-normalizer";
 import {
   applyPersistSuccess,
@@ -101,7 +105,10 @@ import {
   updateUnconfirmedFallbackBlockStreak,
 } from "./unconfirmed-fallback";
 import { exportSessionData } from "../storage/session-store";
-import { queueExitPersistRecord } from "../storage/persist-recovery";
+import {
+  queueExitPersistRecord,
+  recordPageExitPersistAttempt,
+} from "../storage/persist-recovery";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
 import { tryDomSubtitleActivation, waitForSubtitleLayer } from "./subtitle-layer";
@@ -164,7 +171,8 @@ let localLastProbeSignature = "";
 let localHadProbeText = false;
 let topFallbackMissStreak = 0;
 let lastSuccessfulFallbackFramePath: number[] | null = null;
-let unconfirmedFallbackBlockStreak = 0;
+let localPollingUnconfirmedFallbackBlockStreak = 0;
+let topFallbackUnconfirmedFallbackBlockStreak = 0;
 let panelCollapsed = false;
 let previewCollapsed = true;
 let panelNotice = DEFAULT_IN_PAGE_NOTICE;
@@ -202,6 +210,19 @@ function confirmFailedStoppedSessionDiscard(message: string): boolean {
   }
 
   return window.confirm(message);
+}
+
+function confirmLargeSingleSessionExport(filename: string, byteLength: number): boolean {
+  if (byteLength <= SINGLE_SESSION_EXPORT_WARNING_BYTES) {
+    return true;
+  }
+  if (typeof window === "undefined" || typeof window.confirm !== "function") {
+    return true;
+  }
+
+  return window.confirm(
+    `${filename} 파일이 커서 브라우저 메시지 한계로 저장에 실패할 수 있습니다. 계속 시도할까요?\n\n실패하면 저장된 기록 화면에서 필요한 항목만 선택해 부분 저장을 사용해 주세요.`,
+  );
 }
 
 function createObserverBridgeToken(): string {
@@ -576,10 +597,12 @@ function applyPreviewStateOnly(previewText: string, now: number): boolean {
     return false;
   }
 
-  state.previewText = previewText;
-  state.lastObservedRaw = previewText;
-  state.updatedAt = new Date(now).toISOString();
-  state.lastObserverEventAt = now;
+  const next = cloneState(state);
+  next.previewText = previewText;
+  next.lastObservedRaw = previewText;
+  next.updatedAt = new Date(now).toISOString();
+  next.lastObserverEventAt = now;
+  state = next;
   return true;
 }
 
@@ -717,7 +740,11 @@ async function persistStoppedSession(record: SessionRecord): Promise<void> {
   }
 }
 
-function persistSessionRecordInBackground(record: SessionRecord, retryAttempt = 0): void {
+function persistSessionRecordInBackground(
+  record: SessionRecord,
+  retryAttempt = 0,
+  trackPageExitDiagnostics = false,
+): void {
   if (extensionContextInvalidated) {
     return;
   }
@@ -731,8 +758,14 @@ function persistSessionRecordInBackground(record: SessionRecord, retryAttempt = 
     }
 
     if (retryAttempt < maxRetryAttempts) {
-      persistSessionRecordInBackground(record, retryAttempt + 1);
+      persistSessionRecordInBackground(record, retryAttempt + 1, trackPageExitDiagnostics);
       return;
+    }
+
+    if (trackPageExitDiagnostics) {
+      void recordPageExitPersistAttempt(record, detail ?? message).catch(() => {
+        // Preserve the original background persist failure.
+      });
     }
 
     if (document.visibilityState === "visible") {
@@ -847,9 +880,13 @@ function persistStoppedSnapshotForPageExit(now = Date.now()): void {
       queueExitPersistRecordInBackground(queuedRecord);
     },
     persistRecordInBackground: (queuedRecord) => {
-      persistSessionRecordInBackground(queuedRecord);
+      persistSessionRecordInBackground(queuedRecord, 0, true);
     },
+    onPersistAttempt: (queuedRecord) => recordPageExitPersistAttempt(queuedRecord),
     onQueueError: (error) => {
+      void recordPageExitPersistAttempt(record, error).catch(() => {
+        // The original page-exit failure is already logged below.
+      });
       console.warn("[assembly-subtitle] Failed to queue exit persist record", error);
     },
   });
@@ -1060,7 +1097,8 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     const captureCommit = analyzeCaptureCommit(captureEvent);
 
     if (captureCommit.shouldCommit) {
-      unconfirmedFallbackBlockStreak = 0;
+      localPollingUnconfirmedFallbackBlockStreak = 0;
+      topFallbackUnconfirmedFallbackBlockStreak = 0;
       const structuredResult = applyStructuredRowsEvent(
         captureCommit.stableRows,
         captureCommit.previewText,
@@ -1188,14 +1226,14 @@ function startLocalPolling(): void {
   localPollingTimer = window.setInterval(() => {
     try {
       const allowUnconfirmedContainerFallback = shouldAllowUnconfirmedContainerFallback(
-        unconfirmedFallbackBlockStreak,
+        localPollingUnconfirmedFallbackBlockStreak,
       );
       const probe = estimateRecentRaw(document, state.currentSelector, {
         filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
         allowUnconfirmedContainerFallback,
       });
-      unconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
-        unconfirmedFallbackBlockStreak,
+      localPollingUnconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
+        localPollingUnconfirmedFallbackBlockStreak,
         probe,
       );
       if (!probe.found || !probe.text) {
@@ -1261,7 +1299,7 @@ function runTopFrameFallbackTick(): void {
 
   try {
     const allowUnconfirmedContainerFallback = shouldAllowUnconfirmedContainerFallback(
-      unconfirmedFallbackBlockStreak,
+      topFallbackUnconfirmedFallbackBlockStreak,
     );
     const probeOptions = {
       filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
@@ -1276,8 +1314,8 @@ function runTopFrameFallbackTick(): void {
       cachedProbe && cachedProbe.found && cachedProbe.text
         ? cachedProbe
         : probeBestAccessibleSubtitle(state.currentSelector, probeOptions);
-    unconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
-      unconfirmedFallbackBlockStreak,
+    topFallbackUnconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
+      topFallbackUnconfirmedFallbackBlockStreak,
       probe,
     );
     if (!probe.found || !probe.text) {
@@ -1333,7 +1371,8 @@ function resetRuntimeState(): void {
   setPersistabilityState("idle");
   state = createResetSessionState(window.location.href, document.title, deriveCommitteeName(document.title));
   topFallbackMissStreak = 0;
-  unconfirmedFallbackBlockStreak = 0;
+  localPollingUnconfirmedFallbackBlockStreak = 0;
+  topFallbackUnconfirmedFallbackBlockStreak = 0;
   lastSuccessfulFallbackFramePath = null;
   lastSubtitleActivationAttemptAt = 0;
   lastNavigationSnapshotAt = 0;
@@ -1458,6 +1497,11 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
     filenamePattern: settings.filenamePattern,
     txtExportTimestampsEnabled: settings.txtExportTimestampsEnabled,
   });
+  if (!confirmLargeSingleSessionExport(payload.filename, getUtf8ByteLength(payload.content))) {
+    setPanelNotice("파일 저장을 취소했습니다.");
+    syncUserInterfaces();
+    return;
+  }
   const response = await sendRuntimeMessage({
     type: "DOWNLOAD_REQUEST",
     filename: payload.filename,
@@ -1466,7 +1510,7 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
   });
   if (!response.ok) {
     throw new Error(
-      mapDownloadErrorMessage(response.error) || "파일 저장을 시작하지 못했습니다.",
+      mapDownloadErrorMessage(response.error, "single-session") || "파일 저장을 시작하지 못했습니다.",
     );
   }
   setPanelNotice(`${payload.filename} 파일 저장 창을 열었습니다.`);

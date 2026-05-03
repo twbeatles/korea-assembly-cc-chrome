@@ -227,6 +227,38 @@ describe("session store", () => {
     expect(starredOnlyPage.sessions.map((session) => session.id)).toEqual(["session_page_3"]);
   });
 
+  it("merges fallback records into paged results without falling back to full IndexedDB records", async () => {
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await saveSession({
+        ...buildSession("session_fallback_page", "saved"),
+        updatedAt: "2026-03-10T09:00:04.000Z",
+      });
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+
+    await saveSession({
+      ...buildSession("session_idb_page", "saved"),
+      updatedAt: "2026-03-10T09:00:05.000Z",
+    });
+    const page = await listSessionsPage({ page: 1, pageSize: 2 });
+
+    expect(page.totalCount).toBe(2);
+    expect(page.sessions.map((session) => session.id)).toEqual([
+      "session_idb_page",
+      "session_fallback_page",
+    ]);
+  });
+
   it("fills default favorite and note fields for imported legacy records", async () => {
     await importSessionRecords([
       {
