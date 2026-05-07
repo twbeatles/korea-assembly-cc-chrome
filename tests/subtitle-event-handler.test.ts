@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  UNCONFIRMED_STALL_HINT_NOTICE,
+  UNCONFIRMED_STALL_HINT_THRESHOLD,
+} from "../src/content/capture-notice";
+import {
   analyzeCaptureCommit,
+  resolveRuntimeCaptureNotice,
   shouldCommitCaptureEvent,
 } from "../src/content/subtitle-event-handler";
 
@@ -78,5 +83,46 @@ describe("subtitle event handler", () => {
       hasUnstableRows: true,
       shouldCommit: false,
     });
+  });
+
+  it("surfaces a soft stall hint once the unconfirmed-fallback streak is high", () => {
+    const baseInput = {
+      captureMode: "fallback" as const,
+      observerActive: true,
+      hasStableRows: false,
+      lastCommittedResetAt: null,
+      now: 1_000_000,
+      persistabilityState: "preview_only" as const,
+      persistabilityHint: "preview hint",
+    };
+
+    expect(
+      resolveRuntimeCaptureNotice({
+        ...baseInput,
+        unconfirmedFallbackBlockStreak: UNCONFIRMED_STALL_HINT_THRESHOLD - 1,
+      }),
+    ).not.toBe(UNCONFIRMED_STALL_HINT_NOTICE);
+
+    expect(
+      resolveRuntimeCaptureNotice({
+        ...baseInput,
+        unconfirmedFallbackBlockStreak: UNCONFIRMED_STALL_HINT_THRESHOLD,
+      }),
+    ).toBe(UNCONFIRMED_STALL_HINT_NOTICE);
+  });
+
+  it("does not show the stall hint when stable rows are present", () => {
+    expect(
+      resolveRuntimeCaptureNotice({
+        captureMode: "structured",
+        observerActive: true,
+        hasStableRows: true,
+        lastCommittedResetAt: null,
+        now: 0,
+        persistabilityState: "persistable",
+        persistabilityHint: "ok",
+        unconfirmedFallbackBlockStreak: 99,
+      }),
+    ).not.toBe(UNCONFIRMED_STALL_HINT_NOTICE);
   });
 });

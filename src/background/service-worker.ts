@@ -22,11 +22,17 @@ import type {
 } from "../shared/message-types";
 import { deleteSession, saveSession, updateRunningSession } from "../storage/session-store";
 import { queueExitPersistRecord } from "../storage/persist-recovery";
+import { createRandomToken } from "../shared/random-token";
 
 const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
 const frameForwardNonceByTabId = new Map<number, string>();
 const blobDownloadUrls = new Map<number, string>();
+// Tracks Blob download IDs created during the current service worker
+// generation. URLs missing from this set were restored from storage and now
+// live in a defunct offscreen document, so the `URL.revokeObjectURL` round
+// trip would be a no-op.
+const blobDownloadUrlsCreatedThisGeneration = new Set<number>();
 const BLOB_DOWNLOAD_URLS_STORAGE_KEY = "assembly-subtitle-download-blob-urls";
 const TOP_FRAME_READY_ATTEMPTS = 8;
 const TOP_FRAME_READY_RETRY_DELAY_MS = 150;
@@ -73,6 +79,10 @@ async function restoreBlobDownloadUrls(): Promise<void> {
 async function cleanupPersistedBlobDownloadUrls(): Promise<void> {
   try {
     await restoreBlobDownloadUrls();
+    if (blobDownloadUrls.size === 0) {
+      return;
+    }
+
     for (const [downloadId, blobUrl] of [...blobDownloadUrls.entries()]) {
       const items = await callbackPromise<chrome.downloads.DownloadItem[]>((callback) =>
         chrome.downloads.search({ id: downloadId }, callback),
@@ -80,7 +90,14 @@ async function cleanupPersistedBlobDownloadUrls(): Promise<void> {
       const state = items[0]?.state;
       if (!state || state === "complete" || state === "interrupted") {
         blobDownloadUrls.delete(downloadId);
-        await revokeBlobUrl(blobUrl);
+        // Only revoke when this URL was created during the current SW
+        // generation. Restored entries reference a URL inside a defunct
+        // offscreen document, so the cross-context revoke message is a
+        // useless round-trip.
+        if (blobDownloadUrlsCreatedThisGeneration.has(downloadId)) {
+          blobDownloadUrlsCreatedThisGeneration.delete(downloadId);
+          await revokeBlobUrl(blobUrl);
+        }
       }
     }
     await persistBlobDownloadUrls();
@@ -89,12 +106,19 @@ async function cleanupPersistedBlobDownloadUrls(): Promise<void> {
   }
 }
 
+const BASE64_BINARY_CHUNK_SIZE = 0x8000;
+
 function bytesToBase64(bytes: Uint8Array): string {
-  let binary = "";
-  bytes.forEach((byte) => {
-    binary += String.fromCharCode(byte);
-  });
-  return btoa(binary);
+  if (bytes.length === 0) {
+    return "";
+  }
+
+  const chunks: string[] = [];
+  for (let offset = 0; offset < bytes.length; offset += BASE64_BINARY_CHUNK_SIZE) {
+    const slice = bytes.subarray(offset, offset + BASE64_BINARY_CHUNK_SIZE);
+    chunks.push(String.fromCharCode(...slice));
+  }
+  return btoa(chunks.join(""));
 }
 
 function toDataUrl(content: string, mimeType: string): string {
@@ -103,10 +127,7 @@ function toDataUrl(content: string, mimeType: string): string {
 }
 
 function createNonce(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return createRandomToken();
 }
 
 function isOffscreenDocumentAlreadyExistsError(error: unknown): boolean {
@@ -307,6 +328,7 @@ async function downloadExport(
     downloadByUrl,
     persistBlobDownload: async (downloadId, blobUrl) => {
       blobDownloadUrls.set(downloadId, blobUrl);
+      blobDownloadUrlsCreatedThisGeneration.add(downloadId);
       await persistBlobDownloadUrls();
     },
     revokeBlobUrl,
@@ -345,20 +367,48 @@ async function handleMessage(
   });
 }
 
+const STARTUP_DEDUP_WINDOW_MS = 5_000;
+let lastStartupSessionCleanupAt = 0;
+let inFlightStartupSessionCleanup: Promise<void> | null = null;
+
 async function runStartupSessionCleanup(): Promise<void> {
-  await cleanupPersistedBlobDownloadUrls();
+  // onStartup and onInstalled can fire back-to-back during browser launch +
+  // auto-update. Coalesce concurrent calls and ignore rapid re-entries so the
+  // session-library revision does not bump twice for no reason.
+  if (inFlightStartupSessionCleanup) {
+    return inFlightStartupSessionCleanup;
+  }
+  if (Date.now() - lastStartupSessionCleanupAt < STARTUP_DEDUP_WINDOW_MS) {
+    return;
+  }
+
+  inFlightStartupSessionCleanup = (async () => {
+    await cleanupPersistedBlobDownloadUrls();
+    try {
+      const result = await runStartupPersistenceMaintenance();
+      if (result.replaySummary.replayedCount > 0 || result.cleanupSummary.closedCount > 0) {
+        console.info(
+          `[service-worker] Replayed ${result.replaySummary.replayedCount} queued exit record(s); closed ${result.cleanupSummary.closedCount} stale running session(s) on startup`,
+        );
+      }
+      if (
+        result.diagnostics.lastError ||
+        result.replaySummary.failedCount > 0 ||
+        result.cleanupSummary.failedCount > 0
+      ) {
+        console.warn("[service-worker] Startup persistence maintenance finished with failures", result);
+      }
+    } catch (error) {
+      console.warn("[service-worker] Failed to run startup persistence maintenance", error);
+    } finally {
+      lastStartupSessionCleanupAt = Date.now();
+    }
+  })();
+
   try {
-    const result = await runStartupPersistenceMaintenance();
-    if (result.replaySummary.replayedCount > 0 || result.cleanupSummary.closedCount > 0) {
-      console.info(
-        `[service-worker] Replayed ${result.replaySummary.replayedCount} queued exit record(s); closed ${result.cleanupSummary.closedCount} stale running session(s) on startup`,
-      );
-    }
-    if (result.diagnostics.lastError || result.replaySummary.failedCount > 0 || result.cleanupSummary.failedCount > 0) {
-      console.warn("[service-worker] Startup persistence maintenance finished with failures", result);
-    }
-  } catch (error) {
-    console.warn("[service-worker] Failed to run startup persistence maintenance", error);
+    await inFlightStartupSessionCleanup;
+  } finally {
+    inFlightStartupSessionCleanup = null;
   }
 }
 
@@ -391,7 +441,9 @@ chrome.downloads.onChanged.addListener((delta) => {
 
   blobDownloadUrls.delete(delta.id);
   void persistBlobDownloadUrls();
-  void revokeBlobUrl(blobUrl);
+  if (blobDownloadUrlsCreatedThisGeneration.delete(delta.id)) {
+    void revokeBlobUrl(blobUrl);
+  }
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {

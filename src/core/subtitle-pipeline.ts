@@ -154,10 +154,36 @@ function softResyncHistory(
   state.previewAmbiguousSkipCount = 0;
 }
 
-function buildRecentCompactHistory(entries: SubtitleEntry[]): string {
+function resolveRecentHistoryCompactLength(
+  settings?: Partial<ExtensionSettings>,
+): number {
+  const candidate = Number(settings?.maxBufferLength);
+  if (!Number.isFinite(candidate) || candidate <= 0) {
+    return PIPELINE_DEFAULTS.recentHistoryCompactLength;
+  }
+  return Math.max(
+    1,
+    Math.min(Math.floor(candidate), PIPELINE_DEFAULTS.recentHistoryCompactLength),
+  );
+}
+
+function resolveRecentDuplicateMinLength(
+  settings?: Partial<ExtensionSettings>,
+): number {
+  const candidate = Number(settings?.recentDuplicateMinLength);
+  if (Number.isInteger(candidate) && candidate >= 1) {
+    return candidate;
+  }
+  return PIPELINE_DEFAULTS.recentDuplicateMinLength;
+}
+
+function buildRecentCompactHistory(
+  entries: SubtitleEntry[],
+  settings?: Partial<ExtensionSettings>,
+): string {
   return buildConfirmedCompactHistory(
     entries.slice(-PIPELINE_DEFAULTS.recentHistoryEntries),
-    PIPELINE_DEFAULTS.recentHistoryCompactLength,
+    resolveRecentHistoryCompactLength(settings),
   );
 }
 
@@ -165,18 +191,23 @@ function extractIncrementalTextWithRecentHistory(
   rawText: string,
   historyCompact: string,
   recentHistoryCompact: string,
+  recentDuplicateMinLength: number = PIPELINE_DEFAULTS.recentDuplicateMinLength,
 ): IncrementalExtractResult {
   const recentHistory = compactSubtitleText(recentHistoryCompact);
   const fullHistory = compactSubtitleText(historyCompact);
 
   if (recentHistory && recentHistory !== fullHistory) {
-    const recentResult = extractIncrementalTextFromHistory(rawText, recentHistory);
+    const recentResult = extractIncrementalTextFromHistory(
+      rawText,
+      recentHistory,
+      recentDuplicateMinLength,
+    );
     if (recentResult.matched || recentResult.duplicate) {
       return recentResult;
     }
   }
 
-  return extractIncrementalTextFromHistory(rawText, fullHistory);
+  return extractIncrementalTextFromHistory(rawText, fullHistory, recentDuplicateMinLength);
 }
 
 function sliceFromCompactIndex(text: string, compactIndex: number): string {
@@ -220,10 +251,17 @@ function findCompactSuffixPrefixOverlap(
 export function extractIncrementalTextFromHistory(
   rawText: string,
   historyCompact: string,
+  recentDuplicateMinLength: number = PIPELINE_DEFAULTS.recentDuplicateMinLength,
 ): IncrementalExtractResult {
   const normalizedRaw = normalizeRawText(rawText);
   const rawCompact = compactSubtitleText(normalizedRaw);
   const compactHistory = compactSubtitleText(historyCompact);
+  const duplicateMinLength = Math.max(
+    1,
+    Number.isInteger(recentDuplicateMinLength)
+      ? recentDuplicateMinLength
+      : PIPELINE_DEFAULTS.recentDuplicateMinLength,
+  );
 
   if (!rawCompact) {
     return {
@@ -256,7 +294,7 @@ export function extractIncrementalTextFromHistory(
   }
 
   if (
-    rawCompact.length >= PIPELINE_DEFAULTS.recentDuplicateMinLength &&
+    rawCompact.length >= duplicateMinLength &&
     compactHistory.includes(rawCompact)
   ) {
     return {
@@ -438,10 +476,12 @@ export function applyPreview(
   next.previewText = normalizedRaw;
   next.lastObservedRaw = normalizedRaw;
 
+  const recentDuplicateMinLength = resolveRecentDuplicateMinLength(settings);
   const extraction = extractIncrementalTextWithRecentHistory(
     normalizedRaw,
     next.confirmedCompact,
-    buildRecentCompactHistory(next.entries),
+    buildRecentCompactHistory(next.entries, settings),
+    recentDuplicateMinLength,
   );
 
   if (!extraction.matched && next.confirmedCompact) {
@@ -469,7 +509,8 @@ export function applyPreview(
       ? extractIncrementalTextWithRecentHistory(
           normalizedRaw,
           next.confirmedCompact,
-          buildRecentCompactHistory(next.entries),
+          buildRecentCompactHistory(next.entries, settings),
+          recentDuplicateMinLength,
         )
       : extraction;
 
@@ -518,7 +559,7 @@ export function commitLiveRow(
   const previewChanged = next.previewText !== normalizedPreview;
   const baselineCompact = meta?.baselineCompact ?? next.confirmedCompact;
   const recentBaselineCompact = compactSubtitleText(baselineCompact).slice(
-    -PIPELINE_DEFAULTS.recentHistoryCompactLength,
+    -resolveRecentHistoryCompactLength(settings),
   );
 
   next.previewText = normalizedPreview;
@@ -528,6 +569,7 @@ export function commitLiveRow(
     rowText,
     baselineCompact,
     recentBaselineCompact,
+    resolveRecentDuplicateMinLength(settings),
   );
   const candidateText = sanitizeCommittedText(extraction.text, settings);
 

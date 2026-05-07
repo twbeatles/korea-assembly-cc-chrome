@@ -1,7 +1,11 @@
 import type { CaptureMode, NormalizedCaptureEvent } from "../core/live-capture";
 import type { ObservedSubtitleRow } from "../shared/message-types";
 import type { PersistabilityState } from "../shared/message-types";
-import { resolveCaptureNotice } from "./capture-notice";
+import {
+  resolveCaptureNotice,
+  UNCONFIRMED_STALL_HINT_NOTICE,
+  UNCONFIRMED_STALL_HINT_THRESHOLD,
+} from "./capture-notice";
 
 export const RESET_CAPTURE_NOTICE_MIN_MS = 2000;
 
@@ -62,6 +66,7 @@ export function resolveRuntimeCaptureNotice(input: {
   now: number;
   persistabilityState: PersistabilityState;
   persistabilityHint: string;
+  unconfirmedFallbackBlockStreak?: number;
 }): string {
   if (
     input.captureMode !== "fallback" &&
@@ -69,6 +74,17 @@ export function resolveRuntimeCaptureNotice(input: {
     input.persistabilityState !== "persistable"
   ) {
     return input.persistabilityHint;
+  }
+
+  // When container fallback has been blocked by the unconfirmed filter for
+  // several consecutive ticks, surface a soft hint so the user understands the
+  // panel is intentionally pausing rather than silently broken.
+  if (
+    !input.hasStableRows &&
+    typeof input.unconfirmedFallbackBlockStreak === "number" &&
+    input.unconfirmedFallbackBlockStreak >= UNCONFIRMED_STALL_HINT_THRESHOLD
+  ) {
+    return UNCONFIRMED_STALL_HINT_NOTICE;
   }
 
   return resolveCaptureNotice({

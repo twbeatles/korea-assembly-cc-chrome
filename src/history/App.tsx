@@ -28,6 +28,7 @@ import {
   listSessionsPage,
   loadSession,
   loadSessionsByIds,
+  SESSION_NOTE_MAX_LENGTH,
   updateSessionMetadata,
 } from "../storage/session-store";
 import type {
@@ -345,6 +346,26 @@ export default function App() {
   useEffect(() => {
     noteDraftRef.current = noteDraft;
   }, [noteDraft]);
+
+  useEffect(() => {
+    if (!hasUnsavedNote) {
+      return;
+    }
+
+    const handler = (event: BeforeUnloadEvent): void => {
+      // Modern browsers ignore the message text but still show their own
+      // confirmation when `returnValue` is set. The guard only fires while a
+      // dirty draft is present so navigation/reload during normal browsing is
+      // unaffected.
+      event.preventDefault();
+      event.returnValue = "";
+    };
+
+    window.addEventListener("beforeunload", handler);
+    return () => {
+      window.removeEventListener("beforeunload", handler);
+    };
+  }, [hasUnsavedNote]);
 
   useEffect(() => {
     const previousSelectedSession = previousSelectedSessionRef.current;
@@ -1258,7 +1279,9 @@ export default function App() {
                 <div className="section-row">
                   <strong>세션 메모</strong>
                   <div className="note-meta">
-                    <span>{noteDraft.trim().length}자</span>
+                    <span>
+                      {noteDraft.length} / {SESSION_NOTE_MAX_LENGTH}자
+                    </span>
                     <span className={`note-status ${hasUnsavedNote ? "dirty" : ""}`}>
                       {hasUnsavedNote ? "저장되지 않음" : "저장됨"}
                     </span>
@@ -1267,9 +1290,12 @@ export default function App() {
                 <textarea
                   className="note-input"
                   value={noteDraft}
-                  onChange={(event) => setNoteDraft(event.target.value)}
+                  onChange={(event) =>
+                    setNoteDraft(event.target.value.slice(0, SESSION_NOTE_MAX_LENGTH))
+                  }
                   placeholder="이 기록에 대한 메모를 남겨두세요."
                   rows={4}
+                  maxLength={SESSION_NOTE_MAX_LENGTH}
                 />
                 <div className="note-actions">
                   <button

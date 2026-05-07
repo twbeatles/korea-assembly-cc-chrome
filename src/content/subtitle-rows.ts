@@ -1,6 +1,7 @@
 import type { SpeakerChannel } from "../core/subtitle-models";
 import type { ObservedSubtitleRow } from "../shared/message-types";
 import { compactSubtitleText, normalizeSubtitleText } from "../core/text-normalizer";
+import { createRandomToken } from "../shared/random-token";
 
 export const PRIMARY_SPEAKER_COLOR = "rgb(35, 124, 147)";
 export const SECONDARY_SPEAKER_COLOR = "rgb(30, 30, 30)";
@@ -65,7 +66,7 @@ function extractAttributeNodeKey(node: HTMLElement): string {
 
 function ensureGeneratedNodeKey(node: HTMLElement): string {
   if (!node.dataset.assemblyRowKey) {
-    node.dataset.assemblyRowKey = `row_${Math.random().toString(36).slice(2, 9)}_${Date.now()}`;
+    node.dataset.assemblyRowKey = `row_${createRandomToken()}`;
   }
   return node.dataset.assemblyRowKey;
 }

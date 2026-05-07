@@ -39,6 +39,18 @@
 > - 단일 세션 export는 `8 MiB` 초과 시 사용자 확인을 거친 뒤 기존 다운로드 경로를 시도하며, transport/data URL 실패 문구를 단일 export와 history 부분 export 맥락에 맞게 분리했습니다.
 > - fallback record가 있어도 history paging은 전체 IndexedDB preload로 후퇴하지 않고 fallback 전체와 IndexedDB window/id 조회를 병합합니다.
 > - local polling/top fallback unconfirmed streak를 분리했고, page-exit persist 마지막 시도 diagnostics를 options 저장 복구 상태에 노출합니다.
+> 2026-05-07 업데이트 (P0 / P1 / P2 closure):
+> - **P0** 일괄 적용: `recentDuplicateMinLength` 옵션이 실제 파이프라인에 전달되고(`extractIncrementalTextFromHistory` / `extractIncrementalTextWithRecentHistory` 시그니처 확장), service-worker `bytesToBase64` 가 `0x8000` 청크 단위로 동작하며, `tryDomSubtitleActivation` / `injected-observer.ensureSubtitleLayerVisible` 가 `layer.style.display = "block"` 강제 폴백을 제거했습니다.
+> - **P1** 일괄 적용: `maxBufferLength` 가 `recentHistoryCompactLength` 에도 비례 반영되고, `pageshow(persisted)` / `visibilitychange:visible` 처리 + `runningAutoSaveEnabled` 기반 visibility 가드 + 같은 player URL 의 명시적 stop 후 `sessionStorage` cooldown + 세션 메모(`note`) 4096자 캡이 추가되었습니다.
+> - **P2** 다수 적용: `createRandomToken` 공통 helper, startup 중복 실행 가드 (`STARTUP_DEDUP_WINDOW_MS = 5_000`), settings 변경 시 unconfirmed streak 리셋, 미수신 streak ≥ 3 일 때 panel notice 에 `UNCONFIRMED_STALL_HINT_NOTICE` 노출, download 오류 매핑에 quota / 부분 export 동선 안내, history dirty note `beforeunload` 가드, `subtitle:health` 가 `sourceUrl` / `title` / `committeeName` 도 갱신, SW 재시작 시 stale Blob URL 의 `OFFSCREEN_REVOKE_BLOB_URL` round-trip 생략, 자막 활성화 콜백 결과 재검증, 서비스 워커 명령 발신자 `sender.id` 검사.
+> - **이 보고서의 historical findings 중 다음 항목은 현재 구현 상태에서 모두 resolved 상태입니다.**
+>   - `H-1` `ensureSubtitleLayerActive` 성공 판정 — `visible && (hasText || controlActive)` 으로 정정됨
+>   - `H-2` popup `hasPersistableContent` 와 `shouldPersistFinalSession` — `committed entries only` 로 통일됨
+>   - `M-1` `listQueuedExitPersistRecords` race — storage / memory 스냅샷 read-before / read-after 두 단계 merge 로 정리됨
+>   - `M-2` `deriveCommitteeName` 정규식 — `\s+\|\s+[^|]+$` 로 좁혀져 날짜·하이픈 보존
+>   - `L-2` `recentCopyLineCount` min — `case "recentCopyLineCount": return 1;` 명시됨
+>   - `L-3` `isElementVisible` — `display:none` / `visibility:hidden` / `opacity:0` / zero-rect 모두 hidden 처리
+>   - `L-7` README 개발 환경 절차 — `npm install` / `npm run dev` / `npm run build` + unpacked 로드 절차 포함됨
 
 ---
 

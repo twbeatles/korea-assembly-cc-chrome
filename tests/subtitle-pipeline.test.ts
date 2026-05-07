@@ -6,6 +6,7 @@ import {
   applyPreview,
   applyStructuredEntry,
   commitLiveRow,
+  extractIncrementalTextFromHistory,
   finalizeSession,
 } from "../src/core/subtitle-pipeline";
 
@@ -182,6 +183,54 @@ describe("subtitle pipeline", () => {
 
     expect(result.state.entries).toHaveLength(1);
     expect(result.state.confirmedCompact.length).toBe(1000);
+  });
+
+  it("honors the configured recentDuplicateMinLength when extracting incremental text", () => {
+    const history = "가나다라마바사아자차카타파하";
+    const containedRaw = "가나다라마바사아자차카타"; // 12 chars
+
+    const blocked = extractIncrementalTextFromHistory(containedRaw, history, 8);
+    expect(blocked.duplicate).toBe(true);
+    expect(blocked.reason).toBe("contained_in_history");
+
+    const allowed = extractIncrementalTextFromHistory(containedRaw, history, 32);
+    expect(allowed.reason).not.toBe("contained_in_history");
+  });
+
+  it("threads recentDuplicateMinLength through applyPreview into the extraction pipeline", () => {
+    let state = createEmptySessionState("http://test.com", "Test");
+    const now = Date.parse("2026-05-07T08:00:00.000Z");
+
+    state = applyPreview(
+      state,
+      "가나다라마바사아자차카타파하",
+      now,
+      { recentDuplicateMinLength: 8, noiseFilterEnabled: false },
+    ).state;
+
+    const blockedAtDefault = applyPreview(
+      state,
+      "가나다라마바사아자차카타",
+      now + 1000,
+      { recentDuplicateMinLength: 8, noiseFilterEnabled: false },
+    );
+    expect(blockedAtDefault.reason).toBe("preview_contained_in_history");
+
+    let stateForLargeThreshold = createEmptySessionState("http://test.com", "Test");
+    stateForLargeThreshold = applyPreview(
+      stateForLargeThreshold,
+      "가나다라마바사아자차카타파하",
+      now,
+      { recentDuplicateMinLength: 32, noiseFilterEnabled: false },
+    ).state;
+
+    const allowedAtLargeThreshold = applyPreview(
+      stateForLargeThreshold,
+      "가나다라마바사아자차카타",
+      now + 1000,
+      { recentDuplicateMinLength: 32, noiseFilterEnabled: false },
+    );
+    expect(allowedAtLargeThreshold.reason).not.toBe("preview_contained_in_history");
   });
 
   it("does not materialize preview-only text when preparing a save/export snapshot", () => {

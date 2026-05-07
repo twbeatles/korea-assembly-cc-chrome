@@ -24,6 +24,7 @@ const sessionStoreMocks = vi.hoisted(() => ({
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
   updateSessionMetadata: vi.fn(),
+  SESSION_NOTE_MAX_LENGTH: 4096,
 }));
 
 vi.mock("../src/shared/chrome-api", () => chromeApiMocks);
@@ -229,11 +230,11 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
 
     await waitFor(() => {
-      expect(
-        screen.getByText(
-          "내보내기 데이터가 커서 저장 요청을 전송하지 못했습니다. 저장된 기록 화면에서 필요한 항목만 선택해 부분 저장을 시도해 주세요.",
-        ),
-      ).toBeTruthy();
+      const message = screen.getByText((content) =>
+        content.includes("저장 요청을 전송하지 못했습니다") &&
+        content.includes("부분 저장을 시도해 주세요"),
+      );
+      expect(message).toBeTruthy();
     });
   });
 

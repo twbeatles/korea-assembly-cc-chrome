@@ -1,4 +1,5 @@
 import { SESSION_RECORD_VERSION } from "../shared/constants";
+import { createPrefixedRandomToken } from "../shared/random-token";
 
 export type ExportFormat = "txt" | "srt" | "vtt" | "json";
 export type CaptureStatus = "idle" | "running" | "stopped" | "error";
@@ -76,11 +77,7 @@ export interface SessionState {
 }
 
 export function createId(prefix: string): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return `${prefix}_${crypto.randomUUID()}`;
-  }
-
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return createPrefixedRandomToken(prefix);
 }
 
 export function cloneEntry(entry: SubtitleEntry): SubtitleEntry {

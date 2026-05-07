@@ -34,6 +34,7 @@ import {
   SESSION_BACKUP_VERSION,
 } from "./session-backup";
 import { getUtf8ByteLength } from "../shared/byte-size";
+import { createRandomToken } from "../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
   SESSION_DB_NAME,
@@ -63,6 +64,17 @@ import type {
 const LEGACY_FALLBACK_STORAGE_KEY = "assembly-subtitle-session-fallback";
 const FALLBACK_INDEX_STORAGE_KEY = "assembly-subtitle-session-fallback:index";
 const FALLBACK_RECORD_PREFIX = "assembly-subtitle-session-fallback:record:";
+export const SESSION_NOTE_MAX_LENGTH = 4096;
+
+function clampSessionNote(note: string): string {
+  if (typeof note !== "string") {
+    return "";
+  }
+  if (note.length <= SESSION_NOTE_MAX_LENGTH) {
+    return note;
+  }
+  return note.slice(0, SESSION_NOTE_MAX_LENGTH);
+}
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 let indexedDbAvailable = true;
@@ -346,7 +358,7 @@ function normalizeSessionRecord(
       : starred
         ? updatedAt
         : null;
-  const note = typeof session.note === "string" ? session.note : "";
+  const note = clampSessionNote(typeof session.note === "string" ? session.note : "");
   const endedAt =
     status === "running"
       ? null
@@ -412,7 +424,8 @@ function applySessionMetadataPatch(
       ? patch.pinnedAt
       : record.pinnedAt ?? updatedAt
     : null;
-  const note = patch.note !== undefined ? patch.note : record.note;
+  const note =
+    patch.note !== undefined ? clampSessionNote(patch.note) : clampSessionNote(record.note);
 
   return normalizeSessionRecord(
     {
@@ -436,7 +449,7 @@ async function bumpSessionLibraryRevision(): Promise<void> {
 
   try {
     await chrome.storage.local.set({
-      [SESSION_LIBRARY_REVISION_STORAGE_KEY]: `${Date.now()}:${Math.random().toString(16).slice(2)}`,
+      [SESSION_LIBRARY_REVISION_STORAGE_KEY]: `${Date.now()}:${createRandomToken()}`,
     });
   } catch (error) {
     logStoreError("Failed to bump session library revision", error);

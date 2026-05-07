@@ -13,8 +13,19 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
+.pnp.*
+.yarn/cache/
+.yarn/install-state.gz
 public/injected-observer.js
 public/injected-observer.js.map
+
+# -----------------------------------------------------------------------------
+# Test / E2E artifacts (defensive — `playwright` is a devDependency)
+# -----------------------------------------------------------------------------
+playwright-report/
+test-results/
+.playwright/
+e2e-screenshots/
 
 # -----------------------------------------------------------------------------
 # Local secrets / signing material
@@ -37,6 +48,17 @@ public/injected-observer.js.map
 .DS_Store
 Thumbs.db
 desktop.ini
+*.swp
+*.swo
+*~
+.history/
+
+# -----------------------------------------------------------------------------
+# Local override files (Vite / Vitest / generic)
+# -----------------------------------------------------------------------------
+*.local
+vite.config.local.*
+vitest.config.local.*
 
 # -----------------------------------------------------------------------------
 # Virtual environments (guard against accidental creation)

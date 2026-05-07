@@ -82,11 +82,29 @@ export function isBackgroundCommandMessage(message: unknown): message is Backgro
   );
 }
 
+function isMessageFromOwnExtension(sender: chrome.runtime.MessageSender): boolean {
+  // Reject messages whose sender id does not match our own extension. This is
+  // a defense-in-depth check — Chrome already routes externally_connectable
+  // messages through a separate event listener — but it costs nothing to
+  // verify and makes the boundary explicit for security review.
+  if (typeof chrome === "undefined" || !chrome.runtime?.id) {
+    return true;
+  }
+  return !sender.id || sender.id === chrome.runtime.id;
+}
+
 export async function handleBackgroundCommand(
   message: BackgroundCommandMessage,
   sender: chrome.runtime.MessageSender,
   dependencies: BackgroundCommandDependencies,
 ): Promise<BackgroundCommandResponse> {
+  if (!isMessageFromOwnExtension(sender)) {
+    return {
+      ok: false,
+      error: "외부 발신자의 명령을 거부했습니다.",
+    };
+  }
+
   switch (message.type) {
     case "ENSURE_CONTENT_SCRIPT":
       if (!dependencies.supportsAssemblyPage(message.url)) {

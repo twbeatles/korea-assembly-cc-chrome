@@ -398,6 +398,29 @@ When editing this repository, align with the newly implemented behavior below.
 - 단일 세션 export 하드 제한은 두지 않으며, runtime message 크기 초과/invalid data URL 계열 실패는 사용자 안내 문구로 매핑해야 합니다.
 - frame-forward nonce mismatch 는 즉시 nonce resync 요청과 빠른 top fallback probe를 함께 트리거해 단기 드롭 구간 복구를 우선해야 합니다.
 
+## Sync Delta (2026-05-07)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- `extractIncrementalTextFromHistory()` and `extractIncrementalTextWithRecentHistory()` accept a `recentDuplicateMinLength` argument. `applyPreview()` and `commitLiveRow()` thread `settings.recentDuplicateMinLength` through, so the option is no longer ignored by the pipeline.
+- The recent-history compact length used by the pipeline is `min(settings.maxBufferLength, PIPELINE_DEFAULTS.recentHistoryCompactLength)`, so reducing `maxBufferLength` actually narrows the comparison window.
+- `tryDomSubtitleActivation()` and `injected-observer.ts ensureSubtitleLayerVisible()` no longer set `layer.style.display = "block"`. When no activation control is reachable, the panel falls through to the manual-click notice instead of forcing inline style. `SubtitleActivationResult.method` no longer includes `"layer-style"`.
+- Service-worker `bytesToBase64()` uses `0x8000`-byte chunked `String.fromCharCode(...slice)` accumulation instead of quadratic `+=`.
+- `persistRunningSnapshotForVisibilityChange()` accepts `respectAutoSaveSetting` and respects `runningAutoSaveEnabled` for ordinary `visibilitychange:hidden` snapshots. `pagehide` (genuine exit) and `beforeunload` keep the unconditional final-save behaviour.
+- The top-frame content script handles `visibilitychange:visible` and `pageshow(persisted)` by re-syncing the frame-forward nonce, redispatching the observer config, triggering an immediate top-frame fallback probe, and refreshing the panel.
+- Auto-start cooldown: `stopCapture()` and `clearSessionAndReset()` set a `sessionStorage` marker keyed by `pathname + search`. The bootstrap auto-start branch skips when this marker is present. `startCapture()` clears the marker. New tabs / new player URLs are unaffected.
+- `note` (session memo) is clamped to `SESSION_NOTE_MAX_LENGTH = 4096` characters in both `normalizeSessionRecord` / `applySessionMetadataPatch` paths and the history textarea (`maxLength` + `slice` on `onChange`).
+- A shared `createRandomToken()` helper in `src/shared/random-token.ts` consolidates `crypto.randomUUID` → `crypto.getRandomValues` → `Date.now() + Math.random()` fallbacks for nonces / IDs.
+- The startup persistence maintenance path is coalesced inside the service worker so `chrome.runtime.onStartup` and `chrome.runtime.onInstalled` firing back-to-back do not run cleanup twice.
+- Settings change handler resets `localPollingUnconfirmedFallbackBlockStreak` / `topFallbackUnconfirmedFallbackBlockStreak` when `filterUnconfirmedEnabled` flips, and `topFallbackMissStreak` when `pollingFallbackIntervalMs` changes.
+- Capture notice: `resolveRuntimeCaptureNotice()` accepts an optional `unconfirmedFallbackBlockStreak`. When the streak reaches `UNCONFIRMED_STALL_HINT_THRESHOLD = 3`, the panel surfaces `UNCONFIRMED_STALL_HINT_NOTICE` instead of generic capture-running copy.
+- `mapDownloadErrorMessage()` now also maps `quota` / `disk full` / `insufficient_resources` to a storage-space guidance, and the single-session size guidance points users at the `저장된 기록` partial-save flow with explicit navigation hints.
+- The history page registers a `beforeunload` guard while the session-note draft is dirty so accidental tab close prompts a confirmation.
+- `subtitle:health` events refresh `state.sourceUrl` / `state.title` / `state.committeeName` so SPA-like in-page navigation keeps cached metadata fresh even before the next `subtitle:update`.
+- Service-worker Blob download cleanup tracks Blob URLs created during the current SW generation. URLs restored from storage skip the now-pointless `OFFSCREEN_REVOKE_BLOB_URL` round-trip.
+- `injected-observer.ts ensureSubtitleLayerVisible()` re-checks `isSubtitleLayerVisible()` after each activation primitive. Successful invocation alone is no longer treated as success — the layer must actually become visible.
+- `service-worker-commands.handleBackgroundCommand()` rejects messages whose `sender.id` does not match `chrome.runtime.id`.
+
 ## Sync Delta (2026-05-03)
 
 When editing this repository, align with the newly implemented behavior below.
