@@ -19,6 +19,7 @@ import {
   replayQueuedExitPersistRecords,
   resetSessionStoreForTests,
   saveSession,
+  SESSION_NOTE_MAX_LENGTH,
   updateSessionMetadata,
   upsertSessionRecord,
   updateRunningSession,
@@ -189,6 +190,24 @@ describe("session store", () => {
     expect(loaded?.starred).toBe(true);
     expect(loaded?.pinnedAt).toBe("2026-03-10T09:06:00.000Z");
     expect(loaded?.note).toBe("메타데이터만 갱신");
+  });
+
+  it("clamps oversized session notes to the configured maximum length", async () => {
+    const session = buildSession("session_with_long_note", "saved");
+    const oversizedNote = "메".repeat(SESSION_NOTE_MAX_LENGTH + 256);
+
+    await upsertSessionRecord({
+      ...session,
+      note: oversizedNote,
+    });
+
+    const loaded = await loadSession(session.id);
+    expect(loaded?.note.length).toBe(SESSION_NOTE_MAX_LENGTH);
+
+    const overlongPatch = "수".repeat(SESSION_NOTE_MAX_LENGTH + 64);
+    const updated = await updateSessionMetadata(session.id, { note: overlongPatch });
+
+    expect(updated.note.length).toBe(SESSION_NOTE_MAX_LENGTH);
   });
 
   it("lists paged sessions without preloading the full library into the caller", async () => {

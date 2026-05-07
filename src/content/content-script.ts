@@ -57,6 +57,7 @@ import {
   shouldWarnBeforeUnload,
 } from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
+import { createRandomToken } from "../shared/random-token";
 import { buildCaptureDiagnostics } from "../shared/capture-diagnostics";
 import {
   buildCopyText,
@@ -144,6 +145,48 @@ const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-scrip
 const SUBTITLE_RESET_GRACE_MS = 1000;
 const INVALIDATED_CONTEXT_NOTICE = "Extension was updated. Please refresh the page (F5).";
 const FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS = 15_000;
+const AUTO_START_COOLDOWN_STORAGE_PREFIX = "assembly-subtitle-explicit-stop:";
+
+function getAutoStartCooldownKey(): string {
+  try {
+    return `${AUTO_START_COOLDOWN_STORAGE_PREFIX}${window.location.pathname}${window.location.search}`;
+  } catch {
+    return AUTO_START_COOLDOWN_STORAGE_PREFIX;
+  }
+}
+
+function rememberAutoStartCooldown(): void {
+  if (!isTopFrame) {
+    return;
+  }
+  try {
+    window.sessionStorage?.setItem(getAutoStartCooldownKey(), "1");
+  } catch {
+    // sessionStorage may be unavailable (e.g., third-party context); cooldown is best-effort.
+  }
+}
+
+function clearAutoStartCooldown(): void {
+  if (!isTopFrame) {
+    return;
+  }
+  try {
+    window.sessionStorage?.removeItem(getAutoStartCooldownKey());
+  } catch {
+    // sessionStorage may be unavailable; nothing to do.
+  }
+}
+
+function shouldSkipAutoStart(): boolean {
+  if (!isTopFrame) {
+    return false;
+  }
+  try {
+    return window.sessionStorage?.getItem(getAutoStartCooldownKey()) === "1";
+  } catch {
+    return false;
+  }
+}
 
 let settings: ExtensionSettings = {
   autoScroll: true,
@@ -226,10 +269,7 @@ function confirmLargeSingleSessionExport(filename: string, byteLength: number): 
 }
 
 function createObserverBridgeToken(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  return createRandomToken();
 }
 
 function clearLocalPolling(): void {
@@ -844,8 +884,19 @@ function queueExitPersistRecordInBackground(record: SessionRecord): void {
   }
 }
 
-function persistRunningSnapshotForVisibilityChange(now = Date.now()): void {
+function persistRunningSnapshotForVisibilityChange(
+  now = Date.now(),
+  options: { respectAutoSaveSetting?: boolean } = {},
+): void {
   if (extensionContextInvalidated || !isTopFrame || !canPersistCurrentRunningState()) {
+    return;
+  }
+
+  // Page-exit (pagehide) snapshots must persist regardless of the autosave
+  // toggle so the user does not silently lose work when the tab closes.
+  // Routine visibility-hidden snapshots, however, should respect the user's
+  // autosave preference.
+  if (options.respectAutoSaveSetting !== false && !settings.runningAutoSaveEnabled) {
     return;
   }
 
@@ -1069,6 +1120,18 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     const now = event.timestamp || Date.now();
     if (event.kind === "subtitle:health") {
       state.lastObserverEventAt = now;
+      // SPA-like in-page navigation can change the URL/title without
+      // re-bootstrapping the content script. Refresh the cached source
+      // metadata on health pings so saved snapshots reflect the current
+      // page even if no subtitle:update has arrived yet.
+      if (typeof event.sourceUrl === "string" && event.sourceUrl) {
+        state.sourceUrl = event.sourceUrl;
+      }
+      const currentTitle = document.title;
+      if (currentTitle && currentTitle !== state.title) {
+        state.title = currentTitle;
+        state.committeeName = deriveCommitteeName(currentTitle);
+      }
       return;
     }
 
@@ -1163,6 +1226,10 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
         now,
         persistabilityState: persistability.state,
         persistabilityHint: persistability.hint,
+        unconfirmedFallbackBlockStreak: Math.max(
+          localPollingUnconfirmedFallbackBlockStreak,
+          topFallbackUnconfirmedFallbackBlockStreak,
+        ),
       }),
     );
 
@@ -1437,6 +1504,7 @@ async function clearSessionAndReset(): Promise<void> {
     return;
   }
   resetRuntimeState();
+  rememberAutoStartCooldown();
   setPanelNotice("화면을 비우고 새로 시작할 준비를 마쳤습니다.");
   syncUserInterfaces();
 }
@@ -1449,6 +1517,7 @@ async function startCapture(): Promise<void> {
     return;
   }
   resetRuntimeState();
+  clearAutoStartCooldown();
   const now = new Date().toISOString();
   panelCollapsed = false;
   state.status = "running";
@@ -1481,6 +1550,7 @@ async function stopCapture(): Promise<void> {
   const stoppedRecord = buildPreparedSessionRecord("stopped", now);
   state = finalizeSession(state, now, settings).state;
   setPanelNotice("자막 모으기를 멈췄습니다.");
+  rememberAutoStartCooldown();
   await persistStoppedSession(stoppedRecord);
   syncUserInterfaces();
 }
@@ -1799,9 +1869,20 @@ function bindSettingsChanges(): void {
       return;
     }
 
+    const previousSettings = settings;
     settings = sanitizeSettings(
       (changes[EXTENSION_STORAGE_KEY].newValue as Partial<ExtensionSettings> | undefined) ?? {},
     );
+
+    // Reset heuristic streaks tied to options that just changed so the new
+    // policy takes effect immediately rather than after another N samples.
+    if (previousSettings.filterUnconfirmedEnabled !== settings.filterUnconfirmedEnabled) {
+      localPollingUnconfirmedFallbackBlockStreak = 0;
+      topFallbackUnconfirmedFallbackBlockStreak = 0;
+    }
+    if (previousSettings.pollingFallbackIntervalMs !== settings.pollingFallbackIntervalMs) {
+      topFallbackMissStreak = 0;
+    }
 
     dispatchObserverConfig();
     startLocalPolling();
@@ -1815,6 +1896,17 @@ function bindSettingsChanges(): void {
   });
 }
 
+function resyncOnReturnToForeground(): void {
+  if (!isTopFrame || extensionContextInvalidated) {
+    return;
+  }
+
+  requestFrameForwardNonceResync(true);
+  dispatchObserverConfig();
+  triggerImmediateTopFallbackProbe();
+  syncUserInterfaces();
+}
+
 function bindNavigationGuards(): void {
   if (!isTopFrame) {
     return;
@@ -1823,16 +1915,29 @@ function bindNavigationGuards(): void {
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "hidden") {
       persistRunningSnapshotForVisibilityChange();
+      return;
+    }
+    if (document.visibilityState === "visible") {
+      resyncOnReturnToForeground();
     }
   });
 
   window.addEventListener("pagehide", (event) => {
     const pageTransitionEvent = event as PageTransitionEvent;
     if (pageTransitionEvent.persisted) {
+      // BFCache snapshot - keep autosave gating because the page may resume.
       persistRunningSnapshotForVisibilityChange();
       return;
     }
+    // Genuine page exit - bypass autosave gating to preserve user work.
     persistStoppedSnapshotForPageExit();
+  });
+
+  window.addEventListener("pageshow", (event) => {
+    const pageTransitionEvent = event as PageTransitionEvent;
+    if (pageTransitionEvent.persisted) {
+      resyncOnReturnToForeground();
+    }
   });
 
   window.addEventListener("beforeunload", (event) => {
@@ -1840,7 +1945,11 @@ function bindNavigationGuards(): void {
       return;
     }
 
-    persistRunningSnapshotForVisibilityChange();
+    // Keep the unconditional snapshot here: the user is about to leave the
+    // page, so autosave gating should not block the safety net.
+    persistRunningSnapshotForVisibilityChange(Date.now(), {
+      respectAutoSaveSetting: false,
+    });
     event.preventDefault();
     event.returnValue = "";
   });
@@ -1936,7 +2045,12 @@ async function bootstrap(): Promise<void> {
     nonceSource: FRAME_FORWARD_NONCE_SOURCE,
   });
 
-  if (isTopFrame && settings.autoStartEnabled && state.status !== "running") {
+  if (
+    isTopFrame &&
+    settings.autoStartEnabled &&
+    state.status !== "running" &&
+    !shouldSkipAutoStart()
+  ) {
     void startCapture().catch((error: unknown) => {
       reportRuntimeError("자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.", error);
     });

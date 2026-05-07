@@ -85,16 +85,16 @@ describe("subtitle layer helpers", () => {
     expect(readSubtitleLayerState().visible).toBe(true);
   });
 
-  it("falls back to forcing the layer visible when no button exists", () => {
+  it("does not force the layer visible when no activation control exists", () => {
     mountLayer();
 
     const result = tryDomSubtitleActivation();
 
     expect(result).toEqual({
-      attempted: true,
-      method: "layer-style",
+      attempted: false,
+      method: "none",
     });
-    expect(readSubtitleLayerState().visible).toBe(true);
+    expect(readSubtitleLayerState().visible).toBe(false);
   });
 
   it("reports an active activation control and treats it as a successful visible state", async () => {

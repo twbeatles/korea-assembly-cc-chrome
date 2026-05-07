@@ -260,4 +260,31 @@ describe("service worker command helpers", () => {
 
     expect(commands.every((command) => isBackgroundCommandMessage(command))).toBe(true);
   });
+
+  it("rejects commands from senders whose extension id does not match this extension", async () => {
+    const dependencies = createDependencies();
+    const originalRuntime = (globalThis as { chrome?: typeof chrome }).chrome?.runtime;
+    (globalThis as { chrome?: { runtime?: { id?: string } } }).chrome = {
+      runtime: { id: "expected-extension-id" },
+    } as unknown as typeof chrome;
+
+    try {
+      const response = await handleBackgroundCommand(
+        { type: "OPEN_HISTORY_PAGE" } as BackgroundCommandMessage,
+        { id: "some-other-extension" },
+        dependencies,
+      );
+
+      expect(response).toEqual({ ok: false, error: "외부 발신자의 명령을 거부했습니다." });
+      expect(dependencies.openHistoryPage).not.toHaveBeenCalled();
+    } finally {
+      if (originalRuntime) {
+        (globalThis as { chrome?: { runtime?: typeof chrome.runtime } }).chrome = {
+          runtime: originalRuntime,
+        } as unknown as typeof chrome;
+      } else {
+        delete (globalThis as { chrome?: unknown }).chrome;
+      }
+    }
+  });
 });

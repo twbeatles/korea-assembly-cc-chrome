@@ -127,36 +127,42 @@ function ensureSubtitleLayerVisible(): boolean {
     return true;
   }
 
-  if (invokeActivationFunction((window as Window & { smi_mode_act?: (value: number) => void }).smi_mode_act, 1)) {
+  // Each activation primitive is only credited if the layer becomes visible
+  // afterwards. The page's own functions/buttons may exist with the same
+  // identifier but unrelated semantics, so a successful invocation alone is
+  // not enough — we require an observable effect on `#viewSubtit`.
+  invokeActivationFunction(
+    (window as Window & { smi_mode_act?: (value: number) => void }).smi_mode_act,
+    1,
+  );
+  if (isSubtitleLayerVisible()) {
     return true;
   }
 
-  if (invokeActivationFunction((window as Window & { smi_on?: () => void }).smi_on)) {
+  invokeActivationFunction((window as Window & { smi_on?: () => void }).smi_on);
+  if (isSubtitleLayerVisible()) {
     return true;
   }
 
-  if (
-    invokeActivationFunction(
-      (window as Window & { layerSubtit?: () => void }).layerSubtit,
-    )
-  ) {
+  invokeActivationFunction(
+    (window as Window & { layerSubtit?: () => void }).layerSubtit,
+  );
+  if (isSubtitleLayerVisible()) {
     return true;
   }
 
   if (clickActivationControl(".btn_subtit_ai") || clickActivationControl(".btn_subtit_def")) {
-    return true;
-  }
-
-  if (clickActivationControl(".btn_subtit") || clickActivationControl("#smi_btn")) {
-    return true;
-  }
-
-  const layer = queryOne("#viewSubtit");
-  if (layer) {
-    layer.style.display = "block";
     return isSubtitleLayerVisible();
   }
 
+  if (clickActivationControl(".btn_subtit") || clickActivationControl("#smi_btn")) {
+    return isSubtitleLayerVisible();
+  }
+
+  // We deliberately do not force `layer.style.display = "block"` here. The
+  // top-frame content script falls back to a manual click notice when this
+  // returns false; forcing inline style would otherwise conflict with the
+  // page's own subtitle toggle logic.
   return false;
 }
 

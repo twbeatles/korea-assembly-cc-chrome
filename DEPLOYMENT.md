@@ -379,3 +379,24 @@ Deployment documentation consistency sources:
 - Release verification should confirm that local polling and top fallback unconfirmed streaks relax container fallback independently after their own `6` consecutive blocked probes.
 - Release verification should confirm that options storage recovery status shows the latest page-exit persist attempt timestamp, session id, entry count, and error when present.
 - Release packaging should keep generated artifacts (`dist/`, `coverage/`, tsbuildinfo, root exports) ignored, and `.gitignore` now also protects local env files and signing material.
+
+## 2026-05-07 Deployment Consistency Update
+
+P0 + P1 + P2 의 잠재 이슈 묶음을 일괄 처리한 릴리스 검증 항목입니다.
+
+- `recentDuplicateMinLength` 옵션을 변경했을 때 동일 raw 가 실제로 다른 임계에서 차단/통과되는지 회귀 검증 (예: 8 → 32 변경 시 12자 동일 문장이 통과 → 차단 분기로 바뀌는지).
+- `maxBufferLength` 를 1000 으로 줄였을 때 recent compact history 비교 윈도우도 같은 1000 자로 좁혀지는지(commit/desync 카운트 기준이 의도대로 변하는지) 확인.
+- 매우 큰 `data:` URL fallback (예: ~8 MiB JSON export) 다운로드 시 service worker 가 멈추지 않고 청크 base64 인코딩을 무리 없이 끝내는지 확인.
+- `자막 모으기` 시작 시 기본 자동 활성화가 실패해도 `#viewSubtit` 레이어에 inline `display:block` 이 강제되지 않고 패널 notice 가 수동 클릭 안내로 내려가는지 확인.
+- 옵션의 `수집 중 자동 저장` 을 끈 상태에서 탭 숨김(visibility hidden) 만 발생했을 때 `chrome.storage` / IndexedDB write 가 실행되지 않는지 확인 (`pagehide` / `beforeunload` / Stop 의 최종 저장은 그대로 동작).
+- 같은 player URL 에서 `멈추기` 또는 `화면 비우기` 후 새로고침했을 때 자동 시작이 발생하지 않고, 다른 player URL · 새 탭 · `자막 모으기` 클릭 후에는 다시 자동 시작이 살아 있는지 확인.
+- BFCache 복귀(`pageshow.persisted = true`) 또는 `visibilitychange:visible` 시 nonce 재동기화 + observer config 재dispatch + top-frame fallback probe 가 즉시 트리거되는지 확인.
+- history `세션 메모` 텍스트박스에 4096자를 넘어 입력해도 더 이상 늘어나지 않고, JSON 가져오기로 들어온 더 긴 메모도 4096자로 잘려 저장되는지 확인.
+- history 에 저장하지 않은 메모를 둔 상태에서 탭을 닫으려 할 때 브라우저 폐기 확인이 뜨는지 확인.
+- 패널 notice 가 `unconfirmedFallbackBlockStreak ≥ 3` 일 때 `UNCONFIRMED_STALL_HINT_NOTICE` ("자막이 일시적으로 잡히지 않습니다…") 로 부드러운 안내를 띄우는지, stable row commit 직후 0 으로 리셋되는지 확인.
+- `sender.id` 가 본 확장과 다른 메시지(외부 확장에서 흉내 낸 명령) 를 background 가 거부하는지 확인.
+- 단일 세션 export 가 quota / disk full 류 오류로 실패할 때 사용자 메시지에 `저장 공간` + `저장된 기록 → 부분 저장` 동선이 명시되는지 확인.
+- 서비스 워커 cold start 직후 (`onStartup` + `onInstalled` 동시 발생) 동일한 startup persistence cleanup 이 두 번 실행되지 않는지 확인.
+- options 의 `filterUnconfirmedEnabled` 토글을 수집 중 변경했을 때 unconfirmed streak 가 즉시 0 으로 초기화되어 다음 tick 부터 새 정책이 그대로 반영되는지 확인.
+- 단순한 in-page navigation(`subtitle:health` 만 도달) 으로 페이지 타이틀이 바뀌면 history detail 로 저장될 때 새 `committeeName` / `sourceUrl` 이 즉시 반영되는지 확인.
+- service worker 재기동 후 이전 SW 가 만든 Blob URL 이 새 offscreen 으로 revoke 메시지를 발사하지 않고 storage 에서만 정리되는지 확인.

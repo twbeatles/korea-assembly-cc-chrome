@@ -20,7 +20,7 @@ export interface SubtitleLayerState {
 
 export interface SubtitleActivationResult {
   attempted: boolean;
-  method: "already-visible" | "button-click" | "layer-style" | "none";
+  method: "already-visible" | "button-click" | "none";
   controlSelector?: string;
 }
 
@@ -177,18 +177,6 @@ function walkFramesForVisibleControl(
   return null;
 }
 
-function findFirstAccessibleLayer(rootDocument: Document): HTMLElement | null {
-  const documents = collectAccessibleDocuments(rootDocument);
-  for (const doc of documents) {
-    const layer = doc.querySelector(SUBTITLE_LAYER_SELECTOR);
-    if (isHTMLElement(layer)) {
-      return layer;
-    }
-  }
-
-  return null;
-}
-
 export function readSubtitleLayerState(root: ParentNode = document): SubtitleLayerState {
   const isDoc = root.nodeType === Node.DOCUMENT_NODE;
   const documents = isDoc ? collectAccessibleDocuments(root as Document) : [];
@@ -279,17 +267,10 @@ export function tryDomSubtitleActivation(root: ParentNode = document): SubtitleA
     };
   }
 
-  const layer = isDoc
-    ? findFirstAccessibleLayer(root as Document)
-    : root.querySelector(SUBTITLE_LAYER_SELECTOR);
-  if (isHTMLElement(layer)) {
-    layer.style.display = "block";
-    return {
-      attempted: true,
-      method: "layer-style",
-    };
-  }
-
+  // No accessible activation control found. We deliberately avoid forcing
+  // `layer.style.display = "block"` here because it conflicts with the page's
+  // own subtitle toggle logic and can leave stale inline styles that the page
+  // cannot revert. Callers fall back to a manual click notice instead.
   return {
     attempted: false,
     method: "none",

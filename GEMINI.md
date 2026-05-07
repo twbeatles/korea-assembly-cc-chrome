@@ -404,6 +404,29 @@ Use this delta as part of the current operational baseline.
 - Persist replay diagnostics track the latest page-exit persist attempt timestamp, session id, entry count, and error, and options renders that summary.
 - Deleted temporary implementation review documents should not be reintroduced as canonical docs. Keep tracked `.md` references aligned with the actual Git-tracked document set.
 
+## Sync Delta (2026-05-07)
+
+Use this delta as part of the current operational baseline.
+
+- `extractIncrementalTextFromHistory()` and `extractIncrementalTextWithRecentHistory()` accept a `recentDuplicateMinLength` argument. `applyPreview()` and `commitLiveRow()` thread `settings.recentDuplicateMinLength` through, so the option is no longer ignored by the pipeline.
+- The recent-history compact length used by the pipeline is `min(settings.maxBufferLength, PIPELINE_DEFAULTS.recentHistoryCompactLength)`, so reducing `maxBufferLength` actually narrows the comparison window.
+- `tryDomSubtitleActivation()` and `injected-observer.ts ensureSubtitleLayerVisible()` no longer set `layer.style.display = "block"`. When no activation control is reachable, the panel falls through to the manual-click notice. `SubtitleActivationResult.method` no longer includes `"layer-style"`.
+- `bytesToBase64()` in the service worker uses `0x8000`-byte chunked `String.fromCharCode(...slice)` accumulation, so the `data:` URL fallback no longer suffers quadratic string concatenation.
+- `persistRunningSnapshotForVisibilityChange()` accepts `respectAutoSaveSetting` and skips the snapshot for ordinary `visibilitychange:hidden` when `runningAutoSaveEnabled = false`. `pagehide` and `beforeunload` keep the unconditional safety-net path.
+- The top-frame content script handles `visibilitychange:visible` and `pageshow(persisted)` by re-syncing the frame-forward nonce, redispatching the observer config, and triggering an immediate top-frame fallback probe.
+- Auto-start cooldown is stored in `sessionStorage` (`assembly-subtitle-explicit-stop:<pathname>+<search>`). `stopCapture()` / `clearSessionAndReset()` set it; the bootstrap auto-start branch skips when present; `startCapture()` clears it.
+- `note` (session memo) is clamped to `SESSION_NOTE_MAX_LENGTH = 4096` characters in both `normalizeSessionRecord` / `applySessionMetadataPatch` and the history textarea (`maxLength` + `slice`).
+- A shared `createRandomToken()` helper in `src/shared/random-token.ts` consolidates `crypto.randomUUID` → `crypto.getRandomValues` → `Date.now() + Math.random()` fallbacks. All previous duplicates were replaced.
+- The startup persistence maintenance path is coalesced inside the service worker so `chrome.runtime.onStartup` and `chrome.runtime.onInstalled` firing back-to-back do not run cleanup twice (`STARTUP_DEDUP_WINDOW_MS = 5000`).
+- Settings change handler resets `localPollingUnconfirmedFallbackBlockStreak` / `topFallbackUnconfirmedFallbackBlockStreak` when `filterUnconfirmedEnabled` flips, and `topFallbackMissStreak` when `pollingFallbackIntervalMs` changes.
+- `resolveRuntimeCaptureNotice()` accepts an optional `unconfirmedFallbackBlockStreak`. When the streak reaches `UNCONFIRMED_STALL_HINT_THRESHOLD = 3`, the panel surfaces `UNCONFIRMED_STALL_HINT_NOTICE` instead of generic capture-running copy.
+- `mapDownloadErrorMessage()` now also maps `quota` / `disk full` / `insufficient_resources` to a storage-space guidance, and the single-session size guidance points users at the `저장된 기록` partial-save flow with explicit navigation hints.
+- The history page registers a `beforeunload` guard while the session-note draft is dirty.
+- `subtitle:health` events refresh `state.sourceUrl` / `state.title` / `state.committeeName` so SPA-like in-page navigation keeps cached metadata fresh.
+- Service-worker Blob download cleanup tracks Blob URLs created during the current SW generation. URLs restored from storage skip the now-pointless `OFFSCREEN_REVOKE_BLOB_URL` round-trip.
+- `injected-observer.ts ensureSubtitleLayerVisible()` re-checks `isSubtitleLayerVisible()` after each activation primitive. Successful invocation alone is no longer treated as success.
+- `service-worker-commands.handleBackgroundCommand()` rejects messages whose `sender.id` does not match `chrome.runtime.id`.
+
 ## Sync Delta (2026-03-14)
 
 Use this delta as the current operational baseline.
