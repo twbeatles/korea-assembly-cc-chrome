@@ -14,6 +14,8 @@ describe("options settings field registry", () => {
       "recentDuplicateMinLength",
       "filenamePattern",
       "txtExportTimestampsEnabled",
+      "txtExportSpeakerEnabled",
+      "txtExportEntryNotesEnabled",
       "runningAutoSaveEnabled",
       "runningAutoSaveDebounceMs",
       "recentCopyLineCount",

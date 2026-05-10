@@ -4,12 +4,51 @@ import {
   validateFilenamePattern,
 } from "../shared/filename-pattern";
 import type { ExtensionSettings } from "./types";
+import { createPrefixedRandomToken } from "../shared/random-token";
+import { isSupportedAssemblyUrl } from "../shared/constants";
 
 let memorySettings: ExtensionSettings = { ...DEFAULT_EXTENSION_SETTINGS };
 
 type StoredSettings = Partial<ExtensionSettings> & {
   noiseMinLength?: number;
 };
+
+function sanitizePresetList(value: unknown): ExtensionSettings["presets"] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  const seenUrls = new Set<string>();
+  return value
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => {
+      const url = typeof item.url === "string" && isSupportedAssemblyUrl(item.url) ? item.url : "";
+      const name = typeof item.name === "string" ? item.name.trim().slice(0, 80) : "";
+      if (!url || !name) {
+        return null;
+      }
+      if (seenUrls.has(url)) {
+        return null;
+      }
+      seenUrls.add(url);
+      return {
+        id:
+          typeof item.id === "string" && item.id.trim()
+            ? item.id.trim()
+            : createPrefixedRandomToken("preset"),
+        name,
+        url,
+        committeeName:
+          typeof item.committeeName === "string" ? item.committeeName.trim().slice(0, 120) : "",
+        autoStartEnabled:
+          typeof item.autoStartEnabled === "boolean" ? item.autoStartEnabled : true,
+        noiseFilterEnabled:
+          typeof item.noiseFilterEnabled === "boolean" ? item.noiseFilterEnabled : true,
+      };
+    })
+    .filter((item): item is ExtensionSettings["presets"][number] => Boolean(item))
+    .slice(0, 50);
+}
 
 function getChromeLocalStorage(): typeof chrome.storage.local | null {
   if (typeof chrome === "undefined" || !chrome.storage?.local) {
@@ -63,6 +102,14 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       typeof settings.txtExportTimestampsEnabled === "boolean"
         ? settings.txtExportTimestampsEnabled
         : DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
+    txtExportSpeakerEnabled:
+      typeof settings.txtExportSpeakerEnabled === "boolean"
+        ? settings.txtExportSpeakerEnabled
+        : DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
+    txtExportEntryNotesEnabled:
+      typeof settings.txtExportEntryNotesEnabled === "boolean"
+        ? settings.txtExportEntryNotesEnabled
+        : DEFAULT_EXTENSION_SETTINGS.txtExportEntryNotesEnabled,
     runningAutoSaveEnabled:
       typeof settings.runningAutoSaveEnabled === "boolean"
         ? settings.runningAutoSaveEnabled
@@ -89,6 +136,7 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       typeof settings.filterUnconfirmedEnabled === "boolean"
         ? settings.filterUnconfirmedEnabled
         : DEFAULT_EXTENSION_SETTINGS.filterUnconfirmedEnabled,
+    presets: sanitizePresetList(settings.presets),
   };
 }
 

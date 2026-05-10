@@ -4,10 +4,9 @@
   <img src="public/icons/icon128.png" alt="국회 AI 자막 추출기 아이콘" width="128" />
 </p>
 
-기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON`으로 저장하는 최소 실용 버전을 제공하는 것입니다.
+기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON / Markdown / CSV`로 저장하고 기록을 검색·편집할 수 있는 로컬 회의록 도구를 제공하는 것입니다.
 
 현재 스토어 배포 준비 기준 버전은 `1.0.7` 입니다.
-
 
 ## 기술 선택
 
@@ -38,18 +37,23 @@
 - keepalive 기반 마지막 자막 `endTime` 갱신
 - `subtitle_reset` 처리
 - 저장된 기록 관리
-- `TXT / SRT / VTT / JSON` 내보내기
+- `TXT / SRT / VTT / JSON / Markdown / CSV` 내보내기
 - 사이트 안 우측 패널에서 실시간 자막 확인
 - 수집 시작 시 AI 자막 레이어 자동 활성화 시도
 - AI 자막 레이어 자동 활성화 성공은 `visible && (hasText || controlActive)` 신호 기준으로 판정
 - MV3 service worker 재기동 뒤에도 storage-backed frame-forward nonce + 주기적 재동기화로 iframe forwarding 복구
 - 페이지 패널 / history에서 최근 `N`줄 복사
 - 페이지 패널의 `최근 N줄 복사`는 history와 같은 의미로 현재 세션에 누적된 최근 `N`줄을 기준으로 동작
+- 페이지 패널에서 최신 확정 entry 빠른 중요 표시. preview-only 텍스트는 중요 표시 대상이 아닙니다
 - `autoScroll`, 중복 차단 최소 길이, 한글/영문 중심 noise filter 토글 등 옵션 반영
 - popup 보조 화면
 - popup의 `지금 저장` 버튼은 실제 저장 가능한 상태에서만 활성화되며, 빈 저장 요청에는 명시적 안내를 표시합니다
-- history 기록 내부 검색 / 복사 / 즐겨찾기 / 세션 메모
-- history 상세 entry 체크박스 기반 부분 선택 복사 / 부분 export
+- history 전체 기록 통합 검색 / 기록 내부 검색 / 복사 / 즐겨찾기 / 세션 메모
+- history 태그/카테고리/세션 발언자 라벨 편집
+- history 상세 entry 체크박스 기반 부분 선택 복사 / 선택 export / 중요 표시만 export / 시간 범위 export
+- history 상세 entry 텍스트, 발언자 override, 중요 표시, entry note, labels inline 편집
+- history 상세 entry 병합/분할/삭제. 병합은 화면 순서상 연속된 entry에만 허용하고, 분할은 기존 시간 범위 안에서 줄 단위로 나눕니다
+- options preset CRUD와 popup preset 바로 열기
 - 저장된 기록 전체 JSON 백업 / JSON 가져오기
 - history는 store-level 페이지네이션을 사용하며, 전체 JSON 백업 / JSON 가져오기는 단계별 진행률과 취소를 제공합니다
 - 전체 라이브러리 `JSON 백업` / `JSON 가져오기` 는 `25 MiB` 이하 payload에서만 지원합니다
@@ -70,6 +74,9 @@
 - SRT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS,mmm` 형식으로 출력합니다
 - VTT는 세션 시작 시각 기준 상대 cue time을 `HH:MM:SS.mmm` 형식으로 출력합니다
 - JSON은 세션 전체 복원을 위해 `id`, `version`, `sourceUrl`, `startedAt`, `endedAt`, `entries`를 항상 포함합니다
+- Markdown은 회의록 템플릿 형태로 제목, 위원회, 일시, URL, 메모, 태그/카테고리, 발언자, 중요 표시, entry note/labels를 포함합니다
+- CSV는 `startTime,endTime,speaker,text,highlighted,note,labels` 컬럼을 사용하고 CSV escaping을 적용합니다
+- TXT는 기존 호환 출력을 기본값으로 유지하며, options에서 발언자와 entry 메타데이터 포함 여부를 별도로 켤 수 있습니다
 - 중복 문장은 실시간 수집 단계에서 먼저 차단하고, export 정규화는 마지막 안전망으로만 한 번 더 적용합니다
 - 동일 raw가 반복되는 구간은 keepalive로 마지막 entry의 `endTime`만 연장합니다
 - 패널 / popup의 수동 저장과 파일 내보내기는 확정되어 `state.entries`에 들어간 `수집된 자막` 누적 목록만 사용합니다
@@ -82,8 +89,9 @@
 - 이미 열린 `https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*` 페이지에서 자막 추출
 - 페이지 오른쪽 패널에서 시작 / 중지 / 저장 / 파일 저장
 - options에서 수집 설정 조정
-- history에서 저장된 기록 목록, 삭제, 재열기, 즐겨찾기, 세션 메모, 파일 저장, 기록 내부 검색 / 복사
-- history에서 선택 entry 기준 부분 복사 / 부분 export, 전체 JSON 백업 / JSON 가져오기
+- history에서 저장된 기록 목록, 삭제, 재열기, 즐겨찾기, 세션 메모, 전체 기록 검색, 기록 내부 검색 / 복사
+- history에서 태그/카테고리/발언자/entry 메타데이터 편집, 선택 entry 기준 부분 복사 / 부분 export, 중요 표시만 export, 시간 범위 export, 전체 JSON 백업 / JSON 가져오기
+- popup/options에서 국회 player URL preset 관리 및 바로 열기
 - history의 `전체 삭제`는 현재 화면이 아니라 저장소 전체를 기준으로 동작하고, 선택 삭제는 성공/실패 건수를 요약해 표시합니다
 
 ## 제외 범위
@@ -94,9 +102,9 @@
 - DOCX / HWP / RTF
 - 데스크톱 병합 UI
 - 데스크톱 단축키 체계
-- 고급 preset / xcode -> xcgcd 자동 보완 UX
+- `xcode -> xcgcd` 자동 보완 UX
 - 영상 캡처
-- 중요 표시 / 발언자 편집
+- 외부 AI 요약 / 외부 서버 전송
 
 ## 저장소 구조
 
@@ -114,9 +122,10 @@ src/
 tests/
 ```
 
-현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 구현 검토용 임시 문서는 Git 추적 대상에서 제외하며, 현재 동작 기준은 아래 문서들과 코드/테스트를 우선합니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
+현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `FEATURE_ENHANCEMENT_ANALYSIS.md`, `CODEBASE_AUDIT.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 현재 동작 기준은 이 문서들과 코드/테스트를 우선합니다. 과거 Python 데스크톱 아카이브는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
 
 - `DEPLOYMENT.md`
+- `FEATURE_ENHANCEMENT_ANALYSIS.md`
 - `CLAUDE.md`
 - `GEMINI.md`
 - `CODEBASE_AUDIT.md`
@@ -186,27 +195,30 @@ npm run build
 3. `자막 모으기`를 눌러 수집을 시작한다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어/텍스트/control 신호는 접근 가능한 frame 전체를 기준으로 판정한다. 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 실제 텍스트로 표시한다. 기본 idle 안내만 숨기고, 오류/복구/자동 조정 notice 는 패널에서 바로 확인할 수 있다
 5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 확정된 누적 목록의 최신 `300`건 렌더를 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 이미 commit된 entry만 이 목록에 남고, 전체 세션 기록 / 저장 / export 기준은 누적 committed entry 전체를 그대로 유지한다
-6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는다. 반대로 preview-only 상태나 notice-only 오류 상태에서도 `화면 비우기`로 패널을 직접 리셋할 수 있다
+6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. Markdown/CSV와 선택·중요·시간 범위 export는 history에서 제공한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는다. 반대로 preview-only 상태나 notice-only 오류 상태에서도 `화면 비우기`로 패널을 직접 리셋할 수 있다
 7. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
 8. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 9. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
 10. 브라우저/확장을 다시 시작하면 먼저 page-exit 시점에 남겨둔 stopped 저장 replay queue를 복구하고, 그 다음 남아 있던 `running` 세션을 `stopped`로 정리한다
-11. history에서는 세션별 `즐겨찾기`, `메모 저장`, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 사용할 수 있다
-12. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 두 작업 모두 현재 단계와 진행량을 표시하고 취소를 지원한다. 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부하며, 취소 시 이미 저장된 일부 레코드는 유지된다. 전체 라이브러리 작업은 `25 MiB` 하드 제한을 넘기면 명시적 오류로 중단된다
-13. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`을 빠르게 여는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭과 `저장 복구 상태` 섹션에서 확인한다. 진단 화면에서는 `persistabilityState` / `persistabilityHint`로 preview-only, unstable-only, filtered, duplicate 상태를 구분할 수 있다
-14. 현재 세션에 저장 가능한 내용이 없으면 popup의 `지금 저장` 버튼은 비활성화되며, 우회 호출이 들어와도 패널과 popup 모두 `저장할 자막이 아직 없습니다.` 문구로 일관되게 응답한다
+11. history에서는 전체 기록 검색, 태그/카테고리 필터, 세션별 `즐겨찾기`, `메모 저장`, 세션/entry 발언자 라벨, entry 중요 표시/note/labels inline 편집, entry 병합/분할/삭제를 사용할 수 있다
+12. history에서는 entry 체크박스 기반 `선택한 항목 복사`, 전체/선택/중요 표시만/시간 범위 `TXT/SRT/VTT/JSON/Markdown/CSV` export를 사용할 수 있다
+13. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 두 작업 모두 현재 단계와 진행량을 표시하고 취소를 지원한다. 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부하며, 취소 시 이미 저장된 일부 레코드는 유지된다. 전체 라이브러리 작업은 `25 MiB` 하드 제한을 넘기면 명시적 오류로 중단된다
+14. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`, 저장된 preset 바로 열기를 제공하는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭과 `저장 복구 상태` 섹션에서 확인한다. 진단 화면에서는 `persistabilityState` / `persistabilityHint`로 preview-only, unstable-only, filtered, duplicate 상태를 구분할 수 있다
+15. 현재 세션에 저장 가능한 내용이 없으면 popup의 `지금 저장` 버튼은 비활성화되며, 우회 호출이 들어와도 패널과 popup 모두 `저장할 자막이 아직 없습니다.` 문구로 일관되게 응답한다
 
 주의:
+
 - 수집 중 페이지를 이동하거나 새로고침하면 브라우저가 경고를 표시합니다.
 - 탭이 숨겨지거나 페이지를 떠날 때는 preview flush를 포함한 running/stopped 스냅샷을 background에 넘겨 자동 저장을 시도합니다.
 
 ## 권한 설명
 
-- `storage`: options, 저장된 세션 본문, 즐겨찾기/메모 같은 세션 메타데이터, page-exit replay queue, phase별 저장 복구 diagnostics, 탭 단위 frame-forward nonce 저장
-- `downloads`: TXT/SRT/VTT/JSON 파일 다운로드
+- `storage`: options, 저장된 세션 본문, 즐겨찾기/메모/태그/카테고리/발언자 라벨/중요 표시/entry note/labels 같은 로컬 메타데이터, preset 목록, page-exit replay queue, phase별 저장 복구 diagnostics, 탭 단위 frame-forward nonce 저장
+- `downloads`: TXT/SRT/VTT/JSON/Markdown/CSV 파일 다운로드
 - `offscreen`: 대용량 export용 Blob URL 생성
 - `activeTab`: 현재 탭 상태 조회
 - `scripting`: MV3 런타임 보조 권한
+- `sidePanel`: 실험형 Chrome side panel 보조 UI
 - `host_permissions: https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`
   국회 의사중계 고정 도메인 2개만 대상으로 제한합니다
 
@@ -309,14 +321,10 @@ npm run build
 
 ## 향후 계획
 
-- 전체 기록을 가로지르는 통합 검색
-- 사용자 태그 / 카테고리
-- 페이지/위원회 preset 관리
-- 세션 품질 점수 / 수집 건강도 표시
 - DOM 구조 변화에 대한 selector profile 추가
-- 중요 표시 / 발언자 편집
-- 브라우저 E2E 테스트 추가
-
+- foreign-language noise filter 정밀도 개선
+- side panel 실험 기능의 Chrome 버전별 사용성 검증 확대
+- 사용자 선택 기반 회의록 템플릿 preset 고도화
 
 ## 검증 기준
 
@@ -334,3 +342,20 @@ npm run build
 ```bash
 npm run verify
 ```
+
+## 2026-05-10 v1.1-v1.4 Implementation Update
+
+`FEATURE_ENHANCEMENT_ANALYSIS.md`의 고도화 계획 중 외부 AI 요약을 제외한 로컬 기능을 반영했습니다.
+
+- 세션 레코드 버전은 `4`입니다. 기존 v3 기록은 읽을 때 `tags`, `category`, `speakerLabels`, `qualityStats` 기본값으로 보정하며 강제 일괄 마이그레이션하지 않습니다.
+- 기록 화면은 전체 세션 검색, 태그/카테고리 필터, 중요 표시만 보기, 태그/카테고리/세션 발언자 라벨 편집을 지원합니다.
+- 상세 화면은 entry 텍스트 편집, 중요 표시, 발언자 override, 선택 entry 병합, 단일 entry 분할, 선택 entry 삭제를 지원합니다. 첫 수정 시 기존 본문은 `originalText`로 보존됩니다.
+- export 형식은 기존 `TXT / SRT / VTT / JSON`에 `Markdown / CSV`가 추가되었습니다. 저장/export는 계속 확정된 자막 entry만 대상으로 하며 preview-only 텍스트는 저장하지 않습니다.
+- P1 재정비로 entry별 발언자 override, 중요 표시, entry note, labels를 history에서 inline으로 편집합니다. 병합은 화면 순서상 연속된 entry에만 허용하고, 분할은 history 내부 편집 UI에서 줄 단위로 저장합니다.
+- Markdown/CSV에는 발언자, 중요 표시, entry note, labels가 포함됩니다. TXT는 기존 호환 출력을 기본값으로 유지하며 options에서 발언자 및 entry 메타데이터 포함 여부를 켤 수 있습니다.
+- history는 중요 표시만 export와 시간 범위 export를 지원합니다. 시간 범위는 `startTime || timestamp` 기준으로 필터링하며 원본 세션은 쪼개 저장하지 않습니다.
+- page panel, popup, options에는 `good | warning | unstable` 수집 건강도와 저장 불가 사유 문구가 같은 helper 기준으로 표시됩니다. entry 수, 글자 수, UTF-8 추정 byte 기준의 세션 크기 경고도 표시됩니다.
+- page panel에는 `중간 저장 후 새 세션 시작` 액션과 최신 확정 entry를 중요 표시하는 빠른 액션이 추가되었습니다. preview-only 텍스트는 중요 표시 대상이 아닙니다.
+- options에는 국회 player URL preset CRUD가 추가되었고 popup에서 preset 바로 열기를 제공합니다. URL은 지원 국회 player 도메인만 허용합니다.
+- 실험 기능으로 `sidepanel.html`을 추가했습니다. 기존 in-page panel이 기본 UI이며, Chrome side panel API를 지원하지 않는 환경에서는 일반 확장 페이지로 fallback됩니다.
+- 새 검증 스크립트 `npm run verify:e2e`는 build 후 Playwright로 built extension smoke test를 실행합니다.

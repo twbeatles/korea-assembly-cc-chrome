@@ -6,16 +6,17 @@
 
 - 이 저장소의 활성 구현은 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 입니다.
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
-- 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON 내보내기` 입니다.
+- 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON / Markdown / CSV 내보내기`, `history 검색/정리/편집` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정 / 수집 진단` 중심의 보조 화면입니다.
-- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모`, `entry 체크박스 기반 부분 복사/부분 export`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`이 포함됩니다.
-- 현재 기준 기본 검증 명령은 아래 4개입니다.
+- 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 전체 기록 검색/기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모/태그/카테고리`, `entry 체크박스 기반 부분 복사/부분 export`, `중요 표시만 export`, `시간 범위 export`, `entry 텍스트/발언자/중요 표시/entry note/labels inline 편집`, `entry 병합/분할/삭제`, `preset CRUD`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`, `실험형 side panel`이 포함됩니다.
+- 현재 기준 기본 검증 명령은 아래 5개입니다.
 
 ```bash
 npm run lint
 npm run typecheck
 npm run test
 npm run build
+npm run verify:e2e
 ```
 
 ## 2. 핵심 기술 스택
@@ -102,7 +103,7 @@ offscreen.html
 - structured row 가 안정적으로 잡히면 row baseline 과 글로벌 history 를 함께 사용해 commit/update 를 분리합니다.
 - `_confirmed_compact` / `trailingSuffix` 의미를 유지합니다.
 - suffix 매칭은 `rfind` 기반입니다.
-- 과거 세션에 남아 있는 `speakerColor`, `speakerChannel`, `speakerChanged` 는 로드 가능해야 하지만, 현재 UI/내보내기에서는 이 메타를 전면에 드러내지 않습니다.
+- 과거 세션에 남아 있는 `speakerColor`, `speakerChannel`, `speakerChanged` 는 로드 가능해야 하며, history UI에서는 `speakerChannel`을 `발언자 A / 발언자 B / 알 수 없음`으로 표시합니다.
 - desync 시 순서는 다음과 같습니다.
   - 직전 raw 대비 delta fallback
   - history anchor 기반 incremental fallback
@@ -132,10 +133,12 @@ offscreen.html
 
 ### 7.1 Exporter
 
-- `TXT`: `[HH:MM:SS] text`
+- `TXT`: 기본은 호환성을 위해 text 중심 출력입니다. 설정에 따라 timestamp, speaker, entry note/labels/중요 표시를 포함할 수 있습니다.
 - `SRT`: 세션 시작 기준 상대 시간, `HH:MM:SS,mmm`
 - `VTT`: 세션 시작 기준 상대 시간, `HH:MM:SS.mmm`
 - `JSON`: 세션 전체 복원 가능한 구조
+- `Markdown`: 회의록 템플릿 형태로 제목, 위원회, 일시, URL, 메모, 태그/카테고리, 발언자, 중요 표시, entry note/labels를 포함합니다.
+- `CSV`: `startTime,endTime,speaker,text,highlighted,note,labels` 컬럼과 CSV escaping을 사용합니다.
 - 수동 `saveSession` / `exportSessionData` 경로는 현재 패널에 보이는 확정 `수집된 자막` 목록만 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 
@@ -153,13 +156,15 @@ offscreen.html
 - `loadSessionsByIds`
 - `getSessionLibraryOverview`
 - `buildSessionLibraryBackupExport`
+- `searchSessions`
+- `updateSessionContent`
 - `replayQueuedExitPersistRecords`
 - `closeRunningSessionsOnStartup`
 
 위 CRUD 흐름과 startup cleanup 의미론은 유지해야 합니다.
 
 - record payload version 과 IndexedDB schema version 은 분리해서 관리합니다.
-- 현재 session record schema 는 `version = "3"` 기준이며 `starred`, `pinnedAt`, `note` 필드를 포함합니다.
+- 현재 session record schema 는 `version = "4"` 기준이며 `starred`, `pinnedAt`, `note`, `tags`, `category`, `speakerLabels`, `qualityStats` 를 포함합니다. v3 기록은 읽을 때 기본값으로 보정하고 강제 일괄 마이그레이션하지 않습니다.
 - `loadSession`/`listSessions` 는 IndexedDB + fallback 을 함께 읽고 `updatedAt` 기준으로 더 최신 레코드를 고릅니다. 동률이면 IndexedDB 를 우선합니다.
 - 개별 IndexedDB transaction/read/write 실패는 현재 연산만 fallback 으로 우회하고, 런타임 전체 disable 은 open/capability failure 에만 허용됩니다.
 - 성공한 IndexedDB write/delete 는 동일 id fallback copy 를 best-effort 로 정리합니다.
@@ -186,7 +191,8 @@ offscreen.html
 - history 의 `전체 삭제` 는 현재 로드된 1000건만이 아니라 저장소 전체를 비워야 하며, 선택 삭제는 부분 성공/실패 요약을 남긴 뒤 항상 refresh 해야 합니다.
 - history 는 session-level `즐겨찾기`, `메모`, `즐겨찾기만 보기` 필터를 제공하고, 이 메타데이터는 persistence 및 JSON 백업/복원에서 함께 보존되어야 합니다.
 - history 의 즐겨찾기/메모 저장은 전용 `updateSessionMetadata(sessionId, patch)` 경로를 사용해야 하며, stale detail snapshot 이 `entries` / `subtitleCount` / `status` 를 되돌리면 안 됩니다.
-- history detail 은 entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
+- history detail 은 entry 체크박스 기반 `선택한 항목 복사`, 전체/선택/중요 표시만/시간 범위 `TXT/SRT/VTT/JSON/Markdown/CSV export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
+- entry 편집은 `updateSessionContent(sessionId, patch)` 경로를 사용해야 하며, 첫 텍스트 수정 시 기존 `text`를 `originalText`에 보존합니다. 병합은 화면 순서상 연속 entry에만 허용하고 `sourceEntryIds`, `originalText`, note/labels/highlight를 보존합니다.
 - history 상단은 전체 저장소 기준 `JSON 백업` 과 단일 세션/번들 `JSON 가져오기` 를 지원하며, 가져오기는 같은 `id` 충돌 시 더 최신 `updatedAt` 레코드를 유지합니다.
 - history 의 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원해야 합니다. JSON import read phase 와 backup package phase 도 abort-aware 여야 하며, 가져오기 취소는 이미 저장된 부분 완료 레코드를 rollback 하지 않습니다.
 - history 의 전체 삭제 확인은 전체 세션 preload 가 아니라 `정확한 총 건수 + 최대 3건 preview` 기준으로 보여 줘야 합니다.
@@ -229,7 +235,7 @@ When editing this repository, align with the newly implemented behavior below.
 - `importSessionRecords()` 는 incoming `running` 상태를 모두 `saved` 로 정규화합니다.
 - export filename safety sanitize 는 남아 있는 금지 문자를 첫 1회가 아니라 전체 제거해야 합니다.
 - options / storage numeric settings 는 정수만 허용하며, 소수 입력은 저장 불가입니다.
-- 기본 회귀 검증은 `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:coverage`, `npm run build` 기준으로 유지합니다.
+- 기본 회귀 검증은 `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:coverage`, `npm run build`, `npm run verify:e2e` 기준으로 유지합니다.
 
 ## Sync Delta (2026-03-23)
 
@@ -301,7 +307,8 @@ When editing this repository, align with the current implemented behavior below.
 - Verification gate for meaningful changes:
   - `npm run typecheck`
   - `npm run test:coverage`
-  - `npm run build` (or `npm run verify`)
+  - `npm run build`
+  - `npm run verify:e2e` (or `npm run verify` for coverage-inclusive release checks)
 
 ## Addendum Closure (2026-03-11)
 
@@ -433,3 +440,19 @@ When editing this repository, align with the newly implemented behavior below.
 - Unconfirmed fallback streaks in the top content script are separated between `localPolling` and `topFallback`; each path may relax container fallback only after its own `6` consecutive blocked probes. Stable commits or successful text reads reset the related streak.
 - `PersistReplayDiagnostics` includes the last page-exit persist attempt timestamp, session id, entry count, and error. Options must show those page-exit diagnostics in the storage recovery state.
 - Temporary functional review documents are not part of the tracked documentation set; keep `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, and `CODEBASE_AUDIT.md` as the current implementation references.
+
+## Sync Delta (2026-05-10)
+
+Use this delta for the v1.1-v1.4 enhancement implementation.
+
+- `SESSION_RECORD_VERSION` is `4`. Legacy v3 records are normalized on read/import, not force-migrated in bulk.
+- `SessionRecord` supports `tags`, `category`, `speakerLabels`, and `qualityStats`; `SubtitleEntry` supports `originalText`, `highlighted`, `entryNote`, `labels`, `speakerLabel`, and `sourceEntryIds`.
+- Store APIs now include `searchSessions({ query, starredOnly, tag, category, page, pageSize })` and `updateSessionContent(sessionId, patch)`. Entry edits must recalculate `subtitleCount`, `charCount`, and `updatedAt` centrally.
+- Search/copy/export use edited `entry.text` by default. Preserve the first edited value in `originalText`; merge/split operations must keep source ids.
+- Export formats include `md` and `csv`; TXT behavior remains the compatibility baseline.
+- P1 history editing includes inline `speakerLabel`, `entryNote`, and `labels`; TXT speaker/entry metadata output is controlled by settings and defaults to off.
+- Highlight-only export and time-range export are local-only partial export flows. Time-range filtering uses `startTime || timestamp` and does not split the stored session.
+- The in-page panel can mark only the latest committed entry as highlighted; preview-only text must never become a highlighted entry.
+- Capture diagnostics expose `good | warning | unstable` health, shared persistability wording, UTF-8 size estimates, and size warnings.
+- Options presets are local-only and only accept supported Assembly player URLs. Do not implement automatic `xcode -> xcgcd` completion.
+- Side panel is experimental. Keep the in-page panel as the default UI and avoid adding any broader host permissions or external AI/network transfer.

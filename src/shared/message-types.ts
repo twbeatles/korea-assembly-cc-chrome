@@ -15,6 +15,8 @@ export type PersistabilityState =
   | "filtered"
   | "duplicate";
 
+export type CaptureHealth = "good" | "warning" | "unstable";
+
 export interface CaptureDiagnostics {
   captureMode: CaptureMode;
   observerActive: boolean;
@@ -23,6 +25,11 @@ export interface CaptureDiagnostics {
   sourceLabel: string;
   persistabilityState: PersistabilityState;
   persistabilityHint: string;
+  health?: CaptureHealth;
+  healthLabel?: string;
+  healthHint?: string;
+  estimatedBytes?: number;
+  sizeWarning?: string;
 }
 
 export interface ObservedSubtitleRow {
@@ -139,6 +146,7 @@ export type BackgroundCommandMessage =
     }
   | { type: "OPEN_HISTORY_PAGE" }
   | { type: "OPEN_OPTIONS_PAGE" }
+  | { type: "OPEN_SIDE_PANEL"; tabId?: number }
   | { type: "OPEN_DIAGNOSTICS_PAGE"; tabId?: number };
 
 export type BackgroundCommandResponse =

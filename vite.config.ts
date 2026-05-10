@@ -18,6 +18,7 @@ export default defineConfig({
       input: {
         history: resolve(projectRoot, "history.html"),
         offscreen: resolve(projectRoot, "offscreen.html"),
+        sidepanel: resolve(projectRoot, "sidepanel.html"),
       },
     },
   },

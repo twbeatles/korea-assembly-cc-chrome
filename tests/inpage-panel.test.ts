@@ -114,6 +114,7 @@ function createActions() {
     onStopCapture: vi.fn(),
     onClearSession: vi.fn(),
     onSaveSession: vi.fn(),
+    onHighlightLatestEntry: vi.fn(),
     onExport: vi.fn(),
     onCopyRecent: vi.fn(),
     onOpenHistory: vi.fn(),
@@ -147,7 +148,9 @@ describe("in-page panel", () => {
 
     const host = document.getElementById(IN_PAGE_PANEL_HOST_ID);
     expect(host).not.toBeNull();
-    expect(document.querySelectorAll(`#${IN_PAGE_PANEL_HOST_ID}`)).toHaveLength(1);
+    expect(document.querySelectorAll(`#${IN_PAGE_PANEL_HOST_ID}`)).toHaveLength(
+      1,
+    );
 
     const shadowRoot = host?.shadowRoot;
     expect(shadowRoot?.textContent).toContain("국회 자막 도우미");
@@ -159,15 +162,23 @@ describe("in-page panel", () => {
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");
     expect(shadowRoot?.querySelector(".panel-scroll")).not.toBeNull();
 
-    const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
-    expect(shadowRoot?.querySelector(".preview-box")?.getAttribute("role")).toBe("status");
-    expect(shadowRoot?.querySelector(".live-row-list")?.getAttribute("role")).toBe("log");
+    const notice = shadowRoot?.querySelector(
+      ".notice",
+    ) as HTMLDivElement | null;
+    expect(
+      shadowRoot?.querySelector(".preview-box")?.getAttribute("role"),
+    ).toBe("status");
+    expect(
+      shadowRoot?.querySelector(".live-row-list")?.getAttribute("role"),
+    ).toBe("log");
     expect(notice?.getAttribute("aria-live")).toBe("polite");
     expect(notice?.hidden).toBe(false);
     expect(notice?.getAttribute("aria-hidden")).toBe("false");
     expect(notice?.textContent).toBe("자막을 모으는 중입니다.");
     expect(notice?.dataset.message).toBe("자막을 모으는 중입니다.");
-    expect(shadowRoot?.querySelector(".preview-toggle")?.textContent).toBe("실시간 내용 펼치기");
+    expect(shadowRoot?.querySelector(".preview-toggle")?.textContent).toBe(
+      "실시간 내용 펼치기",
+    );
 
     controller.destroy();
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
@@ -178,18 +189,23 @@ describe("in-page panel", () => {
 
     controller.update(buildPanelState());
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
     const screenSubtitleTitle = shadowRoot?.querySelector(
       ".section-header h2",
     ) as HTMLHeadingElement | null;
-    const previewTitle = shadowRoot?.querySelector(".preview-header h2") as HTMLHeadingElement | null;
+    const previewTitle = shadowRoot?.querySelector(
+      ".preview-header h2",
+    ) as HTMLHeadingElement | null;
 
     expect(screenSubtitleTitle?.textContent).toBe("수집된 자막");
     expect(previewTitle?.textContent).toBe("실시간 내용");
     expect(screenSubtitleTitle).not.toBeNull();
     expect(previewTitle).not.toBeNull();
     expect(
-      screenSubtitleTitle!.compareDocumentPosition(previewTitle!) & Node.DOCUMENT_POSITION_FOLLOWING,
+      screenSubtitleTitle!.compareDocumentPosition(previewTitle!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
 
     controller.destroy();
@@ -205,19 +221,25 @@ describe("in-page panel", () => {
             ...createSnapshot().diagnostics,
             captureMode: "fallback",
             persistabilityState: "preview_only",
-            persistabilityHint: "화면에는 자막이 보이지만 아직 저장 가능한 확정 자막은 없습니다.",
+            persistabilityHint:
+              "화면에는 자막이 보이지만 아직 저장 가능한 확정 자막은 없습니다.",
           },
         },
         options: {
-          notice: "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
+          notice:
+            "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
           livePreviewText: "계속 수집되는 자막",
           liveRows: [],
         },
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const notice = shadowRoot?.querySelector(
+      ".notice",
+    ) as HTMLDivElement | null;
     expect(shadowRoot?.textContent).toContain("실시간 자막");
     expect(shadowRoot?.textContent).toContain(
       "실시간 자막을 수집 중입니다. 감지 경로를 자동으로 조정하고 있습니다.",
@@ -253,8 +275,12 @@ describe("in-page panel", () => {
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const notice = shadowRoot?.querySelector(
+      ".notice",
+    ) as HTMLDivElement | null;
     expect(notice?.hidden).toBe(true);
     expect(notice?.getAttribute("aria-hidden")).toBe("true");
 
@@ -281,14 +307,20 @@ describe("in-page panel", () => {
 
     controller.update(buildPanelState());
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const collapseButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
-      (element) => element.textContent === "접기",
-    ) as HTMLButtonElement | undefined;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const collapseButton = [
+      ...(shadowRoot?.querySelectorAll("button") ?? []),
+    ].find((element) => element.textContent === "접기") as
+      | HTMLButtonElement
+      | undefined;
     collapseButton?.click();
 
     expect(collapsed).toBe(true);
-    expect(shadowRoot?.querySelector(".host")?.classList.contains("collapsed")).toBe(true);
+    expect(
+      shadowRoot?.querySelector(".host")?.classList.contains("collapsed"),
+    ).toBe(true);
     expect(shadowRoot?.textContent).toContain("자막 보기");
 
     controller.destroy();
@@ -306,9 +338,15 @@ describe("in-page panel", () => {
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
-    const previewScroll = shadowRoot?.querySelector(".preview-scroll") as HTMLDivElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(
+      ".live-row-list",
+    ) as HTMLDivElement | null;
+    const previewScroll = shadowRoot?.querySelector(
+      ".preview-scroll",
+    ) as HTMLDivElement | null;
 
     if (previewScroll) {
       Object.defineProperty(previewScroll, "scrollHeight", {
@@ -330,8 +368,12 @@ describe("in-page panel", () => {
 
     controller.update(buildPanelState());
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const previewScroll = shadowRoot?.querySelector(".preview-scroll") as HTMLDivElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const previewScroll = shadowRoot?.querySelector(
+      ".preview-scroll",
+    ) as HTMLDivElement | null;
     expect(previewScroll).not.toBeNull();
 
     Object.defineProperty(previewScroll, "scrollHeight", {
@@ -365,10 +407,18 @@ describe("in-page panel", () => {
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const previewScroll = shadowRoot?.querySelector(".preview-scroll") as HTMLDivElement | null;
-    const previewSection = shadowRoot?.querySelector(".preview-section") as HTMLDivElement | null;
-    const previewToggle = shadowRoot?.querySelector(".preview-toggle") as HTMLButtonElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const previewScroll = shadowRoot?.querySelector(
+      ".preview-scroll",
+    ) as HTMLDivElement | null;
+    const previewSection = shadowRoot?.querySelector(
+      ".preview-section",
+    ) as HTMLDivElement | null;
+    const previewToggle = shadowRoot?.querySelector(
+      ".preview-toggle",
+    ) as HTMLButtonElement | null;
     expect(previewScroll).not.toBeNull();
     expect(previewSection?.classList.contains("collapsed")).toBe(true);
     expect(previewToggle?.textContent).toBe("실시간 내용 펼치기");
@@ -411,9 +461,15 @@ describe("in-page panel", () => {
 
     controller.update(buildPanelState());
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const previewSection = shadowRoot?.querySelector(".preview-section") as HTMLDivElement | null;
-    const previewToggle = shadowRoot?.querySelector(".preview-toggle") as HTMLButtonElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const previewSection = shadowRoot?.querySelector(
+      ".preview-section",
+    ) as HTMLDivElement | null;
+    const previewToggle = shadowRoot?.querySelector(
+      ".preview-toggle",
+    ) as HTMLButtonElement | null;
 
     previewToggle?.click();
 
@@ -440,8 +496,12 @@ describe("in-page panel", () => {
 
     controller.update(buildPanelState());
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(
+      ".live-row-list",
+    ) as HTMLDivElement | null;
     expect(liveRowList).not.toBeNull();
 
     Object.defineProperty(liveRowList, "scrollHeight", {
@@ -474,8 +534,12 @@ describe("in-page panel", () => {
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(
+      ".live-row-list",
+    ) as HTMLDivElement | null;
     const jumpButton = shadowRoot?.querySelector(
       'button[aria-label="수집된 자막 맨 아래로 이동"]',
     ) as HTMLButtonElement | null;
@@ -516,8 +580,12 @@ describe("in-page panel", () => {
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(
+      ".live-row-list",
+    ) as HTMLDivElement | null;
     const jumpButton = shadowRoot?.querySelector(
       'button[aria-label="수집된 자막 맨 아래로 이동"]',
     ) as HTMLButtonElement | null;
@@ -546,8 +614,12 @@ describe("in-page panel", () => {
 
     controller.update(buildPanelState());
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(
+      ".live-row-list",
+    ) as HTMLDivElement | null;
     const firstLiveRow = liveRowList?.querySelector(".live-row");
 
     controller.update(
@@ -584,18 +656,29 @@ describe("in-page panel", () => {
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const liveRowList = shadowRoot?.querySelector(".live-row-list") as HTMLDivElement | null;
-    const overlappingRow = liveRowList?.querySelector('[data-row-key="top::row_2"]');
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const liveRowList = shadowRoot?.querySelector(
+      ".live-row-list",
+    ) as HTMLDivElement | null;
+    const overlappingRow = liveRowList?.querySelector(
+      '[data-row-key="top::row_2"]',
+    );
 
-    const nextRows = Array.from({ length: PIPELINE_DEFAULTS.liveLedgerMaxRows }, (_, index) => ({
-      key: `top::row_${index + 2}`,
-      text: `${index + 2}번째 자막입니다.`,
-      nodeKey: `row_${index + 2}`,
-      speakerColor: "rgb(35, 124, 147)",
-      speakerChannel: "primary" as const,
-      updatedAt: Date.parse(`2026-03-10T09:${String(index % 60).padStart(2, "0")}:00.000Z`),
-    }));
+    const nextRows = Array.from(
+      { length: PIPELINE_DEFAULTS.liveLedgerMaxRows },
+      (_, index) => ({
+        key: `top::row_${index + 2}`,
+        text: `${index + 2}번째 자막입니다.`,
+        nodeKey: `row_${index + 2}`,
+        speakerColor: "rgb(35, 124, 147)",
+        speakerChannel: "primary" as const,
+        updatedAt: Date.parse(
+          `2026-03-10T09:${String(index % 60).padStart(2, "0")}:00.000Z`,
+        ),
+      }),
+    );
 
     controller.update(
       buildPanelState({
@@ -605,14 +688,19 @@ describe("in-page panel", () => {
       }),
     );
 
-    expect(liveRowList?.querySelector('[data-row-key="top::row_1"]')).toBeNull();
-    expect(liveRowList?.querySelector('[data-row-key="top::row_2"]')).toBe(overlappingRow);
+    expect(
+      liveRowList?.querySelector('[data-row-key="top::row_1"]'),
+    ).toBeNull();
+    expect(liveRowList?.querySelector('[data-row-key="top::row_2"]')).toBe(
+      overlappingRow,
+    );
 
     controller.destroy();
   });
 
   it("keeps clear available for preview-only state while save-related actions stay disabled", () => {
-    const controller = createInPagePanel(createActions());
+    const actions = createActions();
+    const controller = createInPagePanel(actions);
 
     controller.update(
       buildPanelState({
@@ -620,6 +708,7 @@ describe("in-page panel", () => {
           status: "idle",
           hasPersistableContent: false,
           previewText: "미리보기 자막",
+          recentEntries: [],
         },
         options: {
           liveRows: [],
@@ -630,20 +719,67 @@ describe("in-page panel", () => {
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const clearButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
-      (element) => element.textContent === "화면 비우기",
-    ) as HTMLButtonElement | undefined;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const clearButton = [
+      ...(shadowRoot?.querySelectorAll("button") ?? []),
+    ].find((element) => element.textContent === "화면 비우기") as
+      | HTMLButtonElement
+      | undefined;
     const saveButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (element) => element.textContent === "지금 저장",
     ) as HTMLButtonElement | undefined;
     const copyButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (element) => element.textContent === "최근 5줄 복사",
     ) as HTMLButtonElement | undefined;
+    const highlightButton = [
+      ...(shadowRoot?.querySelectorAll("button") ?? []),
+    ].find((element) => element.textContent === "최신 중요 표시") as
+      | HTMLButtonElement
+      | undefined;
 
     expect(clearButton?.disabled).toBe(false);
     expect(saveButton?.disabled).toBe(true);
     expect(copyButton?.disabled).toBe(true);
+    expect(highlightButton?.disabled).toBe(true);
+    highlightButton?.click();
+    expect(actions.onHighlightLatestEntry).not.toHaveBeenCalled();
+
+    controller.destroy();
+  });
+
+  it("enables quick highlight only for committed recent entries", () => {
+    const actions = createActions();
+    const controller = createInPagePanel(actions);
+
+    controller.update(buildPanelState());
+
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const highlightButton = [
+      ...(shadowRoot?.querySelectorAll("button") ?? []),
+    ].find((element) => element.textContent === "최신 중요 표시") as
+      | HTMLButtonElement
+      | undefined;
+
+    expect(highlightButton?.disabled).toBe(false);
+    highlightButton?.click();
+    expect(actions.onHighlightLatestEntry).toHaveBeenCalledTimes(1);
+
+    controller.update(
+      buildPanelState({
+        snapshot: {
+          recentEntries: createSnapshot().recentEntries.map((entry) => ({
+            ...entry,
+            highlighted: true,
+          })),
+        },
+      }),
+    );
+
+    expect(highlightButton?.disabled).toBe(true);
 
     controller.destroy();
   });
@@ -668,17 +804,23 @@ describe("in-page panel", () => {
       }),
     );
 
-    const shadowRoot = document.getElementById(IN_PAGE_PANEL_HOST_ID)?.shadowRoot;
-    const clearButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
-      (element) => element.textContent === "화면 비우기",
-    ) as HTMLButtonElement | undefined;
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const clearButton = [
+      ...(shadowRoot?.querySelectorAll("button") ?? []),
+    ].find((element) => element.textContent === "화면 비우기") as
+      | HTMLButtonElement
+      | undefined;
     const saveButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (element) => element.textContent === "지금 저장",
     ) as HTMLButtonElement | undefined;
     const copyButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (element) => element.textContent === "최근 5줄 복사",
     ) as HTMLButtonElement | undefined;
-    const notice = shadowRoot?.querySelector(".notice") as HTMLDivElement | null;
+    const notice = shadowRoot?.querySelector(
+      ".notice",
+    ) as HTMLDivElement | null;
 
     expect(clearButton?.disabled).toBe(false);
     expect(saveButton?.disabled).toBe(true);

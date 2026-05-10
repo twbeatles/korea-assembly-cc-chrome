@@ -9,6 +9,8 @@ describe("settings store", () => {
       recentCopyLineCount: 9,
       recentDuplicateMinLength: 12,
       txtExportTimestampsEnabled: true,
+      txtExportSpeakerEnabled: true,
+      txtExportEntryNotesEnabled: true,
       filterUnconfirmedEnabled: false,
     });
 
@@ -17,6 +19,8 @@ describe("settings store", () => {
     expect(sanitized.recentCopyLineCount).toBe(9);
     expect(sanitized.recentDuplicateMinLength).toBe(12);
     expect(sanitized.txtExportTimestampsEnabled).toBe(true);
+    expect(sanitized.txtExportSpeakerEnabled).toBe(true);
+    expect(sanitized.txtExportEntryNotesEnabled).toBe(true);
     expect(sanitized.filterUnconfirmedEnabled).toBe(false);
   });
 
@@ -43,6 +47,12 @@ describe("settings store", () => {
     expect(sanitized.filenamePattern).toBe(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
     expect(sanitized.txtExportTimestampsEnabled).toBe(
       DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
+    );
+    expect(sanitized.txtExportSpeakerEnabled).toBe(
+      DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
+    );
+    expect(sanitized.txtExportEntryNotesEnabled).toBe(
+      DEFAULT_EXTENSION_SETTINGS.txtExportEntryNotesEnabled,
     );
     expect(sanitized.filterUnconfirmedEnabled).toBe(
       DEFAULT_EXTENSION_SETTINGS.filterUnconfirmedEnabled,
@@ -75,5 +85,45 @@ describe("settings store", () => {
     });
 
     expect(sanitized.recentDuplicateMinLength).toBe(15);
+  });
+
+  it("sanitizes presets and drops duplicate urls", () => {
+    const sanitized = sanitizeSettings({
+      presets: [
+        {
+          id: "preset_1",
+          name: "법사위",
+          url: "https://assembly.webcast.go.kr/main/player.asp?xcode=10",
+          committeeName: "법제사법위원회",
+          autoStartEnabled: false,
+          noiseFilterEnabled: false,
+        },
+        {
+          id: "preset_2",
+          name: "중복",
+          url: "https://assembly.webcast.go.kr/main/player.asp?xcode=10",
+          committeeName: "",
+          autoStartEnabled: true,
+          noiseFilterEnabled: true,
+        },
+        {
+          id: "preset_3",
+          name: "외부",
+          url: "https://example.com",
+          committeeName: "",
+          autoStartEnabled: true,
+          noiseFilterEnabled: true,
+        },
+      ],
+    });
+
+    expect(sanitized.presets).toHaveLength(1);
+    expect(sanitized.presets[0]).toMatchObject({
+      id: "preset_1",
+      name: "법사위",
+      committeeName: "법제사법위원회",
+      autoStartEnabled: false,
+      noiseFilterEnabled: false,
+    });
   });
 });

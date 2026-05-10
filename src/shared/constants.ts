@@ -4,7 +4,7 @@ export const EXTENSION_STORAGE_KEY = "assembly-extension-settings";
 export const SESSION_LIBRARY_REVISION_STORAGE_KEY = "assembly-subtitle-session-library-revision";
 export const SESSION_DB_NAME = "assembly-subtitle-sessions";
 export const SESSION_STORE_NAME = "sessions";
-export const SESSION_RECORD_VERSION = "3";
+export const SESSION_RECORD_VERSION = "4";
 export const SESSION_DB_SCHEMA_VERSION = 3;
 
 export const OBSERVER_CONFIG_EVENT = "assembly-subtitle-observer:config";
@@ -36,12 +36,15 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   recentDuplicateMinLength: 8,
   filenamePattern: "{date}_{committee}_{time}",
   txtExportTimestampsEnabled: false,
+  txtExportSpeakerEnabled: false,
+  txtExportEntryNotesEnabled: false,
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
   debugLogging: false,
   autoStartEnabled: true,
   filterUnconfirmedEnabled: true,
+  presets: [],
 };
 
 export const PIPELINE_DEFAULTS = {

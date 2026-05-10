@@ -24,6 +24,7 @@ import {
   createEmptySessionState,
   getSessionCharCount,
   toSessionRecord,
+  type ExportFormat,
   type SessionRecord,
   type SessionState,
   type SubtitleEntry,
@@ -58,7 +59,10 @@ import {
 } from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
 import { createRandomToken } from "../shared/random-token";
-import { buildCaptureDiagnostics } from "../shared/capture-diagnostics";
+import {
+  buildCaptureDiagnostics,
+  getPersistabilityUserMessage,
+} from "../shared/capture-diagnostics";
 import {
   buildCopyText,
   copyTextToClipboard,
@@ -197,12 +201,15 @@ let settings: ExtensionSettings = {
   recentDuplicateMinLength: PIPELINE_DEFAULTS.recentDuplicateMinLength,
   filenamePattern: "{date}_{committee}_{time}",
   txtExportTimestampsEnabled: false,
+  txtExportSpeakerEnabled: false,
+  txtExportEntryNotesEnabled: false,
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
   debugLogging: false,
   autoStartEnabled: true,
   filterUnconfirmedEnabled: true,
+  presets: [],
 };
 let state: SessionState = createEmptySessionState(window.location.href, document.title);
 const popupPorts = new Set<chrome.runtime.Port>();
@@ -447,6 +454,12 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
   const hasPersistableContent = state.entries.length > 0;
   const persistability = getPersistabilityDiagnostics();
   const previewText = getLivePreviewTextForDisplay();
+  const charCount = getSessionCharCount(state.entries);
+  const estimatedBytes = getUtf8ByteLength(state.entries.map((entry) => entry.text).join("\n"));
+  const persistabilityHint = getPersistabilityUserMessage(
+    persistability.state,
+    persistability.hint,
+  );
   return {
     connected: isSupportedAssemblyUrl(window.location.href),
     requiresReload,
@@ -456,7 +469,7 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
     committeeName: state.committeeName,
     sourceUrl: state.sourceUrl,
     subtitleCount: state.entries.length,
-    charCount: getSessionCharCount(state.entries),
+    charCount,
     previewText,
     recentEntries: state.entries.slice(-20),
     startedAt: state.startedAt,
@@ -472,7 +485,10 @@ function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
       currentSelector: state.currentSelector,
       currentFramePath: state.currentFramePath,
       persistabilityState: persistability.state,
-      persistabilityHint: persistability.hint,
+      persistabilityHint,
+      entryCount: state.entries.length,
+      charCount,
+      estimatedBytes,
     }),
     hasPersistableContent,
   };
@@ -985,6 +1001,72 @@ async function saveCurrentSessionSnapshot(): Promise<{
     reportRuntimeError("세션 저장에 실패했습니다.", error);
     throw error;
   }
+}
+
+async function saveAndStartNewSession(): Promise<void> {
+  if (state.status !== "running") {
+    setPanelNotice("수집 중일 때만 중간 저장 후 새 세션을 시작할 수 있습니다.");
+    syncUserInterfaces();
+    return;
+  }
+
+  const result = await saveCurrentSessionSnapshot();
+  if (!result.saved) {
+    syncUserInterfaces();
+    return;
+  }
+
+  resetRuntimeState();
+  clearAutoStartCooldown();
+  const now = new Date().toISOString();
+  state.status = "running";
+  state.createdAt = now;
+  state.startedAt = now;
+  state.updatedAt = now;
+  state.title = document.title;
+  state.committeeName = deriveCommitteeName(document.title);
+  setPanelNotice("중간 저장을 마치고 새 세션으로 계속 수집합니다.");
+  dispatchObserverConfig();
+  syncUserInterfaces();
+}
+
+async function highlightLatestCommittedEntry(): Promise<void> {
+  const latestEntry = state.entries[state.entries.length - 1];
+  if (!latestEntry) {
+    setPanelNotice("중요 표시할 확정 자막이 아직 없습니다.");
+    syncUserInterfaces();
+    return;
+  }
+
+  if (latestEntry.highlighted) {
+    setPanelNotice("최신 확정 자막은 이미 중요 표시되어 있습니다.");
+    syncUserInterfaces();
+    return;
+  }
+
+  const now = new Date().toISOString();
+  state = {
+    ...state,
+    updatedAt: now,
+    entries: state.entries.map((entry) =>
+      entry.id === latestEntry.id ? { ...cloneEntry(entry), highlighted: true } : entry,
+    ),
+  };
+  setPanelNotice("최신 확정 자막을 중요 표시했습니다.");
+
+  if (state.status === "running") {
+    scheduleRunningPersist();
+    syncUserInterfaces();
+    return;
+  }
+
+  try {
+    const saved = await persistSessionRecord(buildVisibleSessionRecord("stopped"));
+    state = applyPersistSuccess(state, saved.updatedAt);
+  } catch (error) {
+    reportRuntimeError("중요 표시 저장에 실패했습니다.", error);
+  }
+  syncUserInterfaces();
 }
 
 async function refreshFrameForwardNonce(): Promise<void> {
@@ -1555,7 +1637,7 @@ async function stopCapture(): Promise<void> {
   syncUserInterfaces();
 }
 
-async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Promise<void> {
+async function exportCurrentSession(format: ExportFormat): Promise<void> {
   const record = buildVisibleSessionRecord(state.status === "running" ? "running" : "stopped");
   if (!record.entries.length) {
     setPanelNotice("먼저 자막을 모은 뒤 파일로 저장하세요.");
@@ -1566,6 +1648,8 @@ async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Pro
   const payload = await exportSessionData(record, format, {
     filenamePattern: settings.filenamePattern,
     txtExportTimestampsEnabled: settings.txtExportTimestampsEnabled,
+    txtExportSpeakerEnabled: settings.txtExportSpeakerEnabled,
+    txtExportEntryNotesEnabled: settings.txtExportEntryNotesEnabled,
   });
   if (!confirmLargeSingleSessionExport(payload.filename, getUtf8ByteLength(payload.content))) {
     setPanelNotice("파일 저장을 취소했습니다.");
@@ -1705,6 +1789,22 @@ function mountInPagePanel(): void {
             error,
           );
         });
+    },
+    onSaveAndStartNewSession: () => {
+      void saveAndStartNewSession().catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "중간 저장 후 새 세션을 시작하지 못했습니다.",
+          error,
+        );
+      });
+    },
+    onHighlightLatestEntry: () => {
+      void highlightLatestCommittedEntry().catch((error: unknown) => {
+        reportRuntimeError(
+          error instanceof Error ? error.message : "최신 자막 중요 표시를 저장하지 못했습니다.",
+          error,
+        );
+      });
     },
     onExport: (format) => {
       void exportCurrentSession(format).catch((error: unknown) => {

@@ -532,6 +532,11 @@ export interface InPagePanelState {
   hasPersistableContent: boolean;
   canClearSession: boolean;
   showNotice: boolean;
+  healthLabel: string;
+  healthHint: string;
+  estimatedBytes: number;
+  sizeWarning: string;
+  canHighlightLatestEntry: boolean;
 }
 
 export interface InPagePanelActions {
@@ -539,6 +544,8 @@ export interface InPagePanelActions {
   onStopCapture: () => void;
   onClearSession: () => void;
   onSaveSession: () => void;
+  onSaveAndStartNewSession?: () => void;
+  onHighlightLatestEntry?: () => void;
   onExport: (format: ExportFormat) => void;
   onCopyRecent: () => void;
   onOpenHistory: () => void;
@@ -660,6 +667,11 @@ export function buildInPagePanelState(
     hasPersistableContent: snapshot.hasPersistableContent,
     canClearSession: options.canClearSession,
     showNotice: options.showNotice,
+    healthLabel: snapshot.diagnostics.healthLabel ?? "-",
+    healthHint: snapshot.diagnostics.healthHint ?? "",
+    estimatedBytes: snapshot.diagnostics.estimatedBytes ?? 0,
+    sizeWarning: snapshot.diagnostics.sizeWarning ?? "",
+    canHighlightLatestEntry: snapshot.recentEntries.some((entry) => !entry.highlighted),
   };
 }
 
@@ -691,12 +703,14 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const headerCount = document.createElement("span");
   headerCount.className = "header-count";
+  const healthBadge = document.createElement("span");
+  healthBadge.className = "mode-badge";
   const statusBadge = document.createElement("span");
   statusBadge.className = "status-badge";
   const headerActions = document.createElement("div");
   headerActions.className = "header-actions";
   const collapseButton = createButton(UI_TEXT.collapse, actions.onCollapse, "secondary icon");
-  headerActions.append(headerCount, statusBadge, collapseButton);
+  headerActions.append(headerCount, healthBadge, statusBadge, collapseButton);
   header.append(titleGroup, headerActions);
 
   const heroCard = document.createElement("section");
@@ -791,7 +805,17 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   secondaryActions.className = "action-row";
   const clearButton = createButton(UI_TEXT.clearSession, actions.onClearSession, "secondary");
   const saveButton = createButton(UI_TEXT.saveSession, actions.onSaveSession, "secondary");
-  secondaryActions.append(clearButton, saveButton);
+  const highlightLatestButton = createButton(
+    "최신 중요 표시",
+    actions.onHighlightLatestEntry ?? (() => undefined),
+    "secondary",
+  );
+  const rolloverButton = createButton(
+    "중간 저장 후 새 세션",
+    actions.onSaveAndStartNewSession ?? (() => undefined),
+    "secondary",
+  );
+  secondaryActions.append(clearButton, saveButton, highlightLatestButton, rolloverButton);
   controlsCard.append(primaryActions, exportRow, secondaryActions);
 
   const notice = document.createElement("div");
@@ -864,6 +888,8 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       statusBadge.textContent = nextState.statusLabel;
       statusBadge.className = `status-badge ${nextState.status}`;
       headerCount.textContent = `자막 ${nextState.subtitleCount}줄`;
+      healthBadge.textContent = `건강도 ${nextState.healthLabel}`;
+      healthBadge.title = nextState.sizeWarning || nextState.healthHint;
       modeBadge.textContent = formatCaptureMode(nextState.captureMode);
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
@@ -921,22 +947,26 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
         renderedLiveRowsSignature = nextLiveRowsSignature;
       }
 
-      if (renderedNotice !== nextState.notice) {
-        notice.textContent = nextState.notice;
-        notice.dataset.message = nextState.notice;
-        renderedNotice = nextState.notice;
+      const nextNotice = nextState.sizeWarning || nextState.notice;
+      if (renderedNotice !== nextNotice) {
+        notice.textContent = nextNotice;
+        notice.dataset.message = nextNotice;
+        renderedNotice = nextNotice;
       }
 
-      if (renderedShowNotice !== nextState.showNotice) {
-        notice.hidden = !nextState.showNotice;
-        notice.setAttribute("aria-hidden", String(!nextState.showNotice));
-        renderedShowNotice = nextState.showNotice;
+      const nextShowNotice = nextState.showNotice || Boolean(nextState.sizeWarning);
+      if (renderedShowNotice !== nextShowNotice) {
+        notice.hidden = !nextShowNotice;
+        notice.setAttribute("aria-hidden", String(!nextShowNotice));
+        renderedShowNotice = nextShowNotice;
       }
 
       startButton.style.display = nextState.status === "running" ? "none" : "";
       stopButton.style.display = nextState.status === "running" ? "" : "none";
       clearButton.disabled = !nextState.canClearSession;
       saveButton.disabled = !nextState.hasPersistableContent;
+      highlightLatestButton.disabled = !nextState.canHighlightLatestEntry;
+      rolloverButton.disabled = nextState.status !== "running" || !nextState.hasPersistableContent;
       copyRecentButton.disabled = !nextState.hasPersistableContent;
       exportButtons.forEach((button) => {
         button.disabled = !nextState.hasPersistableContent;

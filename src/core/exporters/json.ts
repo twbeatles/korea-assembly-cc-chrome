@@ -16,6 +16,10 @@ export interface JsonSessionExport {
   starred: boolean;
   pinnedAt: string | null;
   note: string;
+  tags?: string[];
+  category?: string;
+  speakerLabels?: SessionRecord["speakerLabels"];
+  qualityStats?: SessionRecord["qualityStats"];
   entries: SessionRecord["entries"];
 }
 
@@ -36,9 +40,15 @@ export function buildJsonExport(session: SessionRecord): JsonSessionExport {
     starred: session.starred,
     pinnedAt: session.pinnedAt,
     note: session.note,
+    tags: session.tags ? [...session.tags] : undefined,
+    category: session.category,
+    speakerLabels: session.speakerLabels ? { ...session.speakerLabels } : undefined,
+    qualityStats: session.qualityStats ? { ...session.qualityStats } : undefined,
     entries: session.entries.map((entry) => ({
       ...entry,
       sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
+      labels: entry.labels ? [...entry.labels] : undefined,
+      sourceEntryIds: entry.sourceEntryIds ? [...entry.sourceEntryIds] : undefined,
     })),
   };
 }

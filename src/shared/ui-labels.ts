@@ -47,6 +47,8 @@ export const EXPORT_FORMAT_LABELS: Record<ExportFormat, string> = {
   srt: "자막(SRT)",
   vtt: "웹자막(VTT)",
   json: "기록(JSON)",
+  md: "회의록(MD)",
+  csv: "표(CSV)",
 };
 
 export function getCaptureStatusLabel(status: CaptureStatus): string {

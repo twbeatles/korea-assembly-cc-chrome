@@ -4,6 +4,9 @@ import {
   type PersistedSessionStatus,
   type SessionBackupBundle,
   type SessionRecord,
+  type SessionQualityStats,
+  type SpeakerLabels,
+  type SpeakerChannel,
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../core/subtitle-models";
@@ -34,6 +37,57 @@ function isValidDateString(value: unknown): value is string {
 
 function sanitizeOptionalString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
+}
+
+function sanitizeStringList(value: unknown, maxItems = 50, maxLength = 80): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => item.slice(0, maxLength)),
+    ),
+  ].slice(0, maxItems);
+}
+
+function sanitizeSpeakerLabels(value: unknown): SpeakerLabels | undefined {
+  if (!isRecordLike(value)) {
+    return undefined;
+  }
+  const labels: SpeakerLabels = {};
+  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach((channel) => {
+    const label = sanitizeOptionalString(value[channel]).trim();
+    if (label) {
+      labels[channel] = label.slice(0, 80);
+    }
+  });
+  return Object.keys(labels).length ? labels : undefined;
+}
+
+function sanitizeQualityStats(value: unknown): SessionQualityStats | undefined {
+  if (!isRecordLike(value)) {
+    return undefined;
+  }
+  const health =
+    value.health === "good" || value.health === "warning" || value.health === "unstable"
+      ? value.health
+      : undefined;
+  if (!health || !isValidDateString(value.lastComputedAt)) {
+    return undefined;
+  }
+  return {
+    health,
+    entryCount: typeof value.entryCount === "number" ? Math.max(0, value.entryCount) : 0,
+    charCount: typeof value.charCount === "number" ? Math.max(0, value.charCount) : 0,
+    estimatedBytes:
+      typeof value.estimatedBytes === "number" ? Math.max(0, value.estimatedBytes) : 0,
+    fallbackOnly: typeof value.fallbackOnly === "boolean" ? value.fallbackOnly : undefined,
+    lastComputedAt: value.lastComputedAt,
+  };
 }
 
 function sanitizeOptionalNullableDateString(value: unknown): string | null | undefined {
@@ -90,6 +144,15 @@ function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
         : undefined,
     speakerChanged:
       typeof value.speakerChanged === "boolean" ? value.speakerChanged : undefined,
+    originalText:
+      "originalText" in value ? sanitizeOptionalString(value.originalText, "") || undefined : undefined,
+    highlighted: typeof value.highlighted === "boolean" ? value.highlighted : undefined,
+    entryNote:
+      "entryNote" in value ? sanitizeOptionalString(value.entryNote, "") || undefined : undefined,
+    labels: sanitizeStringList(value.labels),
+    speakerLabel:
+      "speakerLabel" in value ? sanitizeOptionalString(value.speakerLabel, "") || undefined : undefined,
+    sourceEntryIds: sanitizeStringList(value.sourceEntryIds, 200, 160),
   };
 }
 
@@ -148,6 +211,10 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     starred: typeof value.starred === "boolean" ? value.starred : undefined,
     pinnedAt: sanitizeOptionalNullableDateString(value.pinnedAt) ?? undefined,
     note: typeof value.note === "string" ? value.note : undefined,
+    tags: sanitizeStringList(value.tags),
+    category: sanitizeOptionalString(value.category).trim().slice(0, 120),
+    speakerLabels: sanitizeSpeakerLabels(value.speakerLabels),
+    qualityStats: sanitizeQualityStats(value.qualityStats),
     entries: entries.map((entry) => cloneEntry(entry!)),
   };
 }
@@ -169,6 +236,10 @@ function cloneImportedRecord(record: StoredSessionRecord): StoredSessionRecord {
     starred: record.starred,
     pinnedAt: record.pinnedAt,
     note: record.note,
+    tags: record.tags ? [...record.tags] : undefined,
+    category: record.category,
+    speakerLabels: record.speakerLabels ? { ...record.speakerLabels } : undefined,
+    qualityStats: record.qualityStats ? { ...record.qualityStats } : undefined,
     entries: record.entries.map((entry) => cloneEntry(entry)),
   };
 }

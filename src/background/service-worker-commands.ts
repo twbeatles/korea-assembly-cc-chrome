@@ -60,6 +60,7 @@ export interface BackgroundCommandDependencies {
   downloadExport: (filename: string, content: string, mimeType: string) => Promise<number>;
   openHistoryPage: () => Promise<void>;
   openOptionsPage: () => Promise<void>;
+  openSidePanel?: (tabId?: number) => Promise<void>;
   openDiagnosticsPage: (tabId?: number) => Promise<void>;
 }
 
@@ -78,6 +79,7 @@ export function isBackgroundCommandMessage(message: unknown): message is Backgro
     type === "DOWNLOAD_REQUEST" ||
     type === "OPEN_HISTORY_PAGE" ||
     type === "OPEN_OPTIONS_PAGE" ||
+    type === "OPEN_SIDE_PANEL" ||
     type === "OPEN_DIAGNOSTICS_PAGE"
   );
 }
@@ -158,6 +160,12 @@ export async function handleBackgroundCommand(
       return { ok: true };
     case "OPEN_OPTIONS_PAGE":
       await dependencies.openOptionsPage();
+      return { ok: true };
+    case "OPEN_SIDE_PANEL":
+      if (!dependencies.openSidePanel) {
+        return { ok: false, error: "사이드 패널 API를 사용할 수 없습니다." };
+      }
+      await dependencies.openSidePanel(message.tabId ?? sender.tab?.id);
       return { ok: true };
     case "OPEN_DIAGNOSTICS_PAGE":
       await dependencies.openDiagnosticsPage(message.tabId ?? sender.tab?.id);

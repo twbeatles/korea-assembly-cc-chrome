@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const chromeApiMocks = vi.hoisted(() => ({
@@ -58,12 +64,15 @@ const defaultSettings = {
   recentDuplicateMinLength: 8,
   filenamePattern: "{date}_{committee}_{time}",
   txtExportTimestampsEnabled: false,
+  txtExportSpeakerEnabled: false,
+  txtExportEntryNotesEnabled: false,
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
   debugLogging: false,
   autoStartEnabled: true,
   filterUnconfirmedEnabled: true,
+  presets: [],
 };
 
 describe("options app", () => {
@@ -108,7 +117,9 @@ describe("options app", () => {
     await waitFor(() => {
       expect(screen.getByText("250 이상이어야 합니다.")).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: "저장" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "저장" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 
   it("blocks save and shows a field error for a fractional numeric draft", async () => {
@@ -124,7 +135,9 @@ describe("options app", () => {
     await waitFor(() => {
       expect(screen.getByText("정수만 입력할 수 있습니다.")).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: "저장" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "저장" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 
   it("resets numeric drafts and clears field errors after reset", async () => {
@@ -138,7 +151,9 @@ describe("options app", () => {
     fireEvent.change(debounceInput, { target: { value: "" } });
     await screen.findByText("값을 입력하세요.");
 
-    fireEvent.click(screen.getByRole("button", { name: "기본값으로 되돌리기" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "기본값으로 되돌리기" }),
+    );
 
     await waitFor(() => {
       expect(screen.queryByText("값을 입력하세요.")).toBeNull();
@@ -159,7 +174,9 @@ describe("options app", () => {
     await waitFor(() => {
       expect(screen.getByText("1 이상이어야 합니다.")).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: "저장" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "저장" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 
   it("blocks save and shows a field error for an invalid filename pattern", async () => {
@@ -172,9 +189,15 @@ describe("options app", () => {
     fireEvent.change(filenameInput, { target: { value: "{date}/invalid" } });
 
     await waitFor(() => {
-      expect(screen.getByText("파일 이름에 사용할 수 없는 문자가 포함되어 있습니다.")).toBeTruthy();
+      expect(
+        screen.getByText(
+          "파일 이름에 사용할 수 없는 문자가 포함되어 있습니다.",
+        ),
+      ).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: "저장" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen.getByRole("button", { name: "저장" }).hasAttribute("disabled"),
+    ).toBe(true);
   });
 
   it("renders persist replay diagnostics in diagnostics view", async () => {
@@ -187,7 +210,9 @@ describe("options app", () => {
     expect(screen.getByText("Replay failed once")).toBeTruthy();
     expect(screen.getByText("Page exit failed once")).toBeTruthy();
     expect(screen.getByText("session_exit / 7")).toBeTruthy();
-    expect(screen.getAllByText("Cleanup failed once").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Cleanup failed once").length).toBeGreaterThan(
+      0,
+    );
     expect(screen.getByText("1 / 0")).toBeTruthy();
     expect(screen.getByText("2 / 1")).toBeTruthy();
   });
@@ -199,6 +224,80 @@ describe("options app", () => {
     expect(
       screen.getByText(/외국어 원문을 최대한 남기려면 이 옵션을 끄세요/),
     ).toBeTruthy();
+  });
+
+  it("saves TXT speaker and entry note export options", async () => {
+    render(<App />);
+    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+
+    const speakerToggle = screen
+      .getByText("TXT 저장에 발언자 포함")
+      .closest("label")
+      ?.querySelector("input");
+    const noteToggle = screen
+      .getByText("TXT 저장에 중요 표시/메모 포함")
+      .closest("label")
+      ?.querySelector("input");
+
+    expect(speakerToggle).not.toBeNull();
+    expect(noteToggle).not.toBeNull();
+
+    fireEvent.click(speakerToggle!);
+    fireEvent.click(noteToggle!);
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      expect(settingsStoreMocks.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          txtExportSpeakerEnabled: true,
+          txtExportEntryNotesEnabled: true,
+        }),
+      );
+    });
+  });
+
+  it("adds editable presets and blocks duplicate preset URLs", async () => {
+    render(<App />);
+    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+
+    const presetUrl = "https://assembly.webcast.go.kr/main/player.asp?xcode=10";
+    fireEvent.change(screen.getByPlaceholderText("프리셋 이름"), {
+      target: { value: "정무위" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/assembly\.webcast/), {
+      target: { value: presetUrl },
+    });
+    fireEvent.change(screen.getByPlaceholderText("위원회명"), {
+      target: { value: "정무위원회" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "프리셋 추가" }));
+
+    await screen.findByText("프리셋을 추가했습니다. 저장을 눌러 확정하세요.");
+
+    fireEvent.change(screen.getByPlaceholderText("프리셋 이름"), {
+      target: { value: "중복" },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/assembly\.webcast/), {
+      target: { value: presetUrl },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "프리셋 추가" }));
+
+    await screen.findByText("이미 같은 URL의 프리셋이 있습니다.");
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      expect(settingsStoreMocks.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({
+          presets: [
+            expect.objectContaining({
+              name: "정무위",
+              url: presetUrl,
+              committeeName: "정무위원회",
+            }),
+          ],
+        }),
+      );
+    });
   });
 
   it("hydrates diagnostics counts from the initial capture status payload", async () => {
@@ -278,7 +377,9 @@ describe("options app", () => {
     await waitFor(() => {
       expect(screen.getByText("4문장")).toBeTruthy();
       expect(screen.getByText("structured")).toBeTruthy();
-      expect(screen.getByText("저장 가능한 확정 자막이 누적되고 있습니다.")).toBeTruthy();
+      expect(
+        screen.getByText("저장 가능한 확정 자막이 누적되고 있습니다."),
+      ).toBeTruthy();
     });
     expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_STATUS" });
   });
@@ -312,7 +413,11 @@ describe("options app", () => {
       disconnect: vi.fn(),
     } as unknown as chrome.runtime.Port;
 
-    window.history.replaceState({}, "", "/options.html?view=diagnostics&tabId=9");
+    window.history.replaceState(
+      {},
+      "",
+      "/options.html?view=diagnostics&tabId=9",
+    );
     chromeApiMocks.getTab
       .mockResolvedValueOnce({
         id: 9,

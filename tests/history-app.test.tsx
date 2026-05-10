@@ -1,8 +1,16 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { SESSION_LIBRARY_REVISION_STORAGE_KEY } from "../src/shared/constants";
+import type { SessionRecord, SubtitleEntry } from "../src/core/subtitle-models";
 import { SESSION_LIBRARY_TRANSFER_LIMIT_BYTES } from "../src/storage/session-backup";
+import type { SessionContentPatch } from "../src/storage/types";
 
 const chromeApiMocks = vi.hoisted(() => ({
   createTab: vi.fn(),
@@ -18,11 +26,14 @@ const sessionStoreMocks = vi.hoisted(() => ({
   deleteAllSessions: vi.fn(),
   deleteSession: vi.fn(),
   exportSessionData: vi.fn(),
+  filterSessionEntriesByTimeRange: vi.fn(() => undefined),
   getSessionLibraryOverview: vi.fn(),
   importSessionRecords: vi.fn(),
   listSessionsPage: vi.fn(),
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
+  searchSessions: vi.fn(),
+  updateSessionContent: vi.fn(),
   updateSessionMetadata: vi.fn(),
   SESSION_NOTE_MAX_LENGTH: 4096,
 }));
@@ -47,14 +58,14 @@ function createDeferred<T>() {
   };
 }
 
-function buildSession(overrides: Partial<ReturnType<typeof buildSessionBase>> = {}) {
+function buildSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
   return {
     ...buildSessionBase(),
     ...overrides,
   };
 }
 
-function buildSessionBase() {
+function buildSessionBase(): SessionRecord {
   return {
     id: "session_history_1",
     version: "3",
@@ -85,7 +96,10 @@ function buildSessionBase() {
 
 describe("history app", () => {
   const storageListeners: Array<
-    (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void
+    (
+      changes: Record<string, chrome.storage.StorageChange>,
+      areaName: string,
+    ) => void
   > = [];
 
   beforeEach(() => {
@@ -122,6 +136,8 @@ describe("history app", () => {
       recentDuplicateMinLength: 8,
       filenamePattern: "{date}_{committee}_{time}",
       txtExportTimestampsEnabled: false,
+      txtExportSpeakerEnabled: false,
+      txtExportEntryNotesEnabled: false,
       runningAutoSaveEnabled: true,
       runningAutoSaveDebounceMs: 800,
       recentCopyLineCount: 5,
@@ -138,8 +154,8 @@ describe("history app", () => {
       pageSize: 200,
     });
     sessionStoreMocks.loadSession.mockResolvedValue(session);
-    sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
-      ids.includes(session.id) ? [session] : [],
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(
+      async (ids: string[]) => (ids.includes(session.id) ? [session] : []),
     );
     sessionStoreMocks.getSessionLibraryOverview.mockResolvedValue({
       totalCount: 1,
@@ -163,6 +179,22 @@ describe("history app", () => {
       },
     });
     sessionStoreMocks.updateSessionMetadata.mockResolvedValue(session);
+    sessionStoreMocks.updateSessionContent.mockImplementation(
+      async (_sessionId: string, patch: SessionContentPatch) => {
+        const entries = patch.entries ?? session.entries;
+        return {
+          ...session,
+          ...patch,
+          entries,
+          subtitleCount: entries.length,
+          charCount: entries.reduce(
+            (total: number, entry: SubtitleEntry) => total + entry.text.length,
+            0,
+          ),
+          updatedAt: "2026-03-10T09:00:04.000Z",
+        };
+      },
+    );
     chromeApiMocks.sendRuntimeMessage.mockResolvedValue({ ok: true });
   });
 
@@ -189,12 +221,15 @@ describe("history app", () => {
       pageSize: 200,
     });
     sessionStoreMocks.loadSession.mockResolvedValueOnce(unsupportedSession);
-    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
-      ids.includes(unsupportedSession.id) ? [unsupportedSession] : [],
+    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(
+      async (ids: string[]) =>
+        ids.includes(unsupportedSession.id) ? [unsupportedSession] : [],
     );
 
     render(<App />);
-    const reopenButton = await screen.findByRole("button", { name: "원본 페이지 열기" });
+    const reopenButton = await screen.findByRole("button", {
+      name: "원본 페이지 열기",
+    });
 
     expect((reopenButton as HTMLButtonElement).disabled).toBe(true);
     fireEvent.click(reopenButton);
@@ -202,7 +237,9 @@ describe("history app", () => {
   });
 
   it("shows a user-facing error when exporting fails", async () => {
-    sessionStoreMocks.exportSessionData.mockRejectedValueOnce(new Error("export failed"));
+    sessionStoreMocks.exportSessionData.mockRejectedValueOnce(
+      new Error("export failed"),
+    );
 
     render(<App />);
     await screen.findByRole("button", { name: "텍스트(TXT)" });
@@ -230,9 +267,10 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
 
     await waitFor(() => {
-      const message = screen.getByText((content) =>
-        content.includes("저장 요청을 전송하지 못했습니다") &&
-        content.includes("부분 저장을 시도해 주세요"),
+      const message = screen.getByText(
+        (content) =>
+          content.includes("저장 요청을 전송하지 못했습니다") &&
+          content.includes("부분 저장을 시도해 주세요"),
       );
       expect(message).toBeTruthy();
     });
@@ -279,7 +317,9 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "전체 JSON 백업" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.buildSessionLibraryBackupExport).toHaveBeenCalled();
+      expect(
+        sessionStoreMocks.buildSessionLibraryBackupExport,
+      ).toHaveBeenCalled();
       expect(chromeApiMocks.sendRuntimeMessage).toHaveBeenCalledWith(
         expect.objectContaining({
           filename: "backup.json",
@@ -298,19 +338,23 @@ describe("history app", () => {
         content: string;
       };
     }>();
-    sessionStoreMocks.buildSessionLibraryBackupExport.mockImplementationOnce(async (options) => {
-      options?.onProgress?.({
-        kind: "backup",
-        phase: "collect",
-        completed: 1,
-        total: 3,
-        message: "전체 JSON 백업을 준비하고 있습니다. (1 / 3)",
-      });
-      return deferred.promise;
-    });
+    sessionStoreMocks.buildSessionLibraryBackupExport.mockImplementationOnce(
+      async (options) => {
+        options?.onProgress?.({
+          kind: "backup",
+          phase: "collect",
+          completed: 1,
+          total: 3,
+          message: "전체 JSON 백업을 준비하고 있습니다. (1 / 3)",
+        });
+        return deferred.promise;
+      },
+    );
 
     render(<App />);
-    const backupButton = await screen.findByRole("button", { name: "전체 JSON 백업" });
+    const backupButton = await screen.findByRole("button", {
+      name: "전체 JSON 백업",
+    });
     const importButton = screen.getByRole("button", { name: "JSON 가져오기" });
     const deleteAllButton = screen.getByRole("button", { name: "전체 삭제" });
 
@@ -327,7 +371,9 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "취소" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.buildSessionLibraryBackupExport).toHaveBeenCalledWith(
+      expect(
+        sessionStoreMocks.buildSessionLibraryBackupExport,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           signal: expect.objectContaining({ aborted: true }),
         }),
@@ -349,21 +395,25 @@ describe("history app", () => {
       keptCount: number;
       failedCount: number;
     }>();
-    sessionStoreMocks.importSessionRecords.mockImplementationOnce(async (_records, options) => {
-      options?.onProgress?.({
-        kind: "import",
-        phase: "write",
-        completed: 1,
-        total: 2,
-        message: "JSON 가져오기를 진행하고 있습니다. (1 / 2)",
-      });
-      return deferred.promise;
-    });
+    sessionStoreMocks.importSessionRecords.mockImplementationOnce(
+      async (_records, options) => {
+        options?.onProgress?.({
+          kind: "import",
+          phase: "write",
+          completed: 1,
+          total: 2,
+          message: "JSON 가져오기를 진행하고 있습니다. (1 / 2)",
+        });
+        return deferred.promise;
+      },
+    );
 
     render(<App />);
     await screen.findByRole("button", { name: "JSON 가져오기" });
 
-    const importInput = document.querySelector(".hidden-file-input") as HTMLInputElement | null;
+    const importInput = document.querySelector(
+      ".hidden-file-input",
+    ) as HTMLInputElement | null;
     expect(importInput).not.toBeNull();
 
     const file = {
@@ -436,7 +486,9 @@ describe("history app", () => {
     render(<App />);
     await screen.findByRole("button", { name: "JSON 가져오기" });
 
-    const importInput = document.querySelector(".hidden-file-input") as HTMLInputElement | null;
+    const importInput = document.querySelector(
+      ".hidden-file-input",
+    ) as HTMLInputElement | null;
     expect(importInput).not.toBeNull();
 
     const file = {
@@ -474,7 +526,9 @@ describe("history app", () => {
     render(<App />);
     await screen.findByRole("button", { name: "JSON 가져오기" });
 
-    const importInput = document.querySelector(".hidden-file-input") as HTMLInputElement | null;
+    const importInput = document.querySelector(
+      ".hidden-file-input",
+    ) as HTMLInputElement | null;
     expect(importInput).not.toBeNull();
 
     const file = {
@@ -514,7 +568,9 @@ describe("history app", () => {
       );
     });
 
-    const noteInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+    const noteInput = document.querySelector(
+      "textarea",
+    ) as HTMLTextAreaElement | null;
     expect(noteInput).not.toBeNull();
     fireEvent.change(noteInput!, { target: { value: "새 메모" } });
     fireEvent.click(screen.getByRole("button", { name: "메모 저장" }));
@@ -533,7 +589,9 @@ describe("history app", () => {
     render(<App />);
     await screen.findByRole("button", { name: "원본 페이지 열기" });
 
-    const noteInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+    const noteInput = document.querySelector(
+      "textarea",
+    ) as HTMLTextAreaElement | null;
     expect(noteInput).not.toBeNull();
     fireEvent.change(noteInput!, { target: { value: "draft note" } });
 
@@ -568,7 +626,9 @@ describe("history app", () => {
     render(<App />);
     await screen.findByRole("button", { name: "목록 새로고침" });
 
-    const noteInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+    const noteInput = document.querySelector(
+      "textarea",
+    ) as HTMLTextAreaElement | null;
     expect(noteInput).not.toBeNull();
     fireEvent.change(noteInput!, { target: { value: "draft note" } });
 
@@ -591,14 +651,17 @@ describe("history app", () => {
       pageSize: 200,
     }));
     sessionStoreMocks.loadSession.mockResolvedValue(starredSession);
-    sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
-      ids.includes(starredSession.id) ? [starredSession] : [],
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(
+      async (ids: string[]) =>
+        ids.includes(starredSession.id) ? [starredSession] : [],
     );
 
     render(<App />);
     await screen.findByRole("button", { name: "즐겨찾기만 보기" });
 
-    const noteInput = document.querySelector("textarea") as HTMLTextAreaElement | null;
+    const noteInput = document.querySelector(
+      "textarea",
+    ) as HTMLTextAreaElement | null;
     expect(noteInput).not.toBeNull();
     fireEvent.change(noteInput!, { target: { value: "draft note" } });
 
@@ -606,6 +669,182 @@ describe("history app", () => {
 
     await waitFor(() => {
       expect(noteInput?.value).toBe("");
+    });
+  });
+
+  it("saves inline entry text, speaker, labels, and note metadata", async () => {
+    const session = buildSession({
+      speakerLabels: { primary: "위원장" },
+      entries: [
+        {
+          ...buildSessionBase().entries[0],
+          speakerChannel: "primary" as const,
+        },
+      ],
+    });
+    sessionStoreMocks.listSessionsPage.mockResolvedValue({
+      sessions: [session],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValue(session);
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(
+      async (ids: string[]) => (ids.includes(session.id) ? [session] : []),
+    );
+    sessionStoreMocks.updateSessionContent.mockImplementationOnce(
+      async (_sessionId: string, patch: SessionContentPatch) => ({
+        ...session,
+        entries: patch.entries ?? session.entries,
+        subtitleCount: patch.entries?.length ?? session.entries.length,
+        charCount: (patch.entries ?? session.entries).reduce(
+          (total: number, entry: SubtitleEntry) => total + entry.text.length,
+          0,
+        ),
+        updatedAt: "2026-03-10T09:00:04.000Z",
+      }),
+    );
+
+    render(<App />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "수정/메타데이터" }),
+    );
+
+    fireEvent.change(screen.getByDisplayValue("테스트 자막"), {
+      target: { value: "수정된 자막" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("entry 발언자 라벨"), {
+      target: { value: "위원장" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("라벨을 쉼표로 구분"), {
+      target: { value: "핵심, 검토" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("entry 메모"), {
+      target: { value: "후속 확인" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "수정 저장" }));
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.updateSessionContent).toHaveBeenCalledWith(
+        "session_history_1",
+        expect.objectContaining({
+          entries: [
+            expect.objectContaining({
+              text: "수정된 자막",
+              originalText: "테스트 자막",
+              speakerLabel: "위원장",
+              entryNote: "후속 확인",
+              labels: ["핵심", "검토"],
+            }),
+          ],
+        }),
+      );
+    });
+  });
+
+  it("blocks non-contiguous entry merge in the history UI", async () => {
+    const session = buildSession({
+      subtitleCount: 3,
+      charCount: 9,
+      entries: [
+        {
+          id: "entry_1",
+          text: "첫번째",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+        },
+        {
+          id: "entry_2",
+          text: "두번째",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+        {
+          id: "entry_3",
+          text: "세번째",
+          timestamp: "2026-03-10T09:00:02.000Z",
+          startTime: "2026-03-10T09:00:02.000Z",
+          endTime: "2026-03-10T09:00:03.000Z",
+        },
+      ],
+    });
+    sessionStoreMocks.listSessionsPage.mockResolvedValue({
+      sessions: [session],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValue(session);
+
+    render(<App />);
+    fireEvent.click(await screen.findByLabelText("첫번째 항목 선택"));
+    fireEvent.click(screen.getByLabelText("세번째 항목 선택"));
+    fireEvent.click(screen.getByRole("button", { name: "선택 병합" }));
+
+    await screen.findByText("연속된 자막만 병합할 수 있습니다.");
+    expect(sessionStoreMocks.updateSessionContent).not.toHaveBeenCalled();
+  });
+
+  it("splits one selected entry through the inline split editor", async () => {
+    const session = buildSession({
+      entries: [
+        {
+          ...buildSessionBase().entries[0],
+          text: "첫 문장 둘째 문장",
+        },
+      ],
+    });
+    sessionStoreMocks.listSessionsPage.mockResolvedValue({
+      sessions: [session],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValue(session);
+    sessionStoreMocks.updateSessionContent.mockImplementationOnce(
+      async (_sessionId: string, patch: SessionContentPatch) => ({
+        ...session,
+        entries: patch.entries ?? session.entries,
+        subtitleCount: patch.entries?.length ?? session.entries.length,
+        charCount: (patch.entries ?? session.entries).reduce(
+          (total: number, entry: SubtitleEntry) => total + entry.text.length,
+          0,
+        ),
+        updatedAt: "2026-03-10T09:00:04.000Z",
+      }),
+    );
+
+    render(<App />);
+    fireEvent.click(
+      await screen.findByLabelText("첫 문장 둘째 문장 항목 선택"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "선택 분할" }));
+
+    const splitInput = await screen.findByDisplayValue("첫 문장 둘째 문장");
+    fireEvent.change(splitInput, { target: { value: "첫 문장\n둘째 문장" } });
+    fireEvent.click(screen.getByRole("button", { name: "분할 저장" }));
+
+    await waitFor(() => {
+      const patch = sessionStoreMocks.updateSessionContent.mock.calls[0]?.[1];
+      expect(patch.entries).toHaveLength(2);
+      expect(patch.entries[0]).toEqual(
+        expect.objectContaining({
+          text: "첫 문장",
+          sourceEntryIds: ["entry_1"],
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+        }),
+      );
+      expect(patch.entries[1]).toEqual(
+        expect.objectContaining({
+          text: "둘째 문장",
+          sourceEntryIds: ["entry_1"],
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        }),
+      );
     });
   });
 });

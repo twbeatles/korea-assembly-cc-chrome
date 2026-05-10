@@ -4,7 +4,7 @@
 
 ## 1. 프로젝트 한 줄 요약
 
-국회 의사중계 페이지에서 AI 자막을 실시간 추출하고, 페이지 오른쪽 패널에서 바로 보여 주며, 기록을 저장하고 `TXT / SRT / VTT / JSON` 으로 내보내는 `Manifest V3` 기반 확장프로그램입니다.
+국회 의사중계 페이지에서 AI 자막을 실시간 추출하고, 페이지 오른쪽 패널에서 바로 보여 주며, 기록을 저장하고 `TXT / SRT / VTT / JSON / Markdown / CSV` 로 내보내는 `Manifest V3` 기반 확장프로그램입니다.
 
 ## 2. 현재 활성 범위
 
@@ -16,7 +16,9 @@
   - 세션 persistence
   - 우측 패널 + popup/options/history 동작
   - 쉬운 한국어 UI / 검색 / 최근 N줄 복사 / autosave UX
-  - history 즐겨찾기 / 세션 메모 / 부분 선택 복사 / 부분 export / JSON 백업·복원
+  - history 전체 기록 검색 / 즐겨찾기 / 세션 메모 / 태그 / 카테고리 / 부분 선택 복사 / 중요 표시만 export / 시간 범위 export / JSON 백업·복원
+  - history entry 텍스트, 발언자, 중요 표시, entry note, labels inline 편집과 병합/분할/삭제
+  - options preset CRUD와 popup preset 바로 열기
   - 패널 / popup 수집 진단 진입 + options 수집 진단 탭
   - 자막 우선 대형 미리보기 / 수집된 자막 2단 UI
 
@@ -28,6 +30,7 @@ npm run lint
 npm run typecheck
 npm run test
 npm run build
+npm run verify:e2e
 ```
 
 `npm run build` 는 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 먼저 생성한 뒤 확장 번들을 만듭니다.
@@ -63,6 +66,8 @@ npm run build
 - `src/core/exporters/srt.ts`
 - `src/core/exporters/vtt.ts`
 - `src/core/exporters/json.ts`
+- `src/core/exporters/markdown.ts`
+- `src/core/exporters/csv.ts`
 - `src/shared/capture-diagnostics.ts`
 
 ## 5. 메시지와 책임 분리
@@ -117,7 +122,7 @@ npm run build
 - suffix 매칭은 `rfind` 기반입니다.
 - structured row 가 안정적으로 잡히면 row baseline 과 global history 를 함께 사용합니다.
 - 자막 영역 공백은 top frame 에서 약 1초 grace 뒤에만 reset commit 합니다.
-- 과거 세션의 `speakerColor`, `speakerChannel`, `speakerChanged` 메타는 호환성을 위해 읽을 수 있어야 하지만, 현재 UI/내보내기에서는 이 메타를 전면에 쓰지 않습니다.
+- 과거 세션의 `speakerColor`, `speakerChannel`, `speakerChanged` 메타는 호환성을 위해 읽을 수 있어야 하며, history UI에서는 `speakerChannel`을 `발언자 A / 발언자 B / 알 수 없음`으로 표시합니다.
 - 대표 edge case:
   - 이전: `이 문장은 테스트입니다`
   - 현재: `이 문장은 테스트입니다 감사합니다`
@@ -179,9 +184,10 @@ npm run build
 - 복사 포맷은 `[HH:MM:SS] text`
 - 페이지 패널과 history 모두 `recentCopyLineCount` 기반 최근 N줄 복사를 지원
 - history 페이지는 열린 상태에서도 `recentCopyLineCount`, `filenamePattern` 변경을 즉시 반영
-- session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
+- session record schema 는 `version = "4"` 기준이며 `starred`, `pinnedAt`, `note`, `tags`, `category`, `speakerLabels`, `qualityStats` 를 포함합니다. v3 기록은 읽을 때 기본값으로 보정하고 강제 일괄 마이그레이션하지 않습니다
 - history 즐겨찾기/메모 저장은 전용 `updateSessionMetadata(sessionId, patch)` 경로를 사용해야 하며, stale detail snapshot 이 최신 `entries` / `subtitleCount` / `status` 를 덮어쓰면 안 됨
-- history 는 `즐겨찾기만 보기`, 세션 메모 저장, entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export, 전체 JSON 백업/가져오기를 지원
+- history 는 `즐겨찾기만 보기`, 전체 기록 검색, 태그/카테고리 필터, 세션 메모 저장, 세션/entry 발언자 라벨, entry 중요 표시/note/labels inline 편집, entry 체크박스 기반 `선택한 항목 복사`, 전체/선택/중요 표시만/시간 범위 `TXT/SRT/VTT/JSON/Markdown/CSV` export, 전체 JSON 백업/가져오기를 지원
+- entry 편집은 `updateSessionContent(sessionId, patch)` 경로를 사용하고, 첫 텍스트 수정 시 기존 `text`를 `originalText`로 보존해야 함
 - 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원하며, JSON import read phase 와 backup package phase 도 abort-aware 여야 하고 import cancel 은 이미 저장된 부분 완료 레코드를 rollback 하지 않음
 - history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함
 - 전체 JSON 백업은 view-layer preload 대신 store helper export payload 를 사용해야 함
@@ -205,9 +211,12 @@ npm run build
 
 ## 8. exporter 규칙
 
+- `TXT`: 기본 호환 출력은 text 중심이며, 설정에 따라 timestamp, speaker, entry note/labels/중요 표시를 포함
 - `SRT`: `HH:MM:SS,mmm`, 세션 시작 기준 상대 시간
 - `VTT`: `HH:MM:SS.mmm`, 세션 시작 기준 상대 시간
 - `JSON`: 세션 전체 복원 가능한 구조
+- `Markdown`: 회의록 템플릿 형태로 제목, 위원회, 일시, URL, 메모, 태그/카테고리, 발언자, 중요 표시, entry note/labels 포함
+- `CSV`: `startTime,endTime,speaker,text,highlighted,note,labels` 컬럼과 CSV escaping 사용
 - 수동 `saveSession` / `exportSessionData` 는 현재 패널에 보이는 확정 `수집된 자막` 목록만 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 - 다운로드는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback
@@ -218,7 +227,7 @@ npm run build
 - 국회 사이트 DOM 변경 시 selector / observer 안정성이 달라질 수 있습니다.
 - cross-origin frame 은 직접 DOM 접근이 제한될 수 있습니다.
 - observer 실패 시 polling fallback 의존도가 높아질 수 있습니다.
-- 영상 캡처, 중요 표시, 발언자 편집은 현재 범위 밖입니다.
+- 영상 캡처, 외부 AI 요약, 외부 전송은 현재 범위 밖입니다.
 
 ## 10. 작업 원칙
 
@@ -236,7 +245,7 @@ Use this delta as the current operational baseline.
 - `importSessionRecords()` 는 incoming `running` 상태를 모두 `saved` 로 정규화합니다.
 - export filename safety sanitize 는 남아 있는 금지 문자를 첫 1회가 아니라 전체 제거해야 합니다.
 - options / storage numeric settings 는 정수만 허용하며, 소수 입력은 저장 불가입니다.
-- 기본 회귀 검증은 `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:coverage`, `npm run build` 기준으로 유지합니다.
+- 기본 회귀 검증은 `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:coverage`, `npm run build`, `npm run verify:e2e` 기준으로 유지합니다.
 
 ## Sync Delta (2026-03-19)
 
@@ -294,6 +303,7 @@ Use this delta as the current operational baseline.
   - `npm run typecheck`
   - `npm run test:coverage`
   - `npm run build`
+  - `npm run verify:e2e`
   - `npm run verify` for full pre-release checks.
 
 ## Addendum Closure (2026-03-11)
@@ -440,3 +450,19 @@ Use this delta as the current operational baseline.
 - Session-library writes now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
 - Same-session history refreshes must not clobber a dirty note draft.
 - `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
+
+## Sync Delta (2026-05-10)
+
+Use this delta for the v1.1-v1.4 enhancement implementation.
+
+- `SESSION_RECORD_VERSION` is `4`. Legacy v3 records are normalized on read/import, not force-migrated in bulk.
+- `SessionRecord` supports `tags`, `category`, `speakerLabels`, and `qualityStats`; `SubtitleEntry` supports `originalText`, `highlighted`, `entryNote`, `labels`, `speakerLabel`, and `sourceEntryIds`.
+- Store APIs now include `searchSessions({ query, starredOnly, tag, category, page, pageSize })` and `updateSessionContent(sessionId, patch)`. Entry edits must recalculate `subtitleCount`, `charCount`, and `updatedAt` centrally.
+- Search/copy/export use edited `entry.text` by default. Preserve the first edited value in `originalText`; merge/split operations must keep source ids.
+- Export formats include `md` and `csv`; TXT behavior remains the compatibility baseline.
+- P1 history editing includes inline `speakerLabel`, `entryNote`, and `labels`; TXT speaker/entry metadata output is controlled by settings and defaults to off.
+- Highlight-only export and time-range export are local-only partial export flows. Time-range filtering uses `startTime || timestamp` and does not split the stored session.
+- The in-page panel can mark only the latest committed entry as highlighted; preview-only text must never become a highlighted entry.
+- Capture diagnostics expose `good | warning | unstable` health, shared persistability wording, UTF-8 size estimates, and size warnings.
+- Options presets are local-only and only accept supported Assembly player URLs. Do not implement automatic `xcode -> xcgcd` completion.
+- Side panel is experimental. Keep the in-page panel as the default UI and avoid adding any broader host permissions or external AI/network transfer.

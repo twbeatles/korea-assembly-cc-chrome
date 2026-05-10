@@ -1,10 +1,21 @@
 import { SESSION_RECORD_VERSION } from "../shared/constants";
 import { createPrefixedRandomToken } from "../shared/random-token";
 
-export type ExportFormat = "txt" | "srt" | "vtt" | "json";
+export type ExportFormat = "txt" | "srt" | "vtt" | "json" | "md" | "csv";
 export type CaptureStatus = "idle" | "running" | "stopped" | "error";
 export type PersistedSessionStatus = "running" | "stopped" | "saved";
 export type SpeakerChannel = "primary" | "secondary" | "unknown";
+
+export interface SessionQualityStats {
+  health: "good" | "warning" | "unstable";
+  entryCount: number;
+  charCount: number;
+  estimatedBytes: number;
+  fallbackOnly?: boolean;
+  lastComputedAt: string;
+}
+
+export type SpeakerLabels = Partial<Record<SpeakerChannel, string>>;
 
 export interface SubtitleEntry {
   id: string;
@@ -18,6 +29,12 @@ export interface SubtitleEntry {
   speakerColor?: string;
   speakerChannel?: SpeakerChannel;
   speakerChanged?: boolean;
+  originalText?: string;
+  highlighted?: boolean;
+  entryNote?: string;
+  labels?: string[];
+  speakerLabel?: string;
+  sourceEntryIds?: string[];
 }
 
 export interface SessionRecord {
@@ -36,11 +53,23 @@ export interface SessionRecord {
   starred: boolean;
   pinnedAt: string | null;
   note: string;
+  tags?: string[];
+  category?: string;
+  speakerLabels?: SpeakerLabels;
+  qualityStats?: SessionQualityStats;
   entries: SubtitleEntry[];
 }
 
-export type StoredSessionRecord = Omit<SessionRecord, "starred" | "pinnedAt" | "note"> &
-  Partial<Pick<SessionRecord, "starred" | "pinnedAt" | "note">>;
+export type StoredSessionRecord = Omit<
+  SessionRecord,
+  "starred" | "pinnedAt" | "note" | "tags" | "category" | "speakerLabels" | "qualityStats"
+> &
+  Partial<
+    Pick<
+      SessionRecord,
+      "starred" | "pinnedAt" | "note" | "tags" | "category" | "speakerLabels" | "qualityStats"
+    >
+  >;
 
 export interface SessionBackupBundle {
   kind: string;
@@ -84,6 +113,8 @@ export function cloneEntry(entry: SubtitleEntry): SubtitleEntry {
   return {
     ...entry,
     sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
+    labels: entry.labels ? [...entry.labels] : undefined,
+    sourceEntryIds: entry.sourceEntryIds ? [...entry.sourceEntryIds] : undefined,
   };
 }
 
@@ -92,6 +123,9 @@ export function cloneSessionRecord(record: SessionRecord): SessionRecord {
     ...record,
     pinnedAt: record.pinnedAt,
     note: record.note,
+    tags: record.tags ? [...record.tags] : undefined,
+    speakerLabels: record.speakerLabels ? { ...record.speakerLabels } : undefined,
+    qualityStats: record.qualityStats ? { ...record.qualityStats } : undefined,
     entries: record.entries.map(cloneEntry),
   };
 }
@@ -180,6 +214,9 @@ export function toSessionRecord(
     starred: false,
     pinnedAt: null,
     note: "",
+    tags: [],
+    category: "",
+    speakerLabels: {},
     entries,
   };
 }

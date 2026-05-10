@@ -23,6 +23,8 @@ function cloneOutputEntry(
   const cloned: SubtitleEntry = {
     ...entry,
     sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
+    labels: entry.labels ? [...entry.labels] : undefined,
+    sourceEntryIds: entry.sourceEntryIds ? [...entry.sourceEntryIds] : undefined,
   };
 
   if (options.stripSpeakerMetadata) {

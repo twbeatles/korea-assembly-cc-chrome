@@ -18,7 +18,10 @@
     "type": "module"
   },
   "options_page": "options.html",
-  "permissions": ["storage", "downloads", "activeTab", "scripting", "offscreen"],
+  "permissions": ["storage", "downloads", "activeTab", "scripting", "offscreen", "sidePanel"],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "host_permissions": [
     "https://assembly.webcast.go.kr/*",
     "https://webcast.assembly.go.kr/*"

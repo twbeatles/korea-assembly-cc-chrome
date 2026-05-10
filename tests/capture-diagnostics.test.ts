@@ -1,6 +1,7 @@
 import {
   buildCaptureDiagnostics,
   formatCaptureDiagnosticsFramePath,
+  getPersistabilityUserMessage,
   resolveCaptureSourceLabel,
 } from "../src/shared/capture-diagnostics";
 
@@ -32,6 +33,16 @@ describe("capture diagnostics helpers", () => {
       sourceLabel: "structured",
       persistabilityState: "persistable",
       persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
+      health: "good",
+      healthLabel: "좋음",
+      healthHint: "자막이 안정적으로 수집되고 있습니다.",
+      estimatedBytes: 0,
+      sizeWarning: "",
     });
+  });
+
+  it("maps persistability states to user-facing messages", () => {
+    expect(getPersistabilityUserMessage("preview_only")).toContain("확정 전");
+    expect(getPersistabilityUserMessage("duplicate")).toContain("중복");
   });
 });

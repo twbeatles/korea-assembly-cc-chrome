@@ -1,6 +1,6 @@
 # 잠재 이슈 및 보강 후보 목록
 
-이 문서는 현재 저장소(`Chrome Extension MV3 + TypeScript + React + Vite`) 구현을 `CLAUDE.md` / `README.md` / 코드 본체와 대조하면서 식별한 **기능적으로 문제가 될 수 있는 부분**과 **추가 / 강화가 필요한 후보**를 정리한 검토 노트입니다. 작성 기준일은 `2026-05-07` 이며, 모든 경로는 worktree 루트(`.claude/worktrees/strange-leavitt-f9093b/`) 기준입니다.
+이 문서는 현재 저장소(`Chrome Extension MV3 + TypeScript + React + Vite`) 구현을 `CLAUDE.md` / `README.md` / 코드 본체와 대조하면서 식별한 **기능적으로 문제가 될 수 있는 부분**과 **추가 / 강화가 필요한 후보**를 정리한 검토 노트입니다. 작성 기준일은 `2026-05-07` 이며, 모든 경로는 당시 검토 worktree 루트 기준입니다.
 
 > **진행 상태 (2026-05-07 기준)**
 >
@@ -8,6 +8,11 @@
 > - **P1 (2-1 ~ 2-5) 모두 처리됨** — 회귀 테스트 + 검증 통과.
 > - **P2 다수 처리됨** — 3-1 / 3-2 / 3-5 / 4-1 / 4-3 / 4-4 / 5-1 / 5-3 / 5-4 / 6-1 / 6-2 적용. 3-3 / 3-4 / 4-2 / 4-5 / 5-2 / 5-5 / 6-3 은 가치 대비 위험·이득이 낮아 의도적으로 보류 (각 항목에 사유 표시).
 > - 회귀 검증: `npm run lint` / `npm run typecheck` / `npm run test` (251 tests) / `npm run test:coverage` / `npm run build` 모두 통과.
+>
+> **추가 진행 상태 (2026-05-10 기준)**
+>
+> - v4 로컬 메타데이터, 전체 기록 검색, history entry 편집/병합/분할/삭제, Markdown/CSV export, preset CRUD, 실험형 side panel, DOM fixture, `npm run verify:e2e` smoke 검증이 추가되었습니다.
+> - 현재 기능 범위와 운영 기준은 `README.md`, `FEATURE_ENHANCEMENT_ANALYSIS.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, 권한/개인정보 문서, 코드와 테스트를 우선합니다.
 
 각 항목은 다음 형식을 따릅니다.
 
@@ -41,7 +46,9 @@
   ```ts
   function bytesToBase64(bytes: Uint8Array): string {
     let binary = "";
-    bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+    bytes.forEach((byte) => {
+      binary += String.fromCharCode(byte);
+    });
     return btoa(binary);
   }
   ```
@@ -269,11 +276,11 @@
 
 ## 9. 우선순위 요약
 
-| 우선순위 | 항목 |
-| --- | --- |
-| P0 | 1-1 `recentDuplicateMinLength` 미반영, 1-2 base64 폴백 메모리, 1-3 `display:block` 강제 |
-| P1 | 2-1 maxBufferLength 부분 적용, 2-2 visible/pageshow 미처리, 2-3 visibility autosave gating, 2-4 autoStart 동의/cooldown, 2-5 note/entry 길이 캡 |
-| P2 | 3-1~3-5 안전성 강화, 4-1~4-5 UX 보강, 5-1~5-5 정리/리팩터링, 6-1~6-3 보안 표면 정리, 7 테스트 보강, 8 문서 업데이트 |
+| 우선순위 | 항목                                                                                                                                            |
+| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| P0       | 1-1 `recentDuplicateMinLength` 미반영, 1-2 base64 폴백 메모리, 1-3 `display:block` 강제                                                         |
+| P1       | 2-1 maxBufferLength 부분 적용, 2-2 visible/pageshow 미처리, 2-3 visibility autosave gating, 2-4 autoStart 동의/cooldown, 2-5 note/entry 길이 캡 |
+| P2       | 3-1~3-5 안전성 강화, 4-1~4-5 UX 보강, 5-1~5-5 정리/리팩터링, 6-1~6-3 보안 표면 정리, 7 테스트 보강, 8 문서 업데이트                             |
 
 ---
 

@@ -4,42 +4,43 @@
 > 기준 커밋: `496fad3` (Harden plenary fallback capture for 1.0.1)
 >
 > 2026-04-07 업데이트:
+>
 > - 이 문서는 과거 감사 기준 문서이며, 현재 배포 준비 기준 구현은 이 보고서 작성 시점보다 뒤에 있습니다.
 > - 현재 스토어 제출 준비 버전은 `1.0.7` 입니다.
 > - 현재 수동 저장 / export 와 pagehide/beforeunload/stop persistence 경로는 preview-only 텍스트를 materialize 하지 않고, 확정 `수집된 자막` entry 만 저장합니다.
 > - 현재 popup / panel 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되었고, 이는 committed subtitle 존재 여부만 의미합니다.
 > - 현재 structured row snapshot에서는 stable row만 commit 되며, 같은 snapshot 안의 raw/container fallback 과 unstable row 는 preview 전용입니다.
 > - 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 commit/persist/export 대상에서 제외됩니다.
-> 2026-04-13 업데이트:
+>   2026-04-13 업데이트:
 > - mixed structured snapshot에서는 stable row만 commit되고 unstable row는 preview-only로 남습니다.
 > - JSON import는 incoming `running` 레코드를 `saved`로 정규화합니다.
 > - export filename sanitize는 금지 문자를 전역 제거하며, options / storage 숫자 설정은 정수만 허용합니다.
 > - lint / coverage baseline은 현재 통과 상태이며, 상세 구현 기준은 Git에 남아 있는 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`와 회귀 테스트를 우선 참고합니다.
-> 2026-04-17 업데이트:
+>   2026-04-17 업데이트:
 > - running autosave는 committed subtitle이 있을 때만 저장되며, preview-only 상태로 빈 `running` 레코드를 남기지 않습니다.
 > - page-exit queue storage write가 content script에서 실패하면 background가 durable queue write를 한 번 더 시도합니다.
 > - history refresh / filter change에서 메모 폐기 확인을 누르면 dirty note draft가 실제 저장값으로 되돌아갑니다.
 > - 따라서 아래의 save/export, popup enablement 관련 일부 지적은 역사적 참고용으로만 읽어야 하며, 현재 릴리스 기준 판단은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md` 를 우선합니다.
-> 2026-04-20 업데이트:
+>   2026-04-20 업데이트:
 > - iframe 자막 레이어 탐지는 접근 가능한 frame 전체의 layer / text / control 상태를 함께 집계하도록 정리되었습니다.
 > - panel / popup / options 진단에는 `persistabilityState` / `persistabilityHint` 가 추가되어 `preview_only`, `unstable_only`, `filtered`, `duplicate`, `persistable` 상태를 구분합니다.
 > - in-page `수집된 자막` 렌더는 최신 `300`건으로 제한되고, 전체 세션 저장 / export / history 기준은 누적 committed entry 전체를 그대로 유지합니다.
 > - 전체 라이브러리 `JSON 백업` / `JSON 가져오기` 는 `25 MiB` 하드 제한으로 보호되며, 백업은 page-wise incremental packaging 경로를 사용합니다.
 > - popup / diagnostics stale reconnect 및 저커버리지 테스트 보강까지 반영된 구현 기준은 현재 Git 추적 문서와 회귀 테스트를 우선 참고합니다.
-> 2026-04-21 업데이트:
+>   2026-04-21 업데이트:
 > - session import sanitize 단계에서 미지원 `sourceUrl`은 빈 문자열로 정규화되고, history `원본 페이지 열기`는 지원 URL만 허용하도록 고정되었습니다.
 > - unconfirmed filter 차단 신호(`blockedByUnconfirmedFilter`)가 도입되었고, local polling / top fallback / injected observer 모두 연속 6회 차단 시 container fallback 완화 로직으로 수렴되었습니다.
 > - container fallback 내부 raw와 UI preview가 분리되어 내부 파이프라인은 `4KB` tail raw를 유지하고, 노출 preview만 `400자/3줄` tail 의미론으로 축약합니다.
 > - 단일 세션 export는 하드 제한 대신 오류 품질(`message length exceeded`, invalid data URL 계열) 매핑으로 사용자 안내를 강화했습니다.
 > - frame-forward nonce mismatch 시 즉시 nonce resync + 빠른 top fallback probe 복구 경로가 추가되었습니다.
-> 2026-05-03 업데이트:
+>   2026-05-03 업데이트:
 > - 임시 기능 검토 문서는 Git 추적 대상에서 제거되었으므로, 현재 기준은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, 코드, 테스트를 우선합니다.
 > - `pendingPreviews`/`flushPendingPreviews` 계열 레거시 preview 승격 경로를 제거해 저장/export/page-exit/stop 준비 경로가 확정 entry만 사용하도록 정리했습니다.
 > - fallback UI preview는 본회의/위원회 구분 없이 `400자/3줄 tail` 정책으로 통일하고, 내부 비교/복원 raw는 `4KB tail` 보존 정책을 유지합니다.
 > - 단일 세션 export는 `8 MiB` 초과 시 사용자 확인을 거친 뒤 기존 다운로드 경로를 시도하며, transport/data URL 실패 문구를 단일 export와 history 부분 export 맥락에 맞게 분리했습니다.
 > - fallback record가 있어도 history paging은 전체 IndexedDB preload로 후퇴하지 않고 fallback 전체와 IndexedDB window/id 조회를 병합합니다.
 > - local polling/top fallback unconfirmed streak를 분리했고, page-exit persist 마지막 시도 diagnostics를 options 저장 복구 상태에 노출합니다.
-> 2026-05-07 업데이트 (P0 / P1 / P2 closure):
+>   2026-05-07 업데이트 (P0 / P1 / P2 closure):
 > - **P0** 일괄 적용: `recentDuplicateMinLength` 옵션이 실제 파이프라인에 전달되고(`extractIncrementalTextFromHistory` / `extractIncrementalTextWithRecentHistory` 시그니처 확장), service-worker `bytesToBase64` 가 `0x8000` 청크 단위로 동작하며, `tryDomSubtitleActivation` / `injected-observer.ensureSubtitleLayerVisible` 가 `layer.style.display = "block"` 강제 폴백을 제거했습니다.
 > - **P1** 일괄 적용: `maxBufferLength` 가 `recentHistoryCompactLength` 에도 비례 반영되고, `pageshow(persisted)` / `visibilitychange:visible` 처리 + `runningAutoSaveEnabled` 기반 visibility 가드 + 같은 player URL 의 명시적 stop 후 `sessionStorage` cooldown + 세션 메모(`note`) 4096자 캡이 추가되었습니다.
 > - **P2** 다수 적용: `createRandomToken` 공통 helper, startup 중복 실행 가드 (`STARTUP_DEDUP_WINDOW_MS = 5_000`), settings 변경 시 unconfirmed streak 리셋, 미수신 streak ≥ 3 일 때 panel notice 에 `UNCONFIRMED_STALL_HINT_NOTICE` 노출, download 오류 매핑에 quota / 부분 export 동선 안내, history dirty note `beforeunload` 가드, `subtitle:health` 가 `sourceUrl` / `title` / `committeeName` 도 갱신, SW 재시작 시 stale Blob URL 의 `OFFSCREEN_REVOKE_BLOB_URL` round-trip 생략, 자막 활성화 콜백 결과 재검증, 서비스 워커 명령 발신자 `sender.id` 검사.
@@ -51,16 +52,19 @@
 >   - `L-2` `recentCopyLineCount` min — `case "recentCopyLineCount": return 1;` 명시됨
 >   - `L-3` `isElementVisible` — `display:none` / `visibility:hidden` / `opacity:0` / zero-rect 모두 hidden 처리
 >   - `L-7` README 개발 환경 절차 — `npm install` / `npm run dev` / `npm run build` + unpacked 로드 절차 포함됨
+>     2026-05-10 업데이트:
+> - v4 로컬 메타데이터, 전체 기록 검색, history entry 편집/병합/분할/삭제, Markdown/CSV export, preset CRUD, 실험형 side panel, DOM fixture, built extension E2E smoke 검증이 추가되었습니다.
+> - 이 문서는 과거 감사 보고서로 유지하며, 현재 구현 기준은 `README.md`, `FEATURE_ENHANCEMENT_ANALYSIS.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, 권한/개인정보 문서, 코드와 테스트를 우선합니다.
 
 ---
 
 ## 요약
 
-| 심각도 | 건수 |
-|--------|------|
-| 🔴 HIGH (스펙 불일치 / 동작 버그) | 2 |
-| 🟡 MEDIUM (잠재적 문제 / 엣지 케이스) | 5 |
-| 🟢 LOW (UX/구조 개선 여지) | 7 |
+| 심각도                                | 건수 |
+| ------------------------------------- | ---- |
+| 🔴 HIGH (스펙 불일치 / 동작 버그)     | 2    |
+| 🟡 MEDIUM (잠재적 문제 / 엣지 케이스) | 5    |
+| 🟢 LOW (UX/구조 개선 여지)            | 7    |
 
 ---
 
@@ -74,6 +78,7 @@
 **관련 스펙:** `CLAUDE.md` → "자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다."
 
 **현재 코드:**
+
 ```typescript
 // subtitle-layer.ts:214-229
 export async function waitForSubtitleLayer(...): Promise<SubtitleLayerState> {
@@ -103,6 +108,7 @@ async function ensureSubtitleLayerActive(): Promise<boolean> {
 자막 레이어가 표시는 되지만 실제로 자막이 수신되지 않는 상태에서 사용자에게 아무 안내도 없이 수집이 시작됩니다.
 
 **수정 방향:**
+
 ```typescript
 return layer.visible && (layer.hasText || layer.controlActive);
 ```
@@ -114,19 +120,24 @@ return layer.visible && (layer.hasText || layer.controlActive);
 `2026-04-07 현재 구현 상태: resolved (historical finding)`
 
 **파일:**
+
 - `src/content/autosave.ts:20-25` — `shouldPersistFinalSession`
 - `src/popup/App.tsx:20-21` — `hasPersistableContent`
 
 **현재 코드:**
+
 ```typescript
 // autosave.ts
-export function shouldPersistFinalSession(isTopFrame: boolean, entryCount: number): boolean {
-  return isTopFrame && entryCount > 0;  // entries.length만 확인
+export function shouldPersistFinalSession(
+  isTopFrame: boolean,
+  entryCount: number,
+): boolean {
+  return isTopFrame && entryCount > 0; // entries.length만 확인
 }
 
 // popup/App.tsx
 const hasPersistableContent =
-  (snapshot?.subtitleCount ?? 0) > 0 || Boolean(snapshot?.previewText?.trim());  // previewText도 포함
+  (snapshot?.subtitleCount ?? 0) > 0 || Boolean(snapshot?.previewText?.trim()); // previewText도 포함
 ```
 
 **문제:**
@@ -134,6 +145,7 @@ const hasPersistableContent =
 이때 `shouldPersistFinalSession(isTopFrame, 0) → false`가 되어 "저장할 자막이 아직 없습니다."를 반환합니다.
 
 **발생 시나리오:**
+
 1. 자막이 한 번 수집되어 history에 저장된 상태에서 세션을 초기화
 2. 동일한 자막이 다시 `previewText`에만 존재하는 경우
 3. `flushPendingPreviews`에서 duplicate 판정 → `entries.length === 0`
@@ -154,6 +166,7 @@ UX 불일치. 빈번한 시나리오는 아니지만, 사용자가 저장 버튼
 **파일:** `src/storage/persist-recovery.ts:216-237`
 
 **현재 코드:**
+
 ```typescript
 export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistRecord[]> {
   ...
@@ -184,6 +197,7 @@ merge 시 `clear()` 대신, storageRecords에서 온 정보를 memoryQueuedRecor
 **파일:** `src/content/content-script.ts:273-275`
 
 **현재 코드:**
+
 ```typescript
 function deriveCommitteeName(title: string): string {
   return title.replace(/\s*[-|].*$/, "").trim();
@@ -193,11 +207,11 @@ function deriveCommitteeName(title: string): string {
 **문제:**
 `-` 또는 `|` 뒤를 모두 잘라냅니다. 국회 페이지 제목에 날짜가 포함되면 의도치 않게 위원회 이름이 잘립니다.
 
-| 입력 | 결과 | 기대값 |
-|------|------|--------|
-| `"행정안전위원회 2026-03-23 전체회의"` | `"행정안전위원회 2026"` | `"행정안전위원회 2026-03-23 전체회의"` |
-| `"교육위원회 \| 국회TV"` | `"교육위원회"` | `"교육위원회"` ✅ |
-| `"과학기술정보방송통신위원회 - 1"` | `"과학기술정보방송통신위원회"` | `"과학기술정보방송통신위원회 - 1"` |
+| 입력                                   | 결과                           | 기대값                                 |
+| -------------------------------------- | ------------------------------ | -------------------------------------- |
+| `"행정안전위원회 2026-03-23 전체회의"` | `"행정안전위원회 2026"`        | `"행정안전위원회 2026-03-23 전체회의"` |
+| `"교육위원회 \| 국회TV"`               | `"교육위원회"`                 | `"교육위원회"` ✅                      |
+| `"과학기술정보방송통신위원회 - 1"`     | `"과학기술정보방송통신위원회"` | `"과학기술정보방송통신위원회 - 1"`     |
 
 **영향:**
 내보내기 파일명의 `{committee}` placeholder와 history 목록 표시에 영향.
@@ -212,13 +226,14 @@ function deriveCommitteeName(title: string): string {
 **파일:** `src/content/content-script.ts:431-441`
 
 **현재 코드:**
+
 ```typescript
 function applyPreviewStateOnly(previewText: string, now: number): boolean {
   if (previewText === state.previewText) {
     return false;
   }
-  state.previewText = previewText;         // ⚠️ 직접 변이
-  state.lastObservedRaw = previewText;     // ⚠️ 직접 변이
+  state.previewText = previewText; // ⚠️ 직접 변이
+  state.lastObservedRaw = previewText; // ⚠️ 직접 변이
   state.updatedAt = new Date(now).toISOString();
   state.lastObserverEventAt = now;
   return true;
@@ -238,6 +253,7 @@ function applyPreviewStateOnly(previewText: string, now: number): boolean {
 **파일:** `src/core/noise-filter.ts:52-68`
 
 **현재 코드:**
+
 ```typescript
 export function isNoiseOnly(text: string): boolean {
   ...
@@ -266,6 +282,7 @@ export function isNoiseOnly(text: string): boolean {
 **파일:** `src/core/subtitle-pipeline.ts:427-445`
 
 **현재 코드:**
+
 ```typescript
 export function flushPendingPreviews(state, now, settings): SessionState {
   const preparedState = cloneState(state);
@@ -374,40 +391,40 @@ function walkFramesForControl(rootDocument, depth = 0, maxDepth = 3) {
 
 ## 테스트 커버리지 갭
 
-| 영역 | 현황 | 개선 여지 |
-|------|------|----------|
-| `subtitle-layer.ts` | `waitForSubtitleLayer` 타임아웃 케이스 미테스트 | `hasText=false, controlActive=false`인 visible 상태에서 타임아웃 시나리오 |
-| `persist-recovery.ts` | 동시 `queue` + `list` race condition 미테스트 | `queueExitPersistRecord` 중 `listQueuedExitPersistRecords` 동시 호출 |
-| `content-script.ts` | 통합 테스트 없음 | `startCapture` → `stopCapture` → `saveSession` 전체 흐름 |
-| `deriveCommitteeName` | 별도 테스트 없음 | 날짜/특수문자 포함 제목 파싱 케이스 |
-| `flushPendingPreviews` noise path | preview-only flush + noise filter 조합 미테스트 | `noiseFilterEnabled=false` 상태에서 숫자만 있는 previewText flush |
+| 영역                              | 현황                                            | 개선 여지                                                                 |
+| --------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------- |
+| `subtitle-layer.ts`               | `waitForSubtitleLayer` 타임아웃 케이스 미테스트 | `hasText=false, controlActive=false`인 visible 상태에서 타임아웃 시나리오 |
+| `persist-recovery.ts`             | 동시 `queue` + `list` race condition 미테스트   | `queueExitPersistRecord` 중 `listQueuedExitPersistRecords` 동시 호출      |
+| `content-script.ts`               | 통합 테스트 없음                                | `startCapture` → `stopCapture` → `saveSession` 전체 흐름                  |
+| `deriveCommitteeName`             | 별도 테스트 없음                                | 날짜/특수문자 포함 제목 파싱 케이스                                       |
+| `flushPendingPreviews` noise path | preview-only flush + noise filter 조합 미테스트 | `noiseFilterEnabled=false` 상태에서 숫자만 있는 previewText flush         |
 
 ---
 
 ## 스펙 준수 현황 (CLAUDE.md Sync Deltas)
 
-| 델타 | 항목 | 상태 |
-|------|------|------|
-| 2026-03-20 | 본회의 fallback 실시간 내용 누적 | ✅ 구현됨 |
-| 2026-03-20 | 본회의 fallback 수집된 자막 목록 표시 | ✅ 구현됨 |
-| 2026-03-20 | 로딩중 placeholder noise filter 무관 제외 | ✅ 구현됨 (`PLACEHOLDER_TEXT_SET`) |
-| 2026-03-19 | frame-forward nonce 탭 단위 15초 재동기화 | ✅ 구현됨 |
-| 2026-03-19 | replay queue storage+memory merge | ✅ 구현됨 |
-| 2026-03-19 | diagnostics lastQueueWriteError 등 phase별 | ✅ 구현됨 |
-| 2026-03-19 | popup 저장 버튼 persistable content 조건 | ✅ 구현됨 (`committed entries only`) |
-| 2026-03-19 | 자막 자동 활성화 `visible && (hasText\|\|controlActive)` | ✅ 구현됨 |
-| 2026-03-16 | `listSessionsPage` store-level paging | ✅ 구현됨 |
-| 2026-03-16 | `filenamePattern` strict validation | ✅ 구현됨 |
-| 2026-03-16 | 최근 N줄 복사 history 의미론 통일 | ✅ 구현됨 |
-| 2026-03-14 | `startCapture` 빈 persisted running 세션 미생성 | ✅ 구현됨 |
-| 2026-03-14 | `saveSession`/`updateRunningSession` starred 보존 | ✅ 구현됨 (`mergeEditableSessionMetadata`) |
-| 2026-03-13 | page-exit stopped snapshot replay queue | ✅ 구현됨 |
-| 2026-03-13 | session import allow-list sanitize | ✅ 구현됨 |
-| 2026-03-12 | preview-only 저장/export 보존 | 역사적 동작, 현재는 미적용 |
-| 2026-04-07 | preview-only persistence 차단 | ✅ 구현됨 |
-| 2026-04-07 | unstable/fallback preview commit 차단 | ✅ 구현됨 |
-| 2026-04-07 | in-progress highlight 배경 차단 | ✅ 구현됨 |
-| 2026-03-12 | failed persist retry + discard confirm | ✅ 구현됨 |
+| 델타       | 항목                                                     | 상태                                       |
+| ---------- | -------------------------------------------------------- | ------------------------------------------ |
+| 2026-03-20 | 본회의 fallback 실시간 내용 누적                         | ✅ 구현됨                                  |
+| 2026-03-20 | 본회의 fallback 수집된 자막 목록 표시                    | ✅ 구현됨                                  |
+| 2026-03-20 | 로딩중 placeholder noise filter 무관 제외                | ✅ 구현됨 (`PLACEHOLDER_TEXT_SET`)         |
+| 2026-03-19 | frame-forward nonce 탭 단위 15초 재동기화                | ✅ 구현됨                                  |
+| 2026-03-19 | replay queue storage+memory merge                        | ✅ 구현됨                                  |
+| 2026-03-19 | diagnostics lastQueueWriteError 등 phase별               | ✅ 구현됨                                  |
+| 2026-03-19 | popup 저장 버튼 persistable content 조건                 | ✅ 구현됨 (`committed entries only`)       |
+| 2026-03-19 | 자막 자동 활성화 `visible && (hasText\|\|controlActive)` | ✅ 구현됨                                  |
+| 2026-03-16 | `listSessionsPage` store-level paging                    | ✅ 구현됨                                  |
+| 2026-03-16 | `filenamePattern` strict validation                      | ✅ 구현됨                                  |
+| 2026-03-16 | 최근 N줄 복사 history 의미론 통일                        | ✅ 구현됨                                  |
+| 2026-03-14 | `startCapture` 빈 persisted running 세션 미생성          | ✅ 구현됨                                  |
+| 2026-03-14 | `saveSession`/`updateRunningSession` starred 보존        | ✅ 구현됨 (`mergeEditableSessionMetadata`) |
+| 2026-03-13 | page-exit stopped snapshot replay queue                  | ✅ 구현됨                                  |
+| 2026-03-13 | session import allow-list sanitize                       | ✅ 구현됨                                  |
+| 2026-03-12 | preview-only 저장/export 보존                            | 역사적 동작, 현재는 미적용                 |
+| 2026-04-07 | preview-only persistence 차단                            | ✅ 구현됨                                  |
+| 2026-04-07 | unstable/fallback preview commit 차단                    | ✅ 구현됨                                  |
+| 2026-04-07 | in-progress highlight 배경 차단                          | ✅ 구현됨                                  |
+| 2026-03-12 | failed persist retry + discard confirm                   | ✅ 구현됨                                  |
 
 ---
 

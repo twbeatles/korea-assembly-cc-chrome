@@ -9,6 +9,7 @@
 - Chrome Web Store 배포: `dist/` 내용을 업로드
 
 중요:
+
 - 항상 루트가 아니라 `dist/` 결과물을 배포합니다.
 - zip 파일 안에서 `manifest.json` 이 최상위에 있어야 합니다.
 - `dist/` 폴더 자체를 한 단계 더 감싸서 압축하면 안 됩니다.
@@ -43,13 +44,17 @@ npm run typecheck
 npm run test
 npm run test:coverage
 npm run build
+npm run verify:e2e
 ```
 
 설명:
+
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
+- `npm run verify:e2e` 는 build 후 Playwright로 built extension smoke test를 실행합니다.
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
 
 추가 확인 권장:
+
 - 국회 의사중계 페이지에서 실제 자막 추출
 - 페이지 오른쪽 패널이 자동으로 뜨는지 확인
 - 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
@@ -60,6 +65,7 @@ npm run build
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구가 저장/export/누적 목록에 들어가지 않는지 확인
 - 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
 - 패널의 `저장 / 내보내기` 버튼에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
+- history의 `Markdown / CSV` 저장, 선택 export, 중요 표시만 export, 시간 범위 export 확인
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
@@ -73,7 +79,9 @@ npm run build
 - preview-only 또는 notice-only 상태에서도 패널 `화면 비우기`는 활성화되고 저장/복사/export 는 계속 비활성화되는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - 수집 중이거나 stale selection 상태의 history detail 에서 즐겨찾기/메모를 저장해도 최신 subtitle count / status / entries 가 되돌아가지 않는지 확인
-- history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
+- history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON/Markdown/CSV` export 확인
+- history entry 텍스트/발언자/중요 표시/entry note/labels inline 편집, 연속 선택 병합, 단일 entry 분할, 선택 삭제 확인
+- options preset 추가/수정/삭제, 중복 URL 차단, TXT 발언자/entry 메타데이터 export 옵션 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
 - history `JSON 가져오기`에서 incoming `running` 레코드가 `saved`로 정규화되어 stale `수집 중` 배지가 남지 않는지 확인
 - history `전체 JSON 백업` / `JSON 가져오기` 중 현재 단계, 진행량, 취소 버튼이 노출되고 중복 JSON 작업만 잠기는지 확인
@@ -150,6 +158,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 - `offscreen`
 - `activeTab`
 - `scripting`
+- `sidePanel`
 - host permission:
   - `https://assembly.webcast.go.kr/*`
   - `https://webcast.assembly.go.kr/*`
@@ -168,9 +177,10 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 - 국회 의사중계 도메인에서만 동작함
 - AI 자막 DOM 을 읽어 사용자가 파일로 저장할 수 있게 함
 - 수집 데이터는 세션 저장 및 내보내기 목적
-- `downloads` 권한은 TXT/SRT/VTT/JSON 파일 저장용
+- `downloads` 권한은 TXT/SRT/VTT/JSON/Markdown/CSV 파일 저장용
 - `storage` 권한은 설정, 세션 저장 fallback, page-exit replay queue, 탭 단위 frame-forward nonce, 저장 복구 diagnostics 용
-- `storage` 는 즐겨찾기/메모 같은 세션 메타와 JSON 가져오기 후 복원된 기록 저장에도 사용됨
+- `storage` 는 즐겨찾기/메모/태그/카테고리/발언자 라벨/중요 표시/entry note/labels 같은 로컬 메타데이터와 JSON 가져오기 후 복원된 기록 저장에도 사용됨
+- `sidePanel` 권한은 Chrome 114+의 실험형 보조 패널을 열기 위한 용도이며, 기존 in-page panel이 기본 UI임
 
 ## 7. 릴리스 체크리스트
 
@@ -181,6 +191,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 - `npm run test` 통과
 - `npm run test:coverage` 통과
 - `npm run build` 통과
+- `npm run verify:e2e` 통과
 - `dist/manifest.json` 생성 확인
 - `dist/injected-observer.js` 생성 확인
 - `dist/manifest.json` 의 버전이 루트 `manifest.json` / `package.json` 과 같은지 확인
@@ -221,8 +232,11 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 23. preview-only 또는 notice-only 상태에서도 패널 `화면 비우기`는 활성화되고 저장/복사/export 는 비활성화되는지
 24. 수집 중 history 에서 즐겨찾기/메모를 저장해도 더 최신 subtitle entry / status 가 되돌아가지 않는지
 25. `JSON 가져오기`를 파일 읽기 단계에서 바로 취소하면 즉시 취소 메시지가 보이고, 일부 write 이후 취소일 때만 부분 완료 요약이 노출되는지
-22. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
-23. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
+26. history 의 대용량 작업 중 관련 버튼이 잠겨 중복 실행이 되지 않는지
+27. options `저장 복구 상태`가 `queue write / replay / cleanup` phase별 오류를 각각 보여 주는지 확인
+28. history 전체 검색, 태그/카테고리 필터, 중요 표시만 보기와 중요 표시만 export가 함께 동작하는지 확인
+29. 시간 범위 export가 entry의 `startTime || timestamp` 기준으로 필터링되고 원본 세션을 변경하지 않는지 확인
+30. side panel이 지원 탭에서 열리고, 미지원 환경에서는 `sidepanel.html` fallback으로 열리는지 확인
 
 ## 9. 자주 발생하는 문제
 
@@ -250,8 +264,8 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 
 ### 9.5 Chrome Web Store 참고 기능과 차이가 있음
 
-- 현재 범위에는 `영상 캡처`, `중요 표시`, `발언자 편집` 기능이 포함되지 않습니다.
-- 이번 배포는 검색 / 복사 / autosave UX 외에 자막 자동 활성화, 본회의 fallback 누적 표시, placeholder 필터링 하드닝도 포함합니다.
+- 현재 범위에는 `영상 캡처`, 외부 AI 요약, 외부 전송 기능이 포함되지 않습니다.
+- 이번 배포는 검색 / 복사 / autosave UX 외에 자막 자동 활성화, 본회의 fallback 누적 표시, placeholder 필터링 하드닝, 중요 표시, 발언자/entry 메타데이터 편집도 포함합니다.
 
 ## 10. 권장 운영 방식
 
@@ -379,6 +393,22 @@ Deployment documentation consistency sources:
 - Release verification should confirm that local polling and top fallback unconfirmed streaks relax container fallback independently after their own `6` consecutive blocked probes.
 - Release verification should confirm that options storage recovery status shows the latest page-exit persist attempt timestamp, session id, entry count, and error when present.
 - Release packaging should keep generated artifacts (`dist/`, `coverage/`, tsbuildinfo, root exports) ignored, and `.gitignore` now also protects local env files and signing material.
+
+## 2026-05-10 Release Checklist Addendum
+
+이번 릴리스 후보에는 v4 로컬 메타데이터, 기록 검색/편집, Markdown/CSV export, preset, 실험형 side panel이 포함됩니다. 배포 전 아래 항목을 기존 체크리스트에 추가로 확인합니다.
+
+- `npm run lint`
+- `npm run typecheck`
+- `npm run test`
+- `npm run build`
+- `npm run verify:e2e` (built extension smoke test)
+- `tests/fixtures/` DOM fixture가 본회의, 위원회, iframe, fallback-only, unstable row 대표 케이스를 계속 덮는지 확인
+- history 검색, 태그/카테고리 필터, 중요 표시만 보기, 중요 표시만 export, 시간 범위 export, entry 편집/병합/분할/삭제 확인
+- panel의 건강도 라벨, 저장 불가 사유, 세션 크기 경고, `중간 저장 후 새 세션 시작`, 최신 확정 entry 중요 표시 확인
+- options preset CRUD, TXT 발언자/entry 메타데이터 export 옵션, popup preset 바로 열기 확인
+- `sidePanel` 권한 및 `side_panel.default_path`가 `dist/manifest.json`에 포함되는지 확인
+- Chrome 114+에서 side panel 열기, 미지원 환경에서 `sidepanel.html` fallback 열기 확인
 
 ## 2026-05-07 Deployment Consistency Update
 

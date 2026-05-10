@@ -1,9 +1,19 @@
 import type {
   ExportFormat,
   SessionRecord,
+  SpeakerLabels,
   StoredSessionRecord,
   SubtitleEntry,
 } from "../core/subtitle-models";
+
+export interface AssemblyPreset {
+  id: string;
+  name: string;
+  url: string;
+  committeeName: string;
+  autoStartEnabled: boolean;
+  noiseFilterEnabled: boolean;
+}
 
 export interface ExtensionSettings {
   autoScroll: boolean;
@@ -14,12 +24,15 @@ export interface ExtensionSettings {
   recentDuplicateMinLength: number;
   filenamePattern: string;
   txtExportTimestampsEnabled: boolean;
+  txtExportSpeakerEnabled: boolean;
+  txtExportEntryNotesEnabled: boolean;
   runningAutoSaveEnabled: boolean;
   runningAutoSaveDebounceMs: number;
   recentCopyLineCount: number;
   debugLogging: boolean;
   autoStartEnabled: boolean;
   filterUnconfirmedEnabled: boolean;
+  presets: AssemblyPreset[];
 }
 
 export interface ExportPayload {
@@ -50,12 +63,63 @@ export interface SessionExportOptions {
   filenamePattern?: string;
   entries?: SubtitleEntry[];
   txtExportTimestampsEnabled?: boolean;
+  txtExportSpeakerEnabled?: boolean;
+  txtExportEntryNotesEnabled?: boolean;
+  timeRange?: {
+    from?: string;
+    to?: string;
+  };
 }
 
 export interface SessionMetadataPatch {
   starred?: boolean;
   pinnedAt?: string | null;
   note?: string;
+  tags?: string[];
+  category?: string;
+  speakerLabels?: SpeakerLabels;
+}
+
+export interface SessionContentPatch {
+  entries?: SubtitleEntry[];
+  tags?: string[];
+  category?: string;
+  speakerLabels?: SpeakerLabels;
+}
+
+export interface SessionSearchHit {
+  field:
+    | "title"
+    | "committeeName"
+    | "note"
+    | "tag"
+    | "category"
+    | "entry";
+  entryId?: string;
+  text: string;
+}
+
+export interface SessionSearchResult {
+  session: SessionRecord;
+  matchCount: number;
+  firstHit: SessionSearchHit | null;
+}
+
+export interface SessionSearchOptions {
+  query?: string;
+  starredOnly?: boolean;
+  tag?: string;
+  category?: string;
+  highlightedOnly?: boolean;
+  page: number;
+  pageSize: number;
+}
+
+export interface SessionSearchPageResult {
+  results: SessionSearchResult[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface SessionImportSummary {
@@ -149,10 +213,15 @@ export interface SessionStoreApi {
     sessionId: string,
     patch: SessionMetadataPatch,
   ) => Promise<SessionRecord>;
+  updateSessionContent: (
+    sessionId: string,
+    patch: SessionContentPatch,
+  ) => Promise<SessionRecord>;
   loadSession: (id: string) => Promise<SessionRecord | undefined>;
   loadSessionsByIds: (ids: string[]) => Promise<SessionRecord[]>;
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;
   listSessionsPage: (options: SessionPageOptions) => Promise<SessionPageResult>;
+  searchSessions: (options: SessionSearchOptions) => Promise<SessionSearchPageResult>;
   getSessionLibraryOverview: (previewLimit?: number) => Promise<SessionLibraryOverview>;
   buildSessionLibraryBackupExport: (
     options?: BuildSessionLibraryBackupExportOptions,

@@ -6,6 +6,8 @@ export interface HistoryViewSettings {
   recentCopyLineCount: number;
   filenamePattern: string;
   txtExportTimestampsEnabled: boolean;
+  txtExportSpeakerEnabled: boolean;
+  txtExportEntryNotesEnabled: boolean;
 }
 
 export function buildHistoryRefreshMessage(sessionCount: number): string {
@@ -58,13 +60,19 @@ export function buildSessionImportMessage(input: {
 export function selectHistoryViewSettings(
   settings: Pick<
     ExtensionSettings,
-    "recentCopyLineCount" | "filenamePattern" | "txtExportTimestampsEnabled"
+    | "recentCopyLineCount"
+    | "filenamePattern"
+    | "txtExportTimestampsEnabled"
+    | "txtExportSpeakerEnabled"
+    | "txtExportEntryNotesEnabled"
   >,
 ): HistoryViewSettings {
   return {
     recentCopyLineCount: settings.recentCopyLineCount,
     filenamePattern: settings.filenamePattern,
     txtExportTimestampsEnabled: settings.txtExportTimestampsEnabled,
+    txtExportSpeakerEnabled: settings.txtExportSpeakerEnabled ?? false,
+    txtExportEntryNotesEnabled: settings.txtExportEntryNotesEnabled ?? false,
   };
 }
 
@@ -140,4 +148,24 @@ export function selectAllEntryIds(
   entries: Array<Pick<SubtitleEntry, "id">>,
 ): string[] {
   return entries.map((entry) => entry.id);
+}
+
+export function areEntryIdsContiguous(
+  entries: Array<Pick<SubtitleEntry, "id">>,
+  selectedIds: string[],
+): boolean {
+  if (selectedIds.length < 2) {
+    return true;
+  }
+
+  const selectedIdSet = new Set(selectedIds);
+  const indexes = entries
+    .map((entry, index) => (selectedIdSet.has(entry.id) ? index : -1))
+    .filter((index) => index >= 0);
+
+  if (indexes.length !== selectedIdSet.size) {
+    return false;
+  }
+
+  return indexes.every((index, offset) => offset === 0 || index === indexes[offset - 1] + 1);
 }

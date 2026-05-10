@@ -229,6 +229,33 @@ async function openOptionsPage(): Promise<void> {
   await callbackPromise<void>((callback) => chrome.runtime.openOptionsPage(callback));
 }
 
+async function openSidePanel(tabId?: number): Promise<void> {
+  const runtimeWithSidePanel = chrome as typeof chrome & {
+    sidePanel?: {
+      open?: (options: { tabId?: number; windowId?: number }) => Promise<void>;
+      setOptions?: (options: { tabId?: number; path?: string; enabled?: boolean }) => Promise<void>;
+    };
+  };
+
+  if (!runtimeWithSidePanel.sidePanel?.open) {
+    await callbackPromise((callback) =>
+      chrome.tabs.create({ url: chrome.runtime.getURL("sidepanel.html") }, callback),
+    );
+    return;
+  }
+
+  if (runtimeWithSidePanel.sidePanel.setOptions && typeof tabId === "number") {
+    await runtimeWithSidePanel.sidePanel.setOptions({
+      tabId,
+      path: "sidepanel.html",
+      enabled: true,
+    });
+  }
+  await runtimeWithSidePanel.sidePanel.open(
+    typeof tabId === "number" ? { tabId } : {},
+  );
+}
+
 async function openDiagnosticsPage(tabId?: number): Promise<void> {
   const url = new URL(chrome.runtime.getURL("options.html"));
   url.searchParams.set("view", "diagnostics");
@@ -363,6 +390,7 @@ async function handleMessage(
     downloadExport,
     openHistoryPage,
     openOptionsPage,
+    openSidePanel,
     openDiagnosticsPage,
   });
 }

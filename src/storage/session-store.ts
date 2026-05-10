@@ -1,4 +1,6 @@
 import { exportJson } from "../core/exporters/json";
+import { exportCsv } from "../core/exporters/csv";
+import { exportMarkdown } from "../core/exporters/markdown";
 import { normalizeSessionForExport } from "../core/exporters/normalize-session";
 import { normalizeEntriesForOutput } from "../core/output-normalizer";
 import { exportSrt } from "../core/exporters/srt";
@@ -10,6 +12,8 @@ import {
   withSessionEntries,
   type ExportFormat,
   type SessionRecord,
+  type SpeakerChannel,
+  type SpeakerLabels,
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../core/subtitle-models";
@@ -50,7 +54,12 @@ import type {
   LibraryBackupExport,
   PersistReplaySummary,
   SessionExportOptions,
+  SessionContentPatch,
   SessionMetadataPatch,
+  SessionSearchHit,
+  SessionSearchOptions,
+  SessionSearchPageResult,
+  SessionSearchResult,
   SessionLongTaskProgress,
   SessionImportSummary,
   SessionLibraryOverview,
@@ -74,6 +83,36 @@ function clampSessionNote(note: string): string {
     return note;
   }
   return note.slice(0, SESSION_NOTE_MAX_LENGTH);
+}
+
+function sanitizeStringList(value: unknown, maxItems = 50, maxLength = 80): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => item.slice(0, maxLength)),
+    ),
+  ].slice(0, maxItems);
+}
+
+function sanitizeSpeakerLabels(value: unknown): SpeakerLabels {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const labels: SpeakerLabels = {};
+  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach((channel) => {
+    const label = (value as Partial<Record<SpeakerChannel, unknown>>)[channel];
+    if (typeof label === "string" && label.trim()) {
+      labels[channel] = label.trim().slice(0, 80);
+    }
+  });
+  return labels;
 }
 
 let dbPromise: Promise<IDBDatabase> | null = null;
@@ -359,6 +398,9 @@ function normalizeSessionRecord(
         ? updatedAt
         : null;
   const note = clampSessionNote(typeof session.note === "string" ? session.note : "");
+  const tags = sanitizeStringList(session.tags);
+  const category = typeof session.category === "string" ? session.category.trim().slice(0, 120) : "";
+  const speakerLabels = sanitizeSpeakerLabels(session.speakerLabels);
   const endedAt =
     status === "running"
       ? null
@@ -383,6 +425,10 @@ function normalizeSessionRecord(
     starred,
     pinnedAt,
     note,
+    tags,
+    category,
+    speakerLabels,
+    qualityStats: session.qualityStats ? { ...session.qualityStats } : undefined,
     entries,
   };
 }
@@ -410,6 +456,10 @@ function mergeEditableSessionMetadata(
     starred: existingRecord.starred,
     pinnedAt: existingRecord.pinnedAt,
     note: existingRecord.note,
+    tags: existingRecord.tags ? [...existingRecord.tags] : [],
+    category: existingRecord.category ?? "",
+    speakerLabels: existingRecord.speakerLabels ? { ...existingRecord.speakerLabels } : {},
+    qualityStats: existingRecord.qualityStats ? { ...existingRecord.qualityStats } : undefined,
   };
 }
 
@@ -426,6 +476,15 @@ function applySessionMetadataPatch(
     : null;
   const note =
     patch.note !== undefined ? clampSessionNote(patch.note) : clampSessionNote(record.note);
+  const tags = patch.tags !== undefined ? sanitizeStringList(patch.tags) : (record.tags ?? []);
+  const category =
+    patch.category !== undefined
+      ? patch.category.trim().slice(0, 120)
+      : (record.category ?? "");
+  const speakerLabels =
+    patch.speakerLabels !== undefined
+      ? sanitizeSpeakerLabels(patch.speakerLabels)
+      : (record.speakerLabels ?? {});
 
   return normalizeSessionRecord(
     {
@@ -433,6 +492,9 @@ function applySessionMetadataPatch(
       starred,
       pinnedAt,
       note,
+      tags,
+      category,
+      speakerLabels,
       updatedAt,
     },
     {
@@ -1050,6 +1112,42 @@ async function deleteFallbackRecord(id: string): Promise<void> {
   await deleteChromeFallbackRecord(id);
 }
 
+function parseTimeRangeBoundary(value: string | undefined): number | null {
+  if (!value?.trim()) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function getEntryTime(entry: SubtitleEntry): number {
+  const parsed = Date.parse(entry.startTime || entry.timestamp || "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+export function filterSessionEntriesByTimeRange(
+  entries: SubtitleEntry[],
+  timeRange?: SessionExportOptions["timeRange"],
+): SubtitleEntry[] | undefined {
+  const hasBoundary = Boolean(timeRange?.from?.trim() || timeRange?.to?.trim());
+  const from = parseTimeRangeBoundary(timeRange?.from);
+  const to = parseTimeRangeBoundary(timeRange?.to);
+  if (from === null && to === null) {
+    return hasBoundary ? [] : undefined;
+  }
+
+  return entries.filter((entry) => {
+    const entryTime = getEntryTime(entry);
+    if (from !== null && entryTime < from) {
+      return false;
+    }
+    if (to !== null && entryTime > to) {
+      return false;
+    }
+    return true;
+  });
+}
+
 function toExportPayload(
   session: SessionRecord,
   format: ExportFormat,
@@ -1059,13 +1157,20 @@ function toExportPayload(
     entries,
     filenamePattern,
     txtExportTimestampsEnabled = false,
+    txtExportSpeakerEnabled = false,
+    txtExportEntryNotesEnabled = false,
+    timeRange,
   } = options;
-  const baseSession = entries ? withSessionEntries(session, entries) : session;
+  const selectedEntries = entries ?? filterSessionEntriesByTimeRange(session.entries, timeRange);
+  const baseSession = selectedEntries ? withSessionEntries(session, selectedEntries) : session;
   const normalized = normalizeSessionForExport(
     normalizeSessionRecord(baseSession, {
       preserveTimestamps: true,
       forceStatus: baseSession.status,
     }),
+    {
+      stripSpeakerMetadata: format !== "md" && format !== "csv" && !txtExportSpeakerEnabled,
+    },
   );
 
   switch (format) {
@@ -1076,6 +1181,8 @@ function toExportPayload(
         mimeType: "text/plain;charset=utf-8",
         content: exportTxt(normalized, {
           includeTimestamps: txtExportTimestampsEnabled,
+          includeSpeaker: txtExportSpeakerEnabled,
+          includeEntryNotes: txtExportEntryNotesEnabled,
         }),
       };
     case "srt":
@@ -1098,6 +1205,20 @@ function toExportPayload(
         format,
         mimeType: "application/json;charset=utf-8",
         content: exportJson(normalized),
+      };
+    case "md":
+      return {
+        filename: buildExportFilename(normalized, format, filenamePattern),
+        format,
+        mimeType: "text/markdown;charset=utf-8",
+        content: exportMarkdown(normalized),
+      };
+    case "csv":
+      return {
+        filename: buildExportFilename(normalized, format, filenamePattern),
+        format,
+        mimeType: "text/csv;charset=utf-8",
+        content: exportCsv(normalized),
       };
   }
 }
@@ -1243,6 +1364,55 @@ export async function updateSessionMetadata(
   const updatedAt = new Date().toISOString();
   const record = applySessionMetadataPatch(existingRecord, patch, updatedAt);
   return writeSessionRecord(record);
+}
+
+function applySessionContentPatch(
+  record: SessionRecord,
+  patch: SessionContentPatch,
+  updatedAt: string,
+): SessionRecord {
+  const entries = patch.entries !== undefined ? normalizeEntries(patch.entries) : record.entries;
+  return normalizeSessionRecord(
+    {
+      ...record,
+      entries,
+      tags: patch.tags !== undefined ? sanitizeStringList(patch.tags) : (record.tags ?? []),
+      category:
+        patch.category !== undefined
+          ? patch.category.trim().slice(0, 120)
+          : (record.category ?? ""),
+      speakerLabels:
+        patch.speakerLabels !== undefined
+          ? sanitizeSpeakerLabels(patch.speakerLabels)
+          : (record.speakerLabels ?? {}),
+      subtitleCount: entries.length,
+      charCount: getSessionCharCount(entries),
+      updatedAt,
+    },
+    {
+      preserveTimestamps: true,
+      forceStatus: record.status,
+    },
+  );
+}
+
+export async function updateSessionContent(
+  sessionId: string,
+  patch: SessionContentPatch,
+): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+  if (!sessionId) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const existingRecord = await loadSession(sessionId);
+  if (!existingRecord) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  return writeSessionRecord(applySessionContentPatch(existingRecord, patch, new Date().toISOString()));
 }
 
 export async function loadSession(id: string): Promise<SessionRecord | undefined> {
@@ -1487,6 +1657,125 @@ export async function listSessionsPage(
     sessions: mergedSessions.slice(start, start + pageSize).map(cloneSessionRecord),
     totalCount,
     page,
+    pageSize,
+  };
+}
+
+function normalizeSearchToken(value: string | undefined): string {
+  return String(value ?? "").trim().toLocaleLowerCase();
+}
+
+function includesSearchToken(value: string | undefined, token: string): boolean {
+  return Boolean(token) && String(value ?? "").toLocaleLowerCase().includes(token);
+}
+
+function buildSearchHits(session: SessionRecord, token: string): SessionSearchHit[] {
+  if (!token) {
+    return [];
+  }
+
+  const hits: SessionSearchHit[] = [];
+  if (includesSearchToken(session.title, token)) {
+    hits.push({ field: "title", text: session.title });
+  }
+  if (includesSearchToken(session.committeeName, token)) {
+    hits.push({ field: "committeeName", text: session.committeeName });
+  }
+  if (includesSearchToken(session.note, token)) {
+    hits.push({ field: "note", text: session.note });
+  }
+  if (session.category && includesSearchToken(session.category, token)) {
+    hits.push({ field: "category", text: session.category });
+  }
+  (session.tags ?? []).forEach((tag) => {
+    if (includesSearchToken(tag, token)) {
+      hits.push({ field: "tag", text: tag });
+    }
+  });
+  session.entries.forEach((entry) => {
+    if (includesSearchToken(entry.text, token)) {
+      hits.push({ field: "entry", entryId: entry.id, text: entry.text });
+    }
+    if (includesSearchToken(entry.entryNote, token)) {
+      hits.push({ field: "entry", entryId: entry.id, text: entry.entryNote ?? "" });
+    }
+  });
+  return hits;
+}
+
+function sessionMatchesSearchFilters(
+  session: SessionRecord,
+  options: SessionSearchOptions,
+  token: string,
+): SessionSearchResult | null {
+  if (options.starredOnly && !session.starred) {
+    return null;
+  }
+
+  const tag = normalizeSearchToken(options.tag);
+  if (tag && !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)) {
+    return null;
+  }
+
+  const category = normalizeSearchToken(options.category);
+  if (category && normalizeSearchToken(session.category) !== category) {
+    return null;
+  }
+
+  if (options.highlightedOnly && !session.entries.some((entry) => entry.highlighted)) {
+    return null;
+  }
+
+  const hits = buildSearchHits(session, token);
+  if (token && hits.length === 0) {
+    return null;
+  }
+
+  return {
+    session: cloneSessionRecord(session),
+    matchCount: token ? hits.length : 1,
+    firstHit: hits[0] ?? null,
+  };
+}
+
+export async function searchSessions(
+  options: SessionSearchOptions,
+): Promise<SessionSearchPageResult> {
+  const pageSize = Math.max(1, options.pageSize);
+  const page = Math.max(1, options.page);
+  const token = normalizeSearchToken(options.query);
+  const results: SessionSearchResult[] = [];
+  let sourcePage = 1;
+  const sourcePageSize = Math.max(pageSize, 100);
+
+  while (true) {
+    const pageResult = await listSessionsPage({
+      page: sourcePage,
+      pageSize: sourcePageSize,
+      starredOnly: options.starredOnly,
+    });
+
+    pageResult.sessions.forEach((session) => {
+      const result = sessionMatchesSearchFilters(session, options, token);
+      if (result) {
+        results.push(result);
+      }
+    });
+
+    if (!pageResult.sessions.length || sourcePage * sourcePageSize >= pageResult.totalCount) {
+      break;
+    }
+    sourcePage += 1;
+  }
+
+  const totalCount = results.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const safePage = Math.min(page, pageCount);
+  const start = (safePage - 1) * pageSize;
+  return {
+    results: results.slice(start, start + pageSize),
+    totalCount,
+    page: safePage,
     pageSize,
   };
 }

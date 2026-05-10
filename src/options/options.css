@@ -50,7 +50,8 @@ button.secondary:hover:not(:disabled) {
 }
 
 input[type="text"],
-input[type="number"] {
+input[type="number"],
+input[type="url"] {
   width: 100%;
   border: 1px solid rgba(12, 55, 84, 0.15);
   border-radius: 10px;
@@ -61,7 +62,8 @@ input[type="number"] {
 }
 
 input[type="text"]:focus,
-input[type="number"]:focus {
+input[type="number"]:focus,
+input[type="url"]:focus {
   outline: none;
   border-color: #0d5b72;
   box-shadow: 0 0 0 3px rgba(13, 91, 114, 0.13);

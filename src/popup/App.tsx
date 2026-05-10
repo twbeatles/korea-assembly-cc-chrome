@@ -6,6 +6,7 @@ import {
   addTabRemovedListener,
   addTabUpdatedListener,
   connectToTab,
+  createTab,
   queryActiveTab,
   removeTabActivatedListener,
   removeTabRemovedListener,
@@ -18,6 +19,8 @@ import type {
   StatusSnapshot,
 } from "../shared/message-types";
 import { getCaptureStatusLabel, UI_TEXT } from "../shared/ui-labels";
+import { getSettings } from "../storage/settings-store";
+import type { AssemblyPreset } from "../storage/types";
 
 export default function App() {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
@@ -27,9 +30,14 @@ export default function App() {
   const [requiresReload, setRequiresReload] = useState(false);
   const [port, setPort] = useState<chrome.runtime.Port | null>(null);
   const [currentTabId, setCurrentTabId] = useState<number | null>(null);
+  const [presets, setPresets] = useState<AssemblyPreset[]>([]);
   const hasPersistableContent = Boolean(snapshot?.hasPersistableContent);
 
   useEffect(() => {
+    void getSettings()
+      .then((settings) => setPresets(settings.presets ?? []))
+      .catch(() => setPresets([]));
+
     let active = true;
     let reconnectTimer: number | null = null;
     let reconnectAttempt = 0;
@@ -348,6 +356,27 @@ export default function App() {
     }
   };
 
+  const openSidePanel = async (): Promise<void> => {
+    try {
+      const response = await sendRuntimeMessage({
+        type: "OPEN_SIDE_PANEL",
+        tabId: currentTabId ?? undefined,
+      });
+      setStatusMessage(response.ok ? "브라우저 사이드 패널을 열었습니다." : response.error);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "사이드 패널을 열지 못했습니다.");
+    }
+  };
+
+  const openPreset = async (preset: AssemblyPreset): Promise<void> => {
+    try {
+      await createTab(preset.url);
+      setStatusMessage(`${preset.name} 페이지를 열었습니다.`);
+    } catch (error) {
+      setStatusMessage(error instanceof Error ? error.message : "프리셋 페이지를 열지 못했습니다.");
+    }
+  };
+
   return (
     <div className="popup-shell">
       <header className="popup-header">
@@ -437,7 +466,23 @@ export default function App() {
           <button className="secondary" onClick={() => void openDiagnostics()}>
             {UI_TEXT.openDiagnostics}
           </button>
+          <button className="secondary" onClick={() => void openSidePanel()}>
+            사이드 패널
+          </button>
         </div>
+        {presets.length ? (
+          <div className="nav-actions">
+            {presets.slice(0, 4).map((preset) => (
+              <button
+                className="secondary"
+                key={preset.id}
+                onClick={() => void openPreset(preset)}
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+        ) : null}
       </section>
     </div>
   );

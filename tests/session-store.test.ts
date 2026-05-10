@@ -10,6 +10,7 @@ import {
   deleteAllSessions,
   deleteSession,
   exportSessionData,
+  filterSessionEntriesByTimeRange,
   getSessionLibraryOverview,
   importSessionRecords,
   listSessions,
@@ -19,7 +20,9 @@ import {
   replayQueuedExitPersistRecords,
   resetSessionStoreForTests,
   saveSession,
+  searchSessions,
   SESSION_NOTE_MAX_LENGTH,
+  updateSessionContent,
   updateSessionMetadata,
   upsertSessionRecord,
   updateRunningSession,
@@ -69,7 +72,7 @@ describe("session store", () => {
     const listed = await listSessions({ limit: 10 });
 
     expect(loaded?.id).toBe(session.id);
-    expect(loaded?.version).toBe("3");
+    expect(loaded?.version).toBe("4");
     expect(listed.map((item) => item.id)).toContain(session.id);
 
     await deleteSession(session.id);
@@ -307,7 +310,7 @@ describe("session store", () => {
 
     const loaded = await loadSession("session_legacy");
 
-    expect(loaded?.version).toBe("3");
+    expect(loaded?.version).toBe("4");
     expect(loaded?.starred).toBe(false);
     expect(loaded?.pinnedAt).toBeNull();
     expect(loaded?.note).toBe("");
@@ -700,6 +703,74 @@ describe("session store", () => {
     expect(payload.content).toBe(
       ["[18:00:01] 첫 번째 줄", "[18:00:02] 완전히 다른 두 번째 줄"].join("\n"),
     );
+  });
+
+  it("includes TXT speaker and entry notes only when explicitly enabled", async () => {
+    const session: SessionRecord = {
+      ...buildSession("session_export_txt_metadata", "saved"),
+      speakerLabels: { primary: "위원장" },
+      entries: [
+        {
+          id: "entry_1",
+          text: "예산안을 상정합니다",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+          speakerChannel: "primary",
+          highlighted: true,
+          entryNote: "핵심 발언",
+          labels: ["검토"],
+        },
+      ],
+    };
+
+    const plain = await exportSessionData(session, "txt");
+    const rich = await exportSessionData(session, "txt", {
+      txtExportSpeakerEnabled: true,
+      txtExportEntryNotesEnabled: true,
+    });
+
+    expect(plain.content).toBe("예산안을 상정합니다");
+    expect(rich.content).toContain("위원장 예산안을 상정합니다");
+    expect(rich.content).toContain("중요 / 핵심 발언 / 검토");
+  });
+
+  it("filters export entries by time range", async () => {
+    const session: SessionRecord = {
+      ...buildSession("session_export_range", "saved"),
+      entries: [
+        {
+          id: "entry_1",
+          text: "범위 이전",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+        },
+        {
+          id: "entry_2",
+          text: "범위 안",
+          timestamp: "2026-03-10T09:05:00.000Z",
+          startTime: "2026-03-10T09:05:00.000Z",
+          endTime: "2026-03-10T09:05:01.000Z",
+        },
+      ],
+    };
+
+    expect(
+      filterSessionEntriesByTimeRange(session.entries, {
+        from: "2026-03-10T09:01:00.000Z",
+        to: "2026-03-10T09:06:00.000Z",
+      })?.map((entry) => entry.text),
+    ).toEqual(["범위 안"]);
+
+    const payload = await exportSessionData(session, "txt", {
+      timeRange: {
+        from: "2026-03-10T09:01:00.000Z",
+        to: "2026-03-10T09:06:00.000Z",
+      },
+    });
+
+    expect(payload.content).toBe("범위 안");
   });
 
   it("normalizes cumulative carry-over text when persisting sessions", async () => {
@@ -1251,6 +1322,99 @@ describe("session store", () => {
         value: originalIndexedDb,
       });
     }
+  });
+
+  it("searches sessions across title, metadata, tags, categories, and entry text", async () => {
+    await saveSession({
+      ...buildSession("session_search", "saved"),
+      title: "예산 결산",
+      note: "추경 관련 메모",
+      tags: ["예산", "추경"],
+      category: "재정",
+      entries: [
+        {
+          ...buildSession("session_search", "saved").entries[0],
+          text: "국가 재정과 민생 지원을 논의합니다.",
+        },
+      ],
+    });
+
+    const result = await searchSessions({
+      query: "민생",
+      tag: "예산",
+      category: "재정",
+      page: 1,
+      pageSize: 10,
+    });
+
+    expect(result.totalCount).toBe(1);
+    expect(result.results[0]).toMatchObject({
+      matchCount: 1,
+      firstHit: {
+        field: "entry",
+        text: "국가 재정과 민생 지원을 논의합니다.",
+      },
+    });
+  });
+
+  it("updates session metadata and content while preserving original entry text", async () => {
+    const session = await saveSession(buildSession("session_content", "saved"));
+    const updated = await updateSessionContent(session.id, {
+      tags: ["중요"],
+      category: "검토",
+      speakerLabels: { primary: "위원장" },
+      entries: [
+        {
+          ...session.entries[0],
+          originalText: session.entries[0].text,
+          text: "수정한 자막",
+          highlighted: true,
+          entryNote: "확인 필요",
+        },
+      ],
+    });
+
+    expect(updated.tags).toEqual(["중요"]);
+    expect(updated.category).toBe("검토");
+    expect(updated.speakerLabels?.primary).toBe("위원장");
+    expect(updated.entries[0]).toMatchObject({
+      originalText: "테스트 자막",
+      text: "수정한 자막",
+      highlighted: true,
+      entryNote: "확인 필요",
+    });
+    expect(updated.subtitleCount).toBe(1);
+    expect(updated.charCount).toBe("수정한 자막".length);
+  });
+
+  it("exports Markdown and CSV session files with meeting metadata", async () => {
+    const session = {
+      ...buildSession("session_export_new", "saved"),
+      tags: ["회의록"],
+      category: "테스트",
+      speakerLabels: { primary: "위원장" },
+      entries: [
+        {
+          ...buildSession("session_export_new", "saved").entries[0],
+          speakerChannel: "primary" as const,
+          highlighted: true,
+          entryNote: "핵심",
+          labels: ["검토"],
+        },
+      ],
+    };
+
+    const markdown = await exportSessionData(session, "md");
+    const csv = await exportSessionData(session, "csv");
+
+    expect(markdown.filename.endsWith(".md")).toBe(true);
+    expect(markdown.content).toContain("# 법사위");
+    expect(markdown.content).toContain("- 위원회: 법제사법위원회");
+    expect(markdown.content).toContain("#회의록");
+    expect(markdown.content).toContain("위원장");
+    expect(csv.filename.endsWith(".csv")).toBe(true);
+    expect(csv.content).toContain("startTime,endTime,speaker,text,highlighted,note,labels");
+    expect(csv.content).toContain("위원장");
   });
 
   it("still clears fallback storage when IndexedDB delete-all fails with an actual error", async () => {

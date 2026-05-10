@@ -27,12 +27,22 @@ import {
 } from "../storage/persist-recovery";
 import { getSettings, resetSettings, saveSettings } from "../storage/settings-store";
 import type { ExtensionSettings, PersistReplayDiagnostics } from "../storage/types";
+import type { AssemblyPreset } from "../storage/types";
+import { createPrefixedRandomToken } from "../shared/random-token";
 import { ADVANCED_NUMBER_FIELDS, BASIC_NUMBER_FIELDS } from "./settings-fields";
 
 type OptionsView = "settings" | "diagnostics";
 type NumberField = (typeof BASIC_NUMBER_FIELDS)[number] | (typeof ADVANCED_NUMBER_FIELDS)[number];
 type NumberDraftState = Record<NumberField, string>;
 type NumberFieldErrorState = Partial<Record<NumberField, string>>;
+
+const EMPTY_PRESET_DRAFT: Omit<AssemblyPreset, "id"> = {
+  name: "",
+  url: "",
+  committeeName: "",
+  autoStartEnabled: true,
+  noiseFilterEnabled: true,
+};
 
 const NUMBER_FIELDS: NumberField[] = [...BASIC_NUMBER_FIELDS, ...ADVANCED_NUMBER_FIELDS];
 
@@ -270,6 +280,7 @@ export default function App() {
   const [numberFieldErrors, setNumberFieldErrors] = useState<NumberFieldErrorState>({});
   const [filenamePatternError, setFilenamePatternError] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("설정을 불러오는 중입니다.");
+  const [presetDraft, setPresetDraft] = useState(EMPTY_PRESET_DRAFT);
   const [view, setView] = useState<OptionsView>(getInitialView);
   const [diagnosticsTabId] = useState<number | null>(getInitialDiagnosticsTabId);
   const [diagnosticsReloadToken, setDiagnosticsReloadToken] = useState(0);
@@ -593,6 +604,65 @@ export default function App() {
     setSettings((current) => (current ? { ...current, [key]: value } : current));
   };
 
+  const handlePresetDraftChange = <K extends keyof typeof EMPTY_PRESET_DRAFT>(
+    key: K,
+    value: (typeof EMPTY_PRESET_DRAFT)[K],
+  ): void => {
+    setPresetDraft((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleAddPreset = (): void => {
+    if (!settings) {
+      return;
+    }
+    const name = presetDraft.name.trim();
+    const url = presetDraft.url.trim();
+    if (!name || !url || !isSupportedAssemblyUrl(url)) {
+      setMessage("프리셋 이름과 지원되는 국회 플레이어 URL을 입력하세요.");
+      return;
+    }
+    if ((settings.presets ?? []).some((preset) => preset.url === url)) {
+      setMessage("이미 같은 URL의 프리셋이 있습니다.");
+      return;
+    }
+    updateField("presets", [
+      ...(settings.presets ?? []),
+      {
+        ...presetDraft,
+        id: createPrefixedRandomToken("preset"),
+        name,
+        url,
+        committeeName: presetDraft.committeeName.trim(),
+      },
+    ]);
+    setPresetDraft(EMPTY_PRESET_DRAFT);
+    setMessage("프리셋을 추가했습니다. 저장을 눌러 확정하세요.");
+  };
+
+  const handleUpdatePreset = <K extends keyof AssemblyPreset>(
+    presetId: string,
+    key: K,
+    value: AssemblyPreset[K],
+  ): void => {
+    if (!settings) {
+      return;
+    }
+    const nextPresets = (settings.presets ?? []).map((preset) =>
+      preset.id === presetId ? { ...preset, [key]: value } : preset,
+    );
+    updateField("presets", nextPresets);
+  };
+
+  const handleRemovePreset = (presetId: string): void => {
+    if (!settings) {
+      return;
+    }
+    updateField(
+      "presets",
+      (settings.presets ?? []).filter((preset) => preset.id !== presetId),
+    );
+  };
+
   const handleNumberDraftChange = (field: NumberField, value: string): void => {
     setNumberDrafts((current) =>
       current
@@ -627,6 +697,20 @@ export default function App() {
         setMessage("잘못된 입력을 먼저 고쳐주세요.");
       }
       return;
+    }
+    const presetUrls = new Set<string>();
+    for (const preset of settings.presets ?? []) {
+      const name = preset.name.trim();
+      const url = preset.url.trim();
+      if (!name || !isSupportedAssemblyUrl(url)) {
+        setMessage("프리셋 이름과 지원되는 국회 플레이어 URL을 확인하세요.");
+        return;
+      }
+      if (presetUrls.has(url)) {
+        setMessage("중복된 프리셋 URL을 하나만 남겨주세요.");
+        return;
+      }
+      presetUrls.add(url);
     }
 
     try {
@@ -671,6 +755,8 @@ export default function App() {
   if (!settings || !numberDrafts) {
     return <main className="options-shell">설정을 불러오는 중입니다.</main>;
   }
+
+  const presets = settings.presets ?? [];
 
   return (
     <main className="options-shell">
@@ -835,6 +921,32 @@ export default function App() {
               />
             </label>
 
+            <label className="setting-card">
+              <div>
+                <strong>TXT 저장에 발언자 포함</strong>
+                <span>발언자 A/B 또는 직접 입력한 발언자 라벨을 TXT 앞부분에 붙입니다.</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(settings.txtExportSpeakerEnabled)}
+                onChange={(event) => updateField("txtExportSpeakerEnabled", event.target.checked)}
+              />
+            </label>
+
+            <label className="setting-card">
+              <div>
+                <strong>TXT 저장에 중요 표시/메모 포함</strong>
+                <span>entry note, 라벨, 중요 표시를 본문 아래 보조 줄로 저장합니다.</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={Boolean(settings.txtExportEntryNotesEnabled)}
+                onChange={(event) =>
+                  updateField("txtExportEntryNotesEnabled", event.target.checked)
+                }
+              />
+            </label>
+
             <details className="advanced-card full-width">
               <summary>
                 <span className="advanced-summary-title">고급 설정</span>
@@ -903,6 +1015,133 @@ export default function App() {
                 })}
               </div>
             </details>
+
+            <div className="note-card full-width">
+              <div className="section-row">
+                <strong>회의 프리셋</strong>
+                <span>자주 여는 국회 플레이어 URL을 popup에서 빠르게 열 수 있습니다.</span>
+              </div>
+              {presets.length ? (
+                <div className="meta-grid">
+                  {presets.map((preset) => (
+                    <div className="meta-row" key={preset.id}>
+                      <input
+                        type="text"
+                        value={preset.name}
+                        onChange={(event) =>
+                          handleUpdatePreset(preset.id, "name", event.target.value)
+                        }
+                        aria-label="프리셋 이름"
+                      />
+                      <input
+                        type="url"
+                        value={preset.url}
+                        onChange={(event) =>
+                          handleUpdatePreset(preset.id, "url", event.target.value)
+                        }
+                        aria-label="프리셋 URL"
+                      />
+                      <input
+                        type="text"
+                        value={preset.committeeName}
+                        onChange={(event) =>
+                          handleUpdatePreset(preset.id, "committeeName", event.target.value)
+                        }
+                        aria-label="프리셋 위원회명"
+                      />
+                      <label>
+                        자동 시작
+                        <input
+                          type="checkbox"
+                          checked={preset.autoStartEnabled}
+                          onChange={(event) =>
+                            handleUpdatePreset(
+                              preset.id,
+                              "autoStartEnabled",
+                              event.target.checked,
+                            )
+                          }
+                        />
+                      </label>
+                      <label>
+                        필터
+                        <input
+                          type="checkbox"
+                          checked={preset.noiseFilterEnabled}
+                          onChange={(event) =>
+                            handleUpdatePreset(
+                              preset.id,
+                              "noiseFilterEnabled",
+                              event.target.checked,
+                            )
+                          }
+                        />
+                      </label>
+                      <button
+                        className="secondary"
+                        type="button"
+                        onClick={() => handleRemovePreset(preset.id)}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="warning-box">저장된 프리셋이 없습니다.</div>
+              )}
+              <div className="advanced-grid">
+                <input
+                  type="text"
+                  value={presetDraft.name}
+                  onChange={(event) => handlePresetDraftChange("name", event.target.value)}
+                  placeholder="프리셋 이름"
+                />
+                <input
+                  type="url"
+                  value={presetDraft.url}
+                  onChange={(event) => handlePresetDraftChange("url", event.target.value)}
+                  placeholder="https://assembly.webcast.go.kr/main/player..."
+                />
+                <input
+                  type="text"
+                  value={presetDraft.committeeName}
+                  onChange={(event) =>
+                    handlePresetDraftChange("committeeName", event.target.value)
+                  }
+                  placeholder="위원회명"
+                />
+                <label className="setting-card">
+                  <div>
+                    <strong>자동 시작</strong>
+                    <span>프리셋 설명용 기본값입니다.</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={presetDraft.autoStartEnabled}
+                    onChange={(event) =>
+                      handlePresetDraftChange("autoStartEnabled", event.target.checked)
+                    }
+                  />
+                </label>
+                <label className="setting-card">
+                  <div>
+                    <strong>noise filter</strong>
+                    <span>프리셋 설명용 기본값입니다.</span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={presetDraft.noiseFilterEnabled}
+                    onChange={(event) =>
+                      handlePresetDraftChange("noiseFilterEnabled", event.target.checked)
+                    }
+                  />
+                </label>
+                <button type="button" onClick={handleAddPreset}>
+                  프리셋 추가
+                </button>
+              </div>
+            </div>
           </section>
 
           <footer className="actions">
@@ -938,6 +1177,18 @@ export default function App() {
             <div className="meta-row">
               <span>모인 자막</span>
               <strong>{snapshot?.subtitleCount ?? 0}문장</strong>
+            </div>
+            <div className="meta-row">
+              <span>글자 수</span>
+              <strong>{snapshot?.charCount ?? 0}자</strong>
+            </div>
+            <div className="meta-row">
+              <span>추정 크기</span>
+              <strong>{(snapshot?.diagnostics.estimatedBytes ?? 0).toLocaleString("ko-KR")} bytes</strong>
+            </div>
+            <div className="meta-row">
+              <span>건강도</span>
+              <strong>{snapshot?.diagnostics.healthLabel || "-"}</strong>
             </div>
             <div className="meta-row">
               <span>수집 방식</span>

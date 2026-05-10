@@ -5,6 +5,7 @@ import {
   buildHistoryRefreshMessage,
   buildSessionImportMessage,
   buildSelectedDeleteMessage,
+  areEntryIdsContiguous,
   extractHistoryViewSettings,
   resolveSelectedEntryIds,
   resolveSelectedSessionIds,
@@ -32,11 +33,15 @@ describe("history view state helpers", () => {
         recentCopyLineCount: 9,
         filenamePattern: "{committee}_{date}",
         txtExportTimestampsEnabled: true,
+        txtExportSpeakerEnabled: true,
+        txtExportEntryNotesEnabled: true,
       }),
     ).toEqual({
       recentCopyLineCount: 9,
       filenamePattern: "{committee}_{date}",
       txtExportTimestampsEnabled: true,
+      txtExportSpeakerEnabled: true,
+      txtExportEntryNotesEnabled: true,
     });
 
     expect(
@@ -48,6 +53,8 @@ describe("history view state helpers", () => {
       recentCopyLineCount: DEFAULT_EXTENSION_SETTINGS.recentCopyLineCount,
       filenamePattern: DEFAULT_EXTENSION_SETTINGS.filenamePattern,
       txtExportTimestampsEnabled: DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
+      txtExportSpeakerEnabled: DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
+      txtExportEntryNotesEnabled: DEFAULT_EXTENSION_SETTINGS.txtExportEntryNotesEnabled,
     });
   });
 
@@ -83,6 +90,14 @@ describe("history view state helpers", () => {
       "entry_1",
       "entry_2",
     ]);
+  });
+
+  it("detects whether selected entries are contiguous in session order", () => {
+    const entries = [{ id: "entry_1" }, { id: "entry_2" }, { id: "entry_3" }];
+
+    expect(areEntryIdsContiguous(entries, ["entry_1", "entry_2"])).toBe(true);
+    expect(areEntryIdsContiguous(entries, ["entry_1", "entry_3"])).toBe(false);
+    expect(areEntryIdsContiguous(entries, ["entry_missing", "entry_2"])).toBe(false);
   });
 
   it("builds refresh and deletion status messages without losing action context", () => {
