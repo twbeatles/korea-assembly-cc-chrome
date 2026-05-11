@@ -1,10 +1,10 @@
 import { cloneSessionRecord, type SessionRecord } from "../../core/subtitle-models";
 import {
   assertSessionLibraryTransferSizeWithinLimit,
-  getUtf8ByteLength,
   SESSION_BACKUP_KIND,
   SESSION_BACKUP_VERSION,
 } from "../session-backup";
+import { getUtf8ByteLength } from "../../shared/byte-size";
 
 interface SessionBackupPageResult {
   sessions: Array<Pick<SessionRecord, "id">>;

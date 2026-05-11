@@ -4,9 +4,6 @@ import {
   type PersistedSessionStatus,
   type SessionBackupBundle,
   type SessionRecord,
-  type SessionQualityStats,
-  type SpeakerLabels,
-  type SpeakerChannel,
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../core/subtitle-models";
@@ -52,42 +49,6 @@ function sanitizeStringList(value: unknown, maxItems = 50, maxLength = 80): stri
         .map((item) => item.slice(0, maxLength)),
     ),
   ].slice(0, maxItems);
-}
-
-function sanitizeSpeakerLabels(value: unknown): SpeakerLabels | undefined {
-  if (!isRecordLike(value)) {
-    return undefined;
-  }
-  const labels: SpeakerLabels = {};
-  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach((channel) => {
-    const label = sanitizeOptionalString(value[channel]).trim();
-    if (label) {
-      labels[channel] = label.slice(0, 80);
-    }
-  });
-  return Object.keys(labels).length ? labels : undefined;
-}
-
-function sanitizeQualityStats(value: unknown): SessionQualityStats | undefined {
-  if (!isRecordLike(value)) {
-    return undefined;
-  }
-  const health =
-    value.health === "good" || value.health === "warning" || value.health === "unstable"
-      ? value.health
-      : undefined;
-  if (!health || !isValidDateString(value.lastComputedAt)) {
-    return undefined;
-  }
-  return {
-    health,
-    entryCount: typeof value.entryCount === "number" ? Math.max(0, value.entryCount) : 0,
-    charCount: typeof value.charCount === "number" ? Math.max(0, value.charCount) : 0,
-    estimatedBytes:
-      typeof value.estimatedBytes === "number" ? Math.max(0, value.estimatedBytes) : 0,
-    fallbackOnly: typeof value.fallbackOnly === "boolean" ? value.fallbackOnly : undefined,
-    lastComputedAt: value.lastComputedAt,
-  };
 }
 
 function sanitizeOptionalNullableDateString(value: unknown): string | null | undefined {

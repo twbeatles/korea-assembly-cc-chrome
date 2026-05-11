@@ -2,11 +2,13 @@ import {
   DEFAULT_EXTENSION_SETTINGS,
   EXTENSION_STORAGE_KEY,
   SESSION_SEGMENT_PRESETS,
+  isSupportedAssemblyUrl,
 } from "../shared/constants";
 import {
   sanitizeFilenamePattern,
   validateFilenamePattern,
 } from "../shared/filename-pattern";
+import { createPrefixedRandomToken } from "../shared/random-token";
 import type { ExtensionSettings } from "./types";
 import type { SegmentPreset } from "./types";
 

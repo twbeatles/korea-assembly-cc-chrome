@@ -1,6 +1,7 @@
 import type { CaptureMode } from "../core/live-capture";
 import type {
   CaptureDiagnostics,
+  CaptureHealth,
   FallbackCommitState,
   PersistabilityState,
   RowKeySource,
@@ -36,6 +37,8 @@ export function buildCaptureDiagnostics(input: {
   currentFramePath: number[];
   persistabilityState?: PersistabilityState;
   persistabilityHint?: string;
+  entryCount?: number;
+  estimatedBytes?: number;
   stableRowCount?: number;
   unstableRowCount?: number;
   filteredUnconfirmedCount?: number;
@@ -60,6 +63,11 @@ export function buildCaptureDiagnostics(input: {
     sourceLabel: resolveCaptureSourceLabel(input.captureMode, input.observerActive),
     persistabilityState: input.persistabilityState ?? "idle",
     persistabilityHint: input.persistabilityHint ?? "",
+    health,
+    healthLabel: getCaptureHealthLabel(health),
+    healthHint: getCaptureHealthHint(health),
+    estimatedBytes: input.estimatedBytes ?? 0,
+    sizeWarning,
     stableRowCount: input.stableRowCount ?? 0,
     unstableRowCount: input.unstableRowCount ?? 0,
     filteredUnconfirmedCount: input.filteredUnconfirmedCount ?? 0,

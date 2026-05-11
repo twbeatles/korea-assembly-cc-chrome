@@ -7,7 +7,6 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { SessionRecord } from "../src/core/subtitle-models";
 import { SESSION_LIBRARY_REVISION_STORAGE_KEY } from "../src/shared/constants";
 import type { SessionRecord, SubtitleEntry } from "../src/core/subtitle-models";
 import { SESSION_LIBRARY_TRANSFER_LIMIT_BYTES } from "../src/storage/session-backup";
@@ -41,6 +40,7 @@ const sessionStoreMocks = vi.hoisted(() => ({
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
   searchSessions: vi.fn(),
+  SESSION_NOTE_MAX_LENGTH: 4096,
   updateSessionContent: vi.fn(),
   updateSessionMetadata: vi.fn(),
   updateSessionLineageMetadata: vi.fn(),
@@ -191,6 +191,12 @@ describe("history app", () => {
     });
     sessionStoreMocks.listSessionsPage.mockResolvedValue({
       sessions: [session],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(session)],
       totalCount: 1,
       page: 1,
       pageSize: 200,
@@ -841,6 +847,12 @@ describe("history app", () => {
       page: 1,
       pageSize: 200,
     });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(session)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.loadSession.mockResolvedValue(session);
     sessionStoreMocks.loadSessionsByIds.mockImplementation(
       async (ids: string[]) => (ids.includes(session.id) ? [session] : []),
@@ -929,6 +941,12 @@ describe("history app", () => {
       page: 1,
       pageSize: 200,
     });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(session)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.loadSession.mockResolvedValue(session);
 
     render(<App />);
@@ -951,6 +969,12 @@ describe("history app", () => {
     });
     sessionStoreMocks.listSessionsPage.mockResolvedValue({
       sessions: [session],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(session)],
       totalCount: 1,
       page: 1,
       pageSize: 200,

@@ -21,6 +21,8 @@ import {
 import {
   cloneState,
   createEmptySessionState,
+  cloneEntry,
+  type ExportFormat,
   type SessionRecord,
   type SessionState,
 } from "../core/subtitle-models";
@@ -57,6 +59,7 @@ import {
   copyTextToClipboard,
   selectCopyEntries,
 } from "../shared/copy-utils";
+import { createRandomToken } from "../shared/random-token";
 import {
   invalidateExtensionContext,
   isExtensionContextInvalidatedError,
@@ -99,7 +102,10 @@ import {
   shouldAllowUnconfirmedContainerFallback,
   updateUnconfirmedFallbackBlockStreak,
 } from "./unconfirmed-fallback";
-import { queueExitPersistRecord } from "../storage/persist-recovery";
+import {
+  queueExitPersistRecord,
+  recordPageExitPersistAttempt,
+} from "../storage/persist-recovery";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
 import { tryDomSubtitleActivation, waitForSubtitleLayer } from "./subtitle-layer";
@@ -157,6 +163,48 @@ const INVALIDATED_CONTEXT_NOTICE = "Extension was updated. Please refresh the pa
 const FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS = 15_000;
 const FALLBACK_COMMIT_STABLE_MS = 400;
 const FALLBACK_COMMIT_OBSERVATION_THRESHOLD = 2;
+const AUTO_START_COOLDOWN_STORAGE_PREFIX = "assembly-subtitle-explicit-stop:";
+
+function getAutoStartCooldownKey(): string {
+  try {
+    return `${AUTO_START_COOLDOWN_STORAGE_PREFIX}${window.location.pathname}${window.location.search}`;
+  } catch {
+    return AUTO_START_COOLDOWN_STORAGE_PREFIX;
+  }
+}
+
+function rememberAutoStartCooldown(): void {
+  if (!isTopFrame) {
+    return;
+  }
+  try {
+    window.sessionStorage?.setItem(getAutoStartCooldownKey(), "1");
+  } catch {
+    // sessionStorage may be unavailable in restricted frame contexts.
+  }
+}
+
+function clearAutoStartCooldown(): void {
+  if (!isTopFrame) {
+    return;
+  }
+  try {
+    window.sessionStorage?.removeItem(getAutoStartCooldownKey());
+  } catch {
+    // sessionStorage may be unavailable in restricted frame contexts.
+  }
+}
+
+function hasAutoStartCooldown(): boolean {
+  if (!isTopFrame) {
+    return false;
+  }
+  try {
+    return window.sessionStorage?.getItem(getAutoStartCooldownKey()) === "1";
+  } catch {
+    return false;
+  }
+}
 
 let settings: ExtensionSettings = {
   autoScroll: true,
@@ -269,19 +317,6 @@ function confirmFailedStoppedSessionDiscard(message: string): boolean {
   }
 
   return window.confirm(message);
-}
-
-function confirmLargeSingleSessionExport(filename: string, byteLength: number): boolean {
-  if (byteLength <= SINGLE_SESSION_EXPORT_WARNING_BYTES) {
-    return true;
-  }
-  if (typeof window === "undefined" || typeof window.confirm !== "function") {
-    return true;
-  }
-
-  return window.confirm(
-    `${filename} 파일이 커서 브라우저 메시지 한계로 저장에 실패할 수 있습니다. 계속 시도할까요?\n\n실패하면 저장된 기록 화면에서 필요한 항목만 선택해 부분 저장을 사용해 주세요.`,
-  );
 }
 
 function createObserverBridgeToken(): string {
@@ -1427,7 +1462,8 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
 
     if (captureCommit.shouldCommit) {
       clearFallbackCommitCandidate();
-      unconfirmedFallbackBlockStreak = 0;
+      localPollingUnconfirmedFallbackBlockStreak = 0;
+      topFallbackUnconfirmedFallbackBlockStreak = 0;
       const structuredResult = applyStructuredRowsEvent(
         captureCommit.stableRows,
         captureCommit.previewText,
@@ -1781,7 +1817,12 @@ async function startCapturePipelineForCurrentPage(): Promise<void> {
   startTopFrameFallback();
   syncUserInterfaces();
 
-  if (isTopFrame && settings.autoStartEnabled && state.status !== "running") {
+  if (
+    isTopFrame &&
+    settings.autoStartEnabled &&
+    !hasAutoStartCooldown() &&
+    state.status !== "running"
+  ) {
     void startCapture().catch((error: unknown) => {
       reportRuntimeError("자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.", error);
     });
@@ -2015,7 +2056,7 @@ async function rollOverRunningSessionSegment(
   }
 }
 
-async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Promise<void> {
+async function exportCurrentSession(format: ExportFormat): Promise<void> {
   const record = buildVisibleSessionRecord(state.status === "running" ? "running" : "stopped");
   if (!record.entries.length) {
     setPanelNotice("먼저 자막을 모은 뒤 파일로 저장하세요.");

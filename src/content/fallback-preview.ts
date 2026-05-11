@@ -1,5 +1,5 @@
 import { extractTailLines, normalizeSubtitleText } from "../core/text-normalizer";
-import { PIPELINE_DEFAULTS } from "../shared/constants";
+import { PIPELINE_DEFAULTS, isAssemblyPlenaryUrl } from "../shared/constants";
 
 export function normalizeFallbackInternalRaw(
   rawText: string,

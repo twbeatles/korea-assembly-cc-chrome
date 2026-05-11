@@ -55,6 +55,10 @@ export interface SessionRecord {
   starred: boolean;
   pinnedAt: string | null;
   note: string;
+  tags?: string[];
+  category?: string;
+  speakerLabels?: SpeakerLabels;
+  qualityStats?: SessionQualityStats;
   lineageId?: string;
   segmentNumber?: number;
   entries: SubtitleEntry[];
@@ -92,6 +96,7 @@ export interface SessionState {
   updatedAt: string | null;
   entries: SubtitleEntry[];
   previewText: string;
+  pendingPreviews: string[];
   confirmedCompact: string;
   trailingSuffix: string;
   lastObservedRaw: string;
@@ -155,6 +160,7 @@ export function cloneState(state: SessionState): SessionState {
   return {
     ...state,
     entries: state.entries.map(cloneEntry),
+    pendingPreviews: [...state.pendingPreviews],
     currentFramePath: [...state.currentFramePath],
   };
 }
@@ -196,6 +202,7 @@ export function createEmptySessionState(
     updatedAt: null,
     entries: [],
     previewText: "",
+    pendingPreviews: [],
     confirmedCompact: "",
     trailingSuffix: "",
     lastObservedRaw: "",
@@ -238,6 +245,9 @@ export function toSessionRecord(
     starred: false,
     pinnedAt: null,
     note: "",
+    tags: [],
+    category: "",
+    speakerLabels: {},
     lineageId: resolveSessionLineageId(state.sessionId, state.lineageId),
     segmentNumber: resolveSessionSegmentNumber(state.segmentNumber),
     entries,

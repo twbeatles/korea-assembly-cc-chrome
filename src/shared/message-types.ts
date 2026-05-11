@@ -25,6 +25,8 @@ export type FallbackCommitState =
   | "duplicate"
   | "filtered";
 
+export type CaptureHealth = "good" | "warning" | "unstable";
+
 export interface SegmentDiagnostics {
   lineageId: string;
   segmentNumber: number;
@@ -55,6 +57,11 @@ export interface CaptureDiagnostics {
   sourceLabel: string;
   persistabilityState: PersistabilityState;
   persistabilityHint: string;
+  health: CaptureHealth;
+  healthLabel: string;
+  healthHint: string;
+  estimatedBytes: number;
+  sizeWarning: string;
   stableRowCount: number;
   unstableRowCount: number;
   filteredUnconfirmedCount: number;
@@ -184,6 +191,8 @@ export type BackgroundCommandMessage =
       format: ExportFormat;
       filenamePattern?: string;
       txtExportTimestampsEnabled?: boolean;
+      txtExportSpeakerEnabled?: boolean;
+      txtExportEntryNotesEnabled?: boolean;
       entryIds?: string[];
       filenameSuffix?: string;
     }
@@ -193,6 +202,8 @@ export type BackgroundCommandMessage =
       format: ExportFormat;
       filenamePattern?: string;
       txtExportTimestampsEnabled?: boolean;
+      txtExportSpeakerEnabled?: boolean;
+      txtExportEntryNotesEnabled?: boolean;
       entryIds?: string[];
       filenameSuffix?: string;
     }

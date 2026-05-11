@@ -39,7 +39,6 @@ import {
 } from "../storage/session-backup";
 import {
   getUtf8ByteLength,
-  SINGLE_SESSION_EXPORT_WARNING_BYTES,
 } from "../shared/byte-size";
 import {
   buildSessionLibraryBackupExport,
@@ -49,7 +48,10 @@ import {
   importSessionRecords,
   listSessionLineagesPage,
   listSessionLineageSegments,
+  SESSION_NOTE_MAX_LENGTH,
+  updateSessionContent,
   updateSessionLineageMetadata,
+  updateSessionMetadata,
 } from "../storage/session-store";
 import type {
   SessionImportSummary,
@@ -57,8 +59,6 @@ import type {
   SessionLineageSummary,
   SessionLongTaskKind,
   SessionLongTaskProgress,
-  SessionSearchResult,
-  SessionExportOptions,
 } from "../storage/types";
 import { getSettings } from "../storage/settings-store";
 import {
@@ -350,8 +350,6 @@ export default function App() {
   const [editingEntryLabels, setEditingEntryLabels] = useState("");
   const [splitEntryId, setSplitEntryId] = useState("");
   const [splitDraft, setSplitDraft] = useState("");
-  const [timeRangeFrom, setTimeRangeFrom] = useState("");
-  const [timeRangeTo, setTimeRangeTo] = useState("");
   const [sessionPage, setSessionPage] = useState(1);
   const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
   const [filenamePattern, setFilenamePattern] = useState(
@@ -360,18 +358,9 @@ export default function App() {
   const [txtExportTimestampsEnabled, setTxtExportTimestampsEnabled] = useState(
     DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
   );
-  const [txtExportSpeakerEnabled, setTxtExportSpeakerEnabled] = useState(
-    DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
-  );
-  const [txtExportEntryNotesEnabled, setTxtExportEntryNotesEnabled] = useState(
-    DEFAULT_EXTENSION_SETTINGS.txtExportEntryNotesEnabled,
-  );
   const [reloadKey, setReloadKey] = useState(0);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [longTask, setLongTask] = useState<HistoryLongTaskState | null>(null);
-  const [searchResultMap, setSearchResultMap] = useState<
-    Map<string, SessionSearchResult>
-  >(() => new Map());
 
   const selectedLineageId =
     selectedLineageSummary?.lineageId ??
@@ -428,6 +417,19 @@ export default function App() {
     selectedSession
       ? noteDraft !== (selectedLineageSummary?.note ?? selectedSession.note)
       : noteDraft.trim().length > 0;
+  const hasUnsavedMetadata = selectedSession
+    ? tagDraft !== formatTagInput(selectedSession.tags) ||
+      categoryDraft !== (selectedSession.category ?? "") ||
+      speakerPrimaryDraft !== (selectedSession.speakerLabels?.primary ?? "") ||
+      speakerSecondaryDraft !== (selectedSession.speakerLabels?.secondary ?? "") ||
+      speakerUnknownDraft !== (selectedSession.speakerLabels?.unknown ?? "")
+    : false;
+  const hasUnsavedSessionDraft = hasUnsavedNote || hasUnsavedMetadata;
+  const searchModeActive =
+    Boolean(globalSearchQuery.trim()) ||
+    Boolean(tagFilter.trim()) ||
+    Boolean(categoryFilter.trim()) ||
+    showHighlightedOnly;
   const actionButtonsDisabled = busyAction !== null;
   const jsonTaskButtonsDisabled = busyAction !== null || longTask !== null;
   const heroMessage = longTask?.message ?? message;
@@ -438,6 +440,7 @@ export default function App() {
   const showingLineageView = lineageViewEnabled && hasLineageSegments && !!lineageAggregateSession;
   const shouldOfferSplitExport =
     showingLineageView && displayExportEstimateBytes > LARGE_LINEAGE_EXPORT_WARNING_BYTES;
+  const selectedEstimatedBytes = displayExportEstimateBytes;
   const shouldShowSelectedSegmentLabel =
     !!selectedSession && (hasLineageSegments || isSegmentedSessionRecord(selectedSession));
 
@@ -731,19 +734,6 @@ export default function App() {
   ]);
 
   useEffect(() => {
-    const handleBeforeUnload = (event: BeforeUnloadEvent): void => {
-      if (!hasUnsavedSessionDraft) {
-        return;
-      }
-      event.preventDefault();
-      event.returnValue = "";
-    };
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [hasUnsavedSessionDraft]);
-
-  useEffect(() => {
     let active = true;
 
     void getSettings()
@@ -756,8 +746,6 @@ export default function App() {
         setRecentCopyLineCount(nextSettings.recentCopyLineCount);
         setFilenamePattern(nextSettings.filenamePattern);
         setTxtExportTimestampsEnabled(nextSettings.txtExportTimestampsEnabled);
-        setTxtExportSpeakerEnabled(nextSettings.txtExportSpeakerEnabled);
-        setTxtExportEntryNotesEnabled(nextSettings.txtExportEntryNotesEnabled);
       })
       .catch(() => {
         // Keep defaults if settings cannot be loaded from a standalone history page.
@@ -784,8 +772,6 @@ export default function App() {
         setRecentCopyLineCount(nextSettings.recentCopyLineCount);
         setFilenamePattern(nextSettings.filenamePattern);
         setTxtExportTimestampsEnabled(nextSettings.txtExportTimestampsEnabled);
-        setTxtExportSpeakerEnabled(nextSettings.txtExportSpeakerEnabled);
-        setTxtExportEntryNotesEnabled(nextSettings.txtExportEntryNotesEnabled);
       }
 
       if (changes[SESSION_LIBRARY_REVISION_STORAGE_KEY]) {
@@ -1243,11 +1229,12 @@ export default function App() {
   const handleExport = async (
     format: ExportFormat,
     entries?: SessionRecord["entries"],
-    exportOptions: Pick<SessionExportOptions, "timeRange"> = {},
   ): Promise<void> => {
     if (!selectedSession || !displaySession) {
       return;
     }
+
+    const isPartialExport = Boolean(entries?.length);
 
     try {
       const response = showingLineageView

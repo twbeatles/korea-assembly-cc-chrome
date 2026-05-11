@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import {
   POPUP_PORT_NAME,
   SESSION_SEGMENT_PRESETS,
+  isSupportedAssemblyUrl,
   isSupportedAssemblySiteUrl,
 } from "../shared/constants";
 import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
@@ -30,7 +31,13 @@ import {
   readPersistReplayDiagnostics,
 } from "../storage/persist-recovery";
 import { getSettings, resetSettings, saveSettings } from "../storage/settings-store";
-import type { ExtensionSettings, PersistReplayDiagnostics, SegmentPreset } from "../storage/types";
+import type {
+  AssemblyPreset,
+  ExtensionSettings,
+  PersistReplayDiagnostics,
+  SegmentPreset,
+} from "../storage/types";
+import { createPrefixedRandomToken } from "../shared/random-token";
 import { ADVANCED_NUMBER_FIELDS, BASIC_NUMBER_FIELDS } from "./settings-fields";
 
 type OptionsView = "settings" | "diagnostics";

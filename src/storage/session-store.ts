@@ -33,7 +33,6 @@ import {
 import {
   buildSessionBackupFilename,
 } from "./session-backup";
-import { getUtf8ByteLength } from "../shared/byte-size";
 import { createRandomToken } from "../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -608,7 +607,15 @@ function normalizeSessionRecord(
       : starred
         ? updatedAt
         : null;
-  const note = typeof session.note === "string" ? session.note : "";
+  const note = typeof session.note === "string" ? clampSessionNote(session.note) : "";
+  const tags = sanitizeStringList(session.tags);
+  const category =
+    typeof session.category === "string" ? session.category.trim().slice(0, 120) : "";
+  const speakerLabels = sanitizeSpeakerLabels(session.speakerLabels);
+  const qualityStats =
+    session.qualityStats && typeof session.qualityStats === "object"
+      ? { ...session.qualityStats }
+      : undefined;
   const lineageId = resolveSessionLineageId(session.id, session.lineageId);
   const segmentNumber = resolveSessionSegmentNumber(session.segmentNumber);
   const endedAt =
@@ -635,6 +642,10 @@ function normalizeSessionRecord(
     starred,
     pinnedAt,
     note,
+    tags,
+    category,
+    speakerLabels,
+    qualityStats,
     lineageId,
     segmentNumber,
     entries,
@@ -703,6 +714,36 @@ function applySessionMetadataPatch(
       tags,
       category,
       speakerLabels,
+      updatedAt,
+    },
+    {
+      preserveTimestamps: true,
+      forceStatus: record.status,
+    },
+  );
+}
+
+function applySessionContentPatch(
+  record: SessionRecord,
+  patch: SessionContentPatch,
+  updatedAt: string,
+): SessionRecord {
+  const entries = patch.entries !== undefined ? normalizeEntries(patch.entries) : record.entries;
+  return normalizeSessionRecord(
+    {
+      ...record,
+      entries,
+      tags: patch.tags !== undefined ? sanitizeStringList(patch.tags) : (record.tags ?? []),
+      category:
+        patch.category !== undefined
+          ? patch.category.trim().slice(0, 120)
+          : (record.category ?? ""),
+      speakerLabels:
+        patch.speakerLabels !== undefined
+          ? sanitizeSpeakerLabels(patch.speakerLabels)
+          : (record.speakerLabels ?? {}),
+      subtitleCount: entries.length,
+      charCount: getSessionCharCount(entries),
       updatedAt,
     },
     {
@@ -1270,23 +1311,6 @@ async function listIndexedDbSessionIds(): Promise<string[]> {
   });
 }
 
-async function loadIndexedDbSessionsByIds(ids: string[]): Promise<SessionRecord[]> {
-  const uniqueIds = [...new Set(ids.filter((id) => id.length > 0))];
-  if (!uniqueIds.length) {
-    return [];
-  }
-
-  return withTransaction("readonly", async (store) => {
-    const records = await Promise.all(
-      uniqueIds.map(async (id) => {
-        const record = await withRequest(store.get(id));
-        return record as SessionRecord | undefined;
-      }),
-    );
-    return records.filter((record): record is SessionRecord => Boolean(record));
-  });
-}
-
 async function listFallbackSessionIds(): Promise<string[]> {
   const index = await readChromeFallbackIndex();
   if (index) {
@@ -1524,6 +1548,27 @@ export async function updateSessionLineageMetadata(
   );
   await bumpSessionLibraryRevision();
   return records.map(cloneSessionRecord);
+}
+
+export async function updateSessionContent(
+  sessionId: string,
+  patch: SessionContentPatch,
+): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+  if (!sessionId) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const existingRecord = await loadSession(sessionId);
+  if (!existingRecord) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  return writeSessionRecord(
+    applySessionContentPatch(existingRecord, patch, new Date().toISOString()),
+  );
 }
 
 export async function loadSession(id: string): Promise<SessionRecord | undefined> {
@@ -1800,6 +1845,122 @@ export async function listSessionLineagesPage(
 
   return {
     lineages: filteredSummaries.slice(start, start + pageSize).map(cloneLineageSummary),
+    totalCount,
+    page,
+    pageSize,
+  };
+}
+
+function normalizeSearchToken(value: string | undefined): string {
+  return String(value ?? "").trim().toLocaleLowerCase();
+}
+
+function includesSearchToken(value: string | undefined, token: string): boolean {
+  return Boolean(token) && String(value ?? "").toLocaleLowerCase().includes(token);
+}
+
+function buildSearchHits(session: SessionRecord, token: string): SessionSearchHit[] {
+  if (!token) {
+    return [];
+  }
+
+  const hits: SessionSearchHit[] = [];
+  if (includesSearchToken(session.title, token)) {
+    hits.push({ field: "title", text: session.title });
+  }
+  if (includesSearchToken(session.committeeName, token)) {
+    hits.push({ field: "committeeName", text: session.committeeName });
+  }
+  if (includesSearchToken(session.note, token)) {
+    hits.push({ field: "note", text: session.note });
+  }
+  if (includesSearchToken(session.category, token)) {
+    hits.push({ field: "category", text: session.category ?? "" });
+  }
+  (session.tags ?? []).forEach((tag) => {
+    if (includesSearchToken(tag, token)) {
+      hits.push({ field: "tag", text: tag });
+    }
+  });
+  session.entries.forEach((entry) => {
+    if (includesSearchToken(entry.text, token)) {
+      hits.push({ field: "entry", entryId: entry.id, text: entry.text });
+    }
+    if (includesSearchToken(entry.entryNote, token)) {
+      hits.push({ field: "entry", entryId: entry.id, text: entry.entryNote ?? "" });
+    }
+  });
+  return hits;
+}
+
+function sessionMatchesSearchFilters(
+  session: SessionRecord,
+  options: SessionSearchOptions,
+  token: string,
+): SessionSearchResult | null {
+  if (options.starredOnly && !session.starred) {
+    return null;
+  }
+
+  const tag = normalizeSearchToken(options.tag);
+  if (tag && !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)) {
+    return null;
+  }
+
+  const category = normalizeSearchToken(options.category);
+  if (category && normalizeSearchToken(session.category) !== category) {
+    return null;
+  }
+
+  if (options.highlightedOnly && !session.entries.some((entry) => entry.highlighted)) {
+    return null;
+  }
+
+  const hits = buildSearchHits(session, token);
+  if (token && hits.length === 0) {
+    return null;
+  }
+
+  return {
+    session: cloneSessionRecord(session),
+    matchCount: token ? hits.length : 1,
+    firstHit: hits[0] ?? null,
+  };
+}
+
+export async function searchSessions(
+  options: SessionSearchOptions,
+): Promise<SessionSearchPageResult> {
+  const pageSize = Math.max(1, options.pageSize);
+  const requestedPage = Math.max(1, options.page);
+  const token = normalizeSearchToken(options.query);
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listAllIndexedDbSessions()),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+  const allSessions = sortSessions(
+    mergeSessionCollections(
+      indexedDbResult.ok && indexedDbResult.value
+        ? indexedDbResult.value.map((record) =>
+            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+          )
+        : [],
+      fallbackRecords.map((record) =>
+        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+      ),
+    ),
+    { limit: Number.MAX_SAFE_INTEGER },
+  );
+  const results = allSessions
+    .map((session) => sessionMatchesSearchFilters(session, options, token))
+    .filter((result): result is SessionSearchResult => Boolean(result));
+  const totalCount = results.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const start = (page - 1) * pageSize;
+
+  return {
+    results: results.slice(start, start + pageSize),
     totalCount,
     page,
     pageSize,

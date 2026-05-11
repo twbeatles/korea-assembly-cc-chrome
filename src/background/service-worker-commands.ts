@@ -204,6 +204,8 @@ export async function handleBackgroundCommand(
       const payload = await dependencies.exportSessionRecordData(session, message.format, {
         filenamePattern: message.filenamePattern,
         txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
+        txtExportSpeakerEnabled: message.txtExportSpeakerEnabled,
+        txtExportEntryNotesEnabled: message.txtExportEntryNotesEnabled,
         filenameSuffix: message.filenameSuffix,
         entries: selectedEntries,
       });
@@ -218,6 +220,8 @@ export async function handleBackgroundCommand(
       const payload = await dependencies.exportSessionLineageData(message.lineageId, message.format, {
         filenamePattern: message.filenamePattern,
         txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
+        txtExportSpeakerEnabled: message.txtExportSpeakerEnabled,
+        txtExportEntryNotesEnabled: message.txtExportEntryNotesEnabled,
         entryIds: message.entryIds,
         filenameSuffix: message.filenameSuffix,
       });

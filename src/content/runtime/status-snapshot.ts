@@ -100,6 +100,13 @@ export function buildContentStatusSnapshot(
     livePreviewText: livePreviewTextRaw,
     latestPersistabilityState,
   });
+  const exportEstimates = buildExportEstimateDiagnostics(sessionState, settings);
+  const estimatedBytes = Math.max(
+    exportEstimates.txtBytes,
+    exportEstimates.srtBytes,
+    exportEstimates.vttBytes,
+    exportEstimates.jsonBytes,
+  );
 
   return {
     connected: isSupportedAssemblyUrl(currentUrl),
@@ -127,15 +134,15 @@ export function buildContentStatusSnapshot(
       currentFramePath: sessionState.currentFramePath,
       persistabilityState: persistability.state,
       persistabilityHint: persistability.hint,
+      entryCount: sessionState.entries.length,
+      estimatedBytes,
       stableRowCount: rowDiagnostics?.stableRowCount,
       unstableRowCount: rowDiagnostics?.unstableRowCount,
       filteredUnconfirmedCount: rowDiagnostics?.filteredUnconfirmedCount,
       rowKeySources: rowDiagnostics?.rowKeySources,
       fallbackCommitState,
       segment: buildSegmentDiagnostics(sessionState, settings),
-      exportEstimates: includeExportEstimates
-        ? buildExportEstimateDiagnostics(sessionState, settings)
-        : undefined,
+      exportEstimates: includeExportEstimates ? exportEstimates : undefined,
     }),
     hasPersistableContent: sessionState.entries.length > 0,
   };

@@ -6,6 +6,15 @@ import type {
   SubtitleEntry,
 } from "../core/subtitle-models";
 
+export interface AssemblyPreset {
+  id: string;
+  name: string;
+  url: string;
+  committeeName: string;
+  autoStartEnabled: boolean;
+  noiseFilterEnabled: boolean;
+}
+
 export type SegmentPreset = "stability" | "balanced" | "capacity" | "custom";
 
 export interface ExtensionSettings {
@@ -88,7 +97,13 @@ export interface SessionExportOptions {
   entries?: SubtitleEntry[];
   entryIds?: string[];
   txtExportTimestampsEnabled?: boolean;
+  txtExportSpeakerEnabled?: boolean;
+  txtExportEntryNotesEnabled?: boolean;
   filenameSuffix?: string;
+  timeRange?: {
+    from?: string;
+    to?: string;
+  };
 }
 
 export interface SessionMetadataPatch {
