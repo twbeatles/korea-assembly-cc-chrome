@@ -178,7 +178,8 @@ describe("in-page panel", () => {
     expect(shadowRoot?.textContent).toContain("국회 자막 도우미");
     expect(shadowRoot?.textContent).toContain("실시간 내용");
     expect(shadowRoot?.textContent).toContain("수집된 자막");
-    expect(shadowRoot?.textContent).toContain("수집 진단");
+    expect(shadowRoot?.textContent).toContain("상태 확인");
+    expect(shadowRoot?.textContent).not.toContain("건강도");
     expect(shadowRoot?.textContent).toContain("환경 설정");
     expect(shadowRoot?.textContent).not.toContain("방금 나온 자막");
     expect(shadowRoot?.textContent).toContain("최근 5줄 복사");

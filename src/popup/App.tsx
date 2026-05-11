@@ -351,9 +351,9 @@ export default function App() {
         setStatusMessage(response.error);
         return;
       }
-      setStatusMessage("수집 진단 화면을 열었습니다.");
+      setStatusMessage("상태 확인 화면을 열었습니다.");
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "수집 진단 화면을 열지 못했습니다.");
+      setStatusMessage(error instanceof Error ? error.message : "상태 확인 화면을 열지 못했습니다.");
     }
   };
 

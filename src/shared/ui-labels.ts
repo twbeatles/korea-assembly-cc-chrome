@@ -17,7 +17,7 @@ export const UI_TEXT = {
   saveSession: "지금 저장",
   openHistory: "저장된 기록",
   openOptions: "환경 설정",
-  openDiagnostics: "수집 진단",
+  openDiagnostics: "상태 확인",
   openPanel: "페이지 패널 열기",
   livePreview: "실시간 내용",
   screenSubtitles: "수집된 자막",

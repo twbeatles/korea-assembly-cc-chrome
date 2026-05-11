@@ -532,10 +532,6 @@ export interface InPagePanelState {
   hasPersistableContent: boolean;
   canClearSession: boolean;
   showNotice: boolean;
-  healthLabel: string;
-  healthHint: string;
-  estimatedBytes: number;
-  sizeWarning: string;
   canHighlightLatestEntry: boolean;
 }
 
@@ -667,10 +663,6 @@ export function buildInPagePanelState(
     hasPersistableContent: snapshot.hasPersistableContent,
     canClearSession: options.canClearSession,
     showNotice: options.showNotice,
-    healthLabel: snapshot.diagnostics.healthLabel ?? "-",
-    healthHint: snapshot.diagnostics.healthHint ?? "",
-    estimatedBytes: snapshot.diagnostics.estimatedBytes ?? 0,
-    sizeWarning: snapshot.diagnostics.sizeWarning ?? "",
     canHighlightLatestEntry: snapshot.recentEntries.some((entry) => !entry.highlighted),
   };
 }
@@ -703,14 +695,12 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const headerCount = document.createElement("span");
   headerCount.className = "header-count";
-  const healthBadge = document.createElement("span");
-  healthBadge.className = "mode-badge";
   const statusBadge = document.createElement("span");
   statusBadge.className = "status-badge";
   const headerActions = document.createElement("div");
   headerActions.className = "header-actions";
   const collapseButton = createButton(UI_TEXT.collapse, actions.onCollapse, "secondary icon");
-  headerActions.append(headerCount, healthBadge, statusBadge, collapseButton);
+  headerActions.append(headerCount, statusBadge, collapseButton);
   header.append(titleGroup, headerActions);
 
   const heroCard = document.createElement("section");
@@ -888,8 +878,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       statusBadge.textContent = nextState.statusLabel;
       statusBadge.className = `status-badge ${nextState.status}`;
       headerCount.textContent = `자막 ${nextState.subtitleCount}줄`;
-      healthBadge.textContent = `건강도 ${nextState.healthLabel}`;
-      healthBadge.title = nextState.sizeWarning || nextState.healthHint;
       modeBadge.textContent = formatCaptureMode(nextState.captureMode);
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
@@ -947,14 +935,14 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
         renderedLiveRowsSignature = nextLiveRowsSignature;
       }
 
-      const nextNotice = nextState.sizeWarning || nextState.notice;
+      const nextNotice = nextState.notice;
       if (renderedNotice !== nextNotice) {
         notice.textContent = nextNotice;
         notice.dataset.message = nextNotice;
         renderedNotice = nextNotice;
       }
 
-      const nextShowNotice = nextState.showNotice || Boolean(nextState.sizeWarning);
+      const nextShowNotice = nextState.showNotice;
       if (renderedShowNotice !== nextShowNotice) {
         notice.hidden = !nextShowNotice;
         notice.setAttribute("aria-hidden", String(!nextShowNotice));

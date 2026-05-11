@@ -6,7 +6,6 @@ import {
   isSupportedAssemblyUrl,
   isSupportedAssemblySiteUrl,
 } from "../shared/constants";
-import { formatCaptureDiagnosticsFramePath } from "../shared/capture-diagnostics";
 import { validateFilenamePattern } from "../shared/filename-pattern";
 import {
   addTabActivatedListener,
@@ -61,23 +60,23 @@ const SEGMENT_PRESET_OPTIONS: Array<{
 }> = [
   {
     value: "stability",
-    label: "안정성 우선",
-    description: "1000문장 / 60000자 / 45분",
+    label: "작게 나누기",
+    description: "짧은 파일로 자주 저장",
   },
   {
     value: "balanced",
     label: "기본",
-    description: "2000문장 / 120000자 / 90분",
+    description: "일반 회의에 적합",
   },
   {
     value: "capacity",
     label: "긴 회의",
-    description: "4000문장 / 240000자 / 120분",
+    description: "긴 회의를 덜 자주 나눔",
   },
   {
     value: "custom",
     label: "직접 설정",
-    description: "아래 숫자 값을 그대로 사용",
+    description: "아래 숫자를 직접 사용",
   },
 ];
 
@@ -88,19 +87,19 @@ function getFieldLabel(field: keyof ExtensionSettings): string {
     case "recentCopyLineCount":
       return "최근 복사 줄 수";
     case "keepaliveIntervalMs":
-      return "자막 유지 확인 주기";
+      return "같은 자막 확인 간격";
     case "pollingFallbackIntervalMs":
-      return "대체 확인 주기";
+      return "화면 다시 확인 간격";
     case "maxBufferLength":
-      return "중복 비교 버퍼 길이";
+      return "중복 확인용 기억 길이";
     case "maxEntriesPerSegment":
-      return "세그먼트 최대 문장 수";
+      return "한 번에 저장할 최대 문장 수";
     case "maxCharsPerSegment":
-      return "세그먼트 최대 글자 수";
+      return "한 번에 저장할 최대 글자 수";
     case "maxSegmentDurationMinutes":
-      return "세그먼트 최대 길이";
+      return "한 번에 저장할 최대 시간";
     case "recentDuplicateMinLength":
-      return "중복 판정 최소 글자 수";
+      return "중복으로 볼 최소 글자 수";
     default:
       return field;
   }
@@ -109,23 +108,23 @@ function getFieldLabel(field: keyof ExtensionSettings): string {
 function getFieldDescription(field: keyof ExtensionSettings): string {
   switch (field) {
     case "runningAutoSaveDebounceMs":
-      return "수집 중 자동 저장을 몇 ms 간격으로 묶어서 실행할지 정합니다.";
+      return "값이 작을수록 더 자주 저장합니다. 보통은 기본값을 그대로 두면 됩니다.";
     case "recentCopyLineCount":
       return "최근 복사 버튼에 포함할 최신 문장 수입니다.";
     case "keepaliveIntervalMs":
-      return "같은 자막이 계속 보일 때 종료 시각을 갱신하는 간격입니다.";
+      return "같은 자막이 계속 보일 때 시간을 갱신하는 간격입니다.";
     case "pollingFallbackIntervalMs":
-      return "자동 감시가 놓칠 때 화면을 다시 확인하는 주기입니다.";
+      return "자막 변화를 놓치지 않도록 화면을 다시 확인하는 간격입니다.";
     case "maxBufferLength":
-      return "중복 비교를 위해 잠시 기억해 둘 텍스트 길이입니다.";
+      return "이미 저장한 자막과 비교하려고 잠시 기억해 둘 글자 수입니다.";
     case "maxEntriesPerSegment":
-      return "이 문장 수를 넘기면 현재 segment를 저장하고 다음 segment로 넘깁니다.";
+      return "이 문장 수를 넘기면 파일을 나누어 저장합니다.";
     case "maxCharsPerSegment":
-      return "이 글자 수를 넘기면 현재 segment를 저장하고 다음 segment로 넘깁니다.";
+      return "이 글자 수를 넘기면 파일을 나누어 저장합니다.";
     case "maxSegmentDurationMinutes":
-      return "이 시간을 넘기면 현재 segment를 저장하고 다음 segment로 넘깁니다.";
+      return "이 시간을 넘기면 파일을 나누어 저장합니다.";
     case "recentDuplicateMinLength":
-      return "최근 자막과 비교할 때 중복으로 판단할 최소 글자 수입니다.";
+      return "짧은 글자는 중복으로 잘못 판단하지 않도록 제외합니다.";
     default:
       return "";
   }
@@ -136,7 +135,7 @@ function getFieldUnit(field: keyof ExtensionSettings): string {
     case "runningAutoSaveDebounceMs":
     case "keepaliveIntervalMs":
     case "pollingFallbackIntervalMs":
-      return "ms";
+      return "밀리초";
     case "recentCopyLineCount":
       return "줄";
     case "maxEntriesPerSegment":
@@ -176,69 +175,20 @@ function getFieldMin(field: keyof ExtensionSettings): number {
   }
 }
 
-function getPersistabilityStateLabel(state?: string): string {
-  switch (state) {
-    case "persistable":
-      return "저장 가능";
-    case "preview_only":
-      return "preview-only";
-    case "unstable_only":
-      return "unstable-only";
-    case "filtered":
-      return "filtered";
-    case "duplicate":
-      return "duplicate";
-    case "idle":
-      return "idle";
-    default:
-      return "-";
-  }
-}
-
-function formatByteSize(bytes?: number): string {
-  if (typeof bytes !== "number" || !Number.isFinite(bytes) || bytes <= 0) {
-    return "0 B";
-  }
-
-  if (bytes >= 1024 * 1024) {
-    return `${(bytes / (1024 * 1024)).toFixed(2)} MiB`;
-  }
-
-  if (bytes >= 1024) {
-    return `${(bytes / 1024).toFixed(1)} KiB`;
-  }
-
-  return `${Math.floor(bytes)} B`;
-}
-
-function formatDurationMs(value?: number | null): string {
-  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+function getCaptureModeSummary(snapshot: StatusSnapshot | null): string {
+  if (!snapshot) {
     return "-";
   }
 
-  const totalSeconds = Math.floor(value / 1000);
-  const hours = Math.floor(totalSeconds / 3600);
-  const minutes = Math.floor((totalSeconds % 3600) / 60);
-  const seconds = totalSeconds % 60;
-
-  return hours > 0
-    ? `${hours}시간 ${minutes}분 ${seconds}초`
-    : `${minutes}분 ${seconds}초`;
-}
-
-function formatUsage(current?: number, limit?: number, unit = ""): string {
-  if (
-    typeof current !== "number" ||
-    !Number.isFinite(current) ||
-    typeof limit !== "number" ||
-    !Number.isFinite(limit) ||
-    limit <= 0
-  ) {
-    return "-";
+  if (snapshot.diagnostics.captureMode === "structured") {
+    return "자막을 정상적으로 모으는 중";
   }
 
-  const percent = Math.min(999, Math.max(0, (current / limit) * 100));
-  return `${current}${unit} / ${limit}${unit} (${percent.toFixed(1)}%)`;
+  if (snapshot.diagnostics.captureMode === "fallback" || !snapshot.diagnostics.observerActive) {
+    return "화면을 다시 확인하며 모으는 중";
+  }
+
+  return snapshot.status === "idle" ? "대기 중" : "준비 중";
 }
 
 function buildNumberDraftState(settings: ExtensionSettings): NumberDraftState {
@@ -405,26 +355,27 @@ export default function App() {
 
   const diagnosticsErrorRows = [
     {
-      label: "queue 쓰기 오류",
+      label: "임시 저장 오류",
       value: persistReplayDiagnostics.lastQueueWriteError || "-",
     },
     {
-      label: "replay 오류",
+      label: "이전 기록 복구 오류",
       value: persistReplayDiagnostics.lastReplayError || "-",
     },
     {
-      label: "cleanup 오류",
+      label: "이전 수집 정리 오류",
       value: persistReplayDiagnostics.lastCleanupError || "-",
     },
     {
-      label: "page-exit 저장 오류",
+      label: "페이지 종료 저장 오류",
       value: persistReplayDiagnostics.lastPageExitPersistError || "-",
     },
     {
-      label: "오류 요약",
+      label: "최근 오류",
       value: persistReplayDiagnostics.lastError || "-",
     },
   ];
+  const visibleDiagnosticsErrors = diagnosticsErrorRows.filter((row) => row.value !== "-");
 
   useEffect(() => {
     void getSettings()
@@ -544,7 +495,7 @@ export default function App() {
           setTabReady(false);
           setRequiresReload(false);
           clearReconnectTimer();
-          setDiagnosticsMessage("진단할 국회 의사중계 탭을 찾지 못했습니다. 해당 탭에서 다시 열어주세요.");
+          setDiagnosticsMessage("상태를 확인할 국회 의사중계 탭을 찾지 못했습니다. 해당 탭에서 다시 열어주세요.");
           return;
         }
 
@@ -595,7 +546,7 @@ export default function App() {
                 setTabReady(true);
                 setDiagnosticsMessage(
                   nextMessage.payload.connected
-                    ? "현재 탭의 수집 진단 정보를 불러왔습니다."
+                    ? "현재 탭의 상태를 불러왔습니다."
                     : "국회 의사중계 메인 페이지에는 연결됐지만, 현재 탭은 자막 수집용 플레이어가 아닙니다.",
                 );
               }
@@ -633,7 +584,7 @@ export default function App() {
         }
 
         const baseMessage =
-          error instanceof Error ? error.message : "수집 진단 정보를 준비하지 못했습니다.";
+          error instanceof Error ? error.message : "현재 탭의 상태를 준비하지 못했습니다.";
         scheduleReconnect(`${baseMessage} 자동으로 다시 연결을 시도합니다.`);
       } finally {
         connecting = false;
@@ -647,11 +598,11 @@ export default function App() {
 
     const handleTabActivated = (): void => {
       if (typeof diagnosticsTabId === "number") {
-        reconnectDiagnostics("선택한 진단 탭 상태를 다시 확인하고 있습니다.");
+        reconnectDiagnostics("선택한 탭 상태를 다시 확인하고 있습니다.");
         return;
       }
 
-      reconnectDiagnostics("현재 창의 활성 탭 기준으로 진단을 다시 연결하고 있습니다.");
+      reconnectDiagnostics("현재 창의 활성 탭 상태를 다시 확인하고 있습니다.");
     };
 
     const handleTabUpdated = (
@@ -667,7 +618,7 @@ export default function App() {
         if (typeof tab.id !== "number" || tab.id !== diagnosticsTabId) {
           return;
         }
-        reconnectDiagnostics("지정한 진단 탭 상태가 바뀌어 다시 연결하고 있습니다.");
+        reconnectDiagnostics("지정한 탭 상태가 바뀌어 다시 확인하고 있습니다.");
         return;
       }
 
@@ -675,7 +626,7 @@ export default function App() {
         return;
       }
 
-      reconnectDiagnostics("현재 창의 활성 탭 상태가 바뀌어 진단을 다시 연결하고 있습니다.");
+      reconnectDiagnostics("현재 창의 활성 탭 상태가 바뀌어 다시 확인하고 있습니다.");
     };
 
     const handleTabRemoved = (tabId: number): void => {
@@ -683,7 +634,7 @@ export default function App() {
         if (tabId !== diagnosticsTabId) {
           return;
         }
-        reconnectDiagnostics("지정한 진단 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.");
+        reconnectDiagnostics("지정한 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.");
         return;
       }
 
@@ -691,7 +642,7 @@ export default function App() {
         return;
       }
 
-      reconnectDiagnostics("현재 진단 대상 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.");
+      reconnectDiagnostics("현재 확인 대상 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.");
     };
 
     addTabActivatedListener(handleTabActivated);
@@ -921,8 +872,8 @@ export default function App() {
     <main className="options-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">{view === "diagnostics" ? "문제 확인" : "쉽게 설정"}</p>
-          <h1>{view === "diagnostics" ? "자막 도우미 수집 진단" : "자막 도우미 환경 설정"}</h1>
+          <p className="eyebrow">{view === "diagnostics" ? "상태 확인" : "쉽게 설정"}</p>
+          <h1>{view === "diagnostics" ? "자막 도우미 상태 확인" : "자막 도우미 환경 설정"}</h1>
           <p className="hero-message">{view === "diagnostics" ? diagnosticsMessage : message}</p>
         </div>
         <div className="view-toggle" role="tablist" aria-label="환경 설정 메뉴">
@@ -989,13 +940,13 @@ export default function App() {
             </label>
 
             <div className="warning-box full-width">
-              기본값은 켜짐입니다. 국회 중계 페이지를 열면 바로 수집을 시작하므로, 원하지 않으면 이 옵션을 꺼두세요.
+              국회 중계 페이지를 열 때 자동으로 시작됩니다. 직접 시작하고 싶다면 이 옵션을 꺼두세요.
             </div>
 
             <label className="setting-card">
               <div>
-                <strong>미확정(인식 중) 자막 수집 안 함</strong>
-                <span>하늘색 등 뒷배경이 아직 사라지지 않은 인식 중 자막을 확정 전까지 제외합니다.</span>
+                <strong>바뀌는 중인 자막 제외</strong>
+                <span>화면에서 아직 바뀌고 있는 자막은 잠시 기다렸다가 확정된 뒤 저장합니다.</span>
               </div>
               <input
                 type="checkbox"
@@ -1006,7 +957,7 @@ export default function App() {
 
             <p className="settings-section-heading">복사 / 저장</p>
             <p className="settings-section-note">
-              최근 복사 버튼, TXT 저장 형식, 수집 중 자동 저장 타이밍을 여기에서 조정할 수 있습니다.
+              최근 복사 줄 수, 텍스트 파일 저장 방식, 자동 저장 간격을 조정합니다.
             </p>
 
             {BASIC_NUMBER_FIELDS.map((field) => {
@@ -1046,7 +997,7 @@ export default function App() {
             >
               <div>
                 <strong>저장 파일 이름 규칙</strong>
-                <span>{`사용 가능한 값: {date}, {committee}, {time}`}</span>
+                <span>{`파일 이름에 날짜, 회의 이름, 시간을 넣을 수 있습니다: {date}, {committee}, {time}`}</span>
               </div>
               <div className="number-input-group">
                 <input
@@ -1068,8 +1019,8 @@ export default function App() {
 
             <label className="setting-card full-width">
               <div>
-                <strong>TXT 저장에 타임스탬프 포함</strong>
-                <span>끄면 자막 본문만 줄 단위로 저장합니다. 기본값은 꺼짐입니다.</span>
+                <strong>텍스트 파일에 시간 함께 저장</strong>
+                <span>켜면 각 자막 앞에 시간이 함께 들어갑니다.</span>
               </div>
               <input
                 type="checkbox"
@@ -1082,8 +1033,8 @@ export default function App() {
 
             <label className="setting-card">
               <div>
-                <strong>TXT 저장에 발언자 포함</strong>
-                <span>발언자 A/B 또는 직접 입력한 발언자 라벨을 TXT 앞부분에 붙입니다.</span>
+                <strong>텍스트 파일에 발언자 함께 저장</strong>
+                <span>발언자 이름을 적어 둔 경우 자막 앞에 함께 넣습니다.</span>
               </div>
               <input
                 type="checkbox"
@@ -1094,8 +1045,8 @@ export default function App() {
 
             <label className="setting-card">
               <div>
-                <strong>TXT 저장에 중요 표시/메모 포함</strong>
-                <span>entry note, 라벨, 중요 표시를 본문 아래 보조 줄로 저장합니다.</span>
+                <strong>텍스트 파일에 메모 함께 저장</strong>
+                <span>중요 표시와 메모를 자막 아래에 함께 넣습니다.</span>
               </div>
               <input
                 type="checkbox"
@@ -1110,7 +1061,7 @@ export default function App() {
               <summary>
                 <span className="advanced-summary-title">고급 설정</span>
                 <span className="advanced-summary-description">
-                  필터와 내부 확인 주기를 세밀하게 조정합니다. 외국어 판정 범위는 이번 배치에서 넓히지 않았으니 특별한 이유가 없다면 기본값을 유지하세요.
+                  자막 제외 기준과 확인 간격을 바꿉니다. 특별한 이유가 없다면 기본값을 유지하세요.
                 </span>
               </summary>
               <div className="advanced-grid">
@@ -1118,8 +1069,8 @@ export default function App() {
                   <div>
                     <strong>불필요한 자막 자동 제외</strong>
                     <span>
-                      기본 noise filter는 한글/영문 중심 텍스트를 기준으로 숫자, 기호,
-                      placeholder를 제외합니다. 외국어 원문을 최대한 남기려면 이 옵션을 끄세요.
+                      자막이 아닌 숫자, 기호, 안내 문구를 자동으로 빼고 저장합니다.
+                      필요한 문장이 빠진다면 이 옵션을 끄세요.
                     </span>
                   </div>
                   <input
@@ -1143,10 +1094,10 @@ export default function App() {
 
                 <div className="setting-card input-card full-width">
                   <div>
-                    <strong>세그먼트 분할 프리셋</strong>
-                    <span>긴 회의를 저장할 때 한 세그먼트에 담을 문장 수, 글자 수, 시간을 묶어서 조정합니다.</span>
+                    <strong>긴 회의 자동 나누기</strong>
+                    <span>회의가 길어질 때 파일을 어느 정도 크기로 나눌지 선택합니다.</span>
                   </div>
-                  <div className="preset-grid" role="radiogroup" aria-label="세그먼트 분할 프리셋">
+                  <div className="preset-grid" role="radiogroup" aria-label="긴 회의 자동 나누기">
                     {SEGMENT_PRESET_OPTIONS.map((preset) => (
                       <button
                         type="button"
@@ -1203,7 +1154,7 @@ export default function App() {
             <div className="note-card full-width">
               <div className="section-row">
                 <strong>회의 프리셋</strong>
-                <span>자주 여는 국회 플레이어 URL을 popup에서 빠르게 열 수 있습니다.</span>
+                <span>자주 여는 국회 중계 페이지를 확장 팝업에서 바로 열 수 있습니다.</span>
               </div>
               {presets.length ? (
                 <div className="meta-grid">
@@ -1298,7 +1249,7 @@ export default function App() {
                 <label className="setting-card">
                   <div>
                     <strong>자동 시작</strong>
-                    <span>프리셋 설명용 기본값입니다.</span>
+                    <span>이 페이지를 열 때 바로 자막 모으기를 시작합니다.</span>
                   </div>
                   <input
                     type="checkbox"
@@ -1310,8 +1261,8 @@ export default function App() {
                 </label>
                 <label className="setting-card">
                   <div>
-                    <strong>noise filter</strong>
-                    <span>프리셋 설명용 기본값입니다.</span>
+                    <strong>불필요한 자막 제외</strong>
+                    <span>이 페이지에서 숫자, 기호, 안내 문구를 자동으로 뺍니다.</span>
                   </div>
                   <input
                     type="checkbox"
@@ -1367,66 +1318,8 @@ export default function App() {
               <strong>{snapshot?.charCount ?? 0}자</strong>
             </div>
             <div className="meta-row">
-              <span>추정 크기</span>
-              <strong>{(snapshot?.diagnostics.estimatedBytes ?? 0).toLocaleString("ko-KR")} bytes</strong>
-            </div>
-            <div className="meta-row">
-              <span>건강도</span>
-              <strong>{snapshot?.diagnostics.healthLabel || "-"}</strong>
-            </div>
-            <div className="meta-row">
               <span>수집 방식</span>
-              <strong>{snapshot?.diagnostics.sourceLabel || "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>Observer</span>
-              <strong>{snapshot?.diagnostics.observerActive ? "켜짐" : snapshot ? "꺼짐" : "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>Selector</span>
-              <strong>{snapshot?.diagnostics.currentSelector || "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>Frame</span>
-              <strong>
-                {snapshot ? formatCaptureDiagnosticsFramePath(snapshot.diagnostics.currentFramePath) : "-"}
-              </strong>
-            </div>
-            <div className="meta-row">
-              <span>저장 판정</span>
-              <strong>
-                {getPersistabilityStateLabel(snapshot?.diagnostics.persistabilityState)}
-              </strong>
-            </div>
-            <div className="meta-row">
-              <span>판정 안내</span>
-              <strong>{snapshot?.diagnostics.persistabilityHint || "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>안정/불안정 행</span>
-              <strong>
-                {snapshot
-                  ? `${snapshot.diagnostics.stableRowCount} / ${snapshot.diagnostics.unstableRowCount}`
-                  : "-"}
-              </strong>
-            </div>
-            <div className="meta-row">
-              <span>필터된 미확정 행</span>
-              <strong>{snapshot?.diagnostics.filteredUnconfirmedCount ?? "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>Fallback 저장 상태</span>
-              <strong>{snapshot?.diagnostics.fallbackCommitState ?? "-"}</strong>
-            </div>
-            <div className="meta-row">
-              <span>Row key 출처</span>
-              <strong>
-                {snapshot
-                  ? Object.entries(snapshot.diagnostics.rowKeySources ?? {})
-                      .map(([key, value]) => `${key}:${value}`)
-                      .join(" / ") || "-"
-                  : "-"}
-              </strong>
+              <strong>{getCaptureModeSummary(snapshot)}</strong>
             </div>
             <div className="meta-row">
               <span>최근 저장</span>
@@ -1436,106 +1329,12 @@ export default function App() {
 
           <section className="diagnostics-subsection">
             <div className="subsection-header">
-              <h3>세그먼트 상태</h3>
-              <p>현재 탭에서 실행 중인 세그먼트의 threshold 사용량과 남은 여유입니다.</p>
+              <h3>최근 저장 복구</h3>
+              <p>브라우저가 갑자기 닫힌 뒤 자동으로 복구한 기록입니다.</p>
             </div>
             <div className="meta-grid">
               <div className="meta-row">
-                <span>현재 세그먼트</span>
-                <strong>
-                  {snapshot?.diagnostics.segment
-                    ? `세그먼트 ${snapshot.diagnostics.segment.segmentNumber}`
-                    : "-"}
-                </strong>
-              </div>
-              <div className="meta-row">
-                <span>문장 수 사용량</span>
-                <strong>
-                  {formatUsage(
-                    snapshot?.diagnostics.segment?.entryCount,
-                    snapshot?.diagnostics.segment?.maxEntriesPerSegment,
-                    "문장",
-                  )}
-                </strong>
-              </div>
-              <div className="meta-row">
-                <span>글자 수 사용량</span>
-                <strong>
-                  {formatUsage(
-                    snapshot?.diagnostics.segment?.charCount,
-                    snapshot?.diagnostics.segment?.maxCharsPerSegment,
-                    "자",
-                  )}
-                </strong>
-              </div>
-              <div className="meta-row">
-                <span>세그먼트 경과 시간</span>
-                <strong>
-                  {snapshot?.diagnostics.segment
-                    ? `${formatDurationMs(snapshot.diagnostics.segment.elapsedMs)} / ${formatDurationMs(
-                        snapshot.diagnostics.segment.maxDurationMs,
-                      )}`
-                    : "-"}
-                </strong>
-              </div>
-              <div className="meta-row">
-                <span>남은 문장 수</span>
-                <strong>{snapshot?.diagnostics.segment?.remainingEntries ?? "-"}</strong>
-              </div>
-              <div className="meta-row">
-                <span>남은 글자 수</span>
-                <strong>{snapshot?.diagnostics.segment?.remainingChars ?? "-"}</strong>
-              </div>
-              <div className="meta-row">
-                <span>남은 시간</span>
-                <strong>{formatDurationMs(snapshot?.diagnostics.segment?.remainingDurationMs)}</strong>
-              </div>
-            </div>
-          </section>
-
-          <section className="diagnostics-subsection">
-            <div className="subsection-header">
-              <h3>예상 내보내기 크기</h3>
-              <p>현재 세그먼트를 지금 저장한다고 가정했을 때의 포맷별 대략적인 크기입니다.</p>
-            </div>
-            <div className="meta-grid">
-              <div className="meta-row">
-                <span>TXT</span>
-                <strong>{formatByteSize(snapshot?.diagnostics.exportEstimates?.txtBytes)}</strong>
-              </div>
-              <div className="meta-row">
-                <span>SRT</span>
-                <strong>{formatByteSize(snapshot?.diagnostics.exportEstimates?.srtBytes)}</strong>
-              </div>
-              <div className="meta-row">
-                <span>VTT</span>
-                <strong>{formatByteSize(snapshot?.diagnostics.exportEstimates?.vttBytes)}</strong>
-              </div>
-              <div className="meta-row">
-                <span>JSON</span>
-                <strong>{formatByteSize(snapshot?.diagnostics.exportEstimates?.jsonBytes)}</strong>
-              </div>
-              <div className="meta-row">
-                <span>TXT 타임스탬프</span>
-                <strong>
-                  {snapshot?.diagnostics.exportEstimates
-                    ? snapshot.diagnostics.exportEstimates.txtIncludesTimestamps
-                      ? "포함"
-                      : "제외"
-                    : "-"}
-                </strong>
-              </div>
-            </div>
-          </section>
-
-          <section className="diagnostics-subsection">
-            <div className="subsection-header">
-              <h3>저장 복구 상태</h3>
-              <p>브라우저 시작 시 종료 직전 저장 replay와 stale running cleanup 결과입니다.</p>
-            </div>
-            <div className="meta-grid">
-              <div className="meta-row">
-                <span>마지막 replay</span>
+                <span>마지막 확인</span>
                 <strong>
                   {persistReplayDiagnostics.lastReplayAt
                     ? new Date(persistReplayDiagnostics.lastReplayAt).toLocaleString("ko-KR")
@@ -1543,27 +1342,23 @@ export default function App() {
                 </strong>
               </div>
               <div className="meta-row">
-                <span>replay 성공/실패</span>
+                <span>복구된 기록</span>
                 <strong>
-                  {persistReplayDiagnostics.lastReplayReplayedCount} / {persistReplayDiagnostics.lastReplayFailedCount}
+                  {persistReplayDiagnostics.lastReplayReplayedCount}건
                 </strong>
               </div>
               <div className="meta-row">
-                <span>replay 건너뜀</span>
-                <strong>{persistReplayDiagnostics.lastReplaySkippedCount}</strong>
+                <span>정리된 이전 수집</span>
+                <strong>{persistReplayDiagnostics.lastCleanupClosedCount}건</strong>
               </div>
               <div className="meta-row">
-                <span>startup cleanup 성공/실패</span>
+                <span>실패한 복구</span>
                 <strong>
-                  {persistReplayDiagnostics.lastCleanupClosedCount} / {persistReplayDiagnostics.lastCleanupFailedCount}
+                  {persistReplayDiagnostics.lastReplayFailedCount + persistReplayDiagnostics.lastCleanupFailedCount}건
                 </strong>
               </div>
               <div className="meta-row">
-                <span>startup cleanup 감지</span>
-                <strong>{persistReplayDiagnostics.lastCleanupDetectedCount}</strong>
-              </div>
-              <div className="meta-row">
-                <span>마지막 page-exit 저장 시도</span>
+                <span>마지막 종료 전 저장</span>
                 <strong>
                   {persistReplayDiagnostics.lastPageExitPersistAttemptAt
                     ? new Date(persistReplayDiagnostics.lastPageExitPersistAttemptAt).toLocaleString("ko-KR")
@@ -1571,12 +1366,12 @@ export default function App() {
                 </strong>
               </div>
               <div className="meta-row">
-                <span>page-exit 세션/자막 수</span>
+                <span>종료 전 저장 내용</span>
                 <strong>
                   {persistReplayDiagnostics.lastPageExitPersistSessionId ?? "-"} / {persistReplayDiagnostics.lastPageExitPersistEntryCount}
                 </strong>
               </div>
-              {diagnosticsErrorRows.map((row) => (
+              {visibleDiagnosticsErrors.map((row) => (
                 <div className="meta-row" key={row.label}>
                   <span>{row.label}</span>
                   <strong>{row.value}</strong>

@@ -2129,7 +2129,7 @@ async function openDiagnosticsPage(): Promise<void> {
   if (!response.ok) {
     throw new Error(response.error);
   }
-  setPanelNotice("수집 진단 화면을 열었습니다.");
+  setPanelNotice("상태 확인 화면을 열었습니다.");
   syncUserInterfaces();
 }
 
@@ -2254,7 +2254,7 @@ function mountInPagePanel(): void {
     onOpenDiagnostics: () => {
       void openDiagnosticsPage().catch((error: unknown) => {
         reportRuntimeError(
-          error instanceof Error ? error.message : "수집 진단 화면을 열지 못했습니다.",
+          error instanceof Error ? error.message : "상태 확인 화면을 열지 못했습니다.",
           error,
         );
       });

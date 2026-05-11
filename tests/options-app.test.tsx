@@ -208,7 +208,7 @@ describe("options app", () => {
 
     render(<App />);
 
-    await screen.findByText("저장 복구 상태");
+    await screen.findByText("최근 저장 복구");
     expect(screen.getByText("Queue write failed once")).toBeTruthy();
     expect(screen.getByText("Replay failed once")).toBeTruthy();
     expect(screen.getByText("Page exit failed once")).toBeTruthy();
@@ -216,17 +216,15 @@ describe("options app", () => {
     expect(screen.getAllByText("Cleanup failed once").length).toBeGreaterThan(
       0,
     );
-    expect(screen.getByText("1 / 0")).toBeTruthy();
-    expect(screen.getByText("2 / 1")).toBeTruthy();
+    expect(screen.getAllByText("1건").length).toBeGreaterThan(0);
+    expect(screen.getByText("2건")).toBeTruthy();
   });
 
   it("renders the foreign-language noise filter guidance", async () => {
     render(<App />);
     await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
 
-    expect(
-      screen.getByText(/외국어 원문을 최대한 남기려면 이 옵션을 끄세요/),
-    ).toBeTruthy();
+    expect(screen.getByText(/필요한 문장이 빠진다면 이 옵션을 끄세요/)).toBeTruthy();
   });
 
   it("saves TXT speaker and entry note export options", async () => {
@@ -234,11 +232,11 @@ describe("options app", () => {
     await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
 
     const speakerToggle = screen
-      .getByText("TXT 저장에 발언자 포함")
+      .getByText("텍스트 파일에 발언자 함께 저장")
       .closest("label")
       ?.querySelector("input");
     const noteToggle = screen
-      .getByText("TXT 저장에 중요 표시/메모 포함")
+      .getByText("텍스트 파일에 메모 함께 저장")
       .closest("label")
       ?.querySelector("input");
 
@@ -399,10 +397,10 @@ describe("options app", () => {
 
     await waitFor(() => {
       expect(screen.getByText("4문장")).toBeTruthy();
-      expect(screen.getByText("structured")).toBeTruthy();
-      expect(screen.getByText("저장 가능한 확정 자막이 누적되고 있습니다.")).toBeTruthy();
-      expect(screen.getByText("4문장 / 2000문장 (0.2%)")).toBeTruthy();
-      expect(screen.getByText("240 B")).toBeTruthy();
+      expect(screen.getByText("자막을 정상적으로 모으는 중")).toBeTruthy();
+      expect(screen.queryByText("저장 가능한 확정 자막이 누적되고 있습니다.")).toBeNull();
+      expect(screen.queryByText("4문장 / 2000문장 (0.2%)")).toBeNull();
+      expect(screen.queryByText("240 B")).toBeNull();
     });
     expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_DIAGNOSTICS_STATUS" });
   });

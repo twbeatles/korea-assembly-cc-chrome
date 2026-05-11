@@ -214,7 +214,7 @@ describe("popup app", () => {
     chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(new Error("diagnostics failed"));
 
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "수집 진단" }));
+    fireEvent.click(screen.getByRole("button", { name: "상태 확인" }));
 
     await waitFor(() => {
       expect(screen.getByText("diagnostics failed")).toBeTruthy();
