@@ -10,7 +10,7 @@ export function buildObservedRowsSignature(rows: ObservedSubtitleRow[]): string 
   return rows
     .map(
       (row) =>
-        `${row.nodeKey}|${compactSubtitleText(row.text)}|${row.speakerColor}|${row.speakerChannel}|${row.unstableKey ? "1" : "0"}`,
+        `${row.nodeKey}|${compactSubtitleText(row.text)}|${row.speakerColor}|${row.speakerChannel}|${row.unstableKey ? "1" : "0"}|${row.nodeKeySource ?? ""}`,
     )
     .join("||");
 }

@@ -29,6 +29,10 @@
   "content_scripts": [
     {
       "matches": [
+        "https://assembly.webcast.go.kr/main",
+        "https://assembly.webcast.go.kr/main/",
+        "https://webcast.assembly.go.kr/main",
+        "https://webcast.assembly.go.kr/main/",
         "https://assembly.webcast.go.kr/main/player*",
         "https://webcast.assembly.go.kr/main/player*"
       ],

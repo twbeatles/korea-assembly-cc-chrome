@@ -4,6 +4,9 @@
 build/
 dist/
 coverage/
+playwright-report/
+test-results/
+blob-report/
 node_modules/
 .vite/
 .cache/
@@ -61,6 +64,17 @@ vite.config.local.*
 vitest.config.local.*
 
 # -----------------------------------------------------------------------------
+# Local secrets / signing material
+# -----------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# -----------------------------------------------------------------------------
 # Virtual environments (guard against accidental creation)
 # -----------------------------------------------------------------------------
 .venv/
@@ -80,6 +94,7 @@ legacy/
 /tmp-*/
 /.tmp/
 /.tmp-*/
+/output/
 tmp_extension_unpacked/
 tmp_extension.crx
 korea-assembly-cc-chrome.zip

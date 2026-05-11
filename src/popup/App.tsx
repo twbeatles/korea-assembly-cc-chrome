@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { POPUP_PORT_NAME, isSupportedAssemblyUrl } from "../shared/constants";
+import { POPUP_PORT_NAME, isSupportedAssemblySiteUrl } from "../shared/constants";
 import {
   addTabActivatedListener,
   addTabRemovedListener,
@@ -32,6 +32,7 @@ export default function App() {
   const [currentTabId, setCurrentTabId] = useState<number | null>(null);
   const [presets, setPresets] = useState<AssemblyPreset[]>([]);
   const hasPersistableContent = Boolean(snapshot?.hasPersistableContent);
+  const captureReady = Boolean(snapshot?.connected);
 
   useEffect(() => {
     void getSettings()
@@ -117,12 +118,12 @@ export default function App() {
 
         currentTabIdValue = tab.id;
         setCurrentTabId(tab.id);
-        if (!isSupportedAssemblyUrl(tab.url)) {
+        if (!isSupportedAssemblySiteUrl(tab.url)) {
           setUnsupported(true);
           setTabReady(false);
           setRequiresReload(false);
           clearReconnectTimer();
-          setStatusMessage("국회 의사중계 플레이어 페이지에서만 사용할 수 있습니다.");
+          setStatusMessage("국회 의사중계 사이트에서만 사용할 수 있습니다.");
           return;
         }
 
@@ -186,10 +187,10 @@ export default function App() {
                 hasPersistableContent: message.payload.hasPersistableContent,
               }));
               setTabReady(true);
-              setStatusMessage((current) =>
-                current === "현재 페이지를 확인하고 있습니다."
+              setStatusMessage(
+                message.payload.connected
                   ? "페이지 확장판과 연결했습니다."
-                  : current,
+                  : "국회 의사중계 메인 페이지에 연결했습니다. 플레이어 페이지로 이동하면 수집을 시작할 수 있습니다.",
               );
               return;
             case "PREVIEW_UPDATE":
@@ -434,7 +435,7 @@ export default function App() {
             <button
               className="capture-btn"
               onClick={() => sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")}
-              disabled={!tabReady}
+              disabled={!tabReady || !captureReady}
             >
               {UI_TEXT.startCapture}
             </button>

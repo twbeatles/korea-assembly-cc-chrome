@@ -1,4 +1,4 @@
-import { isSupportedAssemblyUrl, OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
+import { isSupportedAssemblySiteUrl, OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
 import { runStartupPersistenceMaintenance } from "./startup-persistence";
 import {
   handleFrameForwardNonceTabRemoved,
@@ -14,13 +14,21 @@ import {
   handleBackgroundCommand,
   isBackgroundCommandMessage,
 } from "./service-worker-commands";
+import { splitContentForBlobParts } from "./export-content";
 import type {
   BackgroundCommandMessage,
   BackgroundCommandResponse,
   OffscreenDocumentMessage,
   OffscreenDocumentResponse,
 } from "../shared/message-types";
-import { deleteSession, saveSession, updateRunningSession } from "../storage/session-store";
+import {
+  deleteSession,
+  exportSessionData,
+  exportSessionLineageData,
+  loadSession,
+  saveSession,
+  updateRunningSession,
+} from "../storage/session-store";
 import { queueExitPersistRecord } from "../storage/persist-recovery";
 import { createRandomToken } from "../shared/random-token";
 
@@ -36,6 +44,8 @@ const blobDownloadUrlsCreatedThisGeneration = new Set<number>();
 const BLOB_DOWNLOAD_URLS_STORAGE_KEY = "assembly-subtitle-download-blob-urls";
 const TOP_FRAME_READY_ATTEMPTS = 8;
 const TOP_FRAME_READY_RETRY_DELAY_MS = 150;
+const OFFSCREEN_BLOB_CHUNK_SIZE = 512 * 1024;
+const DATA_URL_FALLBACK_MAX_BYTES = 2 * 1024 * 1024;
 
 function callbackPromise<T>(executor: (callback: (value: T) => void) => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -51,7 +61,7 @@ function callbackPromise<T>(executor: (callback: (value: T) => void) => void): P
 }
 
 function supportsAssemblyPage(url?: string): boolean {
-  return isSupportedAssemblyUrl(url);
+  return isSupportedAssemblySiteUrl(url);
 }
 
 async function persistBlobDownloadUrls(): Promise<void> {
@@ -124,6 +134,10 @@ function bytesToBase64(bytes: Uint8Array): string {
 function toDataUrl(content: string, mimeType: string): string {
   const bytes = new TextEncoder().encode(content);
   return `data:${mimeType};base64,${bytesToBase64(bytes)}`;
+}
+
+function getUtf8ByteLength(content: string): number {
+  return new TextEncoder().encode(content).length;
 }
 
 function createNonce(): string {
@@ -309,9 +323,11 @@ async function sendOffscreenMessage(
 
 async function requestBlobUrl(content: string, mimeType: string): Promise<string> {
   await ensureOffscreenDocument();
+  const contentParts = splitContentForBlobParts(content, OFFSCREEN_BLOB_CHUNK_SIZE);
   const response = await sendOffscreenMessage({
     type: "OFFSCREEN_CREATE_BLOB_URL",
-    content,
+    content: contentParts.length === 1 ? contentParts[0] : undefined,
+    contentParts: contentParts.length > 1 ? contentParts : undefined,
     mimeType,
   });
   if (!response.ok || !response.url) {
@@ -360,8 +376,12 @@ async function downloadExport(
     },
     revokeBlobUrl,
     toDataUrl,
+    getByteLength: getUtf8ByteLength,
+    dataUrlFallbackMaxBytes: DATA_URL_FALLBACK_MAX_BYTES,
+    createDataUrlFallbackDisabledError: (byteLength) =>
+      new Error(`Data URL fallback disabled for large export (${byteLength} bytes)`),
     onBlobFallbackError: (error) => {
-      console.warn("[service-worker] Blob export download failed, falling back to data URL", error);
+      console.warn("[service-worker] Blob export download failed; evaluating fallback path", error);
     },
   });
 }
@@ -387,6 +407,9 @@ async function handleMessage(
       return { updatedAt: saved.updatedAt };
     },
     deleteSessionRecord: deleteSession,
+    loadSessionRecord: loadSession,
+    exportSessionRecordData: exportSessionData,
+    exportSessionLineageData,
     downloadExport,
     openHistoryPage,
     openOptionsPage,

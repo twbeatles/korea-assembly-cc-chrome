@@ -24,6 +24,8 @@ function buildSession(id: string, updatedAt: string): SessionRecord {
     starred: true,
     pinnedAt: updatedAt,
     note: `${id} 메모`,
+    lineageId: `${id}_lineage`,
+    segmentNumber: 2,
     entries: [
       {
         id: `${id}_entry_1`,
@@ -47,6 +49,8 @@ describe("session backup helpers", () => {
     expect(bundle.exportedAt).toBe(exportedAt);
     expect(bundle.sessions[0].starred).toBe(true);
     expect(bundle.sessions[0].note).toBe("session_1 메모");
+    expect(bundle.sessions[0].lineageId).toBe("session_1_lineage");
+    expect(bundle.sessions[0].segmentNumber).toBe(2);
     expect(bundle.sessions[0].entries[0].sourceFramePath).toEqual([0, 1]);
   });
 
@@ -67,6 +71,8 @@ describe("session backup helpers", () => {
 
     expect(bundle.records).toHaveLength(1);
     expect(bundle.records[0].id).toBe("session_valid");
+    expect(bundle.records[0].lineageId).toBe("session_valid_lineage");
+    expect(bundle.records[0].segmentNumber).toBe(2);
     expect(bundle.invalidCount).toBe(1);
   });
 

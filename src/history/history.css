@@ -248,6 +248,14 @@ button.secondary:hover:not(:disabled) {
   display: block;
 }
 
+.session-item-heading,
+.detail-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .session-item strong {
   font-size: 13px;
   line-height: 1.4;
@@ -303,6 +311,28 @@ button.secondary:hover:not(:disabled) {
   line-height: 1.3;
 }
 
+.segment-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: rgba(17, 58, 86, 0.09);
+  color: #21455a;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.session-item.active .segment-badge {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+}
+
+.detail-segment-badge {
+  background: rgba(26, 108, 88, 0.12);
+  color: #1a6c58;
+}
+
 .detail-header p {
   margin: 4px 0 0;
   font-size: 12px;
@@ -344,6 +374,58 @@ button.secondary:hover:not(:disabled) {
   margin: 5px 0 0;
   font-size: 15px;
   font-weight: 700;
+}
+
+.lineage-card {
+  margin-bottom: 14px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #eef6f2 0%, #e5f1eb 100%);
+  padding: 14px;
+  border: 1px solid rgba(26, 108, 88, 0.08);
+}
+
+.lineage-caption {
+  margin: 6px 0 0;
+  color: #587368;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.lineage-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.lineage-stats div {
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 12px 14px;
+}
+
+.lineage-stats dt {
+  color: #597184;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.lineage-stats dd {
+  margin: 5px 0 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.lineage-segments {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lineage-segment-button {
+  font-size: 12px;
 }
 
 /* ── Note card ───────────────────────────────── */
@@ -606,6 +688,7 @@ button.secondary:hover:not(:disabled) {
   .session-item-row,
   .selection-toolbar,
   .selection-actions,
+  .lineage-segments,
   .note-actions,
   .note-meta,
   .entry-card-row {
@@ -632,6 +715,10 @@ button.secondary:hover:not(:disabled) {
   }
 
   .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .lineage-stats {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 

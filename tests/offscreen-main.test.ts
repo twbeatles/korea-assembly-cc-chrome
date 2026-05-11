@@ -67,7 +67,7 @@ describe("offscreen main", () => {
     listener?.(
       {
         type: "OFFSCREEN_CREATE_BLOB_URL",
-        content: "{}",
+        contentParts: ["{", "}"],
         mimeType: "application/json",
       },
       {},

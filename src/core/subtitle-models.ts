@@ -5,6 +5,7 @@ export type ExportFormat = "txt" | "srt" | "vtt" | "json" | "md" | "csv";
 export type CaptureStatus = "idle" | "running" | "stopped" | "error";
 export type PersistedSessionStatus = "running" | "stopped" | "saved";
 export type SpeakerChannel = "primary" | "secondary" | "unknown";
+export type SubtitleCaptureMode = "structured" | "fallback";
 
 export interface SessionQualityStats {
   health: "good" | "warning" | "unstable";
@@ -26,6 +27,7 @@ export interface SubtitleEntry {
   sourceSelector?: string;
   sourceFramePath?: number[];
   sourceNodeKey?: string;
+  sourceCaptureMode?: SubtitleCaptureMode;
   speakerColor?: string;
   speakerChannel?: SpeakerChannel;
   speakerChanged?: boolean;
@@ -53,10 +55,8 @@ export interface SessionRecord {
   starred: boolean;
   pinnedAt: string | null;
   note: string;
-  tags?: string[];
-  category?: string;
-  speakerLabels?: SpeakerLabels;
-  qualityStats?: SessionQualityStats;
+  lineageId?: string;
+  segmentNumber?: number;
   entries: SubtitleEntry[];
 }
 
@@ -80,6 +80,8 @@ export interface SessionBackupBundle {
 
 export interface SessionState {
   sessionId: string;
+  lineageId: string;
+  segmentNumber: number;
   status: CaptureStatus;
   title: string;
   committeeName: string;
@@ -107,6 +109,25 @@ export interface SessionState {
 
 export function createId(prefix: string): string {
   return createPrefixedRandomToken(prefix);
+}
+
+export function resolveSessionLineageId(
+  sessionId: string,
+  lineageId?: string | null,
+): string {
+  return typeof lineageId === "string" && lineageId.trim().length > 0
+    ? lineageId
+    : sessionId;
+}
+
+export function resolveSessionSegmentNumber(
+  segmentNumber?: number | null,
+): number {
+  return typeof segmentNumber === "number" &&
+    Number.isFinite(segmentNumber) &&
+    segmentNumber >= 1
+    ? Math.floor(segmentNumber)
+    : 1;
 }
 
 export function cloneEntry(entry: SubtitleEntry): SubtitleEntry {
@@ -160,8 +181,11 @@ export function createEmptySessionState(
   title = "",
   committeeName = "",
 ): SessionState {
+  const sessionId = createId("session");
   return {
-    sessionId: createId("session"),
+    sessionId,
+    lineageId: sessionId,
+    segmentNumber: 1,
     status: "idle",
     title,
     committeeName,
@@ -214,9 +238,8 @@ export function toSessionRecord(
     starred: false,
     pinnedAt: null,
     note: "",
-    tags: [],
-    category: "",
-    speakerLabels: {},
+    lineageId: resolveSessionLineageId(state.sessionId, state.lineageId),
+    segmentNumber: resolveSessionSegmentNumber(state.segmentNumber),
     entries,
   };
 }

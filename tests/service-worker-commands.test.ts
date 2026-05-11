@@ -48,6 +48,19 @@ function createDependencies(): BackgroundCommandDependencies {
     queueExitPersistRecord: vi.fn(async () => undefined),
     persistSessionRecord: vi.fn(async () => ({ updatedAt: "2026-03-10T09:00:03.000Z" })),
     deleteSessionRecord: vi.fn(async () => undefined),
+    loadSessionRecord: vi.fn(async () => buildSession("saved")),
+    exportSessionRecordData: vi.fn(async () => ({
+      filename: "session.txt",
+      format: "txt" as const,
+      mimeType: "text/plain;charset=utf-8",
+      content: "테스트 자막",
+    })),
+    exportSessionLineageData: vi.fn(async () => ({
+      filename: "lineage.txt",
+      format: "txt" as const,
+      mimeType: "text/plain;charset=utf-8",
+      content: "세그먼트 1\n세그먼트 2",
+    })),
     downloadExport: vi.fn(async () => 11),
     openHistoryPage: vi.fn(async () => undefined),
     openOptionsPage: vi.fn(async () => undefined),
@@ -82,9 +95,8 @@ describe("service worker command helpers", () => {
     expect(dependencies.injectConfiguredContentScripts).toHaveBeenCalledWith(9);
   });
 
-  it("rejects non-player assembly pages before reinjection", async () => {
+  it("accepts the assembly home page before reinjection", async () => {
     const dependencies = createDependencies();
-    (dependencies.supportsAssemblyPage as ReturnType<typeof vi.fn>).mockReturnValue(false);
 
     const response = await handleBackgroundCommand(
       {
@@ -96,9 +108,27 @@ describe("service worker command helpers", () => {
       dependencies,
     );
 
+    expect(response).toEqual({ ok: true, ready: true, requiresReload: false });
+    expect(dependencies.injectConfiguredContentScripts).not.toHaveBeenCalled();
+  });
+
+  it("rejects non-assembly pages before reinjection", async () => {
+    const dependencies = createDependencies();
+    (dependencies.supportsAssemblyPage as ReturnType<typeof vi.fn>).mockReturnValue(false);
+
+    const response = await handleBackgroundCommand(
+      {
+        type: "ENSURE_CONTENT_SCRIPT",
+        tabId: 9,
+        url: "https://example.com/",
+      },
+      {},
+      dependencies,
+    );
+
     expect(response).toEqual({
       ok: false,
-      error: "국회 의사중계 플레이어 페이지에서만 동작합니다.",
+      error: "국회 의사중계 사이트에서만 동작합니다.",
     });
     expect(dependencies.injectConfiguredContentScripts).not.toHaveBeenCalled();
   });
@@ -161,6 +191,63 @@ describe("service worker command helpers", () => {
     expect(dependencies.persistSessionRecord).toHaveBeenCalledWith(record);
     expect(diagnostics).toEqual({ ok: true });
     expect(dependencies.openDiagnosticsPage).toHaveBeenCalledWith(77);
+  });
+
+  it("loads a stored session and downloads an export through the background command", async () => {
+    const dependencies = createDependencies();
+
+    const response = await handleBackgroundCommand(
+      {
+        type: "DOWNLOAD_SESSION_EXPORT",
+        sessionId: "session_background",
+        format: "txt",
+        filenamePattern: "{date}_{committee}_{time}",
+        txtExportTimestampsEnabled: true,
+        entryIds: ["entry_background_1"],
+      },
+      {},
+      dependencies,
+    );
+
+    expect(response).toEqual({ ok: true, downloadId: 11 });
+    expect(dependencies.loadSessionRecord).toHaveBeenCalledWith("session_background");
+    expect(dependencies.exportSessionRecordData).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "session_background" }),
+      "txt",
+      expect.objectContaining({
+        filenamePattern: "{date}_{committee}_{time}",
+        txtExportTimestampsEnabled: true,
+        entries: [expect.objectContaining({ id: "entry_background_1" })],
+      }),
+    );
+  });
+
+  it("downloads a merged lineage export through the background command", async () => {
+    const dependencies = createDependencies();
+
+    const response = await handleBackgroundCommand(
+      {
+        type: "DOWNLOAD_SESSION_LINEAGE_EXPORT",
+        lineageId: "lineage_background",
+        format: "txt",
+        filenamePattern: "{date}_{committee}_{time}",
+        txtExportTimestampsEnabled: true,
+        entryIds: ["entry_background_1"],
+      },
+      {},
+      dependencies,
+    );
+
+    expect(response).toEqual({ ok: true, downloadId: 11 });
+    expect(dependencies.exportSessionLineageData).toHaveBeenCalledWith(
+      "lineage_background",
+      "txt",
+      expect.objectContaining({
+        filenamePattern: "{date}_{committee}_{time}",
+        txtExportTimestampsEnabled: true,
+        entryIds: ["entry_background_1"],
+      }),
+    );
   });
 
   it("returns a nonce error when the sender tab is missing", async () => {
@@ -243,6 +330,28 @@ describe("service worker command helpers", () => {
     expect(toDataUrl).not.toHaveBeenCalled();
   });
 
+  it("does not fall back to a data URL when the payload is too large", async () => {
+    const toDataUrl = vi.fn(() => "data:test");
+
+    await expect(
+      downloadExportWithFallback("session.json", "가".repeat(1024 * 1024), "application/json", {
+        requestBlobUrl: vi.fn(async () => {
+          throw new Error("blob unavailable");
+        }),
+        downloadByUrl: vi.fn(async () => 36),
+        persistBlobDownload: vi.fn(async () => undefined),
+        revokeBlobUrl: vi.fn(async () => undefined),
+        toDataUrl,
+        getByteLength: () => 3 * 1024 * 1024,
+        dataUrlFallbackMaxBytes: 2 * 1024 * 1024,
+        createDataUrlFallbackDisabledError: () =>
+          new Error("Data URL fallback disabled for large export"),
+      }),
+    ).rejects.toThrow("Data URL fallback disabled for large export");
+
+    expect(toDataUrl).not.toHaveBeenCalled();
+  });
+
   it("accepts the known background command payload union", () => {
     const commands: BackgroundCommandMessage[] = [
       { type: "OPEN_HISTORY_PAGE" },
@@ -255,6 +364,16 @@ describe("service worker command helpers", () => {
         filename: "session.json",
         content: "{}",
         mimeType: "application/json",
+      },
+      {
+        type: "DOWNLOAD_SESSION_EXPORT",
+        sessionId: "session_1",
+        format: "json",
+      },
+      {
+        type: "DOWNLOAD_SESSION_LINEAGE_EXPORT",
+        lineageId: "lineage_1",
+        format: "json",
       },
     ];
 

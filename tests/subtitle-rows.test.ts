@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   PRIMARY_SPEAKER_COLOR,
   buildObservedSubtitlePreview,
+  countFilteredUnconfirmedSubtitleRows,
   readObservedSubtitleRows,
 } from "../src/content/subtitle-rows";
 
@@ -20,6 +21,7 @@ describe("subtitle row helpers", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]).toMatchObject({
       nodeKey: "class:row_1",
+      nodeKeySource: "class",
       speakerColor: PRIMARY_SPEAKER_COLOR,
       speakerChannel: "primary",
       unstableKey: false,
@@ -38,6 +40,7 @@ describe("subtitle row helpers", () => {
 
     expect(rows).toHaveLength(1);
     expect(rows[0].unstableKey).toBe(true);
+    expect(rows[0].nodeKeySource).toBe("generated");
     expect(rows[0].nodeKey).toContain("row_");
   });
 
@@ -72,5 +75,6 @@ describe("subtitle row helpers", () => {
     });
 
     expect(rows).toHaveLength(0);
+    expect(countFilteredUnconfirmedSubtitleRows(document)).toBe(1);
   });
 });

@@ -3,6 +3,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../src/shared/extension-context";
+import { SESSION_DB_NAME } from "../src/shared/constants";
 import { queueExitPersistRecord } from "../src/storage/persist-recovery";
 import {
   buildSessionLibraryBackupExport,
@@ -10,10 +11,12 @@ import {
   deleteAllSessions,
   deleteSession,
   exportSessionData,
-  filterSessionEntriesByTimeRange,
+  exportSessionLineageData,
   getSessionLibraryOverview,
   importSessionRecords,
   listSessions,
+  listSessionLineagesPage,
+  listSessionLineageSegments,
   listSessionsPage,
   loadSessionsByIds,
   loadSession,
@@ -24,10 +27,15 @@ import {
   SESSION_NOTE_MAX_LENGTH,
   updateSessionContent,
   updateSessionMetadata,
+  updateSessionLineageMetadata,
   upsertSessionRecord,
   updateRunningSession,
 } from "../src/storage/session-store";
 import { SESSION_LIBRARY_TRANSFER_LIMIT_BYTES } from "../src/storage/session-backup";
+import {
+  buildSessionEntryChunkKey,
+  SESSION_ENTRY_CHUNK_STORE_NAME,
+} from "../src/storage/session-store/entry-chunks";
 
 function buildSession(id: string, status: SessionRecord["status"]): SessionRecord {
   return {
@@ -56,6 +64,32 @@ function buildSession(id: string, status: SessionRecord["status"]): SessionRecor
       },
     ],
   };
+}
+
+function deleteIndexedDbEntryChunk(sessionId: string, chunkIndex: number): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const request = indexedDB.open(SESSION_DB_NAME);
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
+    request.onsuccess = () => {
+      const db = request.result;
+      const transaction = db.transaction(SESSION_ENTRY_CHUNK_STORE_NAME, "readwrite");
+      transaction.objectStore(SESSION_ENTRY_CHUNK_STORE_NAME).delete(
+        buildSessionEntryChunkKey(sessionId, chunkIndex),
+      );
+      transaction.oncomplete = () => {
+        db.close();
+        resolve();
+      };
+      transaction.onerror = () => {
+        db.close();
+        reject(transaction.error ?? new Error("IndexedDB transaction failed"));
+      };
+      transaction.onabort = () => {
+        db.close();
+        reject(transaction.error ?? new Error("IndexedDB transaction aborted"));
+      };
+    };
+  });
 }
 
 describe("session store", () => {
@@ -87,6 +121,88 @@ describe("session store", () => {
 
     expect(updated?.status).toBe("running");
     expect(updated?.endedAt).toBeNull();
+  });
+
+  it("normalizes lineage metadata and lists segments in lineage order", async () => {
+    await saveSession(buildSession("session_standalone", "saved"));
+    await saveSession({
+      ...buildSession("session_segment_2", "saved"),
+      lineageId: "lineage_alpha",
+      segmentNumber: 2,
+      startedAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:12:00.000Z",
+    });
+    await saveSession({
+      ...buildSession("session_segment_1", "saved"),
+      lineageId: "lineage_alpha",
+      segmentNumber: 1,
+      startedAt: "2026-03-10T09:00:00.000Z",
+      updatedAt: "2026-03-10T09:05:00.000Z",
+    });
+
+    const standalone = await loadSession("session_standalone");
+    const segments = await listSessionLineageSegments("lineage_alpha");
+
+    expect(standalone?.lineageId).toBe("session_standalone");
+    expect(standalone?.segmentNumber).toBe(1);
+    expect(segments.map((session) => session.id)).toEqual([
+      "session_segment_1",
+      "session_segment_2",
+    ]);
+  });
+
+  it("lists lineage segments without hydrating unrelated session bodies", async () => {
+    await saveSession({
+      ...buildSession("session_target_segment", "saved"),
+      lineageId: "lineage_target",
+      segmentNumber: 1,
+    });
+    await saveSession({
+      ...buildSession("session_unrelated_broken", "saved"),
+      lineageId: "lineage_unrelated",
+      segmentNumber: 1,
+    });
+    await deleteIndexedDbEntryChunk("session_unrelated_broken", 0);
+
+    const segments = await listSessionLineageSegments("lineage_target");
+
+    expect(segments.map((session) => session.id)).toEqual(["session_target_segment"]);
+    expect(segments[0]?.entries).toHaveLength(1);
+  });
+
+  it("lists and updates sessions by lineage summary", async () => {
+    await saveSession({
+      ...buildSession("lineage_summary_1", "saved"),
+      lineageId: "lineage_summary",
+      segmentNumber: 1,
+      subtitleCount: 1,
+      charCount: 8,
+    });
+    await saveSession({
+      ...buildSession("lineage_summary_2", "saved"),
+      lineageId: "lineage_summary",
+      segmentNumber: 2,
+      startedAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:12:00.000Z",
+      subtitleCount: 1,
+      charCount: 8,
+    });
+
+    const page = await listSessionLineagesPage({ page: 1, pageSize: 20 });
+    const summary = page.lineages.find((lineage) => lineage.lineageId === "lineage_summary");
+
+    expect(summary?.segmentCount).toBe(2);
+    expect(summary?.subtitleCount).toBe(2);
+    expect(summary?.sessionIds).toEqual(["lineage_summary_1", "lineage_summary_2"]);
+
+    await updateSessionLineageMetadata("lineage_summary", {
+      starred: true,
+      note: "회의 전체 메모",
+    });
+    const updatedSegments = await listSessionLineageSegments("lineage_summary");
+
+    expect(updatedSegments.every((session) => session.starred)).toBe(true);
+    expect(updatedSegments.every((session) => session.note === "회의 전체 메모")).toBe(true);
   });
 
   it("persists favorites and notes and sorts favorites to the top", async () => {
@@ -705,72 +821,57 @@ describe("session store", () => {
     );
   });
 
-  it("includes TXT speaker and entry notes only when explicitly enabled", async () => {
-    const session: SessionRecord = {
-      ...buildSession("session_export_txt_metadata", "saved"),
-      speakerLabels: { primary: "위원장" },
+  it("exports a full lineage as a merged session in segment order", async () => {
+    await saveSession({
+      ...buildSession("lineage_export", "saved"),
+      title: "국회 본회의",
+      committeeName: "정무위원회",
+      lineageId: "lineage_export",
+      segmentNumber: 1,
       entries: [
         {
-          id: "entry_1",
-          text: "예산안을 상정합니다",
+          id: "entry_segment_1",
+          text: "첫 번째 세그먼트",
           timestamp: "2026-03-10T09:00:01.000Z",
           startTime: "2026-03-10T09:00:01.000Z",
-          endTime: "2026-03-10T09:00:01.000Z",
-          speakerChannel: "primary",
-          highlighted: true,
-          entryNote: "핵심 발언",
-          labels: ["검토"],
+          endTime: "2026-03-10T09:00:02.000Z",
         },
       ],
-    };
-
-    const plain = await exportSessionData(session, "txt");
-    const rich = await exportSessionData(session, "txt", {
-      txtExportSpeakerEnabled: true,
-      txtExportEntryNotesEnabled: true,
+      subtitleCount: 1,
+      charCount: 8,
     });
-
-    expect(plain.content).toBe("예산안을 상정합니다");
-    expect(rich.content).toContain("위원장 예산안을 상정합니다");
-    expect(rich.content).toContain("중요 / 핵심 발언 / 검토");
-  });
-
-  it("filters export entries by time range", async () => {
-    const session: SessionRecord = {
-      ...buildSession("session_export_range", "saved"),
+    await saveSession({
+      ...buildSession("lineage_export_segment_2", "saved"),
+      title: "국회 본회의",
+      committeeName: "정무위원회",
+      startedAt: "2026-03-10T09:10:00.000Z",
+      endedAt: "2026-03-10T09:12:00.000Z",
+      createdAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:12:00.000Z",
+      lineageId: "lineage_export",
+      segmentNumber: 2,
       entries: [
         {
-          id: "entry_1",
-          text: "범위 이전",
-          timestamp: "2026-03-10T09:00:00.000Z",
-          startTime: "2026-03-10T09:00:00.000Z",
-          endTime: "2026-03-10T09:00:01.000Z",
-        },
-        {
-          id: "entry_2",
-          text: "범위 안",
-          timestamp: "2026-03-10T09:05:00.000Z",
-          startTime: "2026-03-10T09:05:00.000Z",
-          endTime: "2026-03-10T09:05:01.000Z",
+          id: "entry_segment_2",
+          text: "두 번째 세그먼트",
+          timestamp: "2026-03-10T09:11:00.000Z",
+          startTime: "2026-03-10T09:11:00.000Z",
+          endTime: "2026-03-10T09:11:02.000Z",
         },
       ],
-    };
-
-    expect(
-      filterSessionEntriesByTimeRange(session.entries, {
-        from: "2026-03-10T09:01:00.000Z",
-        to: "2026-03-10T09:06:00.000Z",
-      })?.map((entry) => entry.text),
-    ).toEqual(["범위 안"]);
-
-    const payload = await exportSessionData(session, "txt", {
-      timeRange: {
-        from: "2026-03-10T09:01:00.000Z",
-        to: "2026-03-10T09:06:00.000Z",
-      },
+      subtitleCount: 1,
+      charCount: 8,
     });
 
-    expect(payload.content).toBe("범위 안");
+    const payload = await exportSessionLineageData("lineage_export", "json");
+    const parsed = JSON.parse(payload.content) as SessionRecord;
+
+    expect(parsed.id).toBe("lineage_export");
+    expect(parsed.entries.map((entry) => entry.id)).toEqual([
+      "entry_segment_1",
+      "entry_segment_2",
+    ]);
+    expect(parsed.subtitleCount).toBe(2);
   });
 
   it("normalizes cumulative carry-over text when persisting sessions", async () => {

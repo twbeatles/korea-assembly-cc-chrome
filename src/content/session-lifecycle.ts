@@ -1,3 +1,4 @@
+import { createContinuedSessionState as createContinuedSessionStateBase } from "../core/session-lineage";
 import {
   cloneState,
   createEmptySessionState,
@@ -21,7 +22,9 @@ export function buildPreparedSessionState(
 ): SessionState {
   void settings;
   void now;
-  return cloneState(state);
+  const preparedState = cloneState(state);
+  preparedState.pendingPreviews = [];
+  return preparedState;
 }
 
 export function buildPreparedSessionRecord(
@@ -35,4 +38,20 @@ export function buildPreparedSessionRecord(
 
 export function createResetSessionState(sourceUrl: string, title: string, committeeName: string): SessionState {
   return createEmptySessionState(sourceUrl, title, committeeName);
+}
+
+export function createContinuedSessionState(
+  currentState: SessionState,
+  sourceUrl: string,
+  title: string,
+  committeeName: string,
+  nowIso = new Date().toISOString(),
+): SessionState {
+  return createContinuedSessionStateBase(
+    currentState,
+    sourceUrl,
+    title,
+    committeeName,
+    nowIso,
+  );
 }

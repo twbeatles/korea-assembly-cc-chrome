@@ -34,8 +34,10 @@ npm run verify:e2e
 manifest.json
 src/
   background/service-worker.ts
+  background/export-content.ts
     content/
       content-script.ts
+      runtime/
       injected-observer.ts
       dom-probe.ts
       panel-live-rows.ts
@@ -44,6 +46,7 @@ src/
       failed-stopped-session.ts
   core/
     live-capture.ts
+    session-lineage.ts
     subtitle-pipeline.ts
     noise-filter.ts
     exporters/
@@ -51,11 +54,13 @@ src/
     capture-diagnostics.ts
   storage/
     session-store.ts
+    session-store/
     session-backup.ts
     settings-store.ts
   popup/
   options/
   history/
+    page-blob-download.ts
 tests/
 README.md
 CLAUDE.md
@@ -78,7 +83,7 @@ offscreen.html
 - stable `nodeKey` 가 잡히면 같은 row 의 보정/완성은 live row 와 마지막 엔트리를 제자리 갱신하고, 새 row 만 commit 후보로 봅니다.
 - stable key 가 없으면 `unstable` 로 간주하고 기존 raw/container fallback 으로 내려갑니다.
 - 실패 시 container text fallback 을 사용합니다.
-- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback 은 raw 누적 원문을 잘라내지 않습니다.
+- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback 은 commit/diff용 내부 raw 누적 원문을 잘라내지 않습니다. UI preview는 URL과 무관하게 짧게 표시해야 합니다.
 
 ### 4.2 프레임 탐색
 
@@ -111,7 +116,7 @@ offscreen.html
 - 동일 raw 유지 시 keepalive 로 마지막 entry 의 `endTime` 만 갱신합니다.
 - `subtitle_reset` 이 오면 grace 이후 live ledger 와 pipeline state 를 함께 완전 리셋합니다.
 - `finalizeSession` 은 현재 state 기준으로 종료 처리합니다.
-- 수동 저장 / export 는 현재 패널에 보이는 확정 `수집된 자막` row 만 직렬화하며, preview-only 텍스트는 저장 대상으로 materialize 하지 않습니다.
+- 수동 저장 / export 는 현재 패널의 `300건` 렌더 window가 아니라 세션의 committed `entries` 전체를 직렬화합니다. fallback preview는 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측된 뒤에만 committed fallback entry로 materialize 됩니다.
 - unload / stop / page-exit 계열 prepared snapshot 생성 경로도 preview-only 텍스트를 clone state entry 로 승격하지 않고, 확정 entry 만 저장합니다.
 - structured row snapshot 안에 stable/unstable row가 섞여 있으면 stable row subset만 commit 대상으로 내려가고, unstable row는 preview-only로 남겨야 합니다.
 
@@ -137,9 +142,8 @@ offscreen.html
 - `SRT`: 세션 시작 기준 상대 시간, `HH:MM:SS,mmm`
 - `VTT`: 세션 시작 기준 상대 시간, `HH:MM:SS.mmm`
 - `JSON`: 세션 전체 복원 가능한 구조
-- `Markdown`: 회의록 템플릿 형태로 제목, 위원회, 일시, URL, 메모, 태그/카테고리, 발언자, 중요 표시, entry note/labels를 포함합니다.
-- `CSV`: `startTime,endTime,speaker,text,highlighted,note,labels` 컬럼과 CSV escaping을 사용합니다.
-- 수동 `saveSession` / `exportSessionData` 경로는 현재 패널에 보이는 확정 `수집된 자막` 목록만 사용하며, preview-only 항목으로 내려가지 않습니다.
+- JSON payload 와 backup/import sanitize 경로는 `lineageId`, `segmentNumber` 를 보존해야 하며, 기존 JSON 에 두 필드가 없으면 기본값 규칙을 적용해야 합니다.
+- 수동 `saveSession` / `exportSessionData` 경로는 세션의 committed `entries` 전체를 사용하며, preview-only 항목으로 내려가지 않습니다.
 - export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
 
 ### 7.2 Session Store
@@ -164,7 +168,8 @@ offscreen.html
 위 CRUD 흐름과 startup cleanup 의미론은 유지해야 합니다.
 
 - record payload version 과 IndexedDB schema version 은 분리해서 관리합니다.
-- 현재 session record schema 는 `version = "4"` 기준이며 `starred`, `pinnedAt`, `note`, `tags`, `category`, `speakerLabels`, `qualityStats` 를 포함합니다. v3 기록은 읽을 때 기본값으로 보정하고 강제 일괄 마이그레이션하지 않습니다.
+- 현재 session record schema 는 `version = "3"` 기준이며 `starred`, `pinnedAt`, `note` 필드를 포함합니다.
+- 현재 IndexedDB schema 는 `5` 기준이며 `lineageId` index 를 포함합니다. migration 은 기존 record 에 `lineageId = id`, `segmentNumber = 1` 기본값을 채워야 합니다.
 - `loadSession`/`listSessions` 는 IndexedDB + fallback 을 함께 읽고 `updatedAt` 기준으로 더 최신 레코드를 고릅니다. 동률이면 IndexedDB 를 우선합니다.
 - 개별 IndexedDB transaction/read/write 실패는 현재 연산만 fallback 으로 우회하고, 런타임 전체 disable 은 open/capability failure 에만 허용됩니다.
 - 성공한 IndexedDB write/delete 는 동일 id fallback copy 를 best-effort 로 정리합니다.
@@ -178,6 +183,7 @@ offscreen.html
 ### 7.3 UX 보강 규칙
 
 - top frame 의 content script 가 우측 패널을 자동으로 삽입합니다.
+- 패널은 지원 사이트의 `main` / `main/` 홈과 `main/player*` 플레이어에 모두 붙지만, 실제 `startCapture()` 는 player 페이지에서만 허용됩니다.
 - 기본 상태는 `펼쳐짐` 이고, 접으면 오른쪽의 `자막 보기` 탭만 남습니다.
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
@@ -197,6 +203,7 @@ offscreen.html
 - history 의 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원해야 합니다. JSON import read phase 와 backup package phase 도 abort-aware 여야 하며, 가져오기 취소는 이미 저장된 부분 완료 레코드를 rollback 하지 않습니다.
 - history 의 전체 삭제 확인은 전체 세션 preload 가 아니라 `정확한 총 건수 + 최대 3건 preview` 기준으로 보여 줘야 합니다.
 - history 의 전체 JSON 백업은 view layer preload 가 아니라 store helper export payload 를 사용해야 합니다.
+- history 의 전체 JSON 백업 다운로드는 page Blob URL helper 를 사용해야 하며, 대형 `content` 문자열을 `DOWNLOAD_REQUEST` 로 service worker 에 보내면 안 됩니다.
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `수집된 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
 - stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
@@ -204,7 +211,7 @@ offscreen.html
 - queue write 실패는 메모리 queue를 지우면 안 되며, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`로 phase별로 남겨야 합니다.
 - capture notice 는 기본 idle 안내만 숨기고, `정상 수집`, `자동 조정 중 수집`, `reset 복구 중`, 수동 클릭 안내, 오류/액션 피드백을 실제 텍스트로 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
 - 패널과 popup 은 `수집 진단` 화면 진입 버튼을 제공하고, 실제 수집 방식(`structured`/`fallback`/`polling`), observer 활성 여부, selector, frame path, 최근 저장 시각, 저장 복구 상태는 options 페이지의 `수집 진단` 탭에서 표시합니다.
-- popup `SAVE_SESSION`은 패널과 같은 `hasPersistableContent` 판정으로만 활성화해야 합니다. 즉 누적 `수집된 자막`이 1건 이상 있을 때만 허용되며, preview-only fallback 은 저장 가능 조건에 포함하지 않습니다. 빈 저장 요청은 패널/popup 모두 `저장할 자막이 아직 없습니다.`로 응답해야 합니다.
+- popup `SAVE_SESSION`은 패널과 같은 `hasPersistableContent` 판정으로만 활성화해야 합니다. 즉 누적 `수집된 자막`이 1건 이상 있을 때만 허용되며, 안정 관측 전 preview-only fallback 은 저장 가능 조건에 포함하지 않습니다. 빈 저장 요청은 패널/popup 모두 `저장할 자막이 아직 없습니다.`로 응답해야 합니다.
 - in-page panel `화면 비우기` 는 `hasPersistableContent` 와 별도 gating 을 사용해야 하며, running 상태이거나 preview/notice 가 남아 있을 때도 수동 reset 을 허용해야 합니다.
 - 자막 자동 활성화 성공은 `visible && (hasText || controlActive)`를 만족할 때만 인정해야 합니다.
 - options 숫자 필드는 canonical number state 와 별도 draft string state 를 유지하고, invalid draft 는 inline field error 로 표시하며 저장을 막아야 합니다.
@@ -216,7 +223,8 @@ offscreen.html
 - Selenium / PyQt 구조를 다시 가져오면 안 됩니다.
 - `legacy/` 는 로컬 참조용 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - storage 실패, observer 실패, frame 접근 실패, selector 미탐색은 크래시 대신 fallback 으로 내려가야 합니다.
-- export 는 `offscreen Blob URL` 우선, 실패 시 `data:` URL fallback 을 유지합니다.
+- export 는 `offscreen Blob URL` 우선이며, 실패 시에도 `data:` URL fallback 은 bounded payload 에서만 허용합니다.
+- offscreen Blob chunk split 은 surrogate pair 를 깨지 않는 code point 안전 방식이어야 합니다.
 - frame forwarding 은 탭 단위 storage-backed nonce 검증을 통과한 메시지만 top frame 에서 수용해야 하며, content script는 주기 재동기화와 mismatch 즉시 resync를 유지해야 합니다.
 - 코드 수정 후 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 확인합니다.
 
@@ -224,6 +232,7 @@ offscreen.html
 
 - 메인 설명: `README.md`
 - 배포 절차: `DEPLOYMENT.md`
+- 장시간 세션 보존/안정성: `CAPTURE_RETENTION_AND_STABILITY.md`
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
 
@@ -235,24 +244,38 @@ When editing this repository, align with the newly implemented behavior below.
 - `importSessionRecords()` 는 incoming `running` 상태를 모두 `saved` 로 정규화합니다.
 - export filename safety sanitize 는 남아 있는 금지 문자를 첫 1회가 아니라 전체 제거해야 합니다.
 - options / storage numeric settings 는 정수만 허용하며, 소수 입력은 저장 불가입니다.
-- 기본 회귀 검증은 `npm run lint`, `npm run typecheck`, `npm run test`, `npm run test:coverage`, `npm run build`, `npm run verify:e2e` 기준으로 유지합니다.
+- 기본 회귀 검증은 `npm run check:version`, `npm run check:injected`, `npm run lint`, `npm run typecheck`, `npm run test`, `npm run build` 기준으로 유지합니다.
+
+## Sync Delta (2026-04-28)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- fallback-only text is conservatively materialized: the same normalized raw must be observed at least twice or remain stable for at least 400ms before it becomes a committed entry with `sourceCaptureMode: "fallback"`.
+- Structured rows remain preferred. When stable structured rows are present, pending fallback candidates must be cleared, and committed structured entries should carry `sourceCaptureMode: "structured"`.
+- 본회의 fallback internal raw is preserved in full for diff/commit recovery, while non-plenary fallback internal raw keeps the 4KB tail cap. UI preview remains short via the `400 chars / 3 lines tail` formatter for both cases.
+- Capture diagnostics must include stable/unstable row counts, filtered unconfirmed count, row key source buckets (`attribute`, `class`, `generated`), and fallback commit state.
+- Content script bootstrap is idempotent across SPA URL transitions. Capture URL changes must stop/persist the current running session before switching observer/polling/autostart state.
+- `ExtensionSettings.segmentPreset` controls segmentation thresholds. Presets are `stability`, `balanced`, `capacity`, and `custom`; direct numeric edits switch to `custom`.
+- History list UX is lineage-first. Star/pin/note/delete/export actions apply to all segments in the selected lineage, while segment detail navigation remains available.
+- Lineage export over the 8 MiB estimate should expose split download using segment file suffixes such as `segment-001`.
+- Release verification includes `check:version` and `check:injected`; `npm run verify` runs those checks before lint/typecheck/test/build. `npm run test:e2e:extension` is the local Chrome extension smoke path.
 
 ## Sync Delta (2026-03-23)
 
 When editing this repository, align with the bug fixes below.
 
 - `ensureSubtitleLayerActive` 반환값이 `layer.visible` 단독 → `layer.visible && (layer.hasText || layer.controlActive)` 로 수정되었습니다. 이 조건은 CLAUDE.md 의 subtitle auto activation 성공 판정 기준과 일치합니다.
-- `saveCurrentSessionSnapshot` / `exportCurrentSession` 은 prepared snapshot 을 그대로 쓰지 않고, 현재 패널에 보이는 `수집된 자막` row 를 우선 직렬화합니다.
-  - row 가 있으면 그 목록이 그대로 저장 / 내보내기 payload 가 됩니다.
-  - row 가 없고 preview 만 있으면 placeholder / noise / duplicate 제거 뒤에도 의미가 남을 때만 현재 `실시간 내용` preview 를 단일 항목으로 저장합니다.
-  - 둘 다 없을 때만 저장 / export 불가 상태로 남습니다.
+- `saveCurrentSessionSnapshot` / `exportCurrentSession` 은 in-page panel 의 가시 row window가 아니라 prepared snapshot 의 committed `entries` 전체를 직렬화합니다.
+  - committed entry 가 1건 이상 있을 때만 저장 / export payload 가 만들어집니다.
+  - fallback `실시간 내용`은 안정 관측 전에는 저장/export 대상으로 승격되지 않으며, 안정 관측 뒤에는 committed fallback entry로 저장/export 대상이 됩니다.
+  - committed entry 가 없으면 저장 / export 불가 상태로 남습니다.
 - popup 버튼 활성화 조건은 `subtitleCount` / `previewText` 단순 판정이 아니라 `hasPersistableContent` 기준으로 통일됩니다.
 
 ## Sync Delta (2026-03-20)
 
 When editing this repository, align with the newly implemented behavior below.
 
-- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback은 `실시간 내용` 누적 원문을 그대로 유지해야 합니다.
+- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback은 commit/diff용 내부 raw 누적 원문을 그대로 유지해야 하며, UI preview는 tail formatter로 짧게 유지해야 합니다.
 - 본회의 fallback capture에서는 structured live row가 비어 있어도 commit된 entry를 `수집된 자막` 목록으로 계속 보여 주어야 합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 noise filter 토글과 무관하게 commit/persist/export 대상에서 제외되어야 합니다.
 
@@ -305,10 +328,11 @@ When editing this repository, align with the current implemented behavior below.
   - live preview/notice use polite live regions
   - live row stream uses log semantics
 - Verification gate for meaningful changes:
+  - `npm run check:version`
+  - `npm run check:injected`
   - `npm run typecheck`
-  - `npm run test:coverage`
-  - `npm run build`
-  - `npm run verify:e2e` (or `npm run verify` for coverage-inclusive release checks)
+  - `npm run test`
+  - `npm run build` (or `npm run verify`)
 
 ## Addendum Closure (2026-03-11)
 
@@ -343,7 +367,7 @@ When editing this repository, align with the newly implemented behavior below.
 - History must use store-level paging through `listSessionsPage({ page, pageSize, starredOnly })`; do not reintroduce full-library preload with an arbitrary cap.
 - Session-library writes/deletes/imports/startup cleanup now bump `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and the history page must live-refresh off that signal.
 - History detail may load a selected session outside the current page, and same-session refreshes must not clobber a dirty note draft.
-- `CAPTURE_STATUS` is now a complete initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`.
+- `CAPTURE_STATUS` is now a complete lightweight initial snapshot for popup/options hydration and must include `subtitleCount`, `charCount`, `previewText`, and `recentEntries`; export estimate calculation must remain opt-in.
 
 ## 2026-03-16 Sync Update
 
@@ -363,9 +387,9 @@ When editing this repository, align with the newly implemented behavior below.
 When editing this repository, align with the newly implemented behavior below.
 
 - `수집된 자막` 목록은 bounded live ledger 와 별개로 세션 전체 누적 committed subtitles 를 보여 주는 뷰입니다. `liveLedgerMaxRows = 300` 은 reconciliation cap 일 뿐 저장/export 기준이 아닙니다.
-- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 누적 `수집된 자막` 목록만 source of truth 로 사용하며, preview-only fallback 은 materialize 하지 않습니다.
+- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 누적 `수집된 자막` 목록만 source of truth 로 사용하며, fallback preview는 안정 관측 뒤에만 materialize 합니다.
 - popup / in-page panel 의 저장 가능 조건은 공통 `hasPersistableContent` 판정으로 통일되며, 이는 committed subtitle 존재 여부만 의미합니다.
-- structured row snapshot에서는 stable row만 commit 이 일어나고, 같은 snapshot 안의 unstable row와 raw/container fallback은 preview 전용입니다.
+- structured row snapshot에서는 stable row만 commit 이 일어나고, 같은 snapshot 안의 unstable row는 preview 전용입니다. raw/container fallback은 안정 관측 정책을 통과한 뒤 fallback entry로 commit 합니다.
 - 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 미확정으로 보고 commit/persist/export 대상에서 제외합니다.
 - `listQueuedExitPersistRecords()` 는 storage snapshot + memory snapshot 을 freshness 기준으로 in-place merge 하며, 동시 queue insert 를 잃지 않아야 합니다.
 - 회의명 파서는 trailing `|` branding 만 제거하고 날짜 / 회차 / 하이픈 텍스트는 유지해야 합니다.
@@ -401,58 +425,29 @@ When editing this repository, align with the newly implemented behavior below.
 - history `원본 페이지 열기`는 단순 non-empty 값이 아니라 supported assembly URL일 때만 활성화/실행해야 하며, 핸들러에서도 같은 검증을 재수행해야 합니다.
 - unconfirmed 필터로 container fallback 이 막힌 경우 `blockedByUnconfirmedFilter` 신호를 유지하고, local polling / top fallback / injected observer 모두 `연속 6회` 차단 시 fallback 을 일시 허용하는 동일 로직을 사용해야 합니다.
 - unconfirmed 차단 streak 는 자막 텍스트를 성공적으로 다시 읽는 즉시 0으로 리셋해야 하며, neutral miss에서는 기존 streak를 보존해야 합니다.
-- container fallback 내부 raw는 비교/복원용으로 `4KB tail cap`을 적용해 보존하고, UI preview는 별도 formatter를 통해 `400자/3줄 tail` 의미론으로만 축약 노출해야 합니다.
+- container fallback 내부 raw는 비교/복원용으로 비본회의는 `4KB tail cap`, 본회의는 full raw로 보존하고, UI preview는 별도 formatter를 통해 `400자/3줄 tail` 의미론으로만 축약 노출해야 합니다.
 - 단일 세션 export 하드 제한은 두지 않으며, runtime message 크기 초과/invalid data URL 계열 실패는 사용자 안내 문구로 매핑해야 합니다.
 - frame-forward nonce mismatch 는 즉시 nonce resync 요청과 빠른 top fallback probe를 함께 트리거해 단기 드롭 구간 복구를 우선해야 합니다.
 
-## Sync Delta (2026-05-07)
+## Sync Delta (2026-04-22)
 
 When editing this repository, align with the newly implemented behavior below.
 
-- `extractIncrementalTextFromHistory()` and `extractIncrementalTextWithRecentHistory()` accept a `recentDuplicateMinLength` argument. `applyPreview()` and `commitLiveRow()` thread `settings.recentDuplicateMinLength` through, so the option is no longer ignored by the pipeline.
-- The recent-history compact length used by the pipeline is `min(settings.maxBufferLength, PIPELINE_DEFAULTS.recentHistoryCompactLength)`, so reducing `maxBufferLength` actually narrows the comparison window.
-- `tryDomSubtitleActivation()` and `injected-observer.ts ensureSubtitleLayerVisible()` no longer set `layer.style.display = "block"`. When no activation control is reachable, the panel falls through to the manual-click notice instead of forcing inline style. `SubtitleActivationResult.method` no longer includes `"layer-style"`.
-- Service-worker `bytesToBase64()` uses `0x8000`-byte chunked `String.fromCharCode(...slice)` accumulation instead of quadratic `+=`.
-- `persistRunningSnapshotForVisibilityChange()` accepts `respectAutoSaveSetting` and respects `runningAutoSaveEnabled` for ordinary `visibilitychange:hidden` snapshots. `pagehide` (genuine exit) and `beforeunload` keep the unconditional final-save behaviour.
-- The top-frame content script handles `visibilitychange:visible` and `pageshow(persisted)` by re-syncing the frame-forward nonce, redispatching the observer config, triggering an immediate top-frame fallback probe, and refreshing the panel.
-- Auto-start cooldown: `stopCapture()` and `clearSessionAndReset()` set a `sessionStorage` marker keyed by `pathname + search`. The bootstrap auto-start branch skips when this marker is present. `startCapture()` clears the marker. New tabs / new player URLs are unaffected.
-- `note` (session memo) is clamped to `SESSION_NOTE_MAX_LENGTH = 4096` characters in both `normalizeSessionRecord` / `applySessionMetadataPatch` paths and the history textarea (`maxLength` + `slice` on `onChange`).
-- A shared `createRandomToken()` helper in `src/shared/random-token.ts` consolidates `crypto.randomUUID` → `crypto.getRandomValues` → `Date.now() + Math.random()` fallbacks for nonces / IDs.
-- The startup persistence maintenance path is coalesced inside the service worker so `chrome.runtime.onStartup` and `chrome.runtime.onInstalled` firing back-to-back do not run cleanup twice.
-- Settings change handler resets `localPollingUnconfirmedFallbackBlockStreak` / `topFallbackUnconfirmedFallbackBlockStreak` when `filterUnconfirmedEnabled` flips, and `topFallbackMissStreak` when `pollingFallbackIntervalMs` changes.
-- Capture notice: `resolveRuntimeCaptureNotice()` accepts an optional `unconfirmedFallbackBlockStreak`. When the streak reaches `UNCONFIRMED_STALL_HINT_THRESHOLD = 3`, the panel surfaces `UNCONFIRMED_STALL_HINT_NOTICE` instead of generic capture-running copy.
-- `mapDownloadErrorMessage()` now also maps `quota` / `disk full` / `insufficient_resources` to a storage-space guidance, and the single-session size guidance points users at the `저장된 기록` partial-save flow with explicit navigation hints.
-- The history page registers a `beforeunload` guard while the session-note draft is dirty so accidental tab close prompts a confirmation.
-- `subtitle:health` events refresh `state.sourceUrl` / `state.title` / `state.committeeName` so SPA-like in-page navigation keeps cached metadata fresh even before the next `subtitle:update`.
-- Service-worker Blob download cleanup tracks Blob URLs created during the current SW generation. URLs restored from storage skip the now-pointless `OFFSCREEN_REVOKE_BLOB_URL` round-trip.
-- `injected-observer.ts ensureSubtitleLayerVisible()` re-checks `isSubtitleLayerVisible()` after each activation primitive. Successful invocation alone is no longer treated as success — the layer must actually become visible.
-- `service-worker-commands.handleBackgroundCommand()` rejects messages whose `sender.id` does not match `chrome.runtime.id`.
+- content script/panel 은 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 로드됩니다. 홈(`main`/`main/`)에서는 패널/진단 UI만 바로 보이고, 실제 capture start 는 player 페이지에서만 허용됩니다.
+- runtime segmentation threshold(`maxEntriesPerSegment`, `maxCharsPerSegment`, `maxSegmentDurationMinutes`) 는 settings 로 저장되며 options 숫자 필드와 storage sanitize 최소값 정책을 공유합니다.
+- options `수집 진단`은 `GET_DIAGNOSTICS_STATUS` 로 연결해 현재 segment threshold 사용량과 TXT/SRT/VTT/JSON 예상 export 크기를 계산해 노출합니다. popup/panel 기본 `CAPTURE_STATUS` 에서는 예상 export 크기를 계산하지 않습니다.
+- lineage 전체 보기/export 는 history 와 background 조립 경로를 통해 동작하며, single-session / lineage export 모두 대형 본문을 content 쪽 runtime message 로 직접 보내지 않습니다.
+- 매우 큰 export 는 offscreen Blob chunk 경로를 우선 사용하고, lineage export 는 segment별 분할 저장 액션을 제공해야 합니다. `data:` fallback 이 비현실적인 크기에서는 명시적 large-export 오류로 중단해야 합니다.
 
-## Sync Delta (2026-05-03)
+## Sync Delta (2026-04-27)
 
 When editing this repository, align with the newly implemented behavior below.
 
-- `SessionState` must not include `pendingPreviews`, and save/export/pagehide/stop prepared snapshots must never materialize preview-only text into committed entries.
-- Fallback UI preview must use the same `400자/3줄 tail` display policy for plenary and committee pages. Internal fallback raw used for comparison/recovery keeps the `4KB tail` policy.
-- Single-session export has no hard block, but payloads over `8 MiB` must ask for user confirmation before the download request. The warning must mention browser message limits and the saved-history partial export alternative.
-- Download error mapping must distinguish single-session export, history partial export, full-library backup/import, and generic contexts.
-- `listSessionsPage({ page, pageSize, starredOnly })` must avoid full IndexedDB preload when fallback records exist. Merge all fallback records with only the needed IndexedDB window/id lookups, and preserve `starred first -> pinnedAt || updatedAt desc -> updatedAt desc -> id` ordering.
-- Unconfirmed fallback streaks in the top content script are separated between `localPolling` and `topFallback`; each path may relax container fallback only after its own `6` consecutive blocked probes. Stable commits or successful text reads reset the related streak.
-- `PersistReplayDiagnostics` includes the last page-exit persist attempt timestamp, session id, entry count, and error. Options must show those page-exit diagnostics in the storage recovery state.
-- Temporary functional review documents are not part of the tracked documentation set; keep `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, and `CODEBASE_AUDIT.md` as the current implementation references.
-
-## Sync Delta (2026-05-10)
-
-Use this delta for the v1.1-v1.4 enhancement implementation.
-
-- `SESSION_RECORD_VERSION` is `4`. Legacy v3 records are normalized on read/import, not force-migrated in bulk.
-- `SessionRecord` supports `tags`, `category`, `speakerLabels`, and `qualityStats`; `SubtitleEntry` supports `originalText`, `highlighted`, `entryNote`, `labels`, `speakerLabel`, and `sourceEntryIds`.
-- Store APIs now include `searchSessions({ query, starredOnly, tag, category, page, pageSize })` and `updateSessionContent(sessionId, patch)`. Entry edits must recalculate `subtitleCount`, `charCount`, and `updatedAt` centrally.
-- Search/copy/export use edited `entry.text` by default. Preserve the first edited value in `originalText`; merge/split operations must keep source ids.
-- Export formats include `md` and `csv`; TXT behavior remains the compatibility baseline.
-- P1 history editing includes inline `speakerLabel`, `entryNote`, and `labels`; TXT speaker/entry metadata output is controlled by settings and defaults to off.
-- Highlight-only export and time-range export are local-only partial export flows. Time-range filtering uses `startTime || timestamp` and does not split the stored session.
-- The in-page panel can mark only the latest committed entry as highlighted; preview-only text must never become a highlighted entry.
-- Capture diagnostics expose `good | warning | unstable` health, shared persistability wording, UTF-8 size estimates, and size warnings.
-- Options presets are local-only and only accept supported Assembly player URLs. Do not implement automatic `xcode -> xcgcd` completion.
-- Side panel is experimental. Keep the in-page panel as the default UI and avoid adding any broader host permissions or external AI/network transfer.
+- JSON single-session export, backup sanitize, and import clone paths preserve `lineageId` and `segmentNumber`; older JSON without those fields remains importable.
+- IndexedDB schema `5` adds a `lineageId` index, and migrations must fill lineage defaults for existing records.
+- `listSessionLineageSegments()` should query and hydrate only the target lineage records. Fallback-aware page listing should calculate pages from metadata first and hydrate only the current page.
+- Full-library JSON backup downloads must be started from the history page Blob URL helper, not via a large `DOWNLOAD_REQUEST.content` runtime message.
+- `GET_DIAGNOSTICS_STATUS` is the only status request that should include TXT/SRT/VTT/JSON export estimates. Popup and panel status snapshots stay lightweight.
+- `pendingPreviews` must be dropped from prepared session snapshots and must never be materialized into saved/exported entries.
+- Offscreen Blob content chunking must remain surrogate-pair safe.
+- Supported home URLs include both `/main` and `/main/` for both Assembly webcast hosts.

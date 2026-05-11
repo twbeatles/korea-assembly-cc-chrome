@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { SessionRecord } from "../src/core/subtitle-models";
 import { SESSION_LIBRARY_REVISION_STORAGE_KEY } from "../src/shared/constants";
 import type { SessionRecord, SubtitleEntry } from "../src/core/subtitle-models";
 import { SESSION_LIBRARY_TRANSFER_LIMIT_BYTES } from "../src/storage/session-backup";
@@ -17,6 +18,10 @@ const chromeApiMocks = vi.hoisted(() => ({
   sendRuntimeMessage: vi.fn(),
 }));
 
+const pageBlobDownloadMocks = vi.hoisted(() => ({
+  downloadPageBlobExport: vi.fn(),
+}));
+
 const settingsStoreMocks = vi.hoisted(() => ({
   getSettings: vi.fn(),
 }));
@@ -24,21 +29,25 @@ const settingsStoreMocks = vi.hoisted(() => ({
 const sessionStoreMocks = vi.hoisted(() => ({
   buildSessionLibraryBackupExport: vi.fn(),
   deleteAllSessions: vi.fn(),
+  deleteSessionLineage: vi.fn(),
   deleteSession: vi.fn(),
   exportSessionData: vi.fn(),
   filterSessionEntriesByTimeRange: vi.fn(() => undefined),
   getSessionLibraryOverview: vi.fn(),
   importSessionRecords: vi.fn(),
+  listSessionLineagesPage: vi.fn(),
+  listSessionLineageSegments: vi.fn(),
   listSessionsPage: vi.fn(),
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
   searchSessions: vi.fn(),
   updateSessionContent: vi.fn(),
   updateSessionMetadata: vi.fn(),
-  SESSION_NOTE_MAX_LENGTH: 4096,
+  updateSessionLineageMetadata: vi.fn(),
 }));
 
 vi.mock("../src/shared/chrome-api", () => chromeApiMocks);
+vi.mock("../src/history/page-blob-download", () => pageBlobDownloadMocks);
 vi.mock("../src/storage/settings-store", () => settingsStoreMocks);
 vi.mock("../src/storage/session-store", () => sessionStoreMocks);
 
@@ -58,7 +67,7 @@ function createDeferred<T>() {
   };
 }
 
-function buildSession(overrides: Partial<SessionRecord> = {}): SessionRecord {
+function buildSession(overrides: Partial<SessionRecord> = {}) {
   return {
     ...buildSessionBase(),
     ...overrides,
@@ -91,6 +100,29 @@ function buildSessionBase(): SessionRecord {
         endTime: "2026-03-10T09:00:02.000Z",
       },
     ],
+  };
+}
+
+function buildLineageSummary(session: SessionRecord) {
+  const lineageId = session.lineageId ?? session.id;
+  return {
+    lineageId,
+    representativeSessionId: session.id,
+    title: session.title,
+    committeeName: session.committeeName,
+    sourceUrl: session.sourceUrl,
+    startedAt: session.startedAt,
+    endedAt: session.endedAt,
+    updatedAt: session.updatedAt,
+    segmentCount: 1,
+    subtitleCount: session.subtitleCount,
+    charCount: session.charCount,
+    status: session.status,
+    starred: session.starred,
+    pinnedAt: session.pinnedAt,
+    note: session.note,
+    sessionIds: [session.id],
+    representativeSession: session,
   };
 }
 
@@ -129,9 +161,13 @@ describe("history app", () => {
 
     settingsStoreMocks.getSettings.mockResolvedValue({
       autoScroll: true,
+      segmentPreset: "balanced",
       keepaliveIntervalMs: 1000,
       pollingFallbackIntervalMs: 200,
       maxBufferLength: 50000,
+      maxEntriesPerSegment: 2000,
+      maxCharsPerSegment: 120000,
+      maxSegmentDurationMinutes: 90,
       noiseFilterEnabled: true,
       recentDuplicateMinLength: 8,
       filenamePattern: "{date}_{committee}_{time}",
@@ -147,6 +183,12 @@ describe("history app", () => {
     });
 
     const session = buildSession();
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(session)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.listSessionsPage.mockResolvedValue({
       sessions: [session],
       totalCount: 1,
@@ -154,8 +196,9 @@ describe("history app", () => {
       pageSize: 200,
     });
     sessionStoreMocks.loadSession.mockResolvedValue(session);
-    sessionStoreMocks.loadSessionsByIds.mockImplementation(
-      async (ids: string[]) => (ids.includes(session.id) ? [session] : []),
+    sessionStoreMocks.listSessionLineageSegments.mockResolvedValue([session]);
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
+      ids.includes(session.id) ? [session] : [],
     );
     sessionStoreMocks.getSessionLibraryOverview.mockResolvedValue({
       totalCount: 1,
@@ -169,6 +212,7 @@ describe("history app", () => {
       ],
     });
     sessionStoreMocks.deleteAllSessions.mockResolvedValue(undefined);
+    sessionStoreMocks.deleteSessionLineage.mockResolvedValue(undefined);
     sessionStoreMocks.buildSessionLibraryBackupExport.mockResolvedValue({
       sessionCount: 1,
       payload: {
@@ -179,23 +223,9 @@ describe("history app", () => {
       },
     });
     sessionStoreMocks.updateSessionMetadata.mockResolvedValue(session);
-    sessionStoreMocks.updateSessionContent.mockImplementation(
-      async (_sessionId: string, patch: SessionContentPatch) => {
-        const entries = patch.entries ?? session.entries;
-        return {
-          ...session,
-          ...patch,
-          entries,
-          subtitleCount: entries.length,
-          charCount: entries.reduce(
-            (total: number, entry: SubtitleEntry) => total + entry.text.length,
-            0,
-          ),
-          updatedAt: "2026-03-10T09:00:04.000Z",
-        };
-      },
-    );
+    sessionStoreMocks.updateSessionLineageMetadata.mockResolvedValue([session]);
     chromeApiMocks.sendRuntimeMessage.mockResolvedValue({ ok: true });
+    pageBlobDownloadMocks.downloadPageBlobExport.mockResolvedValue(101);
   });
 
   it("shows a user-facing error when reopening the source page fails", async () => {
@@ -220,6 +250,12 @@ describe("history app", () => {
       page: 1,
       pageSize: 200,
     });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
+      lineages: [buildLineageSummary(unsupportedSession)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.loadSession.mockResolvedValueOnce(unsupportedSession);
     sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(
       async (ids: string[]) =>
@@ -236,10 +272,124 @@ describe("history app", () => {
     expect(chromeApiMocks.createTab).not.toHaveBeenCalled();
   });
 
-  it("shows a user-facing error when exporting fails", async () => {
-    sessionStoreMocks.exportSessionData.mockRejectedValueOnce(
-      new Error("export failed"),
+  it("shows a segment badge for segmented session records", async () => {
+    const segmentedSession = buildSession({
+      id: "session_segmented_2",
+      lineageId: "lineage_segmented",
+      segmentNumber: 2,
+    });
+    sessionStoreMocks.listSessionsPage.mockResolvedValueOnce({
+      sessions: [segmentedSession],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
+      lineages: [buildLineageSummary(segmentedSession)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValueOnce(segmentedSession);
+    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
+      ids.includes(segmentedSession.id) ? [segmentedSession] : [],
     );
+
+    render(<App />);
+
+    const badges = await screen.findAllByText("세그먼트 2");
+    expect(badges.length).toBeGreaterThan(0);
+  });
+
+  it("switches to lineage-wide export when the merged lineage view is enabled", async () => {
+    const segmentOne = buildSession({
+      id: "lineage_history",
+      title: "국회 본회의",
+      committeeName: "정무위원회",
+      lineageId: "lineage_history",
+      segmentNumber: 1,
+      entries: [
+        {
+          id: "entry_segment_1",
+          text: "첫 번째 세그먼트",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 9,
+    });
+    const segmentTwo = buildSession({
+      id: "lineage_history_2",
+      title: "국회 본회의",
+      committeeName: "정무위원회",
+      startedAt: "2026-03-10T09:10:00.000Z",
+      endedAt: "2026-03-10T09:12:00.000Z",
+      createdAt: "2026-03-10T09:10:00.000Z",
+      updatedAt: "2026-03-10T09:12:00.000Z",
+      lineageId: "lineage_history",
+      segmentNumber: 2,
+      entries: [
+        {
+          id: "entry_segment_2",
+          text: "두 번째 세그먼트",
+          timestamp: "2026-03-10T09:11:00.000Z",
+          startTime: "2026-03-10T09:11:00.000Z",
+          endTime: "2026-03-10T09:11:02.000Z",
+        },
+      ],
+      subtitleCount: 1,
+      charCount: 9,
+    });
+
+    sessionStoreMocks.listSessionsPage.mockResolvedValueOnce({
+      sessions: [segmentOne, segmentTwo],
+      totalCount: 2,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
+      lineages: [
+        {
+          ...buildLineageSummary(segmentTwo),
+          lineageId: "lineage_history",
+          representativeSessionId: segmentOne.id,
+          representativeSession: segmentOne,
+          segmentCount: 2,
+          subtitleCount: 2,
+          charCount: 18,
+          sessionIds: [segmentOne.id, segmentTwo.id],
+        },
+      ],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValueOnce(segmentOne);
+    sessionStoreMocks.listSessionLineageSegments.mockResolvedValueOnce([segmentOne, segmentTwo]);
+    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
+      [segmentOne, segmentTwo].filter((session) => ids.includes(session.id)),
+    );
+
+    render(<App />);
+
+    await screen.findByRole("button", { name: "현재 세그먼트 보기" });
+    fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
+
+    await waitFor(() => {
+      expect(chromeApiMocks.sendRuntimeMessage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "DOWNLOAD_SESSION_LINEAGE_EXPORT",
+          lineageId: "lineage_history",
+          format: "txt",
+        }),
+      );
+    });
+  });
+
+  it("shows a user-facing error when exporting fails", async () => {
+    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(new Error("export failed"));
 
     render(<App />);
     await screen.findByRole("button", { name: "텍스트(TXT)" });
@@ -251,12 +401,6 @@ describe("history app", () => {
   });
 
   it("maps oversized download request errors to a user-facing export message", async () => {
-    sessionStoreMocks.exportSessionData.mockResolvedValueOnce({
-      filename: "session.txt",
-      format: "txt",
-      mimeType: "text/plain;charset=utf-8",
-      content: "본문",
-    });
     chromeApiMocks.sendRuntimeMessage.mockResolvedValueOnce({
       ok: false,
       error: "Message length exceeded",
@@ -277,24 +421,19 @@ describe("history app", () => {
   });
 
   it("passes the TXT timestamp setting through when exporting", async () => {
-    sessionStoreMocks.exportSessionData.mockResolvedValueOnce({
-      filename: "session.txt",
-      format: "txt",
-      mimeType: "text/plain;charset=utf-8",
-      content: "본문",
-    });
-
     render(<App />);
     await screen.findByRole("button", { name: "텍스트(TXT)" });
     fireEvent.click(screen.getByRole("button", { name: "텍스트(TXT)" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.exportSessionData).toHaveBeenCalledWith(
-        expect.objectContaining({ id: "session_history_1" }),
-        "txt",
+      expect(chromeApiMocks.sendRuntimeMessage).toHaveBeenCalledWith(
         expect.objectContaining({
+          type: "DOWNLOAD_SESSION_EXPORT",
+          sessionId: "session_history_1",
+          format: "txt",
           filenamePattern: "{date}_{committee}_{time}",
           txtExportTimestampsEnabled: false,
+          entryIds: undefined,
         }),
       );
     });
@@ -317,12 +456,15 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "전체 JSON 백업" }));
 
     await waitFor(() => {
-      expect(
-        sessionStoreMocks.buildSessionLibraryBackupExport,
-      ).toHaveBeenCalled();
-      expect(chromeApiMocks.sendRuntimeMessage).toHaveBeenCalledWith(
+      expect(sessionStoreMocks.buildSessionLibraryBackupExport).toHaveBeenCalled();
+      expect(pageBlobDownloadMocks.downloadPageBlobExport).toHaveBeenCalledWith(
         expect.objectContaining({
           filename: "backup.json",
+        }),
+      );
+      expect(chromeApiMocks.sendRuntimeMessage).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "DOWNLOAD_REQUEST",
         }),
       );
     });
@@ -559,7 +701,7 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "즐겨찾기 추가" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.updateSessionMetadata).toHaveBeenCalledWith(
+      expect(sessionStoreMocks.updateSessionLineageMetadata).toHaveBeenCalledWith(
         "session_history_1",
         expect.objectContaining({
           starred: true,
@@ -576,7 +718,7 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "메모 저장" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.updateSessionMetadata).toHaveBeenCalledWith(
+      expect(sessionStoreMocks.updateSessionLineageMetadata).toHaveBeenCalledWith(
         "session_history_1",
         expect.objectContaining({
           note: "새 메모",
@@ -595,12 +737,17 @@ describe("history app", () => {
     expect(noteInput).not.toBeNull();
     fireEvent.change(noteInput!, { target: { value: "draft note" } });
 
-    sessionStoreMocks.loadSession.mockResolvedValueOnce(
-      buildSession({
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
+      lineages: [
+        buildLineageSummary(buildSession({
         note: "saved note",
         updatedAt: "2026-03-10T09:00:10.000Z",
-      }),
-    );
+        })),
+      ],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
 
     act(() => {
       storageListeners.forEach((listener) =>
@@ -617,7 +764,7 @@ describe("history app", () => {
     });
 
     await waitFor(() => {
-      expect(sessionStoreMocks.listSessionsPage).toHaveBeenCalledTimes(2);
+      expect(sessionStoreMocks.listSessionLineagesPage).toHaveBeenCalledTimes(2);
     });
     expect(noteInput?.value).toBe("draft note");
   });
@@ -646,6 +793,12 @@ describe("history app", () => {
 
     sessionStoreMocks.listSessionsPage.mockImplementation(async () => ({
       sessions: [starredSession],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    }));
+    sessionStoreMocks.listSessionLineagesPage.mockImplementation(async () => ({
+      lineages: [buildLineageSummary(starredSession)],
       totalCount: 1,
       page: 1,
       pageSize: 200,

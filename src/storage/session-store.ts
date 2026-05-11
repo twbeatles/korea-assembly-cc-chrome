@@ -1,15 +1,15 @@
-import { exportJson } from "../core/exporters/json";
-import { exportCsv } from "../core/exporters/csv";
-import { exportMarkdown } from "../core/exporters/markdown";
-import { normalizeSessionForExport } from "../core/exporters/normalize-session";
 import { normalizeEntriesForOutput } from "../core/output-normalizer";
-import { exportSrt } from "../core/exporters/srt";
-import { exportTxt } from "../core/exporters/txt";
-import { exportVtt } from "../core/exporters/vtt";
+import {
+  resolveSessionLineageId,
+  resolveSessionSegmentNumber,
+} from "../core/subtitle-models";
+import {
+  mergeSessionSegments,
+  sortSessionSegments,
+} from "../core/session-lineage";
 import {
   cloneSessionRecord,
   getSessionCharCount,
-  withSessionEntries,
   type ExportFormat,
   type SessionRecord,
   type SpeakerChannel,
@@ -17,7 +17,6 @@ import {
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../core/subtitle-models";
-import { buildExportFilename } from "../core/timeline";
 import {
   clearQueuedExitPersistRecord,
   clearQueuedExitPersistRecordsUpTo,
@@ -32,10 +31,7 @@ import {
   resetExtensionContextInvalidationForTests,
 } from "../shared/extension-context";
 import {
-  assertSessionLibraryTransferSizeWithinLimit,
   buildSessionBackupFilename,
-  SESSION_BACKUP_KIND,
-  SESSION_BACKUP_VERSION,
 } from "./session-backup";
 import { getUtf8ByteLength } from "../shared/byte-size";
 import { createRandomToken } from "../shared/random-token";
@@ -64,11 +60,29 @@ import type {
   SessionImportSummary,
   SessionLibraryOverview,
   SessionLibraryPreview,
+  SessionLineagePageResult,
+  SessionLineageSummary,
   SessionListOptions,
   SessionPageOptions,
   SessionPageResult,
   StartupCleanupSummary,
 } from "./types";
+import {
+  buildSessionEntryChunkKey,
+  buildSessionEntryChunks,
+  getChunkDigests,
+  hasChunkedSessionEntries,
+  hydrateChunkedSessionRecord,
+  SESSION_ENTRY_CHUNK_INDEX_NAME,
+  SESSION_ENTRY_CHUNK_SIZE,
+  SESSION_ENTRY_CHUNK_STORE_NAME,
+  stripSessionEntries,
+  toEntrylessSessionRecord,
+  type ChunkedSessionMetadataRecord,
+  type SessionEntryChunkRecord,
+} from "./session-store/entry-chunks";
+import { stringifySessionBackupBundleIncrementally } from "./session-store/backup-bundle";
+import { createSessionExportPayload } from "./session-store/export-payload";
 
 const LEGACY_FALLBACK_STORAGE_KEY = "assembly-subtitle-session-fallback";
 const FALLBACK_INDEX_STORAGE_KEY = "assembly-subtitle-session-fallback:index";
@@ -133,7 +147,7 @@ interface SourcedSessionRecord {
   record: SessionRecord;
 }
 
-interface IndexedDbSessionRecord extends SessionRecord {
+interface IndexedDbSessionRecord extends ChunkedSessionMetadataRecord {
   starredIndexKey: 0 | 1;
   sortKey: string;
 }
@@ -179,11 +193,105 @@ function logStoreError(message: string, error?: unknown): void {
 }
 
 function toIndexedDbRecord(record: SessionRecord): IndexedDbSessionRecord {
+  const metadata = stripSessionEntries(record);
   return {
-    ...cloneSessionRecord(record),
+    ...metadata,
     starredIndexKey: record.starred ? 1 : 0,
     sortKey: buildSessionSortKey(record),
   };
+}
+
+function readChunkRecordsBySessionId(
+  chunkStore: IDBObjectStore,
+  sessionId: string,
+): Promise<SessionEntryChunkRecord[]> {
+  return new Promise<SessionEntryChunkRecord[]>((resolve, reject) => {
+    const index = chunkStore.index(SESSION_ENTRY_CHUNK_INDEX_NAME);
+    const request = index.openCursor(
+      IDBKeyRange.bound([sessionId, 0], [sessionId, Number.MAX_SAFE_INTEGER]),
+      "next",
+    );
+    const chunks: SessionEntryChunkRecord[] = [];
+
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve(chunks);
+        return;
+      }
+
+      chunks.push(cursor.value as SessionEntryChunkRecord);
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB chunk read failed"));
+  });
+}
+
+function writeChunkedSessionRecord(
+  chunkStore: IDBObjectStore,
+  metadataRecord: IndexedDbSessionRecord,
+  chunks: SessionEntryChunkRecord[],
+  previousMetadataRecord?: Partial<IndexedDbSessionRecord>,
+): Promise<void> {
+  const previousChunkDigests = getChunkDigests(previousMetadataRecord ?? {});
+  const previousChunkCount =
+    typeof previousMetadataRecord?.entryChunkCount === "number" &&
+    previousMetadataRecord.entryChunkCount >= 0
+      ? previousMetadataRecord.entryChunkCount
+      : 0;
+
+  return Promise.all([
+    ...chunks.flatMap((chunk, chunkIndex) =>
+      previousChunkDigests[chunkIndex] === chunk.digest
+        ? []
+        : [withRequest(chunkStore.put(chunk))],
+    ),
+    ...Array.from(
+      { length: Math.max(0, previousChunkCount - chunks.length) },
+      (_value, index) =>
+        withRequest(
+          chunkStore.delete(
+            buildSessionEntryChunkKey(metadataRecord.id, chunks.length + index),
+          ),
+        ),
+    ),
+  ]).then(() => undefined);
+}
+
+async function hydrateIndexedDbSessionRecord(
+  metadataRecord: IndexedDbSessionRecord,
+  chunkStore: IDBObjectStore,
+): Promise<SessionRecord> {
+  if (!hasChunkedSessionEntries(metadataRecord)) {
+    return normalizeSessionRecord(metadataRecord as StoredSessionRecord, {
+      preserveTimestamps: true,
+    });
+  }
+
+  const chunks = await readChunkRecordsBySessionId(chunkStore, metadataRecord.id);
+  if (chunks.length !== metadataRecord.entryChunkCount) {
+    throw new Error(`Session chunk count mismatch for ${metadataRecord.id}`);
+  }
+
+  return normalizeSessionRecord(
+    hydrateChunkedSessionRecord(metadataRecord, chunks),
+    {
+      preserveTimestamps: true,
+      forceStatus: metadataRecord.status,
+    },
+  );
+}
+
+function normalizeIndexedDbSessionMetadataRecord(
+  record: IndexedDbSessionRecord,
+): SessionRecord {
+  return normalizeSessionRecord(
+    toEntrylessSessionRecord(record),
+    {
+      preserveTimestamps: true,
+      forceStatus: record.status,
+    },
+  );
 }
 
 function buildSessionSortKey(
@@ -273,6 +381,88 @@ async function withTransaction<T>(
   });
 }
 
+interface SessionStoreTransactionStores {
+  sessionStore: IDBObjectStore;
+  chunkStore: IDBObjectStore;
+}
+
+async function withSessionStoresTransaction<T>(
+  mode: IDBTransactionMode,
+  callback: (stores: SessionStoreTransactionStores) => Promise<T>,
+): Promise<T> {
+  const db = await openDb();
+  return new Promise<T>((resolve, reject) => {
+    const transaction = db.transaction(
+      [SESSION_STORE_NAME, SESSION_ENTRY_CHUNK_STORE_NAME],
+      mode,
+    );
+    const stores: SessionStoreTransactionStores = {
+      sessionStore: transaction.objectStore(SESSION_STORE_NAME),
+      chunkStore: transaction.objectStore(SESSION_ENTRY_CHUNK_STORE_NAME),
+    };
+    let settled = false;
+    let transactionCompleted = false;
+    let callbackCompleted = false;
+    let callbackResult: T | undefined;
+    let callbackError: unknown;
+
+    const rejectOnce = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error instanceof Error ? error : new Error("IndexedDB transaction failed"));
+    };
+
+    const resolveIfReady = (): void => {
+      if (settled || !transactionCompleted || !callbackCompleted) {
+        return;
+      }
+      settled = true;
+      resolve(callbackResult as T);
+    };
+
+    transaction.oncomplete = () => {
+      transactionCompleted = true;
+      if (callbackError) {
+        rejectOnce(callbackError);
+        return;
+      }
+      resolveIfReady();
+    };
+    transaction.onerror = () =>
+      rejectOnce(transaction.error ?? new Error("IndexedDB transaction failed"));
+    transaction.onabort = () =>
+      rejectOnce(transaction.error ?? callbackError ?? new Error("IndexedDB transaction aborted"));
+
+    try {
+      void callback(stores)
+        .then((result) => {
+          callbackResult = result;
+          callbackCompleted = true;
+          resolveIfReady();
+        })
+        .catch((error) => {
+          callbackError = error;
+          try {
+            transaction.abort();
+          } catch {
+            // Ignore abort errors if the transaction already completed.
+          }
+          rejectOnce(error);
+        });
+    } catch (error) {
+      callbackError = error;
+      try {
+        transaction.abort();
+      } catch {
+        // Ignore abort errors if the transaction already completed.
+      }
+      rejectOnce(error);
+    }
+  });
+}
+
 function disableIndexedDb(): void {
   indexedDbAvailable = false;
   dbPromise = null;
@@ -299,7 +489,13 @@ function openDb(): Promise<IDBDatabase> {
         const store = db.objectStoreNames.contains(SESSION_STORE_NAME)
           ? request.transaction?.objectStore(SESSION_STORE_NAME)
           : db.createObjectStore(SESSION_STORE_NAME, { keyPath: "id" });
+        const chunkStore = db.objectStoreNames.contains(SESSION_ENTRY_CHUNK_STORE_NAME)
+          ? request.transaction?.objectStore(SESSION_ENTRY_CHUNK_STORE_NAME)
+          : db.createObjectStore(SESSION_ENTRY_CHUNK_STORE_NAME, { keyPath: "id" });
         if (!store) {
+          return;
+        }
+        if (!chunkStore) {
           return;
         }
         if (!store.indexNames.contains("updatedAt")) {
@@ -314,6 +510,12 @@ function openDb(): Promise<IDBDatabase> {
         if (!store.indexNames.contains("paging")) {
           store.createIndex("paging", "sortKey");
         }
+        if (!store.indexNames.contains("lineageId")) {
+          store.createIndex("lineageId", "lineageId");
+        }
+        if (!chunkStore.indexNames.contains(SESSION_ENTRY_CHUNK_INDEX_NAME)) {
+          chunkStore.createIndex(SESSION_ENTRY_CHUNK_INDEX_NAME, ["sessionId", "chunkIndex"]);
+        }
 
         const cursorRequest = store.openCursor();
         cursorRequest.onsuccess = () => {
@@ -323,11 +525,16 @@ function openDb(): Promise<IDBDatabase> {
           }
 
           const value = cursor.value as Partial<IndexedDbSessionRecord>;
+          const sessionId = typeof value.id === "string" ? value.id : "";
           const expectedStarredIndexKey = value.starred ? 1 : 0;
+          const expectedLineageId = sessionId
+            ? resolveSessionLineageId(sessionId, value.lineageId)
+            : value.lineageId;
+          const expectedSegmentNumber = resolveSessionSegmentNumber(value.segmentNumber);
           const expectedSortKey =
-            typeof value.id === "string" && typeof value.updatedAt === "string"
+            sessionId && typeof value.updatedAt === "string"
               ? buildSessionSortKey({
-                  id: value.id,
+                  id: sessionId,
                   starred: Boolean(value.starred),
                   pinnedAt: typeof value.pinnedAt === "string" ? value.pinnedAt : null,
                   updatedAt: value.updatedAt,
@@ -335,11 +542,15 @@ function openDb(): Promise<IDBDatabase> {
               : "";
           if (
             value.starredIndexKey !== expectedStarredIndexKey ||
-            value.sortKey !== expectedSortKey
+            value.sortKey !== expectedSortKey ||
+            value.lineageId !== expectedLineageId ||
+            value.segmentNumber !== expectedSegmentNumber
           ) {
             cursor.update({
               ...value,
               starredIndexKey: expectedStarredIndexKey,
+              lineageId: expectedLineageId,
+              segmentNumber: expectedSegmentNumber,
               sortKey: expectedSortKey,
             });
           }
@@ -397,10 +608,9 @@ function normalizeSessionRecord(
       : starred
         ? updatedAt
         : null;
-  const note = clampSessionNote(typeof session.note === "string" ? session.note : "");
-  const tags = sanitizeStringList(session.tags);
-  const category = typeof session.category === "string" ? session.category.trim().slice(0, 120) : "";
-  const speakerLabels = sanitizeSpeakerLabels(session.speakerLabels);
+  const note = typeof session.note === "string" ? session.note : "";
+  const lineageId = resolveSessionLineageId(session.id, session.lineageId);
+  const segmentNumber = resolveSessionSegmentNumber(session.segmentNumber);
   const endedAt =
     status === "running"
       ? null
@@ -425,10 +635,8 @@ function normalizeSessionRecord(
     starred,
     pinnedAt,
     note,
-    tags,
-    category,
-    speakerLabels,
-    qualityStats: session.qualityStats ? { ...session.qualityStats } : undefined,
+    lineageId,
+    segmentNumber,
     entries,
   };
 }
@@ -526,6 +734,81 @@ function sortSessions(records: SessionRecord[], options: SessionListOptions = {}
     .map(cloneSessionRecord);
 }
 
+function compareLineageSummaries(left: SessionLineageSummary, right: SessionLineageSummary): number {
+  const leftKey = buildSessionSortKey({
+    id: left.lineageId,
+    starred: left.starred,
+    pinnedAt: left.pinnedAt,
+    updatedAt: left.updatedAt,
+  });
+  const rightKey = buildSessionSortKey({
+    id: right.lineageId,
+    starred: right.starred,
+    pinnedAt: right.pinnedAt,
+    updatedAt: right.updatedAt,
+  });
+  return rightKey.localeCompare(leftKey);
+}
+
+function cloneLineageSummary(summary: SessionLineageSummary): SessionLineageSummary {
+  return {
+    ...summary,
+    sessionIds: [...summary.sessionIds],
+    representativeSession: cloneSessionRecord(summary.representativeSession),
+  };
+}
+
+function buildSessionLineageSummaries(sessions: SessionRecord[]): SessionLineageSummary[] {
+  const groups = new Map<string, SessionRecord[]>();
+  sessions.forEach((session) => {
+    const lineageId = resolveSessionLineageId(session.id, session.lineageId);
+    const group = groups.get(lineageId) ?? [];
+    group.push(session);
+    groups.set(lineageId, group);
+  });
+
+  return [...groups.entries()]
+    .map(([lineageId, groupSessions]) => {
+      const sorted = sortSessionSegments(groupSessions);
+      const first = sorted[0]!;
+      const last = sorted[sorted.length - 1]!;
+      const representative = cloneSessionRecord(last);
+      const commonNote = sorted.every((session) => session.note === first.note)
+        ? first.note
+        : "";
+      const latestPinnedAt = sorted
+        .map((session) => session.pinnedAt)
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1) ?? null;
+
+      return {
+        lineageId,
+        representativeSessionId: representative.id,
+        title: representative.title || first.title,
+        committeeName: representative.committeeName || first.committeeName,
+        sourceUrl: representative.sourceUrl || first.sourceUrl,
+        startedAt: first.startedAt,
+        endedAt: last.endedAt ?? last.updatedAt,
+        updatedAt: sorted
+          .map((session) => session.updatedAt)
+          .sort()
+          .at(-1) ?? last.updatedAt,
+        segmentCount: sorted.length,
+        subtitleCount: sorted.reduce((sum, session) => sum + session.subtitleCount, 0),
+        charCount: sorted.reduce((sum, session) => sum + session.charCount, 0),
+        status: last.status,
+        starred: sorted.some((session) => session.starred),
+        pinnedAt: latestPinnedAt,
+        note: commonNote,
+        sessionIds: sorted.map((session) => session.id),
+        representativeSession: representative,
+      } satisfies SessionLineageSummary;
+    })
+    .sort(compareLineageSummaries)
+    .map(cloneLineageSummary);
+}
+
 async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<IndexedDbAttempt<T>> {
   if (!indexedDbAvailable || typeof indexedDB === "undefined") {
     return {
@@ -593,77 +876,6 @@ function mergeSessionCollections(
   });
 
   return Array.from(merged.values(), (value) => cloneSessionRecord(value.record));
-}
-
-function appendBackupChunk(
-  chunks: string[],
-  currentByteLength: number,
-  chunk: string,
-): number {
-  const nextByteLength = currentByteLength + getUtf8ByteLength(chunk);
-  assertSessionLibraryTransferSizeWithinLimit(nextByteLength, "전체 JSON 백업");
-  chunks.push(chunk);
-  return nextByteLength;
-}
-
-async function stringifySessionBackupBundleIncrementally(
-  exportedAt: string,
-  options: {
-    pageSize: number;
-    signal?: AbortSignal;
-    onProgress?: (completed: number, total: number) => void;
-  },
-): Promise<{
-  content: string;
-  sessionCount: number;
-}> {
-  let page = 1;
-  let total = 0;
-  let sessionCount = 0;
-  let currentByteLength = 0;
-  const chunks: string[] = [];
-
-  currentByteLength = appendBackupChunk(
-    chunks,
-    currentByteLength,
-    `{"kind":${JSON.stringify(SESSION_BACKUP_KIND)},"version":${JSON.stringify(
-      SESSION_BACKUP_VERSION,
-    )},"exportedAt":${JSON.stringify(exportedAt)},"sessions":[`,
-  );
-
-  while (true) {
-    throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
-    const pageResult = await listSessionsPage({
-      page,
-      pageSize: options.pageSize,
-    });
-    throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
-
-    total = pageResult.totalCount;
-    pageResult.sessions.forEach((session) => {
-      throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
-      currentByteLength = appendBackupChunk(
-        chunks,
-        currentByteLength,
-        `${sessionCount > 0 ? "," : ""}${JSON.stringify(cloneSessionRecord(session))}`,
-      );
-      sessionCount += 1;
-      options.onProgress?.(sessionCount, total);
-    });
-
-    if (!pageResult.sessions.length || sessionCount >= total) {
-      break;
-    }
-
-    page += 1;
-  }
-
-  throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
-  appendBackupChunk(chunks, currentByteLength, "]}");
-  return {
-    content: chunks.join(""),
-    sessionCount,
-  };
 }
 
 async function bestEffortDeleteFallbackRecord(id: string): Promise<void> {
@@ -940,16 +1152,20 @@ async function listIndexedDbSessions(options: SessionListOptions = {}): Promise<
   return withTransaction("readonly", async (store) => {
     const limit = Math.max(1, options.limit ?? 100);
     if (store.indexNames.contains("paging")) {
-      return readCursorRecords(store.index("paging"), {
+      return (await readCursorRecords(store.index("paging"), {
         direction: "prev",
         limit,
-      });
+      })).map((record) =>
+        normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
+      );
     }
 
-    return readCursorRecords(store.index("updatedAt"), {
+    return (await readCursorRecords(store.index("updatedAt"), {
       direction: "prev",
       limit,
-    });
+    })).map((record) =>
+      normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
+    );
   });
 }
 
@@ -960,7 +1176,9 @@ async function listIndexedDbSessionPage(
     const pageSize = Math.max(1, options.pageSize);
     if (!store.indexNames.contains("paging")) {
       const allSessions = sortSessions(
-        (await withRequest(store.getAll())) as SessionRecord[],
+        ((await withRequest(store.getAll())) as IndexedDbSessionRecord[]).map((record) =>
+          normalizeIndexedDbSessionMetadataRecord(record),
+        ),
         { limit: Number.MAX_SAFE_INTEGER },
       );
       const filteredSessions = options.starredOnly
@@ -998,7 +1216,9 @@ async function listIndexedDbSessionPage(
         : [];
 
     return {
-      sessions: sessions.map(cloneSessionRecord),
+      sessions: sessions.map((record) =>
+        normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
+      ),
       totalCount,
       page,
       pageSize,
@@ -1006,10 +1226,29 @@ async function listIndexedDbSessionPage(
   });
 }
 
+async function listIndexedDbLineageSessions(lineageId: string): Promise<SessionRecord[]> {
+  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
+    const metadataRecords = sessionStore.indexNames.contains("lineageId")
+      ? ((await readCursorRecords(sessionStore.index("lineageId"), {
+          direction: "next",
+          query: lineageId,
+        })) as IndexedDbSessionRecord[])
+      : ((await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[]).filter(
+          (record) => resolveSessionLineageId(record.id, record.lineageId) === lineageId,
+        );
+
+    return Promise.all(
+      metadataRecords.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
+    );
+  });
+}
+
 async function listAllIndexedDbSessions(): Promise<SessionRecord[]> {
-  return withTransaction("readonly", async (store) => {
-    const all = await withRequest(store.getAll());
-    return all as SessionRecord[];
+  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
+    const all = (await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[];
+    return Promise.all(
+      all.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
+    );
   });
 }
 
@@ -1112,117 +1351,6 @@ async function deleteFallbackRecord(id: string): Promise<void> {
   await deleteChromeFallbackRecord(id);
 }
 
-function parseTimeRangeBoundary(value: string | undefined): number | null {
-  if (!value?.trim()) {
-    return null;
-  }
-  const parsed = Date.parse(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function getEntryTime(entry: SubtitleEntry): number {
-  const parsed = Date.parse(entry.startTime || entry.timestamp || "");
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-export function filterSessionEntriesByTimeRange(
-  entries: SubtitleEntry[],
-  timeRange?: SessionExportOptions["timeRange"],
-): SubtitleEntry[] | undefined {
-  const hasBoundary = Boolean(timeRange?.from?.trim() || timeRange?.to?.trim());
-  const from = parseTimeRangeBoundary(timeRange?.from);
-  const to = parseTimeRangeBoundary(timeRange?.to);
-  if (from === null && to === null) {
-    return hasBoundary ? [] : undefined;
-  }
-
-  return entries.filter((entry) => {
-    const entryTime = getEntryTime(entry);
-    if (from !== null && entryTime < from) {
-      return false;
-    }
-    if (to !== null && entryTime > to) {
-      return false;
-    }
-    return true;
-  });
-}
-
-function toExportPayload(
-  session: SessionRecord,
-  format: ExportFormat,
-  options: SessionExportOptions = {},
-): ExportPayload {
-  const {
-    entries,
-    filenamePattern,
-    txtExportTimestampsEnabled = false,
-    txtExportSpeakerEnabled = false,
-    txtExportEntryNotesEnabled = false,
-    timeRange,
-  } = options;
-  const selectedEntries = entries ?? filterSessionEntriesByTimeRange(session.entries, timeRange);
-  const baseSession = selectedEntries ? withSessionEntries(session, selectedEntries) : session;
-  const normalized = normalizeSessionForExport(
-    normalizeSessionRecord(baseSession, {
-      preserveTimestamps: true,
-      forceStatus: baseSession.status,
-    }),
-    {
-      stripSpeakerMetadata: format !== "md" && format !== "csv" && !txtExportSpeakerEnabled,
-    },
-  );
-
-  switch (format) {
-    case "txt":
-      return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
-        format,
-        mimeType: "text/plain;charset=utf-8",
-        content: exportTxt(normalized, {
-          includeTimestamps: txtExportTimestampsEnabled,
-          includeSpeaker: txtExportSpeakerEnabled,
-          includeEntryNotes: txtExportEntryNotesEnabled,
-        }),
-      };
-    case "srt":
-      return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
-        format,
-        mimeType: "application/x-subrip;charset=utf-8",
-        content: exportSrt(normalized),
-      };
-    case "vtt":
-      return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
-        format,
-        mimeType: "text/vtt;charset=utf-8",
-        content: exportVtt(normalized),
-      };
-    case "json":
-      return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
-        format,
-        mimeType: "application/json;charset=utf-8",
-        content: exportJson(normalized),
-      };
-    case "md":
-      return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
-        format,
-        mimeType: "text/markdown;charset=utf-8",
-        content: exportMarkdown(normalized),
-      };
-    case "csv":
-      return {
-        filename: buildExportFilename(normalized, format, filenamePattern),
-        format,
-        mimeType: "text/csv;charset=utf-8",
-        content: exportCsv(normalized),
-      };
-  }
-}
-
 function stopRunningRecord(record: SessionRecord): SessionRecord {
   const stoppedAt = record.updatedAt || new Date().toISOString();
   const entries = normalizeEntries(record.entries);
@@ -1262,8 +1390,14 @@ async function writeSessionRecord(
   const allowFallbackOnIndexedDbError = options.allowFallbackOnIndexedDbError !== false;
   const notifyRevision = options.notifyRevision !== false;
   const indexedDbResult = await tryIndexedDb(async () => {
-    await withTransaction("readwrite", async (store) => {
-      await withRequest(store.put(toIndexedDbRecord(record)));
+    const chunks = buildSessionEntryChunks(record.id, record.entries, SESSION_ENTRY_CHUNK_SIZE);
+    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
+      const previousRecord = (await withRequest(
+        sessionStore.get(record.id),
+      )) as IndexedDbSessionRecord | undefined;
+      const metadataRecord = toIndexedDbRecord(record);
+      await writeChunkedSessionRecord(chunkStore, metadataRecord, chunks, previousRecord);
+      await withRequest(sessionStore.put(metadataRecord));
       return record;
     });
     return record;
@@ -1366,53 +1500,30 @@ export async function updateSessionMetadata(
   return writeSessionRecord(record);
 }
 
-function applySessionContentPatch(
-  record: SessionRecord,
-  patch: SessionContentPatch,
-  updatedAt: string,
-): SessionRecord {
-  const entries = patch.entries !== undefined ? normalizeEntries(patch.entries) : record.entries;
-  return normalizeSessionRecord(
-    {
-      ...record,
-      entries,
-      tags: patch.tags !== undefined ? sanitizeStringList(patch.tags) : (record.tags ?? []),
-      category:
-        patch.category !== undefined
-          ? patch.category.trim().slice(0, 120)
-          : (record.category ?? ""),
-      speakerLabels:
-        patch.speakerLabels !== undefined
-          ? sanitizeSpeakerLabels(patch.speakerLabels)
-          : (record.speakerLabels ?? {}),
-      subtitleCount: entries.length,
-      charCount: getSessionCharCount(entries),
-      updatedAt,
-    },
-    {
-      preserveTimestamps: true,
-      forceStatus: record.status,
-    },
+export async function updateSessionLineageMetadata(
+  lineageId: string,
+  patch: SessionMetadataPatch,
+): Promise<SessionRecord[]> {
+  const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
+  if (!safeLineageId) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const segments = await listSessionLineageSegments(safeLineageId);
+  if (!segments.length) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const records = await Promise.all(
+    segments.map((segment) =>
+      writeSessionRecord(applySessionMetadataPatch(segment, patch, updatedAt), {
+        notifyRevision: false,
+      }),
+    ),
   );
-}
-
-export async function updateSessionContent(
-  sessionId: string,
-  patch: SessionContentPatch,
-): Promise<SessionRecord> {
-  if (hasExtensionContextInvalidated()) {
-    throw createExtensionContextInvalidatedError();
-  }
-  if (!sessionId) {
-    throw new Error("기록을 찾지 못했습니다.");
-  }
-
-  const existingRecord = await loadSession(sessionId);
-  if (!existingRecord) {
-    throw new Error("기록을 찾지 못했습니다.");
-  }
-
-  return writeSessionRecord(applySessionContentPatch(existingRecord, patch, new Date().toISOString()));
+  await bumpSessionLibraryRevision();
+  return records.map(cloneSessionRecord);
 }
 
 export async function loadSession(id: string): Promise<SessionRecord | undefined> {
@@ -1422,9 +1533,13 @@ export async function loadSession(id: string): Promise<SessionRecord | undefined
 
   const [indexedDbResult, fallbackRecord] = await Promise.all([
     tryIndexedDb(async () =>
-      withTransaction("readonly", async (store) => {
-        const record = await withRequest(store.get(id));
-        return record as SessionRecord | undefined;
+      withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
+        const record = (await withRequest(sessionStore.get(id))) as IndexedDbSessionRecord | undefined;
+        if (!record) {
+          return undefined;
+        }
+
+        return hydrateIndexedDbSessionRecord(record, chunkStore);
       }),
     ),
     loadFallbackRecord(id),
@@ -1432,7 +1547,7 @@ export async function loadSession(id: string): Promise<SessionRecord | undefined
 
   const merged = mergeSessionCollections(
     indexedDbResult.ok && indexedDbResult.value
-      ? [normalizeSessionRecord(indexedDbResult.value as StoredSessionRecord, { preserveTimestamps: true })]
+      ? [cloneSessionRecord(indexedDbResult.value)]
       : [],
     fallbackRecord
       ? [normalizeSessionRecord(fallbackRecord as StoredSessionRecord, { preserveTimestamps: true })]
@@ -1448,33 +1563,19 @@ export async function loadSessionsByIds(ids: string[]): Promise<SessionRecord[]>
   return sessions.filter((session): session is SessionRecord => Boolean(session));
 }
 
-async function listAllSessions(): Promise<SessionRecord[]> {
-  const [indexedDbResult, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () => listAllIndexedDbSessions()),
-    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
-  ]);
-
-  return sortSessions(
-    mergeSessionCollections(
-      indexedDbResult.ok && indexedDbResult.value
-        ? indexedDbResult.value.map((record) =>
-            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-          )
-        : [],
-      fallbackRecords.map((record) =>
-        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-      ),
-    ),
-    { limit: Number.MAX_SAFE_INTEGER },
-  );
-}
-
 function toSessionLibraryPreview(record: SessionRecord): SessionLibraryPreview {
   return {
     id: record.id,
     title: record.title,
     committeeName: record.committeeName,
     updatedAt: record.updatedAt,
+  };
+}
+
+function toSessionMetadataOnly(record: SessionRecord): SessionRecord {
+  return {
+    ...cloneSessionRecord(record),
+    entries: [],
   };
 }
 
@@ -1537,24 +1638,28 @@ export async function buildSessionLibraryBackupExport(
   });
 
   const now = new Date();
-  const { content, sessionCount } = await stringifySessionBackupBundleIncrementally(
-    now.toISOString(),
-    {
-      pageSize,
-      signal: options.signal,
-      onProgress: (completed, total) => {
-        emitLongTaskProgress(options.onProgress, {
-          kind: "backup",
-          phase: "package",
-          completed,
-          total,
-          message: total
-            ? `전체 JSON 백업 파일을 생성하고 있습니다. (${completed} / ${total})`
-            : "백업 파일을 생성하고 있습니다.",
-        });
-      },
+  const { content, sessionCount } = await stringifySessionBackupBundleIncrementally({
+    exportedAt: now.toISOString(),
+    pageSize,
+    signal: options.signal,
+    listSessionsPage: async ({ page, pageSize: nextPageSize }) =>
+      listSessionsPage({
+        page,
+        pageSize: nextPageSize,
+      }),
+    loadSessionsByIds,
+    onProgress: (completed, total) => {
+      emitLongTaskProgress(options.onProgress, {
+        kind: "backup",
+        phase: "package",
+        completed,
+        total,
+        message: total
+          ? `전체 JSON 백업 파일을 생성하고 있습니다. (${completed} / ${total})`
+          : "백업 파일을 생성하고 있습니다.",
+      });
     },
-  );
+  });
   throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
 
   return {
@@ -1589,6 +1694,31 @@ export async function listSessions(options: SessionListOptions = {}): Promise<Se
   );
 }
 
+export async function listSessionLineageSegments(lineageId: string): Promise<SessionRecord[]> {
+  const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
+  if (!safeLineageId) {
+    return [];
+  }
+
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbLineageSessions(safeLineageId)),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+
+  return sortSessionSegments(
+    mergeSessionCollections(
+      indexedDbResult.ok && indexedDbResult.value ? indexedDbResult.value : [],
+      fallbackRecords
+        .filter(
+          (session) => resolveSessionLineageId(session.id, session.lineageId) === safeLineageId,
+        )
+        .map((record) =>
+          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+        ),
+    ),
+  );
+}
+
 export async function listSessionsPage(
   options: SessionPageOptions,
 ): Promise<SessionPageResult> {
@@ -1600,202 +1730,76 @@ export async function listSessionsPage(
     }
   }
 
-  const pageSize = Math.max(1, options.pageSize);
-  const fallbackRecords = fallbackIds.length
-    ? await listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER })
-    : [];
-  const filteredFallbackRecords = options.starredOnly
-    ? fallbackRecords.filter((session) => session.starred)
-    : fallbackRecords;
-  const expandedWindowSize =
-    Math.max(1, Math.max(1, options.page) * pageSize + filteredFallbackRecords.length);
-  const [indexedDbPageResult, indexedDbFallbackResult, indexedDbIdsResult] = await Promise.all([
-    tryIndexedDb(async () =>
-      listIndexedDbSessionPage({
-        page: 1,
-        pageSize: expandedWindowSize,
-        starredOnly: options.starredOnly,
-      }),
-    ),
-    tryIndexedDb(async () => loadIndexedDbSessionsByIds(fallbackIds)),
-    tryIndexedDb(async () => listIndexedDbSessionIds()),
+  const [indexedDbMetadataResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER })),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
-
-  if (!indexedDbPageResult.ok || !indexedDbPageResult.value) {
-    return listSessionsPageByFullMerge(options);
-  }
-
-  const indexedDbRecords = [
-    ...indexedDbPageResult.value.sessions,
-    ...(indexedDbFallbackResult.ok && indexedDbFallbackResult.value
-      ? indexedDbFallbackResult.value
-      : []),
-  ].map((record) => normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }));
-
-  const mergedSessions = sortSessions(
+  const metadataSessions = sortSessions(
     mergeSessionCollections(
-      indexedDbRecords,
-      filteredFallbackRecords.map((record) =>
-        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+      indexedDbMetadataResult.ok && indexedDbMetadataResult.value
+        ? indexedDbMetadataResult.value.map(toSessionMetadataOnly)
+        : [],
+      fallbackRecords.map((record) =>
+        toSessionMetadataOnly(
+          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+        ),
       ),
     ),
     { limit: Number.MAX_SAFE_INTEGER },
   );
-  const indexedDbIds = new Set(
-    indexedDbIdsResult.ok && indexedDbIdsResult.value ? indexedDbIdsResult.value : [],
-  );
-  const fallbackOnlyCount = fallbackIds.filter((id) => !indexedDbIds.has(id)).length;
-  const fallbackOnlyFilteredCount = options.starredOnly
-    ? filteredFallbackRecords.filter((record) => !indexedDbIds.has(record.id)).length
-    : fallbackOnlyCount;
-  const totalCount = indexedDbPageResult.value.totalCount + fallbackOnlyFilteredCount;
+  const filteredSessions = options.starredOnly
+    ? metadataSessions.filter((session) => session.starred)
+    : metadataSessions;
+  const pageSize = Math.max(1, options.pageSize);
+  const totalCount = filteredSessions.length;
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
   const page = Math.min(Math.max(1, options.page), pageCount);
   const start = (page - 1) * pageSize;
+  const pageMetadataSessions = filteredSessions.slice(start, start + pageSize);
+  const loadedPageSessions = await loadSessionsByIds(
+    pageMetadataSessions.map((session) => session.id),
+  );
+  const loadedById = new Map(loadedPageSessions.map((session) => [session.id, session]));
 
   return {
-    sessions: mergedSessions.slice(start, start + pageSize).map(cloneSessionRecord),
+    sessions: pageMetadataSessions.map((session) =>
+      cloneSessionRecord(loadedById.get(session.id) ?? session),
+    ),
     totalCount,
     page,
     pageSize,
   };
 }
 
-function normalizeSearchToken(value: string | undefined): string {
-  return String(value ?? "").trim().toLocaleLowerCase();
-}
-
-function includesSearchToken(value: string | undefined, token: string): boolean {
-  return Boolean(token) && String(value ?? "").toLocaleLowerCase().includes(token);
-}
-
-function buildSearchHits(session: SessionRecord, token: string): SessionSearchHit[] {
-  if (!token) {
-    return [];
-  }
-
-  const hits: SessionSearchHit[] = [];
-  if (includesSearchToken(session.title, token)) {
-    hits.push({ field: "title", text: session.title });
-  }
-  if (includesSearchToken(session.committeeName, token)) {
-    hits.push({ field: "committeeName", text: session.committeeName });
-  }
-  if (includesSearchToken(session.note, token)) {
-    hits.push({ field: "note", text: session.note });
-  }
-  if (session.category && includesSearchToken(session.category, token)) {
-    hits.push({ field: "category", text: session.category });
-  }
-  (session.tags ?? []).forEach((tag) => {
-    if (includesSearchToken(tag, token)) {
-      hits.push({ field: "tag", text: tag });
-    }
-  });
-  session.entries.forEach((entry) => {
-    if (includesSearchToken(entry.text, token)) {
-      hits.push({ field: "entry", entryId: entry.id, text: entry.text });
-    }
-    if (includesSearchToken(entry.entryNote, token)) {
-      hits.push({ field: "entry", entryId: entry.id, text: entry.entryNote ?? "" });
-    }
-  });
-  return hits;
-}
-
-function sessionMatchesSearchFilters(
-  session: SessionRecord,
-  options: SessionSearchOptions,
-  token: string,
-): SessionSearchResult | null {
-  if (options.starredOnly && !session.starred) {
-    return null;
-  }
-
-  const tag = normalizeSearchToken(options.tag);
-  if (tag && !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)) {
-    return null;
-  }
-
-  const category = normalizeSearchToken(options.category);
-  if (category && normalizeSearchToken(session.category) !== category) {
-    return null;
-  }
-
-  if (options.highlightedOnly && !session.entries.some((entry) => entry.highlighted)) {
-    return null;
-  }
-
-  const hits = buildSearchHits(session, token);
-  if (token && hits.length === 0) {
-    return null;
-  }
-
-  return {
-    session: cloneSessionRecord(session),
-    matchCount: token ? hits.length : 1,
-    firstHit: hits[0] ?? null,
-  };
-}
-
-export async function searchSessions(
-  options: SessionSearchOptions,
-): Promise<SessionSearchPageResult> {
-  const pageSize = Math.max(1, options.pageSize);
-  const page = Math.max(1, options.page);
-  const token = normalizeSearchToken(options.query);
-  const results: SessionSearchResult[] = [];
-  let sourcePage = 1;
-  const sourcePageSize = Math.max(pageSize, 100);
-
-  while (true) {
-    const pageResult = await listSessionsPage({
-      page: sourcePage,
-      pageSize: sourcePageSize,
-      starredOnly: options.starredOnly,
-    });
-
-    pageResult.sessions.forEach((session) => {
-      const result = sessionMatchesSearchFilters(session, options, token);
-      if (result) {
-        results.push(result);
-      }
-    });
-
-    if (!pageResult.sessions.length || sourcePage * sourcePageSize >= pageResult.totalCount) {
-      break;
-    }
-    sourcePage += 1;
-  }
-
-  const totalCount = results.length;
-  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
-  const safePage = Math.min(page, pageCount);
-  const start = (safePage - 1) * pageSize;
-  return {
-    results: results.slice(start, start + pageSize),
-    totalCount,
-    page: safePage,
-    pageSize,
-  };
-}
-
-/* istanbul ignore next -- retained as a correctness fallback when IndexedDB paging fails. */
-async function listSessionsPageByFullMerge(
+export async function listSessionLineagesPage(
   options: SessionPageOptions,
-): Promise<SessionPageResult> {
-  const allSessions = await listAllSessions();
-  const filteredSessions = options.starredOnly
-    ? allSessions.filter((session) => session.starred)
-    : allSessions;
+): Promise<SessionLineagePageResult> {
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listAllIndexedDbSessions()),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+  const allSessions = mergeSessionCollections(
+    indexedDbResult.ok && indexedDbResult.value
+      ? indexedDbResult.value.map((record) =>
+          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+        )
+      : [],
+    fallbackRecords.map((record) =>
+      normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+    ),
+  );
+  const summaries = buildSessionLineageSummaries(allSessions);
+  const filteredSummaries = options.starredOnly
+    ? summaries.filter((summary) => summary.starred)
+    : summaries;
   const pageSize = Math.max(1, options.pageSize);
-  const totalCount = filteredSessions.length;
+  const totalCount = filteredSummaries.length;
   const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
   const page = Math.min(Math.max(1, options.page), pageCount);
   const start = (page - 1) * pageSize;
 
   return {
-    sessions: filteredSessions.slice(start, start + pageSize).map(cloneSessionRecord),
+    lineages: filteredSummaries.slice(start, start + pageSize).map(cloneLineageSummary),
     totalCount,
     page,
     pageSize,
@@ -1808,8 +1812,18 @@ export async function deleteSession(id: string): Promise<void> {
   }
 
   const indexedDbResult = await tryIndexedDb(async () => {
-    await withTransaction("readwrite", async (store) => {
-      await withRequest(store.delete(id));
+    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
+      const record = (await withRequest(sessionStore.get(id))) as IndexedDbSessionRecord | undefined;
+      const chunkCount =
+        typeof record?.entryChunkCount === "number" && record.entryChunkCount >= 0
+          ? record.entryChunkCount
+          : 0;
+      await Promise.all([
+        withRequest(sessionStore.delete(id)),
+        ...Array.from({ length: chunkCount }, (_value, index) =>
+          withRequest(chunkStore.delete(buildSessionEntryChunkKey(id, index))),
+        ),
+      ]);
     });
     return true;
   });
@@ -1824,12 +1838,30 @@ export async function deleteSession(id: string): Promise<void> {
   await bumpSessionLibraryRevision();
 }
 
+export async function deleteSessionLineage(lineageId: string): Promise<void> {
+  const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
+  if (!safeLineageId) {
+    return;
+  }
+
+  const segments = await listSessionLineageSegments(safeLineageId);
+  const ids = segments.map((session) => session.id);
+  if (!ids.length) {
+    return;
+  }
+
+  await Promise.all(ids.map((id) => deleteSession(id)));
+}
+
 export async function deleteAllSessions(): Promise<void> {
   const errors: string[] = [];
   let clearedAnyStore = false;
   const indexedDbResult = await tryIndexedDb(async () => {
-    await withTransaction("readwrite", async (store) => {
-      await withRequest(store.clear());
+    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
+      await Promise.all([
+        withRequest(sessionStore.clear()),
+        withRequest(chunkStore.clear()),
+      ]);
     });
     return true;
   });
@@ -1989,7 +2021,38 @@ export async function exportSessionData(
   format: ExportFormat,
   options: SessionExportOptions = {},
 ): Promise<ExportPayload> {
-  return toExportPayload(session, format, options);
+  return createSessionExportPayload({
+    session,
+    format,
+    normalizeSessionRecord,
+    exportOptions: options,
+  });
+}
+
+export async function exportSessionLineageData(
+  lineageId: string,
+  format: ExportFormat,
+  options: SessionExportOptions = {},
+): Promise<ExportPayload> {
+  const segments = await listSessionLineageSegments(lineageId);
+  if (!segments.length) {
+    throw new Error("내보낼 연속 캡처 기록을 찾지 못했습니다.");
+  }
+
+  const mergedSession = mergeSessionSegments(segments);
+  const entries = Array.isArray(options.entryIds)
+    ? mergedSession.entries.filter((entry) => options.entryIds?.includes(entry.id))
+    : options.entries;
+
+  return createSessionExportPayload({
+    session: mergedSession,
+    format,
+    normalizeSessionRecord,
+    exportOptions: {
+      ...options,
+      entries,
+    },
+  });
 }
 
 export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySummary> {
@@ -2070,11 +2133,27 @@ export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSum
 
   if (indexedDbRunning.length) {
     const indexedDbWriteResult = await tryIndexedDb(async () =>
-      withTransaction("readwrite", async (store) => {
+      withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
         await Promise.all(
-          indexedDbRunning.map((record) =>
-            withRequest(store.put(toIndexedDbRecord(stopRunningRecord(record)))),
-          ),
+          indexedDbRunning.map(async (record) => {
+            const stoppedRecord = stopRunningRecord(record);
+            const chunks = buildSessionEntryChunks(
+              stoppedRecord.id,
+              stoppedRecord.entries,
+              SESSION_ENTRY_CHUNK_SIZE,
+            );
+            const previousRecord = (await withRequest(
+              sessionStore.get(stoppedRecord.id),
+            )) as IndexedDbSessionRecord | undefined;
+            const metadataRecord = toIndexedDbRecord(stoppedRecord);
+            await writeChunkedSessionRecord(
+              chunkStore,
+              metadataRecord,
+              chunks,
+              previousRecord,
+            );
+            await withRequest(sessionStore.put(metadataRecord));
+          }),
         );
       }),
     );

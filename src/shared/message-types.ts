@@ -15,7 +15,37 @@ export type PersistabilityState =
   | "filtered"
   | "duplicate";
 
-export type CaptureHealth = "good" | "warning" | "unstable";
+export type RowKeySource = "attribute" | "class" | "generated";
+
+export type FallbackCommitState =
+  | "idle"
+  | "pending"
+  | "stable"
+  | "committed"
+  | "duplicate"
+  | "filtered";
+
+export interface SegmentDiagnostics {
+  lineageId: string;
+  segmentNumber: number;
+  entryCount: number;
+  charCount: number;
+  elapsedMs: number | null;
+  maxEntriesPerSegment: number;
+  maxCharsPerSegment: number;
+  maxDurationMs: number;
+  remainingEntries: number;
+  remainingChars: number;
+  remainingDurationMs: number | null;
+}
+
+export interface ExportEstimateDiagnostics {
+  txtBytes: number;
+  srtBytes: number;
+  vttBytes: number;
+  jsonBytes: number;
+  txtIncludesTimestamps: boolean;
+}
 
 export interface CaptureDiagnostics {
   captureMode: CaptureMode;
@@ -25,11 +55,13 @@ export interface CaptureDiagnostics {
   sourceLabel: string;
   persistabilityState: PersistabilityState;
   persistabilityHint: string;
-  health?: CaptureHealth;
-  healthLabel?: string;
-  healthHint?: string;
-  estimatedBytes?: number;
-  sizeWarning?: string;
+  stableRowCount: number;
+  unstableRowCount: number;
+  filteredUnconfirmedCount: number;
+  rowKeySources: Partial<Record<RowKeySource, number>>;
+  fallbackCommitState: FallbackCommitState;
+  segment?: SegmentDiagnostics;
+  exportEstimates?: ExportEstimateDiagnostics;
 }
 
 export interface ObservedSubtitleRow {
@@ -38,6 +70,7 @@ export interface ObservedSubtitleRow {
   speakerColor: string;
   speakerChannel: SpeakerChannel;
   unstableKey: boolean;
+  nodeKeySource?: RowKeySource;
 }
 
 export interface StatusSnapshot {
@@ -109,6 +142,7 @@ export interface PopupFeedbackPayload {
 export type PopupToContentMessage =
   | { type: "PING" }
   | { type: "GET_STATUS" }
+  | { type: "GET_DIAGNOSTICS_STATUS" }
   | { type: "OPEN_INPAGE_PANEL" }
   | { type: "START_CAPTURE" }
   | { type: "STOP_CAPTURE" }
@@ -144,6 +178,24 @@ export type BackgroundCommandMessage =
       content: string;
       mimeType: string;
     }
+  | {
+      type: "DOWNLOAD_SESSION_EXPORT";
+      sessionId: string;
+      format: ExportFormat;
+      filenamePattern?: string;
+      txtExportTimestampsEnabled?: boolean;
+      entryIds?: string[];
+      filenameSuffix?: string;
+    }
+  | {
+      type: "DOWNLOAD_SESSION_LINEAGE_EXPORT";
+      lineageId: string;
+      format: ExportFormat;
+      filenamePattern?: string;
+      txtExportTimestampsEnabled?: boolean;
+      entryIds?: string[];
+      filenameSuffix?: string;
+    }
   | { type: "OPEN_HISTORY_PAGE" }
   | { type: "OPEN_OPTIONS_PAGE" }
   | { type: "OPEN_SIDE_PANEL"; tabId?: number }
@@ -171,6 +223,7 @@ export interface ObserverBridgeEvent {
   timestamp: number;
   sourceUrl: string;
   observerActive?: boolean;
+  filteredUnconfirmedCount?: number;
 }
 
 export interface FrameForwardMessage {
@@ -187,7 +240,8 @@ export interface FrameForwardNonceMessage {
 export type OffscreenDocumentMessage =
   | {
       type: "OFFSCREEN_CREATE_BLOB_URL";
-      content: string;
+      content?: string;
+      contentParts?: string[];
       mimeType: string;
     }
   | {

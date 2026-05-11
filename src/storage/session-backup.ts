@@ -104,6 +104,16 @@ function sanitizePersistedStatus(value: unknown): PersistedSessionStatus | undef
   return value === "running" || value === "stopped" || value === "saved" ? value : undefined;
 }
 
+function sanitizeLineageId(value: unknown): string | undefined {
+  const lineageId = sanitizeOptionalString(value).trim();
+  return lineageId ? lineageId : undefined;
+}
+
+function sanitizeSegmentNumber(value: unknown): number | undefined {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : undefined;
+}
+
 function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
   if (!isRecordLike(value)) {
     return undefined;
@@ -134,6 +144,10 @@ function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
         : undefined,
     sourceNodeKey:
       "sourceNodeKey" in value ? sanitizeOptionalString(value.sourceNodeKey, "") || undefined : undefined,
+    sourceCaptureMode:
+      value.sourceCaptureMode === "structured" || value.sourceCaptureMode === "fallback"
+        ? value.sourceCaptureMode
+        : undefined,
     speakerColor:
       "speakerColor" in value ? sanitizeOptionalString(value.speakerColor, "") || undefined : undefined,
     speakerChannel:
@@ -211,10 +225,8 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     starred: typeof value.starred === "boolean" ? value.starred : undefined,
     pinnedAt: sanitizeOptionalNullableDateString(value.pinnedAt) ?? undefined,
     note: typeof value.note === "string" ? value.note : undefined,
-    tags: sanitizeStringList(value.tags),
-    category: sanitizeOptionalString(value.category).trim().slice(0, 120),
-    speakerLabels: sanitizeSpeakerLabels(value.speakerLabels),
-    qualityStats: sanitizeQualityStats(value.qualityStats),
+    lineageId: sanitizeLineageId(value.lineageId),
+    segmentNumber: sanitizeSegmentNumber(value.segmentNumber),
     entries: entries.map((entry) => cloneEntry(entry!)),
   };
 }
@@ -236,10 +248,8 @@ function cloneImportedRecord(record: StoredSessionRecord): StoredSessionRecord {
     starred: record.starred,
     pinnedAt: record.pinnedAt,
     note: record.note,
-    tags: record.tags ? [...record.tags] : undefined,
-    category: record.category,
-    speakerLabels: record.speakerLabels ? { ...record.speakerLabels } : undefined,
-    qualityStats: record.qualityStats ? { ...record.qualityStats } : undefined,
+    lineageId: record.lineageId,
+    segmentNumber: record.segmentNumber,
     entries: record.entries.map((entry) => cloneEntry(entry)),
   };
 }

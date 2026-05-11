@@ -3,11 +3,27 @@ import { PIPELINE_DEFAULTS } from "../shared/constants";
 
 export function normalizeFallbackInternalRaw(
   rawText: string,
-  maxChars = PIPELINE_DEFAULTS.fallbackInternalRawMaxChars,
+  options:
+    | number
+    | {
+        maxChars?: number;
+        sourceUrl?: string;
+      } = PIPELINE_DEFAULTS.fallbackInternalRawMaxChars,
 ): string {
   const raw = String(rawText ?? "").replace(/\r/g, "\n").trim();
   if (!raw) {
     return "";
+  }
+
+  const maxChars =
+    typeof options === "number"
+      ? options
+      : options.maxChars ?? PIPELINE_DEFAULTS.fallbackInternalRawMaxChars;
+  const preserveFullRaw =
+    typeof options === "object" && isAssemblyPlenaryUrl(options.sourceUrl);
+
+  if (preserveFullRaw) {
+    return raw;
   }
 
   if (raw.length <= maxChars) {
@@ -17,24 +33,28 @@ export function normalizeFallbackInternalRaw(
   return raw.slice(-maxChars);
 }
 
-export function formatFallbackPreviewText(rawText: string, sourceUrl?: string): string {
+export function formatFallbackPreviewText(rawText: string): string {
   const normalized = normalizeSubtitleText(rawText);
   if (!normalized) {
     return "";
   }
 
-  void sourceUrl;
+  const normalizedLineCount = String(rawText ?? "")
+    .replace(/\r/g, "\n")
+    .split("\n")
+    .map((line) => normalizeSubtitleText(line))
+    .filter(Boolean).length;
+
+  if (
+    normalized.length <= PIPELINE_DEFAULTS.fallbackPreviewMaxChars &&
+    normalizedLineCount <= PIPELINE_DEFAULTS.fallbackPreviewMaxLines
+  ) {
+    return normalized;
+  }
 
   const tailPreview = normalizeSubtitleText(
     extractTailLines(rawText, PIPELINE_DEFAULTS.fallbackPreviewMaxLines),
   );
-
-  if (
-    normalized.length <= PIPELINE_DEFAULTS.fallbackPreviewMaxChars &&
-    tailPreview === normalized
-  ) {
-    return normalized;
-  }
 
   if (tailPreview.length <= PIPELINE_DEFAULTS.fallbackPreviewMaxChars) {
     return tailPreview;

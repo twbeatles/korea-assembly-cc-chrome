@@ -35,6 +35,11 @@ function buildSnapshot(): StatusSnapshot {
       sourceLabel: "structured",
       persistabilityState: "persistable",
       persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
+      stableRowCount: 2,
+      unstableRowCount: 0,
+      filteredUnconfirmedCount: 0,
+      rowKeySources: { class: 2 },
+      fallbackCommitState: "idle",
     },
     hasPersistableContent: true,
   };

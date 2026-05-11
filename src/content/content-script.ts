@@ -13,23 +13,21 @@ import {
   markLiveRowCommitted,
   normalizeCaptureEvent,
   reconcileLiveCapture,
+  resetLiveCaptureLedgerForNewSegment,
   setLiveRowBaseline,
   type CaptureMode,
   type LivePanelRow,
 } from "../core/live-capture";
 import {
-  cloneEntry,
   cloneState,
-  cloneSessionRecord,
   createEmptySessionState,
-  getSessionCharCount,
-  toSessionRecord,
-  type ExportFormat,
   type SessionRecord,
   type SessionState,
-  type SubtitleEntry,
 } from "../core/subtitle-models";
 import {
+  DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS,
+  DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
+  DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
   EXTENSION_STORAGE_KEY,
   FRAME_FORWARD_NONCE_SOURCE,
   OBSERVER_BRIDGE_SOURCE,
@@ -43,26 +41,17 @@ import {
 } from "../shared/constants";
 import { mapDownloadErrorMessage } from "../shared/download-errors";
 import {
-  getUtf8ByteLength,
-  SINGLE_SESSION_EXPORT_WARNING_BYTES,
-} from "../shared/byte-size";
-import { normalizeSubtitleText } from "../core/text-normalizer";
-import {
   applyPersistSuccess,
   clearScheduledRunningPersist,
   hasPersistableRunningContent,
-  resolveRunningPersistDebounceMs,
+  resolveRunningPersistDelayMs,
   scheduleRunningPersistTimer,
   shouldPersistFinalSession,
   shouldScheduleRunningPersist,
   shouldWarnBeforeUnload,
+  type RunningPersistTrigger,
 } from "./autosave";
 import { sendRuntimeMessage } from "../shared/chrome-api";
-import { createRandomToken } from "../shared/random-token";
-import {
-  buildCaptureDiagnostics,
-  getPersistabilityUserMessage,
-} from "../shared/capture-diagnostics";
 import {
   buildCopyText,
   copyTextToClipboard,
@@ -76,9 +65,11 @@ import {
 import type {
   BackgroundCommandResponse,
   FrameForwardMessage,
+  FallbackCommitState,
   ObservedSubtitleRow,
   ObserverBridgeEvent,
   PersistabilityState,
+  RowKeySource,
   PopupToContentMessage,
   StatusSnapshot,
 } from "../shared/message-types";
@@ -104,16 +95,11 @@ import {
 import { RESET_CAPTURE_NOTICE } from "./capture-notice";
 import { shouldEmitLocalProbeUpdate } from "./local-polling";
 import { estimateRecentRaw } from "./dom-probe";
-import { formatFallbackPreviewText } from "./fallback-preview";
 import {
   shouldAllowUnconfirmedContainerFallback,
   updateUnconfirmedFallbackBlockStreak,
 } from "./unconfirmed-fallback";
-import { exportSessionData } from "../storage/session-store";
-import {
-  queueExitPersistRecord,
-  recordPageExitPersistAttempt,
-} from "../storage/persist-recovery";
+import { queueExitPersistRecord } from "../storage/persist-recovery";
 import { getSettings, sanitizeSettings } from "../storage/settings-store";
 import type { ExtensionSettings } from "../storage/types";
 import { tryDomSubtitleActivation, waitForSubtitleLayer } from "./subtitle-layer";
@@ -131,10 +117,28 @@ import {
 } from "./frame-coordinator";
 import { persistQueuedPageExitRecord } from "./page-exit-persist";
 import {
-  buildPreparedSessionRecord as prepareSessionRecord,
-  buildPreparedSessionState as prepareSessionState,
   createResetSessionState,
 } from "./session-lifecycle";
+import { formatPreviewForDisplay, resolveLivePreviewText } from "./runtime/preview";
+import {
+  buildRolledOverRunningSessionState,
+  buildSegmentRolloverNotice,
+} from "./runtime/segment-rollover";
+import {
+  buildPreparedSessionRecord as buildPreparedSessionRecordFromState,
+  buildPreparedSessionState as buildPreparedSessionStateFromState,
+  buildVisibleOutputEntries as buildVisibleOutputEntriesFromEntries,
+  buildVisibleSessionRecord as buildVisibleSessionRecordFromState,
+} from "./runtime/session-records";
+import {
+  resolveRuntimeSessionSegmentationReason,
+  resolveRuntimeSessionSegmentationThresholds,
+  type RuntimeSessionSegmentationReason,
+} from "./runtime/segmentation-policy";
+import {
+  buildContentStatusSnapshot,
+  canClearCurrentSessionState,
+} from "./runtime/status-snapshot";
 import { analyzeCaptureCommit, resolveRuntimeCaptureNotice } from "./subtitle-event-handler";
 import {
   buildPersistabilityDiagnostics,
@@ -145,58 +149,24 @@ const isTopFrame = window.top === window;
 const localFramePath = computeCurrentFramePath();
 const injectedScriptId = "assembly-subtitle-observer-script";
 const DEFAULT_IN_PAGE_NOTICE = "페이지 오른쪽에서 수집된 자막을 바로 보고 있습니다.";
+const NON_CAPTURE_PAGE_NOTICE =
+  "국회 의사중계 플레이어 페이지로 이동하면 오른쪽 패널에서 바로 자막을 모을 수 있습니다.";
 const CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE = "data-assembly-subtitle-content-script";
 const SUBTITLE_RESET_GRACE_MS = 1000;
 const INVALIDATED_CONTEXT_NOTICE = "Extension was updated. Please refresh the page (F5).";
 const FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS = 15_000;
-const AUTO_START_COOLDOWN_STORAGE_PREFIX = "assembly-subtitle-explicit-stop:";
-
-function getAutoStartCooldownKey(): string {
-  try {
-    return `${AUTO_START_COOLDOWN_STORAGE_PREFIX}${window.location.pathname}${window.location.search}`;
-  } catch {
-    return AUTO_START_COOLDOWN_STORAGE_PREFIX;
-  }
-}
-
-function rememberAutoStartCooldown(): void {
-  if (!isTopFrame) {
-    return;
-  }
-  try {
-    window.sessionStorage?.setItem(getAutoStartCooldownKey(), "1");
-  } catch {
-    // sessionStorage may be unavailable (e.g., third-party context); cooldown is best-effort.
-  }
-}
-
-function clearAutoStartCooldown(): void {
-  if (!isTopFrame) {
-    return;
-  }
-  try {
-    window.sessionStorage?.removeItem(getAutoStartCooldownKey());
-  } catch {
-    // sessionStorage may be unavailable; nothing to do.
-  }
-}
-
-function shouldSkipAutoStart(): boolean {
-  if (!isTopFrame) {
-    return false;
-  }
-  try {
-    return window.sessionStorage?.getItem(getAutoStartCooldownKey()) === "1";
-  } catch {
-    return false;
-  }
-}
+const FALLBACK_COMMIT_STABLE_MS = 400;
+const FALLBACK_COMMIT_OBSERVATION_THRESHOLD = 2;
 
 let settings: ExtensionSettings = {
   autoScroll: true,
+  segmentPreset: "balanced",
   keepaliveIntervalMs: PIPELINE_DEFAULTS.keepaliveIntervalMs,
   pollingFallbackIntervalMs: 200,
   maxBufferLength: PIPELINE_DEFAULTS.confirmedCompactMaxLength,
+  maxEntriesPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
+  maxCharsPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS,
+  maxSegmentDurationMinutes: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
   noiseFilterEnabled: true,
   recentDuplicateMinLength: PIPELINE_DEFAULTS.recentDuplicateMinLength,
   filenamePattern: "{date}_{committee}_{time}",
@@ -213,9 +183,12 @@ let settings: ExtensionSettings = {
 };
 let state: SessionState = createEmptySessionState(window.location.href, document.title);
 const popupPorts = new Set<chrome.runtime.Port>();
+const diagnosticsPorts = new Set<chrome.runtime.Port>();
 let localPollingTimer: number | null = null;
 let topFallbackTimer: number | null = null;
 let persistTimer: number | null = null;
+let pendingRunningPersistSince: number | null = null;
+let pendingRunningPersistTrigger: RunningPersistTrigger | null = null;
 let pendingResetTimer: number | null = null;
 let localLastProbeSignature = "";
 let localHadProbeText = false;
@@ -225,7 +198,7 @@ let localPollingUnconfirmedFallbackBlockStreak = 0;
 let topFallbackUnconfirmedFallbackBlockStreak = 0;
 let panelCollapsed = false;
 let previewCollapsed = true;
-let panelNotice = DEFAULT_IN_PAGE_NOTICE;
+let panelNotice = resolveDefaultPanelNotice();
 let inPagePanel: InPagePanelController | null = null;
 let frameForwardNonce = "";
 let frameForwardNonceRefreshTimer: number | null = null;
@@ -237,6 +210,42 @@ let liveCaptureLedger = createEmptyLiveCaptureLedger();
 let extensionContextInvalidated = false;
 let failedStoppedSessionGuard = createEmptyFailedStoppedSessionGuard();
 let latestPersistabilityState: PersistabilityState = "idle";
+let latestRowDiagnostics = createEmptyRowDiagnostics();
+let latestFallbackCommitState: FallbackCommitState = "idle";
+let segmentRolloverInFlight = false;
+let queuedSegmentRolloverEvent: ObserverBridgeEvent | null = null;
+let segmentRolloverToken = 0;
+let fallbackCommitCandidate: FallbackCommitCandidate | null = null;
+let fallbackCommitTimer: number | null = null;
+let fallbackCommitToken = 0;
+let capturePipelineStarted = false;
+let urlChangePollingTimer: number | null = null;
+let lastKnownUrl = window.location.href;
+
+interface RowDiagnosticsState {
+  stableRowCount: number;
+  unstableRowCount: number;
+  filteredUnconfirmedCount: number;
+  rowKeySources: Partial<Record<RowKeySource, number>>;
+}
+
+interface FallbackCommitCandidate {
+  raw: string;
+  selector?: string;
+  framePath?: number[];
+  firstSeenAt: number;
+  lastSeenAt: number;
+  observationCount: number;
+  token: number;
+}
+
+function isCapturePage(): boolean {
+  return isSupportedAssemblyUrl(window.location.href);
+}
+
+function resolveDefaultPanelNotice(): string {
+  return isCapturePage() ? DEFAULT_IN_PAGE_NOTICE : NON_CAPTURE_PAGE_NOTICE;
+}
 
 function setPanelNotice(message: string): boolean {
   if (panelNotice === message) {
@@ -279,6 +288,30 @@ function createObserverBridgeToken(): string {
   return createRandomToken();
 }
 
+function cloneObserverBridgeEventForReplay(event: ObserverBridgeEvent): ObserverBridgeEvent {
+  return {
+    ...event,
+    rows: event.rows?.map((row) => ({
+      ...row,
+    })),
+    framePath: event.framePath ? [...event.framePath] : undefined,
+  };
+}
+
+function queueSegmentRolloverEvent(event: ObserverBridgeEvent): void {
+  queuedSegmentRolloverEvent = cloneObserverBridgeEventForReplay(event);
+}
+
+function flushQueuedSegmentRolloverEvent(): void {
+  if (segmentRolloverInFlight || !queuedSegmentRolloverEvent) {
+    return;
+  }
+
+  const queuedEvent = queuedSegmentRolloverEvent;
+  queuedSegmentRolloverEvent = null;
+  handleTopFrameEvent(queuedEvent);
+}
+
 function clearLocalPolling(): void {
   if (localPollingTimer) {
     window.clearInterval(localPollingTimer);
@@ -293,10 +326,30 @@ function clearTopFallbackTimer(): void {
   }
 }
 
+function clearFallbackCommitTimer(): void {
+  if (fallbackCommitTimer) {
+    window.clearTimeout(fallbackCommitTimer);
+    fallbackCommitTimer = null;
+  }
+}
+
+function clearFallbackCommitCandidate(nextState: FallbackCommitState = "idle"): void {
+  clearFallbackCommitTimer();
+  fallbackCommitCandidate = null;
+  setFallbackCommitState(nextState);
+}
+
 function clearFrameForwardNonceRefresh(): void {
   if (frameForwardNonceRefreshTimer) {
     window.clearInterval(frameForwardNonceRefreshTimer);
     frameForwardNonceRefreshTimer = null;
+  }
+}
+
+function clearUrlChangePolling(): void {
+  if (urlChangePollingTimer) {
+    window.clearInterval(urlChangePollingTimer);
+    urlChangePollingTimer = null;
   }
 }
 
@@ -309,7 +362,9 @@ function shutdownForInvalidatedContext(): void {
   invalidateExtensionContext();
   clearLocalPolling();
   clearTopFallbackTimer();
+  clearFallbackCommitTimer();
   clearFrameForwardNonceRefresh();
+  clearUrlChangePolling();
   clearRunningPersistTimer();
   clearPendingReset();
   state.observerActive = false;
@@ -367,32 +422,11 @@ function getPanelLiveRows(): LivePanelRow[] {
 }
 
 function getLivePreviewText(): string {
-  return liveCaptureLedger.previewText || state.previewText;
-}
-
-function formatPreviewForDisplay(
-  previewText: string,
-  captureMode: CaptureMode,
-  sourceUrl?: string,
-): string {
-  const normalized = normalizeSubtitleText(previewText);
-  if (!normalized) {
-    return "";
-  }
-
-  if (captureMode !== "fallback") {
-    return normalized;
-  }
-
-  return formatFallbackPreviewText(previewText, sourceUrl);
+  return resolveLivePreviewText(liveCaptureLedger.previewText, state.previewText);
 }
 
 function getLivePreviewTextForDisplay(): string {
-  return formatPreviewForDisplay(
-    getLivePreviewText(),
-    getCaptureMode(),
-    state.sourceUrl || window.location.href,
-  );
+  return formatPreviewForDisplay(getLivePreviewText(), getCaptureMode());
 }
 
 function getCaptureMode(): CaptureMode {
@@ -403,24 +437,35 @@ function setPersistabilityState(stateValue: PersistabilityState): void {
   latestPersistabilityState = stateValue;
 }
 
-function getPersistabilityDiagnostics() {
-  if (state.status !== "running") {
-    return buildPersistabilityDiagnostics(state.entries.length > 0 ? "persistable" : "idle");
-  }
+function createEmptyRowDiagnostics(): RowDiagnosticsState {
+  return {
+    stableRowCount: 0,
+    unstableRowCount: 0,
+    filteredUnconfirmedCount: 0,
+    rowKeySources: {},
+  };
+}
 
-  if (latestPersistabilityState !== "idle") {
-    return buildPersistabilityDiagnostics(latestPersistabilityState);
-  }
+function updateRowDiagnostics(
+  rows: ObservedSubtitleRow[] = [],
+  filteredUnconfirmedCount = 0,
+): void {
+  const rowKeySources: Partial<Record<RowKeySource, number>> = {};
+  rows.forEach((row) => {
+    const source = row.nodeKeySource ?? (row.unstableKey ? "generated" : "attribute");
+    rowKeySources[source] = (rowKeySources[source] ?? 0) + 1;
+  });
 
-  if (state.entries.length > 0) {
-    return buildPersistabilityDiagnostics("persistable");
-  }
+  latestRowDiagnostics = {
+    stableRowCount: rows.filter((row) => !row.unstableKey).length,
+    unstableRowCount: rows.filter((row) => row.unstableKey).length,
+    filteredUnconfirmedCount,
+    rowKeySources,
+  };
+}
 
-  if (getLivePreviewText().trim()) {
-    return buildPersistabilityDiagnostics("preview_only");
-  }
-
-  return buildPersistabilityDiagnostics("idle");
+function setFallbackCommitState(stateValue: FallbackCommitState): void {
+  latestFallbackCommitState = stateValue;
 }
 
 function resolvePreviewPersistability(previewText: string, now: number): PersistabilityState {
@@ -437,61 +482,36 @@ function resolvePreviewPersistability(previewText: string, now: number): Persist
 }
 
 function shouldShowPanelNotice(message: string): boolean {
-  return Boolean(message.trim()) && message !== DEFAULT_IN_PAGE_NOTICE;
+  return Boolean(message.trim()) && message !== resolveDefaultPanelNotice();
 }
 
 function canClearCurrentSession(showNotice = shouldShowPanelNotice(panelNotice)): boolean {
-  return (
-    state.status === "running" ||
-    state.entries.length > 0 ||
-    Boolean(getLivePreviewText().trim()) ||
-    showNotice
-  );
+  return canClearCurrentSessionState({
+    status: state.status,
+    entryCount: state.entries.length,
+    livePreviewText: getLivePreviewText(),
+    showNotice,
+  });
 }
 
-function buildStatusSnapshot(requiresReload = false): StatusSnapshot {
-  const captureMode = getCaptureMode();
-  const hasPersistableContent = state.entries.length > 0;
-  const persistability = getPersistabilityDiagnostics();
-  const previewText = getLivePreviewTextForDisplay();
-  const charCount = getSessionCharCount(state.entries);
-  const estimatedBytes = getUtf8ByteLength(state.entries.map((entry) => entry.text).join("\n"));
-  const persistabilityHint = getPersistabilityUserMessage(
-    persistability.state,
-    persistability.hint,
-  );
-  return {
-    connected: isSupportedAssemblyUrl(window.location.href),
+function buildStatusSnapshot(
+  requiresReload = false,
+  includeExportEstimates = false,
+): StatusSnapshot {
+  const previewTextRaw = getLivePreviewText();
+  return buildContentStatusSnapshot({
+    currentUrl: window.location.href,
+    sessionState: state,
+    settings,
+    captureMode: getCaptureMode(),
+    livePreviewTextRaw: previewTextRaw,
+    livePreviewTextForDisplay: formatPreviewForDisplay(previewTextRaw, getCaptureMode()),
+    latestPersistabilityState,
+    rowDiagnostics: latestRowDiagnostics,
+    fallbackCommitState: latestFallbackCommitState,
+    includeExportEstimates,
     requiresReload,
-    status: state.status,
-    sessionId: state.sessionId,
-    title: state.title,
-    committeeName: state.committeeName,
-    sourceUrl: state.sourceUrl,
-    subtitleCount: state.entries.length,
-    charCount,
-    previewText,
-    recentEntries: state.entries.slice(-20),
-    startedAt: state.startedAt,
-    endedAt: state.endedAt,
-    updatedAt: state.updatedAt,
-    lastPersistedAt: state.lastPersistedAt,
-    observerActive: state.observerActive,
-    currentSelector: state.currentSelector,
-    currentFramePath: [...state.currentFramePath],
-    diagnostics: buildCaptureDiagnostics({
-      captureMode,
-      observerActive: state.observerActive,
-      currentSelector: state.currentSelector,
-      currentFramePath: state.currentFramePath,
-      persistabilityState: persistability.state,
-      persistabilityHint,
-      entryCount: state.entries.length,
-      charCount,
-      estimatedBytes,
-    }),
-    hasPersistableContent,
-  };
+  });
 }
 
 function broadcastPopupState(requiresReload = false): void {
@@ -499,9 +519,11 @@ function broadcastPopupState(requiresReload = false): void {
     return;
   }
 
-  const messages = createPopupMessages(buildStatusSnapshot(requiresReload));
   popupPorts.forEach((port) => {
     try {
+      const messages = createPopupMessages(
+        buildStatusSnapshot(requiresReload, diagnosticsPorts.has(port)),
+      );
       messages.forEach((message) => postToPopupPort(port, message));
     } catch {
       // Ignore Invalidated context errors on ports
@@ -509,14 +531,20 @@ function broadcastPopupState(requiresReload = false): void {
   });
 }
 
-function syncPortState(port: chrome.runtime.Port, requiresReload = false): void {
-  createPopupMessages(buildStatusSnapshot(requiresReload)).forEach((message) =>
-    postToPopupPort(port, message),
+function syncPortState(
+  port: chrome.runtime.Port,
+  requiresReload = false,
+  includeExportEstimates = diagnosticsPorts.has(port),
+): void {
+  createPopupMessages(buildStatusSnapshot(requiresReload, includeExportEstimates)).forEach(
+    (message) => postToPopupPort(port, message),
   );
 }
 
 function clearRunningPersistTimer(): void {
   persistTimer = clearScheduledRunningPersist(persistTimer, (timerId) => window.clearTimeout(timerId));
+  pendingRunningPersistSince = null;
+  pendingRunningPersistTrigger = null;
 }
 
 async function persistSessionRecord(record: SessionRecord): Promise<SessionRecord> {
@@ -529,7 +557,7 @@ async function persistSessionRecord(record: SessionRecord): Promise<SessionRecor
   }
 
   return {
-    ...cloneSessionRecord(record),
+    ...record,
     updatedAt: response.updatedAt ?? record.updatedAt,
   };
 }
@@ -549,42 +577,32 @@ function canPersistCurrentRunningState(): boolean {
 }
 
 function buildPreparedSessionState(now = Date.now()): SessionState {
-  return prepareSessionState(state, settings, now);
+  return buildPreparedSessionStateFromState(state, settings, now);
 }
 
-function buildVisibleOutputEntries(now = Date.now()): SubtitleEntry[] {
+function buildVisibleOutputEntries(now = Date.now()) {
   void now;
-  return state.entries.map((entry) => cloneEntry(entry));
-}
-
-function buildVisibleSessionState(now = Date.now()): SessionState {
-  const nextState = cloneState(state);
-  nextState.entries = buildVisibleOutputEntries(now);
-  nextState.previewText = getLivePreviewText();
-  nextState.lastObservedRaw = nextState.previewText;
-  return nextState;
+  return buildVisibleOutputEntriesFromEntries(state.entries);
 }
 
 function buildVisibleSessionRecord(
   persistedStatus: "running" | "saved" | "stopped",
   now = Date.now(),
 ): SessionRecord {
-  if (persistedStatus !== "stopped") {
-    return toSessionRecord(buildVisibleSessionState(now), persistedStatus);
-  }
-
-  return toSessionRecord(finalizeSession(buildVisibleSessionState(now), now, settings).state, persistedStatus);
+  return buildVisibleSessionRecordFromState(
+    state,
+    settings,
+    persistedStatus,
+    getLivePreviewText(),
+    now,
+  );
 }
 
 function buildPreparedSessionRecord(
   persistedStatus: "running" | "saved" | "stopped",
   now = Date.now(),
 ): SessionRecord {
-  if (persistedStatus !== "stopped") {
-    return prepareSessionRecord(state, settings, persistedStatus, now);
-  }
-
-  return toSessionRecord(finalizeSession(buildPreparedSessionState(now), now, settings).state, persistedStatus);
+  return buildPreparedSessionRecordFromState(state, settings, persistedStatus, now);
 }
 
 function updateInPagePanel(): void {
@@ -623,9 +641,11 @@ function clearPendingReset(): void {
 
 function clearStructuredRuntimeState(): void {
   clearPendingReset();
+  clearFallbackCommitCandidate();
   liveCaptureLedger = clearLiveCaptureLedger();
   localLastProbeSignature = "";
   localHadProbeText = false;
+  latestRowDiagnostics = createEmptyRowDiagnostics();
 }
 
 function scheduleDeferredSubtitleReset(): void {
@@ -643,7 +663,6 @@ function scheduleDeferredSubtitleReset(): void {
     setPersistabilityState("idle");
     clearStructuredRuntimeState();
     setPanelNotice(RESET_CAPTURE_NOTICE);
-    scheduleRunningPersist();
     syncUserInterfaces();
   }, SUBTITLE_RESET_GRACE_MS);
 }
@@ -713,6 +732,7 @@ function applyStructuredRowsEvent(
       selector,
       framePath,
       sourceNodeKey: liveRow.key,
+      sourceCaptureMode: "structured",
       entryId: liveRow.committedEntryId ?? undefined,
       baselineCompact: liveRow.baselineCompact ?? state.confirmedCompact,
     });
@@ -746,16 +766,168 @@ function applyStructuredRowsEvent(
   };
 }
 
-function scheduleRunningPersist(): void {
+function scheduleFallbackCommitCandidate(candidate: FallbackCommitCandidate): void {
+  clearFallbackCommitTimer();
+  const delayMs = Math.max(0, FALLBACK_COMMIT_STABLE_MS - (Date.now() - candidate.firstSeenAt));
+  fallbackCommitTimer = window.setTimeout(() => {
+    fallbackCommitTimer = null;
+    commitFallbackCandidate(candidate.token, Date.now());
+  }, delayMs);
+}
+
+function resolveFallbackResultState(reason?: string): FallbackCommitState {
+  if (reason?.includes("duplicate")) {
+    return "duplicate";
+  }
+  if (reason?.includes("filtered")) {
+    return "filtered";
+  }
+  return "stable";
+}
+
+function commitFallbackCandidate(token: number, now = Date.now()): boolean {
+  const candidate = fallbackCommitCandidate;
+  if (!candidate || candidate.token !== token || state.status !== "running") {
+    return false;
+  }
+
+  const result = applyPreview(state, candidate.raw, now, settings, {
+    selector: candidate.selector,
+    framePath: candidate.framePath,
+    sourceCaptureMode: "fallback",
+  });
+  const committed = Boolean(result.appendedEntry);
+  if (result.changed) {
+    state = result.state;
+  }
+
+  clearFallbackCommitCandidate(committed ? "committed" : resolveFallbackResultState(result.reason));
+  setPersistabilityState(committed ? "persistable" : resolvePreviewPersistabilityState(result.reason));
+  const persistability = buildPersistabilityDiagnostics(latestPersistabilityState);
+  setPanelNotice(
+    resolveRuntimeCaptureNotice({
+      captureMode: "fallback",
+      observerActive: state.observerActive,
+      hasStableRows: false,
+      lastCommittedResetAt: state.lastCommittedResetAt,
+      now,
+      persistabilityState: persistability.state,
+      persistabilityHint: persistability.hint,
+    }),
+  );
+
+  if (committed) {
+    const segmentationReason = resolveRuntimeSessionSegmentationReason(
+      state,
+      now,
+      resolveRuntimeSessionSegmentationThresholds(settings),
+    );
+    if (segmentationReason) {
+      segmentRolloverInFlight = true;
+      queuedSegmentRolloverEvent = null;
+      const rolloverToken = ++segmentRolloverToken;
+      setPanelNotice("현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.");
+      syncUserInterfaces();
+      void rollOverRunningSessionSegment(segmentationReason, now, rolloverToken);
+      return true;
+    }
+    scheduleRunningPersist("commit", now);
+  }
+
+  syncUserInterfaces();
+  return committed;
+}
+
+function observeFallbackCommitCandidate(
+  raw: string,
+  now: number,
+  selector?: string,
+  framePath?: number[],
+): boolean {
+  const normalizedRaw = raw.trim();
+  if (!normalizedRaw) {
+    clearFallbackCommitCandidate();
+    return false;
+  }
+
+  if (fallbackCommitCandidate?.raw === normalizedRaw) {
+    fallbackCommitCandidate = {
+      ...fallbackCommitCandidate,
+      selector,
+      framePath: framePath ? [...framePath] : undefined,
+      lastSeenAt: now,
+      observationCount: fallbackCommitCandidate.observationCount + 1,
+    };
+  } else {
+    fallbackCommitCandidate = {
+      raw: normalizedRaw,
+      selector,
+      framePath: framePath ? [...framePath] : undefined,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      observationCount: 1,
+      token: ++fallbackCommitToken,
+    };
+  }
+
+  setFallbackCommitState("pending");
+
+  if (
+    fallbackCommitCandidate.observationCount >= FALLBACK_COMMIT_OBSERVATION_THRESHOLD ||
+    now - fallbackCommitCandidate.firstSeenAt >= FALLBACK_COMMIT_STABLE_MS
+  ) {
+    return commitFallbackCandidate(fallbackCommitCandidate.token, now);
+  }
+
+  scheduleFallbackCommitCandidate(fallbackCommitCandidate);
+  return false;
+}
+
+function scheduleRunningPersist(
+  trigger: RunningPersistTrigger = "commit",
+  now = Date.now(),
+): void {
   if (extensionContextInvalidated) {
     clearRunningPersistTimer();
     return;
   }
 
+  if (!shouldScheduleRunningPersist(isTopFrame, state, settings)) {
+    clearRunningPersistTimer();
+    return;
+  }
+
+  if (trigger === "commit") {
+    if (pendingRunningPersistTrigger !== "commit") {
+      pendingRunningPersistSince = now;
+    }
+    pendingRunningPersistTrigger = "commit";
+  } else if (pendingRunningPersistTrigger === null) {
+    pendingRunningPersistSince = now;
+    pendingRunningPersistTrigger = "keepalive";
+  }
+
+  const effectiveTrigger = pendingRunningPersistTrigger ?? trigger;
+  const delayMs = resolveRunningPersistDelayMs({
+    trigger: effectiveTrigger,
+    now,
+    pendingSince: effectiveTrigger === "commit" ? pendingRunningPersistSince : null,
+    lastPersistedAt: state.lastPersistedAt,
+    settings,
+  });
+
+  if (delayMs === null) {
+    if (effectiveTrigger === "keepalive") {
+      pendingRunningPersistSince = null;
+      pendingRunningPersistTrigger = null;
+    }
+    return;
+  }
+
   persistTimer = scheduleRunningPersistTimer({
     currentTimer: persistTimer,
-    delayMs: resolveRunningPersistDebounceMs(settings),
-    shouldSchedule: shouldScheduleRunningPersist(isTopFrame, state, settings),
+    delayMs,
+    shouldSchedule: true,
     clearTimer: (timerId) => window.clearTimeout(timerId),
     setTimer: (callback, delayMs) => window.setTimeout(callback, delayMs),
     getSnapshot: () => ({
@@ -764,10 +936,16 @@ function scheduleRunningPersist(): void {
     }),
     persistRecord: persistSessionRecord,
     onPersisted: (saved) => {
+      persistTimer = null;
+      pendingRunningPersistSince = null;
+      pendingRunningPersistTrigger = null;
       state = applyPersistSuccess(state, saved.updatedAt);
       syncUserInterfaces();
     },
     onError: (error) => {
+      persistTimer = null;
+      pendingRunningPersistSince = null;
+      pendingRunningPersistTrigger = null;
       reportRuntimeError("수집 중 세션 저장에 실패했습니다.", error);
     },
   });
@@ -854,7 +1032,7 @@ function persistSessionRecordInBackground(
         }
 
         if (record.status === "running" && state.sessionId === record.id) {
-          state = applyPersistSuccess(state, record.updatedAt);
+          state = applyPersistSuccess(state, response.updatedAt ?? record.updatedAt);
           if (document.visibilityState === "visible") {
             syncUserInterfaces();
           }
@@ -1122,7 +1300,7 @@ function triggerImmediateTopFallbackProbe(): void {
 }
 
 function dispatchObserverConfig(): void {
-  if (extensionContextInvalidated) {
+  if (extensionContextInvalidated || !isCapturePage()) {
     return;
   }
 
@@ -1221,6 +1399,11 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       return;
     }
 
+    if (segmentRolloverInFlight) {
+      queueSegmentRolloverEvent(event);
+      return;
+    }
+
     if (event.kind === "subtitle:reset") {
       scheduleDeferredSubtitleReset();
       return;
@@ -1240,10 +1423,11 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
     }
 
     const captureCommit = analyzeCaptureCommit(captureEvent);
+    updateRowDiagnostics(captureEvent.rows, event.filteredUnconfirmedCount ?? 0);
 
     if (captureCommit.shouldCommit) {
-      localPollingUnconfirmedFallbackBlockStreak = 0;
-      topFallbackUnconfirmedFallbackBlockStreak = 0;
+      clearFallbackCommitCandidate();
+      unconfirmedFallbackBlockStreak = 0;
       const structuredResult = applyStructuredRowsEvent(
         captureCommit.stableRows,
         captureCommit.previewText,
@@ -1280,12 +1464,26 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
         (!state.lastKeepaliveAt || now - state.lastKeepaliveAt >= settings.keepaliveIntervalMs)
       ) {
         state = applyKeepalive(state, now).state;
-        scheduleRunningPersist();
+        scheduleRunningPersist("keepalive", now);
         syncUserInterfaces();
         return;
       }
-      if (structuredResult.changed) {
-        scheduleRunningPersist();
+      if (structuredResult.committed) {
+        const segmentationReason = resolveRuntimeSessionSegmentationReason(
+          state,
+          now,
+          resolveRuntimeSessionSegmentationThresholds(settings),
+        );
+        if (segmentationReason) {
+          segmentRolloverInFlight = true;
+          queuedSegmentRolloverEvent = null;
+          const rolloverToken = ++segmentRolloverToken;
+          setPanelNotice("현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.");
+          syncUserInterfaces();
+          void rollOverRunningSessionSegment(segmentationReason, now, rolloverToken);
+          return;
+        }
+        scheduleRunningPersist("commit", now);
       }
       if (structuredResult.changed || noticeChanged) {
         syncUserInterfaces();
@@ -1331,14 +1529,23 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
       (!state.lastKeepaliveAt || now - state.lastKeepaliveAt >= settings.keepaliveIntervalMs)
     ) {
       state = applyKeepalive(state, now).state;
-      scheduleRunningPersist();
+      scheduleRunningPersist("keepalive", now);
       syncUserInterfaces();
       return;
     }
 
     const previewChanged = applyPreviewStateOnly(normalized, now);
+    const fallbackCommitted = observeFallbackCommitCandidate(
+      normalized,
+      now,
+      event.selector,
+      event.framePath,
+    );
     if (fallbackReconciliation.changed || previewChanged || noticeChanged) {
       syncUserInterfaces();
+    }
+    if (fallbackCommitted) {
+      return;
     }
   } catch (error) {
     reportRuntimeError("자막 파이프라인 처리 중 오류가 발생했습니다.", error);
@@ -1350,6 +1557,7 @@ function emitLocalProbeEvent(
   raw?: string,
   selector?: string,
   rows?: ObservedSubtitleRow[],
+  filteredUnconfirmedCount = 0,
 ): void {
   forwardToTop({
     source: OBSERVER_BRIDGE_SOURCE,
@@ -1362,11 +1570,12 @@ function emitLocalProbeEvent(
     timestamp: Date.now(),
     sourceUrl: window.location.href,
     observerActive: false,
+    filteredUnconfirmedCount,
   });
 }
 
 function startLocalPolling(): void {
-  if (extensionContextInvalidated) {
+  if (extensionContextInvalidated || !isCapturePage()) {
     clearLocalPolling();
     return;
   }
@@ -1380,16 +1589,23 @@ function startLocalPolling(): void {
       const probe = estimateRecentRaw(document, state.currentSelector, {
         filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
         allowUnconfirmedContainerFallback,
+        sourceUrl: window.location.href,
       });
       localPollingUnconfirmedFallbackBlockStreak = updateUnconfirmedFallbackBlockStreak(
         localPollingUnconfirmedFallbackBlockStreak,
         probe,
       );
       if (!probe.found || !probe.text) {
+        if (probe.blockedByUnconfirmedFilter) {
+          updateRowDiagnostics([], probe.filteredUnconfirmedCount ?? 0);
+          setPersistabilityState("filtered");
+          setPanelNotice(buildPersistabilityDiagnostics("filtered").hint);
+          syncUserInterfaces();
+        }
         if (localHadProbeText) {
           localHadProbeText = false;
           localLastProbeSignature = "";
-          emitLocalProbeEvent("subtitle:reset");
+          emitLocalProbeEvent("subtitle:reset", undefined, undefined, undefined, probe.filteredUnconfirmedCount);
         }
         return;
       }
@@ -1401,7 +1617,13 @@ function startLocalPolling(): void {
 
       localHadProbeText = true;
       localLastProbeSignature = decision.signature;
-      emitLocalProbeEvent("subtitle:update", probe.text, probe.matchedSelector, probe.rows);
+      emitLocalProbeEvent(
+        "subtitle:update",
+        probe.text,
+        probe.matchedSelector,
+        probe.rows,
+        probe.filteredUnconfirmedCount,
+      );
     } catch (error) {
       reportRuntimeError("로컬 자막 감지 중 오류가 발생했습니다.", error);
     }
@@ -1453,6 +1675,7 @@ function runTopFrameFallbackTick(): void {
     const probeOptions = {
       filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
       allowUnconfirmedContainerFallback,
+      sourceUrl: window.location.href,
     };
     const cachedFramePath = lastSuccessfulFallbackFramePath;
     const cachedProbe =
@@ -1468,6 +1691,12 @@ function runTopFrameFallbackTick(): void {
       probe,
     );
     if (!probe.found || !probe.text) {
+      if (probe.blockedByUnconfirmedFilter) {
+        updateRowDiagnostics([], probe.filteredUnconfirmedCount ?? 0);
+        setPersistabilityState("filtered");
+        setPanelNotice(buildPersistabilityDiagnostics("filtered").hint);
+        syncUserInterfaces();
+      }
       topFallbackMissStreak += 1;
       if (now - lastSubtitleActivationAttemptAt >= 2000) {
         requestSubtitleLayerActivation();
@@ -1491,6 +1720,7 @@ function runTopFrameFallbackTick(): void {
       timestamp: now,
       sourceUrl: window.location.href,
       observerActive: false,
+      filteredUnconfirmedCount: probe.filteredUnconfirmedCount,
     });
   } catch (error) {
     topFallbackMissStreak += 1;
@@ -1503,7 +1733,7 @@ function runTopFrameFallbackTick(): void {
 }
 
 function startTopFrameFallback(): void {
-  if (!isTopFrame || extensionContextInvalidated) {
+  if (!isTopFrame || extensionContextInvalidated || !isCapturePage()) {
     clearTopFallbackTimer();
     return;
   }
@@ -1514,9 +1744,93 @@ function startTopFrameFallback(): void {
   );
 }
 
+function stopCapturePipelineForCurrentPage(): void {
+  clearLocalPolling();
+  clearTopFallbackTimer();
+  clearFallbackCommitCandidate();
+  capturePipelineStarted = false;
+  try {
+    window.dispatchEvent(new CustomEvent(OBSERVER_STOP_EVENT));
+  } catch {
+    // no-op
+  }
+}
+
+async function startCapturePipelineForCurrentPage(): Promise<void> {
+  if (extensionContextInvalidated || !isCapturePage()) {
+    stopCapturePipelineForCurrentPage();
+    return;
+  }
+
+  if (!capturePipelineStarted) {
+    try {
+      await injectObserverScript();
+    } catch (error) {
+      reportRuntimeError("MutationObserver 주입에 실패해 polling fallback으로 계속 진행합니다.", error);
+    }
+    capturePipelineStarted = true;
+  } else {
+    dispatchObserverConfig();
+  }
+
+  if (extensionContextInvalidated) {
+    return;
+  }
+
+  startLocalPolling();
+  startTopFrameFallback();
+  syncUserInterfaces();
+
+  if (isTopFrame && settings.autoStartEnabled && state.status !== "running") {
+    void startCapture().catch((error: unknown) => {
+      reportRuntimeError("자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.", error);
+    });
+  }
+}
+
+async function reconcileCapturePipelineForCurrentUrl(): Promise<void> {
+  const currentUrl = window.location.href;
+  const urlChanged = currentUrl !== lastKnownUrl;
+  if (!urlChanged && capturePipelineStarted === isCapturePage()) {
+    return;
+  }
+
+  const previousUrl = lastKnownUrl;
+  lastKnownUrl = currentUrl;
+
+  if (urlChanged && state.status === "running") {
+    try {
+      await stopCapture();
+    } catch (error) {
+      reportRuntimeError("페이지 이동 전 실행 중인 세션 저장에 실패했습니다.", error);
+      return;
+    }
+  }
+
+  if (urlChanged && state.status !== "running") {
+    resetRuntimeState();
+  }
+
+  setPanelNotice(resolveDefaultPanelNotice());
+  if (!isCapturePage()) {
+    stopCapturePipelineForCurrentPage();
+    syncUserInterfaces();
+    logDebug("capture pipeline stopped after URL change", {
+      previousUrl,
+      currentUrl,
+    });
+    return;
+  }
+
+  await startCapturePipelineForCurrentPage();
+}
+
 function resetRuntimeState(): void {
   clearRunningPersistTimer();
   clearStructuredRuntimeState();
+  segmentRolloverToken += 1;
+  queuedSegmentRolloverEvent = null;
+  segmentRolloverInFlight = false;
   setPersistabilityState("idle");
   state = createResetSessionState(window.location.href, document.title, deriveCommitteeName(document.title));
   topFallbackMissStreak = 0;
@@ -1525,7 +1839,7 @@ function resetRuntimeState(): void {
   lastSuccessfulFallbackFramePath = null;
   lastSubtitleActivationAttemptAt = 0;
   lastNavigationSnapshotAt = 0;
-  setPanelNotice(DEFAULT_IN_PAGE_NOTICE);
+  setPanelNotice(resolveDefaultPanelNotice());
 }
 
 async function ensureFailedStoppedSessionResolved(actionLabel: string): Promise<boolean> {
@@ -1592,6 +1906,11 @@ async function clearSessionAndReset(): Promise<void> {
 }
 
 async function startCapture(): Promise<void> {
+  if (!isCapturePage()) {
+    setPanelNotice("국회 의사중계 플레이어 페이지에서만 자막 수집을 시작할 수 있습니다.");
+    syncUserInterfaces();
+    return;
+  }
   if (!(await ensureFailedStoppedSessionResolved("자막 수집 시작"))) {
     return;
   }
@@ -1626,6 +1945,9 @@ async function startCapture(): Promise<void> {
 }
 
 async function stopCapture(): Promise<void> {
+  segmentRolloverToken += 1;
+  segmentRolloverInFlight = false;
+  queuedSegmentRolloverEvent = null;
   clearRunningPersistTimer();
   clearPendingReset();
   const now = Date.now();
@@ -1637,7 +1959,63 @@ async function stopCapture(): Promise<void> {
   syncUserInterfaces();
 }
 
-async function exportCurrentSession(format: ExportFormat): Promise<void> {
+async function rollOverRunningSessionSegment(
+  reason: RuntimeSessionSegmentationReason,
+  now = Date.now(),
+  token = segmentRolloverToken,
+): Promise<void> {
+  if (!isTopFrame || state.status !== "running" || !state.entries.length) {
+    if (token === segmentRolloverToken) {
+      segmentRolloverInFlight = false;
+      flushQueuedSegmentRolloverEvent();
+    }
+    return;
+  }
+
+  const savedRecord = buildPreparedSessionRecord("saved", now);
+  if (!savedRecord.entries.length) {
+    if (token === segmentRolloverToken) {
+      segmentRolloverInFlight = false;
+      flushQueuedSegmentRolloverEvent();
+    }
+    return;
+  }
+
+  clearRunningPersistTimer();
+  const nowIso = new Date(now).toISOString();
+
+  try {
+    await persistSessionRecord(savedRecord);
+    if (token !== segmentRolloverToken || state.status !== "running") {
+      return;
+    }
+    liveCaptureLedger = resetLiveCaptureLedgerForNewSegment(
+      liveCaptureLedger,
+      state.confirmedCompact,
+    );
+    state = buildRolledOverRunningSessionState(state, {
+      sourceUrl: window.location.href,
+      title: document.title,
+      committeeName: deriveCommitteeName(document.title),
+      nowIso,
+    });
+    setPersistabilityState(getLivePreviewText().trim() ? "preview_only" : "idle");
+    setPanelNotice(buildSegmentRolloverNotice(state.segmentNumber, reason));
+    syncUserInterfaces();
+  } catch (error) {
+    if (token === segmentRolloverToken) {
+      scheduleRunningPersist("commit", now);
+      reportRuntimeError("세션 자동 분할 저장에 실패했습니다.", error);
+    }
+  } finally {
+    if (token === segmentRolloverToken) {
+      segmentRolloverInFlight = false;
+      flushQueuedSegmentRolloverEvent();
+    }
+  }
+}
+
+async function exportCurrentSession(format: "txt" | "srt" | "vtt" | "json"): Promise<void> {
   const record = buildVisibleSessionRecord(state.status === "running" ? "running" : "stopped");
   if (!record.entries.length) {
     setPanelNotice("먼저 자막을 모은 뒤 파일로 저장하세요.");
@@ -1645,29 +2023,23 @@ async function exportCurrentSession(format: ExportFormat): Promise<void> {
     return;
   }
 
-  const payload = await exportSessionData(record, format, {
+  const saved = await persistSessionRecord(record);
+  state = applyPersistSuccess(state, saved.updatedAt);
+  const response = await sendRuntimeMessage({
+    type: "DOWNLOAD_SESSION_EXPORT",
+    sessionId: record.id,
+    format,
     filenamePattern: settings.filenamePattern,
     txtExportTimestampsEnabled: settings.txtExportTimestampsEnabled,
     txtExportSpeakerEnabled: settings.txtExportSpeakerEnabled,
     txtExportEntryNotesEnabled: settings.txtExportEntryNotesEnabled,
-  });
-  if (!confirmLargeSingleSessionExport(payload.filename, getUtf8ByteLength(payload.content))) {
-    setPanelNotice("파일 저장을 취소했습니다.");
-    syncUserInterfaces();
-    return;
-  }
-  const response = await sendRuntimeMessage({
-    type: "DOWNLOAD_REQUEST",
-    filename: payload.filename,
-    content: payload.content,
-    mimeType: payload.mimeType,
   });
   if (!response.ok) {
     throw new Error(
       mapDownloadErrorMessage(response.error, "single-session") || "파일 저장을 시작하지 못했습니다.",
     );
   }
-  setPanelNotice(`${payload.filename} 파일 저장 창을 열었습니다.`);
+  setPanelNotice(`${format.toUpperCase()} 파일 저장 창을 열었습니다.`);
   syncUserInterfaces();
 }
 
@@ -1866,7 +2238,12 @@ async function handleCommand(
       syncPortState(port);
       return;
     case "GET_STATUS":
+      diagnosticsPorts.delete(port);
       syncPortState(port);
+      return;
+    case "GET_DIAGNOSTICS_STATUS":
+      diagnosticsPorts.add(port);
+      syncPortState(port, false, true);
       return;
     case "OPEN_INPAGE_PANEL": {
       const feedback = openInPagePanel();
@@ -1939,6 +2316,7 @@ function bindPopupPort(): void {
 
     port.onDisconnect.addListener(() => {
       popupPorts.delete(port);
+      diagnosticsPorts.delete(port);
     });
   });
 
@@ -1950,6 +2328,10 @@ function bindPopupPort(): void {
     }
     if (typedMessage.type === "GET_STATUS") {
       sendResponse(buildStatusSnapshot(false));
+      return true;
+    }
+    if (typedMessage.type === "GET_DIAGNOSTICS_STATUS") {
+      sendResponse(buildStatusSnapshot(false, true));
       return true;
     }
     return undefined;
@@ -2055,6 +2437,45 @@ function bindNavigationGuards(): void {
   });
 }
 
+function bindUrlChangeDetection(): void {
+  if (!isTopFrame) {
+    return;
+  }
+
+  const scheduleReconcile = (): void => {
+    window.setTimeout(() => {
+      void reconcileCapturePipelineForCurrentUrl().catch((error: unknown) => {
+        reportRuntimeError("페이지 주소 변경 후 캡처 상태를 갱신하지 못했습니다.", error);
+      });
+    }, 0);
+  };
+
+  const originalPushState = window.history.pushState.bind(window.history);
+  const originalReplaceState = window.history.replaceState.bind(window.history);
+
+  window.history.pushState = ((...args: Parameters<History["pushState"]>) => {
+    const result = originalPushState(...args);
+    scheduleReconcile();
+    return result;
+  }) as History["pushState"];
+
+  window.history.replaceState = ((...args: Parameters<History["replaceState"]>) => {
+    const result = originalReplaceState(...args);
+    scheduleReconcile();
+    return result;
+  }) as History["replaceState"];
+
+  window.addEventListener("popstate", scheduleReconcile);
+  window.addEventListener("hashchange", scheduleReconcile);
+
+  clearUrlChangePolling();
+  urlChangePollingTimer = window.setInterval(() => {
+    if (window.location.href !== lastKnownUrl) {
+      scheduleReconcile();
+    }
+  }, 500);
+}
+
 function bindBridgeMessages(): void {
   window.addEventListener("message", (event) => {
     const data = event.data as Partial<ObserverBridgeEvent> | Partial<FrameForwardMessage> | undefined;
@@ -2120,41 +2541,32 @@ async function bootstrap(): Promise<void> {
 
   state.title = document.title;
   state.committeeName = deriveCommitteeName(document.title);
+  setPanelNotice(resolveDefaultPanelNotice());
   bindBridgeMessages();
   bindSettingsChanges();
   bindNavigationGuards();
+  bindUrlChangeDetection();
   mountInPagePanel();
   updateInPagePanel();
   startFrameForwardNonceRefresh();
 
-  try {
-    await injectObserverScript();
-  } catch (error) {
-    reportRuntimeError("MutationObserver 주입에 실패해 polling fallback으로 계속 진행합니다.", error);
-  }
-  if (extensionContextInvalidated) {
+  if (!isCapturePage()) {
+    syncUserInterfaces();
+    logDebug("content script bootstrapped without capture pipeline", {
+      isTopFrame,
+      localFramePath,
+      url: window.location.href,
+    });
     return;
   }
 
-  startLocalPolling();
-  startTopFrameFallback();
+  await startCapturePipelineForCurrentPage();
   syncUserInterfaces();
   logDebug("content script bootstrapped", {
     isTopFrame,
     localFramePath,
     nonceSource: FRAME_FORWARD_NONCE_SOURCE,
   });
-
-  if (
-    isTopFrame &&
-    settings.autoStartEnabled &&
-    state.status !== "running" &&
-    !shouldSkipAutoStart()
-  ) {
-    void startCapture().catch((error: unknown) => {
-      reportRuntimeError("자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.", error);
-    });
-  }
 }
 
 const bootstrapRoot = document.documentElement;
@@ -2168,8 +2580,10 @@ if (!bootstrapRoot?.hasAttribute(CONTENT_SCRIPT_BOOTSTRAP_ATTRIBUTE)) {
     }
     mountInPagePanel();
     updateInPagePanel();
-    startLocalPolling();
-    startTopFrameFallback();
+    if (isCapturePage()) {
+      startLocalPolling();
+      startTopFrameFallback();
+    }
   });
 }
 

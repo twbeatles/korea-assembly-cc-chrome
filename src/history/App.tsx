@@ -1,12 +1,23 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createTab, sendRuntimeMessage } from "../shared/chrome-api";
+import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../shared/copy-utils";
 import {
-  buildCopyText,
-  copyTextToClipboard,
-  filterEntriesByQuery,
-} from "../shared/copy-utils";
-import type { ExportFormat, SessionRecord } from "../core/subtitle-models";
+  resolveSessionLineageId,
+  resolveSessionSegmentNumber,
+  type ExportFormat,
+  type SessionRecord,
+} from "../core/subtitle-models";
+import {
+  isSegmentedSessionRecord,
+  mergeSessionSegments,
+  sortSessionSegments,
+} from "../core/session-lineage";
+import { exportJson } from "../core/exporters/json";
+import { normalizeSessionForExport } from "../core/exporters/normalize-session";
+import { exportSrt } from "../core/exporters/srt";
+import { exportTxt } from "../core/exporters/txt";
+import { exportVtt } from "../core/exporters/vtt";
 import {
   cloneEntry,
   createId,
@@ -33,22 +44,17 @@ import {
 import {
   buildSessionLibraryBackupExport,
   deleteAllSessions,
-  deleteSession,
-  exportSessionData,
-  filterSessionEntriesByTimeRange,
+  deleteSessionLineage,
   getSessionLibraryOverview,
   importSessionRecords,
-  listSessionsPage,
-  loadSession,
-  loadSessionsByIds,
-  searchSessions,
-  SESSION_NOTE_MAX_LENGTH,
-  updateSessionContent,
-  updateSessionMetadata,
+  listSessionLineagesPage,
+  listSessionLineageSegments,
+  updateSessionLineageMetadata,
 } from "../storage/session-store";
 import type {
   SessionImportSummary,
   SessionLibraryPreview,
+  SessionLineageSummary,
   SessionLongTaskKind,
   SessionLongTaskProgress,
   SessionSearchResult,
@@ -75,6 +81,7 @@ import {
   toggleSelectedSessionId,
 } from "./history-view-state";
 import { readBlobTextWithProgress } from "./blob-read";
+import { downloadPageBlobExport } from "./page-blob-download";
 
 const EXPORT_FORMATS: ExportFormat[] = [
   "txt",
@@ -85,6 +92,7 @@ const EXPORT_FORMATS: ExportFormat[] = [
   "csv",
 ];
 const HISTORY_PAGE_SIZE = 200;
+const LARGE_LINEAGE_EXPORT_WARNING_BYTES = 8 * 1024 * 1024;
 
 function parseTagInput(value: string): string[] {
   return [
@@ -206,10 +214,27 @@ function formatDate(value: string | null): string {
   return new Date(value).toLocaleString("ko-KR");
 }
 
-function canReopenSourceUrl(
-  sourceUrl: string | null | undefined,
-): sourceUrl is string {
+function getSessionSegmentLabel(
+  session: Pick<SessionRecord, "segmentNumber">,
+): string {
+  return `세그먼트 ${resolveSessionSegmentNumber(session.segmentNumber)}`;
+}
+
+function canReopenSourceUrl(sourceUrl: string | null | undefined): sourceUrl is string {
   return typeof sourceUrl === "string" && isSupportedAssemblyUrl(sourceUrl);
+}
+
+function estimateSessionExportBytes(
+  session: SessionRecord,
+  txtExportTimestampsEnabled: boolean,
+): number {
+  const normalized = normalizeSessionForExport(session);
+  return Math.max(
+    getUtf8ByteLength(exportTxt(normalized, { includeTimestamps: txtExportTimestampsEnabled })),
+    getUtf8ByteLength(exportSrt(normalized)),
+    getUtf8ByteLength(exportVtt(normalized)),
+    getUtf8ByteLength(exportJson(normalized)),
+  );
 }
 
 function confirmDeleteSession(target: SessionRecord): boolean {
@@ -294,14 +319,17 @@ export default function App() {
   const tagDraftRef = useRef("");
   const categoryDraftRef = useRef("");
   const previousSelectedSessionRef = useRef<SessionRecord | null>(null);
-  const [pageSessions, setPageSessions] = useState<SessionRecord[]>([]);
+  const [pageLineages, setPageLineages] = useState<SessionLineageSummary[]>([]);
   const [totalSessionCount, setTotalSessionCount] = useState(0);
-  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(
-    null,
-  );
+  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
+  const [selectedLineageSummary, setSelectedLineageSummary] =
+    useState<SessionLineageSummary | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
   const [checkedIds, setCheckedIds] = useState<string[]>([]);
   const [checkedEntryIds, setCheckedEntryIds] = useState<string[]>([]);
+  const [lineageSessions, setLineageSessions] = useState<SessionRecord[]>([]);
+  const [lineageLoading, setLineageLoading] = useState(false);
+  const [lineageViewEnabled, setLineageViewEnabled] = useState(false);
   const [message, setMessage] = useState("기록을 불러오는 중입니다.");
   const [searchQuery, setSearchQuery] = useState("");
   const [globalSearchQuery, setGlobalSearchQuery] = useState("");
@@ -345,12 +373,39 @@ export default function App() {
     Map<string, SessionSearchResult>
   >(() => new Map());
 
-  const filteredEntries = useMemo(() => {
-    const baseEntries = showHighlightedOnly
-      ? (selectedSession?.entries ?? []).filter((entry) => entry.highlighted)
-      : (selectedSession?.entries ?? []);
-    return filterEntriesByQuery(baseEntries, searchQuery);
-  }, [searchQuery, selectedSession, showHighlightedOnly]);
+  const selectedLineageId =
+    selectedLineageSummary?.lineageId ??
+    (selectedSession
+      ? resolveSessionLineageId(selectedSession.id, selectedSession.lineageId)
+      : "");
+  const availableLineageSessions = useMemo(
+    () =>
+      selectedSession
+        ? lineageSessions.length
+          ? lineageSessions
+          : [selectedSession]
+        : [],
+    [lineageSessions, selectedSession],
+  );
+  const hasLineageSegments = availableLineageSessions.length > 1;
+  const lineageAggregateSession = useMemo(
+    () =>
+      hasLineageSegments ? mergeSessionSegments(availableLineageSessions) : null,
+    [availableLineageSessions, hasLineageSegments],
+  );
+  const displaySession =
+    lineageViewEnabled && lineageAggregateSession ? lineageAggregateSession : selectedSession;
+  const displayExportEstimateBytes = useMemo(
+    () =>
+      displaySession
+        ? estimateSessionExportBytes(displaySession, txtExportTimestampsEnabled)
+        : 0,
+    [displaySession, txtExportTimestampsEnabled],
+  );
+  const filteredEntries = useMemo(
+    () => filterEntriesByQuery(displaySession?.entries ?? [], searchQuery),
+    [displaySession, searchQuery],
+  );
   const checkedIdSet = useMemo(() => new Set(checkedIds), [checkedIds]);
   const checkedEntryIdSet = useMemo(
     () => new Set(checkedEntryIds),
@@ -361,35 +416,18 @@ export default function App() {
     Math.ceil(totalSessionCount / HISTORY_PAGE_SIZE),
   );
   const selectedEntries = useMemo(
-    () =>
-      selectedSession?.entries.filter((entry) =>
-        checkedEntryIdSet.has(entry.id),
-      ) ?? [],
-    [checkedEntryIdSet, selectedSession],
+    () => displaySession?.entries.filter((entry) => checkedEntryIdSet.has(entry.id)) ?? [],
+    [checkedEntryIdSet, displaySession],
   );
   const currentPageSessionsChecked =
-    pageSessions.length > 0 &&
-    pageSessions.every((session) => checkedIdSet.has(session.id));
+    pageLineages.length > 0 && pageLineages.every((lineage) => checkedIdSet.has(lineage.lineageId));
   const allVisibleEntriesChecked =
     filteredEntries.length > 0 &&
     filteredEntries.every((entry) => checkedEntryIdSet.has(entry.id));
-  const hasUnsavedNote = selectedSession
-    ? noteDraft !== selectedSession.note
-    : noteDraft.trim().length > 0;
-  const hasUnsavedMetadata = selectedSession
-    ? tagDraft !== formatTagInput(selectedSession.tags) ||
-      categoryDraft !== (selectedSession.category ?? "") ||
-      speakerPrimaryDraft !== (selectedSession.speakerLabels?.primary ?? "") ||
-      speakerSecondaryDraft !==
-        (selectedSession.speakerLabels?.secondary ?? "") ||
-      speakerUnknownDraft !== (selectedSession.speakerLabels?.unknown ?? "")
-    : false;
-  const hasUnsavedSessionDraft = hasUnsavedNote || hasUnsavedMetadata;
-  const searchModeActive =
-    Boolean(globalSearchQuery.trim()) ||
-    Boolean(tagFilter.trim()) ||
-    Boolean(categoryFilter.trim()) ||
-    showHighlightedOnly;
+  const hasUnsavedNote =
+    selectedSession
+      ? noteDraft !== (selectedLineageSummary?.note ?? selectedSession.note)
+      : noteDraft.trim().length > 0;
   const actionButtonsDisabled = busyAction !== null;
   const jsonTaskButtonsDisabled = busyAction !== null || longTask !== null;
   const heroMessage = longTask?.message ?? message;
@@ -397,35 +435,11 @@ export default function App() {
     longTask && longTask.total > 0
       ? `${Math.min(longTask.completed, longTask.total)} / ${longTask.total}`
       : null;
-  const highlightedEntries = useMemo(
-    () => selectedSession?.entries.filter((entry) => entry.highlighted) ?? [],
-    [selectedSession],
-  );
-  const selectedEstimatedBytes = useMemo(
-    () =>
-      getUtf8ByteLength(
-        (selectedSession?.entries ?? []).map((entry) => entry.text).join("\n"),
-      ),
-    [selectedSession],
-  );
-  const timeRange = useMemo<NonNullable<SessionExportOptions["timeRange"]>>(
-    () => ({
-      from: timeRangeFrom.trim() || undefined,
-      to: timeRangeTo.trim() || undefined,
-    }),
-    [timeRangeFrom, timeRangeTo],
-  );
-  const timeRangeEntries = useMemo(
-    () =>
-      selectedSession
-        ? (filterSessionEntriesByTimeRange(
-            selectedSession.entries,
-            timeRange,
-          ) ?? [])
-        : [],
-    [selectedSession, timeRange],
-  );
-  const timeRangeActive = Boolean(timeRange.from || timeRange.to);
+  const showingLineageView = lineageViewEnabled && hasLineageSegments && !!lineageAggregateSession;
+  const shouldOfferSplitExport =
+    showingLineageView && displayExportEstimateBytes > LARGE_LINEAGE_EXPORT_WARNING_BYTES;
+  const shouldShowSelectedSegmentLabel =
+    !!selectedSession && (hasLineageSegments || isSegmentedSessionRecord(selectedSession));
 
   const runBusyHistoryAction = (
     actionLabel: string,
@@ -506,12 +520,7 @@ export default function App() {
   };
 
   const discardUnsavedNoteDraft = (): void => {
-    setNoteDraft(selectedSession?.note ?? "");
-    setTagDraft(formatTagInput(selectedSession?.tags));
-    setCategoryDraft(selectedSession?.category ?? "");
-    setSpeakerPrimaryDraft(selectedSession?.speakerLabels?.primary ?? "");
-    setSpeakerSecondaryDraft(selectedSession?.speakerLabels?.secondary ?? "");
-    setSpeakerUnknownDraft(selectedSession?.speakerLabels?.unknown ?? "");
+    setNoteDraft(selectedLineageSummary?.note ?? selectedSession?.note ?? "");
   };
 
   useEffect(() => {
@@ -560,32 +569,70 @@ export default function App() {
       previousSelectedSession?.id !== selectedSession?.id;
 
     if (selectedSessionIdChanged) {
-      setNoteDraft(selectedSession?.note ?? "");
-      setTagDraft(formatTagInput(selectedSession?.tags));
-      setCategoryDraft(selectedSession?.category ?? "");
-      setSpeakerPrimaryDraft(selectedSession?.speakerLabels?.primary ?? "");
-      setSpeakerSecondaryDraft(selectedSession?.speakerLabels?.secondary ?? "");
-      setSpeakerUnknownDraft(selectedSession?.speakerLabels?.unknown ?? "");
-      setEditingEntryId("");
-      setEditingEntryText("");
-      setEditingEntrySpeakerLabel("");
-      setEditingEntryNote("");
-      setEditingEntryLabels("");
-      setSplitEntryId("");
-      setSplitDraft("");
+      setNoteDraft(selectedLineageSummary?.note ?? selectedSession?.note ?? "");
     } else if (
       previousSelectedSession &&
       selectedSession &&
       noteDraftRef.current === previousSelectedSession.note
     ) {
-      setNoteDraft(selectedSession.note);
+      setNoteDraft(selectedLineageSummary?.note ?? selectedSession.note);
+    }
+    previousSelectedSessionRef.current = selectedSession;
+  }, [selectedLineageSummary, selectedSession]);
+
+  useEffect(() => {
+    let active = true;
+
+    if (!selectedSession) {
+      setLineageSessions([]);
+      setLineageLoading(false);
+      setLineageViewEnabled(false);
+      return () => {
+        active = false;
+      };
     }
 
-    setCheckedEntryIds((current) =>
-      resolveSelectedEntryIds(current, selectedSession?.entries ?? []),
-    );
-    previousSelectedSessionRef.current = selectedSession;
+    setLineageSessions([selectedSession]);
+    setLineageLoading(true);
+    void listSessionLineageSegments(resolveSessionLineageId(selectedSession.id, selectedSession.lineageId))
+      .then((sessions) => {
+        if (!active) {
+          return;
+        }
+
+        setLineageSessions(sessions.length ? sessions : [selectedSession]);
+      })
+      .catch(() => {
+        if (!active) {
+          return;
+        }
+
+        setLineageSessions([selectedSession]);
+      })
+      .finally(() => {
+        if (active) {
+          setLineageLoading(false);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
   }, [selectedSession]);
+
+  useEffect(() => {
+    if (!lineageLoading && availableLineageSessions.length <= 1) {
+      setLineageViewEnabled(false);
+    } else if (!lineageLoading && availableLineageSessions.length > 1) {
+      setLineageViewEnabled(true);
+    }
+  }, [availableLineageSessions.length, lineageLoading]);
+
+  useEffect(() => {
+    setCheckedEntryIds((current) =>
+      resolveSelectedEntryIds(current, displaySession?.entries ?? []),
+    );
+  }, [displaySession]);
 
   useEffect(
     () => () => {
@@ -614,84 +661,42 @@ export default function App() {
 
     void (async () => {
       try {
-        const pageResult = searchModeActive
-          ? await searchSessions({
-              query: globalSearchQuery,
-              tag: tagFilter,
-              category: categoryFilter,
-              highlightedOnly: showHighlightedOnly,
-              page: sessionPage,
-              pageSize: HISTORY_PAGE_SIZE,
-              starredOnly: showStarredOnly,
-            })
-          : await listSessionsPage({
-              page: sessionPage,
-              pageSize: HISTORY_PAGE_SIZE,
-              starredOnly: showStarredOnly,
-            });
+        const pageResult = await listSessionLineagesPage({
+          page: sessionPage,
+          pageSize: HISTORY_PAGE_SIZE,
+          starredOnly: showStarredOnly,
+        });
         if (!active) {
           return;
         }
 
-        const nextSearchResults =
-          "results" in pageResult ? pageResult.results : [];
-        const nextPageSessions =
-          "results" in pageResult
-            ? nextSearchResults.map((result) => result.session)
-            : pageResult.sessions;
-        setPageSessions(nextPageSessions);
-        setSearchResultMap(
-          nextSearchResults.length
-            ? new Map(
-                nextSearchResults.map((result) => [result.session.id, result]),
-              )
-            : new Map(),
-        );
+        setPageLineages(pageResult.lineages);
         setTotalSessionCount(pageResult.totalCount);
         if (pageResult.page !== sessionPage) {
           setSessionPage(pageResult.page);
         }
 
         if (checkedIdsRef.current.length > 0) {
-          const existingCheckedSessions = await loadSessionsByIds(
-            checkedIdsRef.current,
-          );
-          if (!active) {
-            return;
-          }
-          setCheckedIds(existingCheckedSessions.map((session) => session.id));
+          const visibleLineageIds = new Set(pageResult.lineages.map((lineage) => lineage.lineageId));
+          setCheckedIds((current) => current.filter((lineageId) => visibleLineageIds.has(lineageId)));
         }
 
-        let nextSelectedId =
-          selectedIdRef.current || nextPageSessions[0]?.id || "";
-        let nextSelectedSession =
-          nextPageSessions.find((session) => session.id === nextSelectedId) ??
-          null;
+        let nextSelectedId = selectedIdRef.current || pageResult.lineages[0]?.lineageId || "";
+        let nextSelectedLineage =
+          pageResult.lineages.find((lineage) => lineage.lineageId === nextSelectedId) ?? null;
 
-        if (!nextSelectedSession && nextSelectedId) {
-          const loadedSelectedSession = await loadSession(nextSelectedId);
-          if (!active) {
-            return;
-          }
-          if (
-            loadedSelectedSession &&
-            (!showStarredOnly || loadedSelectedSession.starred)
-          ) {
-            nextSelectedSession = loadedSelectedSession;
-          }
+        if (!nextSelectedLineage && pageResult.lineages.length > 0) {
+          nextSelectedLineage = pageResult.lineages[0];
+          nextSelectedId = nextSelectedLineage.lineageId;
         }
 
-        if (!nextSelectedSession && nextPageSessions.length > 0) {
-          nextSelectedSession = nextPageSessions[0];
-          nextSelectedId = nextSelectedSession.id;
-        }
-
-        if (!nextSelectedSession) {
+        if (!nextSelectedLineage) {
           nextSelectedId = "";
         }
 
         setSelectedId(nextSelectedId);
-        setSelectedSession(nextSelectedSession);
+        setSelectedLineageSummary(nextSelectedLineage);
+        setSelectedSession(nextSelectedLineage?.representativeSession ?? null);
 
         if (!preserveMessage) {
           setMessage(
@@ -810,7 +815,7 @@ export default function App() {
   };
 
   const handleDelete = async (): Promise<void> => {
-    if (!selectedSession) {
+    if (!selectedLineageId || !selectedSession) {
       return;
     }
     if (!confirmDeleteSession(selectedSession)) {
@@ -819,7 +824,7 @@ export default function App() {
     }
 
     try {
-      await deleteSession(selectedSession.id);
+      await deleteSessionLineage(selectedLineageId);
       requestRefresh("선택한 기록을 삭제했습니다.");
     } catch (error) {
       setMessage(
@@ -828,14 +833,14 @@ export default function App() {
     }
   };
 
-  const deleteSessionIds = async (
-    ids: string[],
+  const deleteLineageIds = async (
+    lineageIds: string[],
   ): Promise<{
     deletedCount: number;
     failedCount: number;
   }> => {
     const results = await Promise.allSettled(
-      ids.map((id) => deleteSession(id)),
+      lineageIds.map((lineageId) => deleteSessionLineage(lineageId)),
     );
     return results.reduce(
       (summary, result) => ({
@@ -856,26 +861,31 @@ export default function App() {
       return;
     }
 
-    const targetSessions = await loadSessionsByIds(checkedIds);
-    if (!targetSessions.length) {
+    const targetLineages = pageLineages.filter((lineage) =>
+      checkedIds.includes(lineage.lineageId),
+    );
+    if (!targetLineages.length) {
       setCheckedIds([]);
       requestRefresh(undefined, { preserveMessage: true });
       return;
     }
 
-    if (!confirmDeleteSessions(targetSessions, "선택한")) {
+    if (
+      !confirmDeleteSessions(
+        targetLineages.map((lineage) => lineage.representativeSession),
+        "선택한 회의",
+      )
+    ) {
       setMessage("선택 삭제를 취소했습니다.");
       return;
     }
 
     try {
-      const result = await deleteSessionIds(
-        targetSessions.map((session) => session.id),
-      );
+      const result = await deleteLineageIds(targetLineages.map((lineage) => lineage.lineageId));
       setCheckedIds([]);
       requestRefresh(
         buildSelectedDeleteMessage(
-          targetSessions.length,
+          targetLineages.length,
           result.deletedCount,
           result.failedCount,
         ),
@@ -925,25 +935,26 @@ export default function App() {
   const handleToggleCheckAll = (): void => {
     setCheckedIds((current) =>
       currentPageSessionsChecked
-        ? current.filter(
-            (id) => !pageSessions.some((session) => session.id === id),
-          )
-        : [...new Set([...current, ...selectAllSessionIds(pageSessions)])],
+        ? current.filter((id) => !pageLineages.some((lineage) => lineage.lineageId === id))
+        : [
+            ...new Set([
+              ...current,
+              ...selectAllSessionIds(
+                pageLineages.map((lineage) => ({ id: lineage.lineageId })),
+              ),
+            ]),
+          ],
     );
   };
 
-  const handleToggleFavorite = async (
-    session: SessionRecord,
-  ): Promise<void> => {
+  const handleToggleFavorite = async (lineage: SessionLineageSummary): Promise<void> => {
     try {
-      await updateSessionMetadata(session.id, {
-        starred: !session.starred,
-        pinnedAt: session.starred ? null : new Date().toISOString(),
+      await updateSessionLineageMetadata(lineage.lineageId, {
+        starred: !lineage.starred,
+        pinnedAt: lineage.starred ? null : new Date().toISOString(),
       });
       requestRefresh(
-        session.starred
-          ? "즐겨찾기를 해제했습니다."
-          : "즐겨찾기에 추가했습니다.",
+        lineage.starred ? "즐겨찾기를 해제했습니다." : "즐겨찾기에 추가했습니다.",
       );
     } catch (error) {
       setMessage(
@@ -955,12 +966,12 @@ export default function App() {
   };
 
   const handleSaveNote = async (): Promise<void> => {
-    if (!selectedSession) {
+    if (!selectedLineageId) {
       return;
     }
 
     try {
-      await updateSessionMetadata(selectedSession.id, {
+      await updateSessionLineageMetadata(selectedLineageId, {
         note: noteDraft,
       });
       requestRefresh(
@@ -1234,39 +1245,28 @@ export default function App() {
     entries?: SessionRecord["entries"],
     exportOptions: Pick<SessionExportOptions, "timeRange"> = {},
   ): Promise<void> => {
-    if (!selectedSession) {
+    if (!selectedSession || !displaySession) {
       return;
     }
 
     try {
-      const payload = await exportSessionData(selectedSession, format, {
-        entries,
-        filenamePattern,
-        txtExportTimestampsEnabled,
-        txtExportSpeakerEnabled,
-        txtExportEntryNotesEnabled,
-        timeRange: exportOptions.timeRange,
-      });
-      const isPartialExport = Boolean(
-        entries?.length || exportOptions.timeRange,
-      );
-      if (
-        !isPartialExport &&
-        getUtf8ByteLength(payload.content) >
-          SINGLE_SESSION_EXPORT_WARNING_BYTES &&
-        !window.confirm(
-          `${payload.filename} 파일이 커서 브라우저 메시지 한계로 저장에 실패할 수 있습니다. 계속 시도할까요?\n\n실패하면 이 화면에서 필요한 항목만 체크한 뒤 선택 저장을 사용해 주세요.`,
-        )
-      ) {
-        setMessage("파일 저장을 취소했습니다.");
-        return;
-      }
-      const response = await sendRuntimeMessage({
-        type: "DOWNLOAD_REQUEST",
-        filename: payload.filename,
-        content: payload.content,
-        mimeType: payload.mimeType,
-      });
+      const response = showingLineageView
+        ? await sendRuntimeMessage({
+            type: "DOWNLOAD_SESSION_LINEAGE_EXPORT",
+            lineageId: selectedLineageId,
+            format,
+            filenamePattern,
+            txtExportTimestampsEnabled,
+            entryIds: entries?.map((entry) => entry.id),
+          })
+        : await sendRuntimeMessage({
+            type: "DOWNLOAD_SESSION_EXPORT",
+            sessionId: selectedSession.id,
+            format,
+            filenamePattern,
+            txtExportTimestampsEnabled,
+            entryIds: entries?.map((entry) => entry.id),
+          });
       if (!response.ok) {
         setMessage(
           mapDownloadErrorMessage(
@@ -1279,19 +1279,18 @@ export default function App() {
 
       if (entries?.length) {
         setMessage(
-          `선택한 ${entries.length}줄 ${getExportFormatLabel(format)} 저장을 시작했습니다.`,
+          `${
+            showingLineageView ? "연속 캡처 전체에서 " : ""
+          }선택한 ${entries.length}줄 ${getExportFormatLabel(format)} 저장을 시작했습니다.`,
         );
         return;
       }
 
-      if (exportOptions.timeRange) {
-        setMessage(
-          `시간 범위 ${payload.format.toUpperCase()} 저장을 시작했습니다.`,
-        );
-        return;
-      }
-
-      setMessage(`${getExportFormatLabel(format)} 파일 저장을 시작했습니다.`);
+      setMessage(
+        showingLineageView
+          ? `연속 캡처 전체 ${getExportFormatLabel(format)} 저장을 시작했습니다.`
+          : `${getExportFormatLabel(format)} 파일 저장을 시작했습니다.`,
+      );
     } catch (error) {
       setMessage(
         resolveDownloadErrorMessage(
@@ -1300,6 +1299,39 @@ export default function App() {
           entries?.length ? "partial" : "single-session",
         ),
       );
+    }
+  };
+
+  const handleSplitLineageExport = async (format: ExportFormat): Promise<void> => {
+    if (!selectedLineageId || availableLineageSessions.length <= 1) {
+      return;
+    }
+
+    try {
+      const segments = sortSessionSegments(availableLineageSessions);
+      for (const [index, segment] of segments.entries()) {
+        const response = await sendRuntimeMessage({
+          type: "DOWNLOAD_SESSION_EXPORT",
+          sessionId: segment.id,
+          format,
+          filenamePattern,
+          txtExportTimestampsEnabled,
+          filenameSuffix: `segment-${String(index + 1).padStart(3, "0")}`,
+        });
+        if (!response.ok) {
+          setMessage(
+            mapDownloadErrorMessage(response.error) ||
+              `세그먼트 ${index + 1} 저장을 시작하지 못했습니다.`,
+          );
+          return;
+        }
+      }
+
+      setMessage(
+        `연속 캡처 ${segments.length}개 세그먼트의 ${getExportFormatLabel(format)} 분할 저장을 시작했습니다.`,
+      );
+    } catch (error) {
+      setMessage(resolveDownloadErrorMessage(error, "분할 저장을 시작하지 못했습니다."));
     }
   };
 
@@ -1333,19 +1365,31 @@ export default function App() {
     handleSelectVisibleEntries();
   };
 
-  const handleSelectSession = (sessionId: string): void => {
-    if (
-      sessionId !== selectedSession?.id &&
-      hasUnsavedSessionDraft &&
-      !confirmDiscardUnsavedNote("세션 전환")
-    ) {
+  const handleSelectSession = (lineageId: string): void => {
+    if (lineageId !== selectedLineageId && hasUnsavedNote && !confirmDiscardUnsavedNote("세션 전환")) {
       setMessage("세션 전환을 취소했습니다.");
       return;
     }
 
+    const nextSelectedLineage = pageLineages.find((lineage) => lineage.lineageId === lineageId) ?? null;
+    setSelectedId(lineageId);
+    setSelectedLineageSummary(nextSelectedLineage);
+    setSelectedSession(nextSelectedLineage?.representativeSession ?? null);
+  };
+
+  const handleSelectLineageSegment = (sessionId: string): void => {
+    if (sessionId !== selectedSession?.id && hasUnsavedNote && !confirmDiscardUnsavedNote("세그먼트 전환")) {
+      setMessage("세그먼트 전환을 취소했습니다.");
+      return;
+    }
+
     const nextSelectedSession =
-      pageSessions.find((session) => session.id === sessionId) ?? null;
-    setSelectedId(sessionId);
+      availableLineageSessions.find((session) => session.id === sessionId) ?? null;
+    if (!nextSelectedSession) {
+      return;
+    }
+
+    setSelectedId(resolveSessionLineageId(nextSelectedSession.id, nextSelectedSession.lineageId));
     setSelectedSession(nextSelectedSession);
   };
 
@@ -1392,19 +1436,7 @@ export default function App() {
         return;
       }
 
-      const response = await sendRuntimeMessage({
-        type: "DOWNLOAD_REQUEST",
-        filename: backupExport.payload.filename,
-        content: backupExport.payload.content,
-        mimeType: backupExport.payload.mimeType,
-      });
-      if (!response.ok) {
-        setMessage(
-          mapDownloadErrorMessage(response.error, "library") ||
-            "전체 JSON 백업에 실패했습니다.",
-        );
-        return;
-      }
+      await downloadPageBlobExport(backupExport.payload);
 
       setMessage(
         `저장된 기록 ${backupExport.sessionCount}건의 JSON 백업을 시작했습니다.`,
@@ -1691,14 +1723,13 @@ export default function App() {
         <aside className="session-list">
           <div className="session-list-toolbar">
             <span>
-              현재 필터 {totalSessionCount}개 / 현재 페이지{" "}
-              {pageSessions.length}개 / 선택 {checkedIds.length}개
+              현재 필터 {totalSessionCount}개 / 현재 페이지 {pageLineages.length}개 / 선택 {checkedIds.length}개
             </span>
             <div className="session-list-actions">
               <button
                 className="secondary"
                 onClick={handleToggleCheckAll}
-                disabled={actionButtonsDisabled || !pageSessions.length}
+                disabled={actionButtonsDisabled || !pageLineages.length}
               >
                 {currentPageSessionsChecked
                   ? "현재 페이지 선택 해제"
@@ -1734,66 +1765,57 @@ export default function App() {
               </button>
             </div>
           </div>
-          {pageSessions.length ? (
-            pageSessions.map((session) => (
-              <div key={session.id} className="session-item-row">
+          {pageLineages.length ? (
+            pageLineages.map((lineage) => (
+              <div key={lineage.lineageId} className="session-item-row">
                 <label className="session-check">
                   <input
                     type="checkbox"
-                    checked={checkedIdSet.has(session.id)}
-                    onChange={() => handleToggleChecked(session.id)}
+                    checked={checkedIdSet.has(lineage.lineageId)}
+                    onChange={() => handleToggleChecked(lineage.lineageId)}
                     disabled={actionButtonsDisabled}
-                    aria-label={`${session.committeeName || session.title} 선택`}
+                    aria-label={`${lineage.committeeName || lineage.title} 선택`}
                   />
                 </label>
                 <button
                   type="button"
-                  className={`favorite-toggle ${session.starred ? "active" : ""}`}
+                  className={`favorite-toggle ${lineage.starred ? "active" : ""}`}
                   onClick={() =>
                     runBusyHistoryAction(
-                      `favorite_${session.id}`,
-                      () => handleToggleFavorite(session),
+                      `favorite_${lineage.lineageId}`,
+                      () => handleToggleFavorite(lineage),
                       "즐겨찾기 저장에 실패했습니다.",
-                      session.starred
+                      lineage.starred
                         ? "즐겨찾기 해제를 저장하고 있습니다."
                         : "즐겨찾기를 저장하고 있습니다.",
                     )
                   }
                   disabled={actionButtonsDisabled}
                   aria-label={
-                    session.starred
-                      ? `${session.committeeName || session.title} 즐겨찾기 해제`
-                      : `${session.committeeName || session.title} 즐겨찾기 추가`
+                    lineage.starred
+                      ? `${lineage.committeeName || lineage.title} 즐겨찾기 해제`
+                      : `${lineage.committeeName || lineage.title} 즐겨찾기 추가`
                   }
                 >
-                  {session.starred ? "★" : "☆"}
+                  {lineage.starred ? "★" : "☆"}
                 </button>
                 <button
-                  className={`session-item ${selectedSession?.id === session.id ? "active" : ""}`}
-                  onClick={() => handleSelectSession(session.id)}
+                  className={`session-item ${selectedLineageId === lineage.lineageId ? "active" : ""}`}
+                  onClick={() => handleSelectSession(lineage.lineageId)}
                   disabled={actionButtonsDisabled}
                 >
-                  <strong>{session.committeeName || session.title}</strong>
-                  <span>{formatDate(session.startedAt)}</span>
+                  <div className="session-item-heading">
+                    <strong>{lineage.committeeName || lineage.title}</strong>
+                    {lineage.segmentCount > 1 ? (
+                      <span className="segment-badge">세그먼트 {lineage.segmentCount}개</span>
+                    ) : null}
+                  </div>
+                  <span>{formatDate(lineage.startedAt)}</span>
                   <span>
-                    {session.subtitleCount}문장 / {session.charCount}자
+                    {lineage.subtitleCount}문장 / {lineage.charCount}자
                   </span>
-                  {searchResultMap.get(session.id)?.firstHit ? (
-                    <small>
-                      검색 {searchResultMap.get(session.id)?.matchCount}건:{" "}
-                      {searchResultMap
-                        .get(session.id)
-                        ?.firstHit?.text.slice(0, 60)}
-                    </small>
-                  ) : null}
-                  {session.category ? (
-                    <small>카테고리: {session.category}</small>
-                  ) : null}
-                  {session.tags?.length ? (
-                    <small>태그: {session.tags.join(", ")}</small>
-                  ) : null}
-                  <small>{getPersistedStatusLabel(session.status)}</small>
-                  {session.note.trim() ? <small>메모 있음</small> : null}
+                  <small>{getPersistedStatusLabel(lineage.status)}</small>
+                  {lineage.note.trim() ? <small>메모 있음</small> : null}
                 </button>
               </div>
             ))
@@ -1836,9 +1858,14 @@ export default function App() {
             <>
               <div className="detail-header">
                 <div>
-                  <h2>
-                    {selectedSession.committeeName || selectedSession.title}
-                  </h2>
+                  <div className="detail-title-row">
+                    <h2>{selectedSession.committeeName || selectedSession.title}</h2>
+                    {shouldShowSelectedSegmentLabel ? (
+                      <span className="segment-badge detail-segment-badge">
+                        {getSessionSegmentLabel(selectedSession)}
+                      </span>
+                    ) : null}
+                  </div>
                   <p>{selectedSession.sourceUrl || "원본 URL 없음"}</p>
                 </div>
                 <div className="detail-actions">
@@ -1846,19 +1873,20 @@ export default function App() {
                     className="secondary"
                     onClick={() =>
                       runBusyHistoryAction(
-                        `favorite_${selectedSession.id}`,
-                        () => handleToggleFavorite(selectedSession),
+                        `favorite_${selectedLineageId}`,
+                        () =>
+                          selectedLineageSummary
+                            ? handleToggleFavorite(selectedLineageSummary)
+                            : Promise.resolve(),
                         "즐겨찾기 저장에 실패했습니다.",
-                        selectedSession.starred
+                        selectedLineageSummary?.starred
                           ? "즐겨찾기 해제를 저장하고 있습니다."
                           : "즐겨찾기를 저장하고 있습니다.",
                       )
                     }
                     disabled={actionButtonsDisabled}
                   >
-                    {selectedSession.starred
-                      ? "즐겨찾기 해제"
-                      : "즐겨찾기 추가"}
+                    {selectedLineageSummary?.starred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
                   </button>
                   <button
                     onClick={() =>
@@ -1896,19 +1924,27 @@ export default function App() {
               <dl className="stats-grid">
                 <div>
                   <dt>시작</dt>
-                  <dd>{formatDate(selectedSession.startedAt)}</dd>
+                  <dd>{formatDate(displaySession?.startedAt ?? selectedSession.startedAt)}</dd>
                 </div>
                 <div>
                   <dt>종료</dt>
-                  <dd>{formatDate(selectedSession.endedAt)}</dd>
+                  <dd>{formatDate(displaySession?.endedAt ?? selectedSession.endedAt)}</dd>
                 </div>
                 <div>
                   <dt>자막 수</dt>
-                  <dd>{selectedSession.subtitleCount}</dd>
+                  <dd>{displaySession?.subtitleCount ?? selectedSession.subtitleCount}</dd>
                 </div>
                 <div>
                   <dt>글자 수</dt>
-                  <dd>{selectedSession.charCount}</dd>
+                  <dd>{displaySession?.charCount ?? selectedSession.charCount}</dd>
+                </div>
+                <div>
+                  <dt>연속 캡처</dt>
+                  <dd>
+                    {shouldShowSelectedSegmentLabel
+                      ? getSessionSegmentLabel(selectedSession)
+                      : "단일 세션"}
+                  </dd>
                 </div>
                 <div>
                   <dt>추정 크기</dt>
@@ -1917,6 +1953,64 @@ export default function App() {
                   </dd>
                 </div>
               </dl>
+
+              {hasLineageSegments && lineageAggregateSession ? (
+                <div className="lineage-card">
+                  <div className="section-row">
+                    <div>
+                      <strong>연속 캡처 전체 보기</strong>
+                      <p className="lineage-caption">
+                        같은 캡처 lineage의 세그먼트 {availableLineageSessions.length}개를 하나로 볼 수 있습니다.
+                      </p>
+                    </div>
+                    <button
+                      className="secondary"
+                      onClick={() => setLineageViewEnabled((current) => !current)}
+                      disabled={actionButtonsDisabled || lineageLoading}
+                    >
+                      {showingLineageView ? "현재 세그먼트 보기" : "연속 캡처 전체 보기"}
+                    </button>
+                  </div>
+
+                  <dl className="lineage-stats">
+                    <div>
+                      <dt>총 세그먼트</dt>
+                      <dd>{availableLineageSessions.length}</dd>
+                    </div>
+                    <div>
+                      <dt>전체 자막 수</dt>
+                      <dd>{lineageAggregateSession.subtitleCount}</dd>
+                    </div>
+                    <div>
+                      <dt>전체 글자 수</dt>
+                      <dd>{lineageAggregateSession.charCount}</dd>
+                    </div>
+                    <div>
+                      <dt>현재 보기</dt>
+                      <dd>{showingLineageView ? "연속 캡처 전체" : getSessionSegmentLabel(selectedSession)}</dd>
+                    </div>
+                  </dl>
+
+                  <div className="lineage-segments">
+                    {availableLineageSessions.map((session) => (
+                      <button
+                        key={session.id}
+                        className={`secondary lineage-segment-button ${
+                          selectedSession.id === session.id ? "active-toggle" : ""
+                        }`}
+                        onClick={() => handleSelectLineageSegment(session.id)}
+                        disabled={actionButtonsDisabled}
+                      >
+                        {getSessionSegmentLabel(session)}
+                      </button>
+                    ))}
+                  </div>
+
+                  <p className="lineage-caption">
+                    아래 검색, 복사, 내보내기는 현재 보기 기준으로 동작합니다.
+                  </p>
+                </div>
+              ) : null}
 
               <div className="note-card">
                 <div className="section-row">
@@ -1954,10 +2048,7 @@ export default function App() {
                         "메모를 저장하고 있습니다.",
                       )
                     }
-                    disabled={
-                      actionButtonsDisabled ||
-                      noteDraft === selectedSession.note
-                    }
+                    disabled={actionButtonsDisabled || noteDraft === (selectedLineageSummary?.note ?? selectedSession.note)}
                   >
                     메모 저장
                   </button>
@@ -2055,10 +2146,10 @@ export default function App() {
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="이 기록 안에서 내용 찾기"
+                  placeholder={showingLineageView ? "연속 캡처 전체에서 내용 찾기" : "이 기록 안에서 내용 찾기"}
                 />
                 <span>
-                  {filteredEntries.length} / {selectedSession.entries.length}개
+                  {filteredEntries.length} / {displaySession?.entries.length ?? 0}개
                 </span>
               </div>
 
@@ -2087,10 +2178,10 @@ export default function App() {
                   <button
                     onClick={() =>
                       void handleCopy(
-                        buildCopyText(selectedSession.entries, {
+                        buildCopyText(displaySession?.entries ?? [], {
                           selectedIds: checkedEntryIds,
                         }),
-                        `선택한 ${selectedEntries.length}줄을 복사했습니다.`,
+                        `${showingLineageView ? "연속 캡처 전체에서 " : ""}선택한 ${selectedEntries.length}줄을 복사했습니다.`,
                       )
                     }
                     disabled={actionButtonsDisabled || !selectedEntries.length}
@@ -2162,7 +2253,9 @@ export default function App() {
                 </div>
               </div>
 
-              <p className="section-heading">내보내기</p>
+              <p className="section-heading">
+                내보내기 {showingLineageView ? "(연속 캡처 전체)" : "(현재 세그먼트)"}
+              </p>
               <div className="export-group">
                 <div className="export-row">
                   {EXPORT_FORMATS.map((format) => (
@@ -2205,114 +2298,54 @@ export default function App() {
                   ))}
                 </div>
 
-                <div className="export-row partial-export-row">
-                  {EXPORT_FORMATS.map((format) => (
-                    <button
-                      key={`highlighted_${format}`}
-                      className="secondary"
-                      onClick={() =>
-                        runBusyHistoryAction(
-                          `export_highlighted_${format}`,
-                          () => handleExport(format, highlightedEntries),
-                          `중요 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
-                          `중요 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
-                        )
-                      }
-                      disabled={
-                        actionButtonsDisabled || !highlightedEntries.length
-                      }
-                    >
-                      중요 {format.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
+                {shouldOfferSplitExport ? (
+                  <div className="warning-box">
+                    이 연속 캡처는 예상 내보내기 크기가 커서 브라우저 다운로드 제한에 걸릴 수 있습니다. 분할 저장을 사용하면 세그먼트별 파일로 저장합니다.
+                  </div>
+                ) : null}
 
-                <div className="note-card">
-                  <div className="section-row">
-                    <strong>시간 범위 저장</strong>
-                    <span>
-                      {timeRangeActive
-                        ? `${timeRangeEntries.length}개 항목`
-                        : "시작/종료 중 하나 이상을 입력하세요."}
-                    </span>
-                  </div>
-                  <div className="copy-row">
-                    <input
-                      className="search-input"
-                      type="datetime-local"
-                      value={timeRangeFrom}
-                      onChange={(event) => setTimeRangeFrom(event.target.value)}
-                      aria-label="시간 범위 시작"
-                    />
-                    <input
-                      className="search-input"
-                      type="datetime-local"
-                      value={timeRangeTo}
-                      onChange={(event) => setTimeRangeTo(event.target.value)}
-                      aria-label="시간 범위 종료"
-                    />
-                    <button
-                      className="secondary"
-                      type="button"
-                      onClick={() => {
-                        setTimeRangeFrom("");
-                        setTimeRangeTo("");
-                      }}
-                      disabled={actionButtonsDisabled || !timeRangeActive}
-                    >
-                      범위 비우기
-                    </button>
-                  </div>
+                {showingLineageView ? (
                   <div className="export-row partial-export-row">
                     {EXPORT_FORMATS.map((format) => (
                       <button
-                        key={`range_${format}`}
+                        key={`split_${format}`}
                         className="secondary"
                         onClick={() =>
                           runBusyHistoryAction(
-                            `export_range_${format}`,
-                            () =>
-                              handleExport(format, undefined, { timeRange }),
-                            `시간 범위 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
-                            `시간 범위 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
+                            `split_export_${format}`,
+                            () => handleSplitLineageExport(format),
+                            `분할 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
+                            `분할 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
                           )
                         }
-                        disabled={
-                          actionButtonsDisabled ||
-                          !timeRangeActive ||
-                          !timeRangeEntries.length
-                        }
+                        disabled={actionButtonsDisabled || !hasLineageSegments}
                       >
-                        범위 {format.toUpperCase()}
+                        분할 {format.toUpperCase()}
                       </button>
                     ))}
                   </div>
-                </div>
+                ) : null}
               </div>
 
-              <p className="section-heading">복사</p>
+              <p className="section-heading">
+                복사 {showingLineageView ? "(연속 캡처 전체)" : "(현재 세그먼트)"}
+              </p>
               <div className="copy-row">
                 <button
                   onClick={() =>
                     void handleCopy(
-                      buildCopyText(selectedSession.entries, {
-                        limit: recentCopyLineCount,
-                      }),
-                      `최근 ${recentCopyLineCount}줄을 복사했습니다.`,
+                      buildCopyText(displaySession?.entries ?? [], { limit: recentCopyLineCount }),
+                      `${showingLineageView ? "연속 캡처 전체에서 " : ""}최근 ${recentCopyLineCount}줄을 복사했습니다.`,
                     )
                   }
-                  disabled={
-                    actionButtonsDisabled || !selectedSession.entries.length
-                  }
+                  disabled={actionButtonsDisabled || !(displaySession?.entries.length ?? 0)}
                 >
                   최근 {recentCopyLineCount}줄 복사
                 </button>
                 <button
                   onClick={() =>
                     void handleCopy(
-                      buildCopyText(selectedSession.entries, {
-                        query: searchQuery,
-                      }),
+                      buildCopyText(displaySession?.entries ?? [], { query: searchQuery }),
                       "찾은 내용을 복사했습니다.",
                     )
                   }
@@ -2324,21 +2357,18 @@ export default function App() {
                   className="secondary"
                   onClick={() =>
                     void handleCopy(
-                      buildCopyText(selectedSession.entries),
-                      "전체 내용을 복사했습니다.",
+                      buildCopyText(displaySession?.entries ?? []),
+                      showingLineageView ? "연속 캡처 전체 내용을 복사했습니다." : "전체 내용을 복사했습니다.",
                     )
                   }
-                  disabled={
-                    actionButtonsDisabled || !selectedSession.entries.length
-                  }
+                  disabled={actionButtonsDisabled || !(displaySession?.entries.length ?? 0)}
                 >
                   전체 내용 복사
                 </button>
               </div>
 
               <p className="section-heading">
-                자막 항목 {filteredEntries.length} /{" "}
-                {selectedSession.entries.length}개
+                자막 항목 {filteredEntries.length} / {displaySession?.entries.length ?? 0}개
               </p>
               <div className="entries">
                 {filteredEntries.length ? (

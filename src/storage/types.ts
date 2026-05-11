@@ -6,20 +6,17 @@ import type {
   SubtitleEntry,
 } from "../core/subtitle-models";
 
-export interface AssemblyPreset {
-  id: string;
-  name: string;
-  url: string;
-  committeeName: string;
-  autoStartEnabled: boolean;
-  noiseFilterEnabled: boolean;
-}
+export type SegmentPreset = "stability" | "balanced" | "capacity" | "custom";
 
 export interface ExtensionSettings {
   autoScroll: boolean;
+  segmentPreset: SegmentPreset;
   keepaliveIntervalMs: number;
   pollingFallbackIntervalMs: number;
   maxBufferLength: number;
+  maxEntriesPerSegment: number;
+  maxCharsPerSegment: number;
+  maxSegmentDurationMinutes: number;
   noiseFilterEnabled: boolean;
   recentDuplicateMinLength: number;
   filenamePattern: string;
@@ -59,16 +56,39 @@ export interface SessionPageResult {
   pageSize: number;
 }
 
+export interface SessionLineageSummary {
+  lineageId: string;
+  representativeSessionId: string;
+  title: string;
+  committeeName: string;
+  sourceUrl: string;
+  startedAt: string;
+  endedAt: string | null;
+  updatedAt: string;
+  segmentCount: number;
+  subtitleCount: number;
+  charCount: number;
+  status: SessionRecord["status"];
+  starred: boolean;
+  pinnedAt: string | null;
+  note: string;
+  sessionIds: string[];
+  representativeSession: SessionRecord;
+}
+
+export interface SessionLineagePageResult {
+  lineages: SessionLineageSummary[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+}
+
 export interface SessionExportOptions {
   filenamePattern?: string;
   entries?: SubtitleEntry[];
+  entryIds?: string[];
   txtExportTimestampsEnabled?: boolean;
-  txtExportSpeakerEnabled?: boolean;
-  txtExportEntryNotesEnabled?: boolean;
-  timeRange?: {
-    from?: string;
-    to?: string;
-  };
+  filenameSuffix?: string;
 }
 
 export interface SessionMetadataPatch {
@@ -219,15 +239,23 @@ export interface SessionStoreApi {
   ) => Promise<SessionRecord>;
   loadSession: (id: string) => Promise<SessionRecord | undefined>;
   loadSessionsByIds: (ids: string[]) => Promise<SessionRecord[]>;
+  listSessionLineageSegments: (lineageId: string) => Promise<SessionRecord[]>;
   listSessions: (options?: SessionListOptions) => Promise<SessionRecord[]>;
   listSessionsPage: (options: SessionPageOptions) => Promise<SessionPageResult>;
-  searchSessions: (options: SessionSearchOptions) => Promise<SessionSearchPageResult>;
+  listSessionLineagesPage: (
+    options: SessionPageOptions,
+  ) => Promise<SessionLineagePageResult>;
   getSessionLibraryOverview: (previewLimit?: number) => Promise<SessionLibraryOverview>;
   buildSessionLibraryBackupExport: (
     options?: BuildSessionLibraryBackupExportOptions,
   ) => Promise<LibraryBackupExport>;
   deleteSession: (id: string) => Promise<void>;
+  deleteSessionLineage: (lineageId: string) => Promise<void>;
   deleteAllSessions: () => Promise<void>;
+  updateSessionLineageMetadata: (
+    lineageId: string,
+    patch: SessionMetadataPatch,
+  ) => Promise<SessionRecord[]>;
   updateRunningSession: (session: SessionRecord) => Promise<SessionRecord>;
   replayQueuedExitPersistRecords: () => Promise<PersistReplaySummary>;
   importSessionRecords: (
@@ -236,6 +264,11 @@ export interface SessionStoreApi {
   ) => Promise<SessionImportSummary>;
   exportSessionData: (
     session: SessionRecord,
+    format: ExportFormat,
+    options?: SessionExportOptions,
+  ) => Promise<ExportPayload>;
+  exportSessionLineageData: (
+    lineageId: string,
     format: ExportFormat,
     options?: SessionExportOptions,
   ) => Promise<ExportPayload>;

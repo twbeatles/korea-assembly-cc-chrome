@@ -60,6 +60,9 @@ const defaultSettings = {
   keepaliveIntervalMs: 1000,
   pollingFallbackIntervalMs: 200,
   maxBufferLength: 50000,
+  maxEntriesPerSegment: 2000,
+  maxCharsPerSegment: 120000,
+  maxSegmentDurationMinutes: 90,
   noiseFilterEnabled: true,
   recentDuplicateMinLength: 8,
   filenamePattern: "{date}_{committee}_{time}",
@@ -367,6 +370,26 @@ describe("options app", () => {
               sourceLabel: "structured",
               persistabilityState: "persistable",
               persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
+              segment: {
+                lineageId: "session_options",
+                segmentNumber: 1,
+                entryCount: 4,
+                charCount: 24,
+                elapsedMs: 15000,
+                maxEntriesPerSegment: 2000,
+                maxCharsPerSegment: 120000,
+                maxDurationMs: 5400000,
+                remainingEntries: 1996,
+                remainingChars: 119976,
+                remainingDurationMs: 5385000,
+              },
+              exportEstimates: {
+                txtBytes: 240,
+                srtBytes: 320,
+                vttBytes: 340,
+                jsonBytes: 640,
+                txtIncludesTimestamps: false,
+              },
             },
             hasPersistableContent: true,
           },
@@ -377,11 +400,11 @@ describe("options app", () => {
     await waitFor(() => {
       expect(screen.getByText("4문장")).toBeTruthy();
       expect(screen.getByText("structured")).toBeTruthy();
-      expect(
-        screen.getByText("저장 가능한 확정 자막이 누적되고 있습니다."),
-      ).toBeTruthy();
+      expect(screen.getByText("저장 가능한 확정 자막이 누적되고 있습니다.")).toBeTruthy();
+      expect(screen.getByText("4문장 / 2000문장 (0.2%)")).toBeTruthy();
+      expect(screen.getByText("240 B")).toBeTruthy();
     });
-    expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_STATUS" });
+    expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_DIAGNOSTICS_STATUS" });
   });
 
   it("falls back to another supported tab when the requested diagnostics tab disappears", async () => {

@@ -17,6 +17,8 @@ const session: SessionRecord = {
   starred: true,
   pinnedAt: "2026-03-10T09:00:04.000Z",
   note: "중요 세션",
+  lineageId: "lineage_json",
+  segmentNumber: 2,
   entries: [
     {
       id: "subtitle_json_1",
@@ -46,6 +48,8 @@ describe("JSON exporter", () => {
     expect(parsed.starred).toBe(true);
     expect(parsed.pinnedAt).toBe("2026-03-10T09:00:04.000Z");
     expect(parsed.note).toBe("중요 세션");
+    expect(parsed.lineageId).toBe("lineage_json");
+    expect(parsed.segmentNumber).toBe(2);
     expect(parsed.entries).toHaveLength(1);
     expect(parsed.entries[0].sourceNodeKey).toBe("row_1");
     expect(parsed.entries[0].speakerColor).toBe("rgb(35, 124, 147)");

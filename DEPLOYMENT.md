@@ -39,10 +39,11 @@
 
 ```bash
 npm install
+npm run check:version
+npm run check:injected
 npm run lint
 npm run typecheck
 npm run test
-npm run test:coverage
 npm run build
 npm run verify:e2e
 ```
@@ -52,15 +53,19 @@ npm run verify:e2e
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
 - `npm run verify:e2e` 는 build 후 Playwright로 built extension smoke test를 실행합니다.
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
+- 전체 release gate 는 `npm run verify` 로 실행할 수 있으며, 로컬 Chrome 확장 smoke 는 `npm run test:e2e:extension` 으로 별도 실행합니다.
 
 추가 확인 권장:
 
 - 국회 의사중계 페이지에서 실제 자막 추출
-- 페이지 오른쪽 패널이 자동으로 뜨는지 확인
+- `main` / `main/` 홈에서 페이지 오른쪽 패널이 자동으로 뜨는지 확인
+- 홈(`main`/`main/`)에서는 패널이 바로 보이지만 `자막 모으기`를 누르면 플레이어 페이지에서만 수집을 시작할 수 있다는 안내가 나오는지 확인
+- `main/player*` 플레이어 페이지에서는 패널이 계속 보이고 실제 자막 수집이 시작되는지 확인
 - 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
 - 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
 - `수집된 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
-- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback으로만 잡혀도 `실시간 내용` 누적 원문이 유지되고 `수집된 자막` 목록이 commit된 entry 기준으로 계속 쌓이는지 확인
+- 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback 내부 raw가 commit/diff 용으로 전체 보존되고, 화면 preview 는 `400자/3줄` tail 로 짧게 표시되는지 확인
+- fallback-only 자막은 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측된 뒤 `sourceCaptureMode: "fallback"` entry 로 commit 되고, 그 전에는 저장/export 대상이 아닌지 확인
 - structured row snapshot 안에 stable/unstable row가 함께 있을 때 stable row만 `수집된 자막` 목록과 저장/export 대상에 반영되고 unstable row는 preview-only로 남는지 확인
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구가 저장/export/누적 목록에 들어가지 않는지 확인
 - 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
@@ -69,7 +74,7 @@ npm run verify:e2e
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
-- 패널 / popup의 수동 저장과 export 가 현재 화면에 보이는 확정 `수집된 자막` 목록만 반영하고, preview-only `실시간 내용`은 저장 대상으로 승격하지 않는지 확인
+- 패널 / popup의 수동 저장과 export 가 현재 화면 렌더 window와 무관한 세션 전체 committed `entries` 를 기준으로 동작하고, 안정 관측 전 preview-only `실시간 내용`은 저장 대상으로 승격하지 않는지 확인
 - service worker 재기동 또는 nonce mismatch 뒤에도 iframe forwarding 수집이 새로고침 없이 다시 수렴하는지 확인
 - popup 에서 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단` 이동 확인
 - popup `지금 저장` 버튼이 persistable content가 없으면 비활성화되고, 빈 저장 요청 시 `저장할 자막이 아직 없습니다.` 피드백이 보이는지 확인
@@ -79,16 +84,18 @@ npm run verify:e2e
 - preview-only 또는 notice-only 상태에서도 패널 `화면 비우기`는 활성화되고 저장/복사/export 는 계속 비활성화되는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - 수집 중이거나 stale selection 상태의 history detail 에서 즐겨찾기/메모를 저장해도 최신 subtitle count / status / entries 가 되돌아가지 않는지 확인
-- history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON/Markdown/CSV` export 확인
-- history entry 텍스트/발언자/중요 표시/entry note/labels inline 편집, 연속 선택 병합, 단일 entry 분할, 선택 삭제 확인
-- options preset 추가/수정/삭제, 중복 URL 차단, TXT 발언자/entry 메타데이터 export 옵션 확인
+- history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
+- history 목록이 lineage summary 기준으로 표시되고, 즐겨찾기/핀/메모/삭제/export 작업이 lineage 전체 segment 에 적용되는지 확인
+- lineage export 예상 용량이 `8 MiB` 를 넘는 경우 `segment-001` suffix 기반 분할 저장 액션이 보이는지 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
+- history `전체 JSON 백업` 이 service worker `DOWNLOAD_REQUEST` 대형 본문 전달 없이 page Blob URL 다운로드로 시작되는지 확인
 - history `JSON 가져오기`에서 incoming `running` 레코드가 `saved`로 정규화되어 stale `수집 중` 배지가 남지 않는지 확인
 - history `전체 JSON 백업` / `JSON 가져오기` 중 현재 단계, 진행량, 취소 버튼이 노출되고 중복 JSON 작업만 잠기는지 확인
 - `JSON 가져오기` 취소 시 이미 저장된 일부 레코드는 유지되고 부분 완료 요약 메시지가 표시되는지 확인
 - `JSON 가져오기`를 파일 읽기 단계에서 바로 취소하면 0건 요약 대신 즉시 취소 메시지가 보이고, 일부 write 이후 취소일 때만 부분 완료 요약이 보이는지 확인
 - options 페이지에서 자동 저장, 자동 스크롤, noise filter, 중복 차단 최소 길이, 저장 파일 이름 규칙 검증 확인
 - options 숫자 필드가 정수만 허용하고 소수 입력에는 inline 오류를 표시하며 저장을 막는지 확인
+- options segment preset(`stability` / `balanced` / `capacity` / `custom`)이 threshold 값을 반영하고, 숫자 필드를 직접 수정하면 `custom`으로 전환되는지 확인
 - export filename 생성 시 금지 문자가 여러 개 있어도 모두 제거되는지 확인
 - options noise filter 설명이 한글/영문 중심 판정과 foreign text 보존 시 filter off 필요성을 안내하는지 확인
 - stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
@@ -109,7 +116,7 @@ npm run verify:e2e
 아래를 확인합니다.
 
 1. 확장 popup 이 열리는지
-2. 국회 페이지 오른쪽에 패널이 자동으로 나타나는지
+2. 국회 `main` / `main/` 홈과 `main/player*` 플레이어 페이지에서 패널이 자동으로 나타나는지
 3. 기존에 열려 있던 국회 탭에서 popup 연결 오류 없이 재주입 또는 새로고침 안내로 복구되는지
 4. 확장 아이콘의 popup 에서 현재 상태가 보이는지
 
@@ -186,12 +193,14 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 
 - `package.json` 버전 증가
 - `manifest.json` 버전 증가
+- `npm run check:version` 통과
+- `npm run check:injected` 통과
 - `npm run lint` 통과
 - `npm run typecheck` 통과
 - `npm run test` 통과
-- `npm run test:coverage` 통과
 - `npm run build` 통과
-- `npm run verify:e2e` 통과
+- `npm run verify` 통과
+- `npm run test:e2e:extension` 통과
 - `dist/manifest.json` 생성 확인
 - `dist/injected-observer.js` 생성 확인
 - `dist/manifest.json` 의 버전이 루트 `manifest.json` / `package.json` 과 같은지 확인
@@ -208,7 +217,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 배포 후에는 아래를 다시 봅니다.
 
 1. service worker 가 정상 등록되는지
-2. content script 가 `https://assembly.webcast.go.kr/*` 와 `https://webcast.assembly.go.kr/*` 에서 동작하는지
+2. content script 가 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 에서 동작하는지
 3. observer 실패 시 polling fallback 이 계속 동작하는지
 4. SRT / VTT 시간이 상대 cue time 으로 생성되는지
 5. IndexedDB 실패 시 세션 저장 fallback 이 동작하는지
@@ -244,7 +253,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 
 - 국회 페이지가 이미 열려 있었다면 새로고침이 필요할 수 있습니다.
 - 최신 빌드는 기존 탭에 content script 재주입을 먼저 시도합니다.
-- 대상 URL 이 `https://assembly.webcast.go.kr/*` 또는 `https://webcast.assembly.go.kr/*` 범위인지 확인합니다.
+- 대상 URL 이 `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, 각 도메인의 `main/player*` 범위인지 확인합니다.
 
 ### 9.2 zip 업로드가 실패함
 
@@ -279,10 +288,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.7-cw
 Before packaging a release ZIP, run the full validation path:
 
 ```bash
-npm run lint
-npm run typecheck
-npm run test:coverage
-npm run build
+npm run verify
 ```
 
 Or run the one-shot command:
@@ -301,11 +307,11 @@ Additional release notes:
 
 Current release alignment:
 
-- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback에서는 `실시간 내용` 원문 누적을 유지합니다.
-- structured row가 비어 있어도 본회의 fallback capture는 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
+- 본회의(`xcode=10` / `xcgcd=DCM000010...`) container fallback에서는 commit/diff 용 내부 raw 원문을 전체 보존하고, 화면 preview 는 tail formatter 로 짧게 유지합니다.
+- structured row가 비어 있어도 본회의 fallback capture는 안정 관측 뒤 commit된 entry를 `수집된 자막` 목록으로 계속 표시합니다.
 - `로딩중..`, `로딩 중...`, `Loading...` placeholder는 commit/persist/export 대상에서 제외합니다.
 - Chrome Web Store 제출용 압축 예시는 `korea-assembly-cc-chrome-<version>-cws.zip` 형식을 권장합니다.
-- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 현재 화면에 보이는 확정 `수집된 자막` 목록만 저장 기준으로 검증해야 합니다.
+- 수동 저장 / export 와 pagehide/beforeunload/stop 계열 persistence 는 현재 화면에 보이는 `300건` 렌더 window가 아니라 세션 전체 committed subtitle 목록을 기준으로 검증해야 합니다.
 - 하늘색 등 불투명 배경이나 background-image highlight 가 남아 있는 `인식 중` 자막은 commit/persist/export 대상에서 제외되는지 확인해야 합니다.
 - History favorites/notes, partial copy/export, full JSON backup/import, and live capture diagnostics are part of current release baseline.
 - full-library `JSON 백업` / `JSON 가져오기` 는 단계별 진행률과 취소를 제공하며, import cancel 은 partial completion 을 허용합니다.
@@ -347,7 +353,7 @@ Deployment documentation consistency sources:
 - Release verification should confirm that favorited / noted sessions keep `starred`, `pinnedAt`, and `note` metadata after autosave, page-exit persistence, and final stop-save flows.
 - page-exit persistence is now ordered as `queue replay record -> background persist request`; regression coverage for that ordering is part of release confidence.
 - History validation should cover store-level paging, live refresh via `SESSION_LIBRARY_REVISION_STORAGE_KEY`, and note-draft preservation during same-session refreshes.
-- Popup and options initial render should be validated from `CAPTURE_STATUS` alone, including subtitle count, char count, preview text, and recent entry hydration.
+- Popup and options initial render should be validated from lightweight `CAPTURE_STATUS` alone, including subtitle count, char count, preview text, and recent entry hydration. Export estimates should be validated only through `GET_DIAGNOSTICS_STATUS`.
 - The current pre-release gate remains `npm run verify`.
 
 ## 2026-03-19 Deployment Consistency Update
@@ -380,53 +386,26 @@ Deployment documentation consistency sources:
 - Release verification should confirm that session import sanitize normalizes unsupported `sourceUrl` to an empty string, and history `원본 페이지 열기` is disabled/blocked for unsupported URLs.
 - Release verification should confirm that unconfirmed container fallback blocking emits the `blockedByUnconfirmedFilter` signal and that local polling / top fallback / injected observer all relax fallback after `6` consecutive blocked probes.
 - Release verification should confirm that unconfirmed block streak resets immediately when subtitle text recovers and is not reset by neutral misses without text.
-- Release verification should confirm that fallback internal raw keeps a `4KB` tail window for pipeline comparison while panel/popup preview still uses the existing `400자/3줄` tail-oriented display semantics.
+- Release verification should confirm that non-plenary fallback internal raw keeps a `4KB` tail window, plenary fallback internal raw preserves the full diff/commit raw, and panel/popup preview still uses the `400자/3줄` tail-oriented display semantics.
 - Release verification should confirm that single-session export keeps no hard size cap, and known transport/download failures (`message length exceeded`, `invalid data URL` class) are surfaced as user-friendly guidance.
 - Release verification should confirm that frame-forward nonce mismatch triggers immediate nonce resync plus fast top-frame fallback probing to recover dropped bridge events.
 
-## 2026-05-03 Deployment Consistency Update
+## 2026-04-22 Deployment Consistency Update
 
-- Release verification should confirm that preview-only text is never promoted through removed `pendingPreviews`/`flushPendingPreviews` paths during save, export, page-exit, or stop flows.
-- Release verification should confirm that plenary and committee fallback UI previews both use `400자/3줄 tail`, while internal fallback raw still keeps the `4KB` tail window.
-- Release verification should confirm that single-session export payloads over `8 MiB` show a confirmation warning before download and mention saved-history partial export as the fallback path.
-- Release verification should confirm that history paging with fallback records merges fallback records with only the needed IndexedDB window/id lookups and preserves starred-first ordering.
-- Release verification should confirm that local polling and top fallback unconfirmed streaks relax container fallback independently after their own `6` consecutive blocked probes.
-- Release verification should confirm that options storage recovery status shows the latest page-exit persist attempt timestamp, session id, entry count, and error when present.
-- Release packaging should keep generated artifacts (`dist/`, `coverage/`, tsbuildinfo, root exports) ignored, and `.gitignore` now also protects local env files and signing material.
+- Release verification should confirm that the in-page panel appears immediately on supported `main` and `main/` home URLs, while actual capture start is still allowed only on `main/player*` pages.
+- Release verification should confirm that options `수집 진단` shows current segment threshold usage and TXT/SRT/VTT/JSON estimated export sizes for the active player tab.
+- Release verification should confirm that runtime segmentation thresholds (`세그먼트 최대 문장/글자/시간`) can be edited in options and affect later roll-over decisions.
+- Release verification should confirm that large export downloads use the offscreen Blob chunk path first, and that payloads above the bounded `data:` fallback path surface the explicit large-export guidance instead of attempting an impractical fallback.
+- Release verification should confirm that full-library JSON backup uses the history page Blob URL helper and revokes the Blob URL after completion, interruption, or timeout.
+- Release verification should confirm that JSON single-session export and backup/import preserve `lineageId` and `segmentNumber`, while older JSON without those fields still imports.
+- Release verification should confirm that `pendingPreviews` are not materialized into saved or exported entries.
 
-## 2026-05-10 Release Checklist Addendum
+## 2026-04-28 Deployment Consistency Update
 
-이번 릴리스 후보에는 v4 로컬 메타데이터, 기록 검색/편집, Markdown/CSV export, preset, 실험형 side panel이 포함됩니다. 배포 전 아래 항목을 기존 체크리스트에 추가로 확인합니다.
-
-- `npm run lint`
-- `npm run typecheck`
-- `npm run test`
-- `npm run build`
-- `npm run verify:e2e` (built extension smoke test)
-- `tests/fixtures/` DOM fixture가 본회의, 위원회, iframe, fallback-only, unstable row 대표 케이스를 계속 덮는지 확인
-- history 검색, 태그/카테고리 필터, 중요 표시만 보기, 중요 표시만 export, 시간 범위 export, entry 편집/병합/분할/삭제 확인
-- panel의 건강도 라벨, 저장 불가 사유, 세션 크기 경고, `중간 저장 후 새 세션 시작`, 최신 확정 entry 중요 표시 확인
-- options preset CRUD, TXT 발언자/entry 메타데이터 export 옵션, popup preset 바로 열기 확인
-- `sidePanel` 권한 및 `side_panel.default_path`가 `dist/manifest.json`에 포함되는지 확인
-- Chrome 114+에서 side panel 열기, 미지원 환경에서 `sidepanel.html` fallback 열기 확인
-
-## 2026-05-07 Deployment Consistency Update
-
-P0 + P1 + P2 의 잠재 이슈 묶음을 일괄 처리한 릴리스 검증 항목입니다.
-
-- `recentDuplicateMinLength` 옵션을 변경했을 때 동일 raw 가 실제로 다른 임계에서 차단/통과되는지 회귀 검증 (예: 8 → 32 변경 시 12자 동일 문장이 통과 → 차단 분기로 바뀌는지).
-- `maxBufferLength` 를 1000 으로 줄였을 때 recent compact history 비교 윈도우도 같은 1000 자로 좁혀지는지(commit/desync 카운트 기준이 의도대로 변하는지) 확인.
-- 매우 큰 `data:` URL fallback (예: ~8 MiB JSON export) 다운로드 시 service worker 가 멈추지 않고 청크 base64 인코딩을 무리 없이 끝내는지 확인.
-- `자막 모으기` 시작 시 기본 자동 활성화가 실패해도 `#viewSubtit` 레이어에 inline `display:block` 이 강제되지 않고 패널 notice 가 수동 클릭 안내로 내려가는지 확인.
-- 옵션의 `수집 중 자동 저장` 을 끈 상태에서 탭 숨김(visibility hidden) 만 발생했을 때 `chrome.storage` / IndexedDB write 가 실행되지 않는지 확인 (`pagehide` / `beforeunload` / Stop 의 최종 저장은 그대로 동작).
-- 같은 player URL 에서 `멈추기` 또는 `화면 비우기` 후 새로고침했을 때 자동 시작이 발생하지 않고, 다른 player URL · 새 탭 · `자막 모으기` 클릭 후에는 다시 자동 시작이 살아 있는지 확인.
-- BFCache 복귀(`pageshow.persisted = true`) 또는 `visibilitychange:visible` 시 nonce 재동기화 + observer config 재dispatch + top-frame fallback probe 가 즉시 트리거되는지 확인.
-- history `세션 메모` 텍스트박스에 4096자를 넘어 입력해도 더 이상 늘어나지 않고, JSON 가져오기로 들어온 더 긴 메모도 4096자로 잘려 저장되는지 확인.
-- history 에 저장하지 않은 메모를 둔 상태에서 탭을 닫으려 할 때 브라우저 폐기 확인이 뜨는지 확인.
-- 패널 notice 가 `unconfirmedFallbackBlockStreak ≥ 3` 일 때 `UNCONFIRMED_STALL_HINT_NOTICE` ("자막이 일시적으로 잡히지 않습니다…") 로 부드러운 안내를 띄우는지, stable row commit 직후 0 으로 리셋되는지 확인.
-- `sender.id` 가 본 확장과 다른 메시지(외부 확장에서 흉내 낸 명령) 를 background 가 거부하는지 확인.
-- 단일 세션 export 가 quota / disk full 류 오류로 실패할 때 사용자 메시지에 `저장 공간` + `저장된 기록 → 부분 저장` 동선이 명시되는지 확인.
-- 서비스 워커 cold start 직후 (`onStartup` + `onInstalled` 동시 발생) 동일한 startup persistence cleanup 이 두 번 실행되지 않는지 확인.
-- options 의 `filterUnconfirmedEnabled` 토글을 수집 중 변경했을 때 unconfirmed streak 가 즉시 0 으로 초기화되어 다음 tick 부터 새 정책이 그대로 반영되는지 확인.
-- 단순한 in-page navigation(`subtitle:health` 만 도달) 으로 페이지 타이틀이 바뀌면 history detail 로 저장될 때 새 `committeeName` / `sourceUrl` 이 즉시 반영되는지 확인.
-- service worker 재기동 후 이전 SW 가 만든 Blob URL 이 새 offscreen 으로 revoke 메시지를 발사하지 않고 storage 에서만 정리되는지 확인.
+- Release verification should include `check:version`, `check:injected`, `lint`, `typecheck`, `test`, and `build` via `npm run verify`.
+- Local Chrome extension smoke should be run with `npm run test:e2e:extension` before store submission or large capture-path changes.
+- Release verification should confirm fallback-only conservative commit behavior: 2 repeated observations or 400ms stable raw before `sourceCaptureMode: "fallback"` entry creation.
+- Release verification should confirm structured rows clear pending fallback candidates and committed structured entries carry `sourceCaptureMode: "structured"`.
+- Release verification should confirm SPA URL transitions start/stop capture pipeline once, and running sessions are stopped/persisted before changing capture URL state.
+- Release verification should confirm history defaults to lineage summary list and lineage metadata/delete/export operations apply to all segments.
+- Release verification should confirm lineage export split download uses segment suffixes such as `segment-001`.

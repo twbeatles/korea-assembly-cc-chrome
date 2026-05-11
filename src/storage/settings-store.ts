@@ -1,11 +1,14 @@
-import { DEFAULT_EXTENSION_SETTINGS, EXTENSION_STORAGE_KEY } from "../shared/constants";
+import {
+  DEFAULT_EXTENSION_SETTINGS,
+  EXTENSION_STORAGE_KEY,
+  SESSION_SEGMENT_PRESETS,
+} from "../shared/constants";
 import {
   sanitizeFilenamePattern,
   validateFilenamePattern,
 } from "../shared/filename-pattern";
 import type { ExtensionSettings } from "./types";
-import { createPrefixedRandomToken } from "../shared/random-token";
-import { isSupportedAssemblyUrl } from "../shared/constants";
+import type { SegmentPreset } from "./types";
 
 let memorySettings: ExtensionSettings = { ...DEFAULT_EXTENSION_SETTINGS };
 
@@ -65,14 +68,70 @@ function sanitizeInteger(value: unknown, fallback: number, minimum: number): num
   return fallback;
 }
 
+function isSegmentPreset(value: unknown): value is SegmentPreset {
+  return (
+    value === "stability" ||
+    value === "balanced" ||
+    value === "capacity" ||
+    value === "custom"
+  );
+}
+
+function resolveSegmentPreset(settings: StoredSettings): SegmentPreset {
+  if (isSegmentPreset(settings.segmentPreset)) {
+    return settings.segmentPreset;
+  }
+
+  if (
+    settings.maxEntriesPerSegment !== undefined ||
+    settings.maxCharsPerSegment !== undefined ||
+    settings.maxSegmentDurationMinutes !== undefined
+  ) {
+    return "custom";
+  }
+
+  return DEFAULT_EXTENSION_SETTINGS.segmentPreset;
+}
+
+function resolveSegmentThresholds(settings: StoredSettings): Pick<
+  ExtensionSettings,
+  "maxEntriesPerSegment" | "maxCharsPerSegment" | "maxSegmentDurationMinutes"
+> {
+  const segmentPreset = resolveSegmentPreset(settings);
+  if (segmentPreset !== "custom") {
+    return SESSION_SEGMENT_PRESETS[segmentPreset];
+  }
+
+  return {
+    maxEntriesPerSegment: sanitizeInteger(
+      settings.maxEntriesPerSegment,
+      DEFAULT_EXTENSION_SETTINGS.maxEntriesPerSegment,
+      100,
+    ),
+    maxCharsPerSegment: sanitizeInteger(
+      settings.maxCharsPerSegment,
+      DEFAULT_EXTENSION_SETTINGS.maxCharsPerSegment,
+      5000,
+    ),
+    maxSegmentDurationMinutes: sanitizeInteger(
+      settings.maxSegmentDurationMinutes,
+      DEFAULT_EXTENSION_SETTINGS.maxSegmentDurationMinutes,
+      10,
+    ),
+  };
+}
+
 function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
   const legacyRecentDuplicateMinLength =
     settings.recentDuplicateMinLength ?? settings.noiseMinLength;
+  const segmentPreset = resolveSegmentPreset(settings);
+  const segmentThresholds = resolveSegmentThresholds(settings);
   return {
     autoScroll:
       typeof settings.autoScroll === "boolean"
         ? settings.autoScroll
         : DEFAULT_EXTENSION_SETTINGS.autoScroll,
+    segmentPreset,
     keepaliveIntervalMs: sanitizeInteger(
       settings.keepaliveIntervalMs,
       DEFAULT_EXTENSION_SETTINGS.keepaliveIntervalMs,
@@ -88,6 +147,9 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       DEFAULT_EXTENSION_SETTINGS.maxBufferLength,
       1000,
     ),
+    maxEntriesPerSegment: segmentThresholds.maxEntriesPerSegment,
+    maxCharsPerSegment: segmentThresholds.maxCharsPerSegment,
+    maxSegmentDurationMinutes: segmentThresholds.maxSegmentDurationMinutes,
     noiseFilterEnabled:
       typeof settings.noiseFilterEnabled === "boolean"
         ? settings.noiseFilterEnabled

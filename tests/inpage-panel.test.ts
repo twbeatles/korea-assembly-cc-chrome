@@ -54,6 +54,11 @@ function createSnapshot(): StatusSnapshot {
       sourceLabel: "structured",
       persistabilityState: "persistable",
       persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
+      stableRowCount: 2,
+      unstableRowCount: 0,
+      filteredUnconfirmedCount: 0,
+      rowKeySources: { class: 2 },
+      fallbackCommitState: "idle",
     },
     hasPersistableContent: true,
   };
@@ -139,6 +144,18 @@ describe("in-page panel", () => {
     expect(view.notice).toBe("자막을 모으는 중입니다.");
     expect(view.liveRows).toHaveLength(1);
     expect(view.captureMode).toBe("structured");
+  });
+
+  it("keeps the panel visible even when the current page is not capture-ready", () => {
+    const view = buildPanelState({
+      snapshot: {
+        connected: false,
+        status: "idle",
+        sourceUrl: "https://assembly.webcast.go.kr/main/",
+      },
+    });
+
+    expect(view.visible).toBe(true);
   });
 
   it("mounts once and renders the live sections with footer menus", () => {

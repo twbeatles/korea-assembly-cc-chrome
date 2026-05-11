@@ -7,9 +7,13 @@ describe("options settings field registry", () => {
   it("keeps every extension setting exposed through the options schema", () => {
     const expectedKeys = [
       "autoScroll",
+      "segmentPreset",
       "keepaliveIntervalMs",
       "pollingFallbackIntervalMs",
       "maxBufferLength",
+      "maxEntriesPerSegment",
+      "maxCharsPerSegment",
+      "maxSegmentDurationMinutes",
       "noiseFilterEnabled",
       "recentDuplicateMinLength",
       "filenamePattern",
