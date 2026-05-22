@@ -187,7 +187,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.9-cw
 - `downloads` 권한은 TXT/SRT/VTT/JSON/Markdown/CSV 파일 저장용
 - `storage` 권한은 설정, 세션 저장 fallback, page-exit replay queue, 탭 단위 frame-forward nonce, 저장 복구 diagnostics 용
 - `storage` 는 즐겨찾기/메모/태그/카테고리/발언자 라벨/중요 표시/entry note/labels 같은 로컬 메타데이터와 JSON 가져오기 후 복원된 기록 저장에도 사용됨
-- `sidePanel` 권한은 Chrome 114+의 실험형 보조 패널을 열기 위한 용도이며, 기존 in-page panel이 기본 UI임
+- `sidePanel` 권한은 Chrome 114+의 브라우저 측면 보조 패널을 열기 위한 용도이며, 국회 의사중계 탭을 유지한 채 수집 상태, 최근 자막, 저장/기록/설정 바로가기를 확인하게 합니다. 기존 in-page panel이 기본 UI이고, side panel은 추가 웹사이트 접근/외부 전송/영상 캡처에 사용하지 않습니다.
 
 ## 7. 릴리스 체크리스트
 

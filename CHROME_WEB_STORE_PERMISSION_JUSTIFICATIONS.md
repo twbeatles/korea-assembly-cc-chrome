@@ -2,7 +2,7 @@
 
 ## 2026-05-10 Permission Update
 
-- `sidePanel`: 실험형 side panel UI를 열기 위해 사용합니다. 기존 in-page panel은 계속 기본 UI이며, side panel은 지원 탭의 live 상태, 최근 자막, 저장/기록/설정 바로가기를 보여주는 보조 화면입니다. Chrome side panel API를 사용할 수 없는 환경에서는 일반 확장 페이지 fallback을 엽니다.
+- `sidePanel`: 사용자가 국회 의사중계 페이지를 계속 보면서도 브라우저 측면에서 수집 상태와 최근 자막을 확인하고 저장/기록/설정 화면으로 이동할 수 있도록 보조 패널을 열기 위해 사용합니다. 기존 in-page panel은 계속 기본 UI이며, side panel은 popup처럼 닫히는 임시 화면이 아니라 회의 중 보조 모니터 역할을 하는 확장 UI입니다. Chrome side panel API를 사용할 수 없는 환경에서는 일반 확장 페이지 fallback을 엽니다.
 - `storage`: 기존 설정/세션/진단 데이터에 더해 로컬 메타데이터인 `tags`, `category`, `speakerLabels`, `highlighted`, `entryNote`, `labels`, `originalText`, `sourceEntryIds`, 그리고 preset 목록을 저장합니다. 모든 새 데이터는 로컬 IndexedDB 또는 `chrome.storage.local`에만 저장됩니다.
 - `downloads`: 기존 TXT/SRT/VTT/JSON 외에 Markdown/CSV export 파일 저장에도 사용합니다. 사용자가 직접 export 버튼을 누른 경우에만 동작합니다.
 - 외부 AI 요약, 외부 전송, 영상 캡처, 넓은 host permission은 포함하지 않습니다.
@@ -31,7 +31,13 @@ Chrome Web Store 제출 폼에 바로 붙여넣을 수 있도록 간략 문안�
 
 ## sidePanel 사용 근거
 
-Chrome 114+에서 지원되는 실험형 보조 패널을 열기 위해 사용합니다. 기본 UI는 기존 사이트 안 우측 패널이며, side panel은 지원 탭의 live 상태, 최근 자막, 저장/기록/설정 바로가기를 보여주는 보조 화면으로 제한됩니다. side panel 미지원 환경에서는 일반 확장 페이지 fallback을 사용합니다.
+Chrome 114+에서 지원되는 브라우저 측면 보조 패널을 열기 위해 사용합니다. 사용자는 국회 의사중계 영상을 보는 탭을 유지한 채, 별도 popup을 계속 다시 열지 않고도 현재 수집 상태, 최근 자막, 저장 가능 여부, 저장된 기록/환경 설정/진단 바로가기를 확인할 수 있습니다. 이는 긴 회의 중 popup이 닫혀도 수집 상황을 계속 확인해야 하는 사용 흐름을 보완하기 위한 UI 권한입니다.
+
+기본 UI는 기존 사이트 안 우측 in-page panel이며, side panel은 같은 로컬 세션 상태를 보여주는 보조 화면으로 제한됩니다. side panel은 지원 국회 도메인 밖의 페이지 내용을 읽기 위한 권한이 아니며, 외부 AI 요약, 외부 서버 전송, 영상 캡처, 추가 host permission을 요구하지 않습니다. Chrome side panel API를 사용할 수 없는 환경에서는 일반 확장 페이지 fallback을 사용합니다.
+
+Chrome Web Store 제출용 간략 문안:
+
+`sidePanel` 권한은 사용자가 국회 의사중계 페이지를 보면서 브라우저 측면에서 현재 자막 수집 상태, 최근 자막, 저장/기록/설정 바로가기를 계속 확인할 수 있도록 보조 패널을 열기 위해 사용합니다. 기본 수집 UI는 사이트 안 우측 패널이며, side panel은 같은 로컬 세션 상태를 보여주는 선택적 보조 화면입니다. 이 권한은 추가 웹사이트 접근, 외부 전송, 영상 캡처에 사용하지 않습니다.
 
 ## 호스트 권한 사용 근거
 

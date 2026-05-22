@@ -219,7 +219,7 @@ npm run build
 - `offscreen`: 대용량 export용 Blob URL 생성
 - `activeTab`: 현재 탭 상태 조회
 - `scripting`: MV3 런타임 보조 권한
-- `sidePanel`: 실험형 Chrome side panel 보조 UI
+- `sidePanel`: 국회 의사중계 탭을 유지한 채 브라우저 측면에서 수집 상태, 최근 자막, 저장/기록/설정 바로가기를 확인하는 보조 UI. 추가 웹사이트 접근, 외부 전송, 영상 캡처에는 사용하지 않음
 - `host_permissions: https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`
   국회 의사중계 고정 도메인 2개만 대상으로 제한합니다
 
