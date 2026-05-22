@@ -31,7 +31,7 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
-현재 스토어 제출 준비 기준 버전은 `1.0.8` 입니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.9` 입니다.
 
 ## 3. 배포 전 검증
 
@@ -144,7 +144,7 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.8-cws.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.9-cws.zip -Force
 ```
 
 ## 6. Chrome Web Store 배포

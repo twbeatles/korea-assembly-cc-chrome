@@ -1,7 +1,7 @@
 # 기능 고도화 및 추가 기능 분석
 
 작성 기준일: 2026-05-10  
-대상 버전: `1.0.8`
+대상 버전: `1.0.9`
 검토 범위: `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `POTENTIAL_ISSUES.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md`, `manifest.json`, `src/`, `tests/`
 
 ## 요약

@@ -378,6 +378,10 @@ export default function App() {
     }
   };
 
+  const subtitleCount = snapshot?.subtitleCount ?? 0;
+  const charCount = snapshot?.charCount ?? 0;
+  const isRunning = snapshot?.status === "running";
+
   return (
     <div className="popup-shell">
       <header className="popup-header">
@@ -391,23 +395,29 @@ export default function App() {
       </header>
 
       <section className="panel">
-        <div className="meta-row">
-          <span>작동 상태</span>
-          <strong>{unsupported ? "지원되지 않음" : tabReady ? "연결됨" : "대기 중"}</strong>
+        <div className="stat-row" aria-label="현재 수집 요약">
+          <div className="stat">
+            <span className="stat-label">상태</span>
+            <span className="stat-value">
+              {unsupported ? "지원되지 않음" : tabReady ? "연결됨" : "대기 중"}
+            </span>
+          </div>
+          <div className="stat">
+            <span className="stat-label">자막</span>
+            <span className="stat-value">{subtitleCount.toLocaleString("ko-KR")}문장</span>
+          </div>
+          <div className="stat">
+            <span className="stat-label">글자</span>
+            <span className="stat-value">{charCount.toLocaleString("ko-KR")}자</span>
+          </div>
         </div>
         <div className="meta-row">
           <span>회의 이름</span>
           <strong>{snapshot?.committeeName || snapshot?.title || "-"}</strong>
         </div>
-        <div className="meta-row">
-          <span>모인 자막</span>
-          <strong>{snapshot?.subtitleCount ?? 0}문장</strong>
+        <div className="status-line" role="status" aria-live="polite">
+          {statusMessage}
         </div>
-        <div className="meta-row">
-          <span>누적 글자</span>
-          <strong>{snapshot?.charCount ?? 0}자</strong>
-        </div>
-        <div className="status-line">{statusMessage}</div>
         {requiresReload ? (
           <div className="warning-box">
             확장 설치 전부터 열려 있던 탭이면 새로고침이 필요할 수 있습니다.
@@ -422,66 +432,75 @@ export default function App() {
       </section>
 
       <section className="panel">
-        <div className="capture-actions">
-          {snapshot?.status === "running" ? (
-            <button
-              className="capture-btn stop"
-              onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 멈춥니다.")}
-              disabled={!tabReady}
-            >
-              {UI_TEXT.stopCapture}
+        <div className="group">
+          <span className="group-label">자막 수집</span>
+          <div className="capture-actions">
+            {isRunning ? (
+              <button
+                className="capture-btn stop"
+                onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 멈춥니다.")}
+                disabled={!tabReady}
+              >
+                {UI_TEXT.stopCapture}
+              </button>
+            ) : (
+              <button
+                className="capture-btn"
+                onClick={() => sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")}
+                disabled={!tabReady || !captureReady}
+              >
+                {UI_TEXT.startCapture}
+              </button>
+            )}
+            <div className="save-open-row">
+              <button
+                className="secondary"
+                onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
+                disabled={!tabReady || !hasPersistableContent}
+              >
+                {UI_TEXT.saveSession}
+              </button>
+              <button
+                className="secondary"
+                onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
+                disabled={!tabReady}
+              >
+                {UI_TEXT.openPanel}
+              </button>
+            </div>
+          </div>
+        </div>
+        <div className="group">
+          <span className="group-label">다른 화면 열기</span>
+          <div className="nav-actions four">
+            <button className="ghost" onClick={() => void openHistory()}>
+              {UI_TEXT.openHistory}
             </button>
-          ) : (
-            <button
-              className="capture-btn"
-              onClick={() => sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")}
-              disabled={!tabReady || !captureReady}
-            >
-              {UI_TEXT.startCapture}
+            <button className="ghost" onClick={() => void openOptions()}>
+              {UI_TEXT.openOptions}
             </button>
-          )}
-          <div className="save-open-row">
-            <button
-              className="secondary"
-              onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
-              disabled={!tabReady || !hasPersistableContent}
-            >
-              {UI_TEXT.saveSession}
+            <button className="ghost" onClick={() => void openDiagnostics()}>
+              {UI_TEXT.openDiagnostics}
             </button>
-            <button
-              className="secondary"
-              onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
-              disabled={!tabReady}
-            >
-              {UI_TEXT.openPanel}
+            <button className="ghost" onClick={() => void openSidePanel()}>
+              사이드 패널
             </button>
           </div>
         </div>
-        <div className="nav-actions">
-          <button className="secondary" onClick={() => void openHistory()}>
-            {UI_TEXT.openHistory}
-          </button>
-          <button className="secondary" onClick={() => void openOptions()}>
-            {UI_TEXT.openOptions}
-          </button>
-          <button className="secondary" onClick={() => void openDiagnostics()}>
-            {UI_TEXT.openDiagnostics}
-          </button>
-          <button className="secondary" onClick={() => void openSidePanel()}>
-            사이드 패널
-          </button>
-        </div>
         {presets.length ? (
-          <div className="nav-actions">
-            {presets.slice(0, 4).map((preset) => (
-              <button
-                className="secondary"
-                key={preset.id}
-                onClick={() => void openPreset(preset)}
-              >
-                {preset.name}
-              </button>
-            ))}
+          <div className="group">
+            <span className="group-label">즐겨 찾는 페이지</span>
+            <div className="preset-row">
+              {presets.slice(0, 4).map((preset) => (
+                <button
+                  className="secondary"
+                  key={preset.id}
+                  onClick={() => void openPreset(preset)}
+                >
+                  {preset.name}
+                </button>
+              ))}
+            </div>
           </div>
         ) : null}
       </section>

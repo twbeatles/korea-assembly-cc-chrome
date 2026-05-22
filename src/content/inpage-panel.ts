@@ -12,12 +12,32 @@ const PANEL_STYLE = `
   }
 
   .host {
+    --navy-900: #0f2a4a;
+    --navy-800: #173f6e;
+    --navy-700: #214568;
+    --navy-600: #2e526f;
+    --navy-500: #4d6580;
+    --navy-400: #5a7088;
+    --ink-900: #10263c;
+    --ink-700: #18344f;
+    --ink-500: #314b66;
+    --tint-100: #f2f6fb;
+    --tint-200: #eef3f9;
+    --tint-300: #dfe8f4;
+    --tint-400: #c6d4e6;
+    --line-soft: rgba(20, 54, 90, 0.08);
+    --line-strong: rgba(20, 54, 90, 0.14);
+    --shadow-card: 0 12px 30px rgba(17, 44, 82, 0.12);
+    --shadow-panel: 0 28px 60px rgba(17, 44, 82, 0.24);
+    --radius-lg: 22px;
+    --radius-md: 16px;
+    --radius-sm: 12px;
     position: fixed;
     top: 12px;
     right: 12px;
     z-index: 2147483646;
     font-family: "Noto Sans KR", "Pretendard", "Malgun Gothic", sans-serif;
-    color: #142537;
+    color: var(--ink-900);
   }
 
   .panel {
@@ -29,12 +49,12 @@ const PANEL_STYLE = `
     box-sizing: border-box;
     padding: 16px 16px 14px;
     overflow: hidden;
-    border-radius: 24px;
+    border-radius: var(--radius-lg);
     border: 1px solid rgba(255, 255, 255, 0.6);
     background:
-      radial-gradient(circle at top right, rgba(24, 119, 182, 0.18), transparent 34%),
+      radial-gradient(circle at top right, rgba(24, 119, 182, 0.16), transparent 38%),
       linear-gradient(180deg, rgba(251, 253, 255, 0.99), rgba(240, 246, 252, 0.99));
-    box-shadow: 0 28px 60px rgba(17, 44, 82, 0.24);
+    box-shadow: var(--shadow-panel);
   }
 
   .collapsed-tab {
@@ -43,7 +63,7 @@ const PANEL_STYLE = `
     min-height: 156px;
     border: 0;
     border-radius: 18px 0 0 18px;
-    background: #173f6e;
+    background: var(--navy-800);
     color: #ffffff;
     font: inherit;
     font-size: 14px;
@@ -70,7 +90,8 @@ const PANEL_STYLE = `
   .footer-actions,
   .section-header,
   .section-meta,
-  .preview-header {
+  .preview-header,
+  .stat-row {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -85,6 +106,8 @@ const PANEL_STYLE = `
 
   .header {
     flex-shrink: 0;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line-soft);
   }
 
   .panel-scroll {
@@ -109,7 +132,7 @@ const PANEL_STYLE = `
 
   .eyebrow {
     margin: 0 0 4px;
-    color: #5a7088;
+    color: var(--navy-400);
     font-size: 11px;
     letter-spacing: 0.08em;
     text-transform: uppercase;
@@ -122,14 +145,15 @@ const PANEL_STYLE = `
   }
 
   .title-group h1 {
-    font-size: 20px;
+    font-size: 18px;
+    letter-spacing: -0.005em;
   }
 
   .title-group p:last-child,
   .section-copy p,
   .preview-copy p {
-    margin: 6px 0 0;
-    color: #4d6580;
+    margin: 4px 0 0;
+    color: var(--navy-500);
     font-size: 12px;
     line-height: 1.45;
   }
@@ -142,20 +166,32 @@ const PANEL_STYLE = `
     align-items: center;
     justify-content: center;
     border-radius: 999px;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
+    line-height: 1;
   }
 
   .status-badge {
-    min-width: 72px;
+    min-width: 64px;
     padding: 6px 10px;
-    background: #dce7f5;
-    color: #214568;
+    background: var(--tint-300);
+    color: var(--navy-700);
+    gap: 5px;
+  }
+
+  .status-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.7;
   }
 
   .status-badge.running {
     background: #dff4e2;
     color: #185f2a;
+    animation: status-running-pulse 2.2s ease-in-out infinite;
   }
 
   .status-badge.stopped {
@@ -168,24 +204,64 @@ const PANEL_STYLE = `
     color: #9b211b;
   }
 
+  @keyframes status-running-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(24, 95, 42, 0.32); }
+    50% { box-shadow: 0 0 0 6px rgba(24, 95, 42, 0); }
+  }
+
   .header-count {
     padding: 6px 10px;
-    background: #eef3f9;
-    color: #536b83;
+    background: var(--tint-200);
+    color: var(--navy-500);
   }
 
   .mode-badge {
-    padding: 6px 10px;
-    background: #eff4fb;
-    color: #34516d;
+    padding: 5px 10px;
+    background: var(--tint-200);
+    color: var(--navy-600);
+  }
+
+  .stat-row {
+    flex-wrap: wrap;
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid var(--line-soft);
+    flex-shrink: 0;
+  }
+
+  .stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1 1 78px;
+    min-width: 70px;
+  }
+
+  .stat-label {
+    font-size: 10px;
+    color: var(--navy-400);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .stat-value {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--ink-700);
+  }
+
+  .stat + .stat {
+    border-left: 1px solid var(--line-soft);
+    padding-left: 10px;
   }
 
   .hero-card,
   .controls-card {
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.6);
+    border-radius: var(--radius-md);
+    background: rgba(255, 255, 255, 0.62);
     border: 1px solid rgba(255, 255, 255, 0.7);
-    box-shadow: inset 0 2px 10px rgba(255, 255, 255, 0.5);
+    box-shadow: var(--shadow-card);
     padding: 14px;
   }
 
@@ -200,8 +276,26 @@ const PANEL_STYLE = `
 
   .controls-card {
     display: grid;
-    gap: 10px;
+    gap: 12px;
     flex-shrink: 0;
+  }
+
+  .controls-card .group {
+    display: grid;
+    gap: 8px;
+  }
+
+  .controls-card .group + .group {
+    padding-top: 12px;
+    border-top: 1px dashed var(--line-soft);
+  }
+
+  .group-label {
+    font-size: 10px;
+    color: var(--navy-400);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
   }
 
   .section-header,
@@ -220,13 +314,14 @@ const PANEL_STYLE = `
   }
 
   .section-copy h2 {
-    font-size: 22px;
-    line-height: 1.1;
+    font-size: 18px;
+    line-height: 1.15;
   }
 
   .preview-copy h2 {
-    font-size: 14px;
+    font-size: 13px;
     line-height: 1.2;
+    color: var(--navy-600);
   }
 
   .section-copy p {
@@ -356,20 +451,21 @@ const PANEL_STYLE = `
     padding: 14px 16px;
     border-radius: 14px;
     background: #ffffff;
-    border: 1px solid rgba(20, 54, 90, 0.08);
+    border: 1px solid var(--line-soft);
     box-shadow: 0 10px 18px rgba(20, 54, 90, 0.06);
   }
 
   .live-row time {
     display: block;
     margin-bottom: 4px;
-    color: #5a7088;
+    color: var(--navy-400);
     font-size: 11px;
+    font-variant-numeric: tabular-nums;
   }
 
   .live-row p {
     margin: 0;
-    color: #10263c;
+    color: var(--ink-900);
     font-size: 18px;
     font-weight: 600;
     line-height: 1.7;
@@ -392,19 +488,23 @@ const PANEL_STYLE = `
   .section-count {
     padding: 6px 10px;
     background: #e8f0fa;
-    color: #2e526f;
+    color: var(--navy-600);
   }
 
   .notice {
     box-sizing: border-box;
-    min-height: calc(1.5em * 2 + 20px);
     padding: 10px 12px;
-    border-radius: 14px;
+    border-radius: var(--radius-sm);
     background: rgba(227, 236, 247, 0.72);
-    font-size: 13px;
-    color: #314b66;
+    border: 1px solid var(--line-soft);
+    font-size: 12px;
+    color: var(--ink-500);
     line-height: 1.5;
     flex-shrink: 0;
+  }
+
+  .notice[hidden] {
+    display: none;
   }
 
   .action-row button,
@@ -416,57 +516,161 @@ const PANEL_STYLE = `
   .footer-actions {
     flex-wrap: wrap;
     flex-shrink: 0;
+    padding-top: 10px;
+    border-top: 1px solid var(--line-soft);
+  }
+
+  .footer-actions button {
+    font-size: 12px;
+    background: transparent;
+    color: var(--navy-600);
+    padding: 8px 10px;
+    min-height: 36px;
+  }
+
+  .footer-actions button:hover:not(:disabled) {
+    background: var(--tint-200);
+    color: var(--navy-800);
+  }
+
+  .primary-row {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .primary-action {
+    font-size: 15px !important;
+    padding: 13px 14px !important;
+    min-height: 48px !important;
+    letter-spacing: 0.005em;
+  }
+
+  .primary-action.stop {
+    background: linear-gradient(135deg, #0f6b2f 0%, #0a5225 100%);
+  }
+
+  .secondary-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
 
   .export-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 6px;
   }
 
   .export-row button {
-    flex: 1;
-    padding: 8px 4px;
+    padding: 9px 4px;
     font-size: 12px;
-    color: #314b66;
-    background: #f5f8fc;
-    border: 1px solid rgba(20, 54, 90, 0.08);
+    color: var(--ink-500);
+    background: rgba(245, 248, 252, 0.92);
+    border: 1px solid var(--line-soft);
+    font-weight: 600;
   }
 
   .export-row button:hover:not(:disabled) {
-    background: #eef3f9;
+    background: var(--tint-200);
+    border-color: var(--line-strong);
+  }
+
+  /* Advanced actions: collapsible <details> */
+  .advanced {
+    border: 1px solid var(--line-soft);
+    border-radius: var(--radius-sm);
+    background: rgba(247, 250, 253, 0.7);
+    overflow: hidden;
+  }
+
+  .advanced[open] {
+    background: #ffffff;
+  }
+
+  .advanced summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 10px 12px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--navy-600);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    user-select: none;
+  }
+
+  .advanced summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .advanced summary::after {
+    content: "▾";
+    font-size: 11px;
+    transition: transform 180ms ease;
+    color: var(--navy-400);
+  }
+
+  .advanced[open] summary::after {
+    transform: rotate(180deg);
+  }
+
+  .advanced-body {
+    padding: 0 12px 12px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
   }
 
   button {
     border: 0;
-    border-radius: 12px;
-    background: #173f6e;
+    border-radius: var(--radius-sm);
+    background: var(--navy-800);
     color: #ffffff;
     font: inherit;
     font-size: 13px;
     font-weight: 700;
     cursor: pointer;
     padding: 10px 12px;
+    transition: background 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  button:hover:not(:disabled) {
+    background: var(--navy-900);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 14px rgba(15, 42, 74, 0.18);
   }
 
   .preview-toggle,
   button {
-    min-height: 40px;
+    min-height: 38px;
   }
 
   button.icon {
     width: auto;
     min-width: 0;
-    padding: 8px 12px;
+    padding: 7px 12px;
+    font-size: 12px;
+    min-height: 32px;
   }
 
   button.secondary {
-    background: #dfe8f4;
-    color: #18344f;
+    background: var(--tint-300);
+    color: var(--ink-700);
+  }
+
+  button.secondary:hover:not(:disabled) {
+    background: var(--tint-400);
+    color: var(--navy-900);
   }
 
   button:disabled {
     cursor: not-allowed;
-    opacity: 0.45;
+    opacity: 0.42;
+    transform: none;
+    box-shadow: none;
   }
 
   @media (max-width: 768px) {
@@ -562,6 +766,30 @@ function formatDate(value: string | null | number): string {
     return "-";
   }
   return new Date(value).toLocaleString("ko-KR");
+}
+
+function formatElapsedTime(startedAt: string | null, status: CaptureStatus): string {
+  if (!startedAt) {
+    return "-";
+  }
+  const startedMs = new Date(startedAt).getTime();
+  if (!Number.isFinite(startedMs)) {
+    return "-";
+  }
+  const elapsedMs = Math.max(Date.now() - startedMs, 0);
+  const totalSeconds = Math.floor(elapsedMs / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const pad = (value: number): string => value.toString().padStart(2, "0");
+  const formatted =
+    hours > 0
+      ? `${hours}:${pad(minutes)}:${pad(seconds)}`
+      : `${pad(minutes)}:${pad(seconds)}`;
+  if (status === "stopped") {
+    return `${formatted} (멈춤)`;
+  }
+  return formatted;
 }
 
 function formatCaptureMode(mode: CaptureMode): string {
@@ -700,8 +928,40 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const headerActions = document.createElement("div");
   headerActions.className = "header-actions";
   const collapseButton = createButton(UI_TEXT.collapse, actions.onCollapse, "secondary icon");
-  headerActions.append(headerCount, statusBadge, collapseButton);
+  headerActions.append(statusBadge, headerCount, collapseButton);
   header.append(titleGroup, headerActions);
+
+  const statRow = document.createElement("div");
+  statRow.className = "stat-row";
+  const statSubtitles = document.createElement("div");
+  statSubtitles.className = "stat";
+  const statSubtitlesLabel = document.createElement("span");
+  statSubtitlesLabel.className = "stat-label";
+  statSubtitlesLabel.textContent = "자막";
+  const statSubtitlesValue = document.createElement("span");
+  statSubtitlesValue.className = "stat-value";
+  statSubtitles.append(statSubtitlesLabel, statSubtitlesValue);
+
+  const statChars = document.createElement("div");
+  statChars.className = "stat";
+  const statCharsLabel = document.createElement("span");
+  statCharsLabel.className = "stat-label";
+  statCharsLabel.textContent = "글자";
+  const statCharsValue = document.createElement("span");
+  statCharsValue.className = "stat-value";
+  statChars.append(statCharsLabel, statCharsValue);
+
+  const statElapsed = document.createElement("div");
+  statElapsed.className = "stat";
+  const statElapsedLabel = document.createElement("span");
+  statElapsedLabel.className = "stat-label";
+  statElapsedLabel.textContent = "경과";
+  const statElapsedValue = document.createElement("span");
+  statElapsedValue.className = "stat-value";
+  statElapsedValue.style.fontVariantNumeric = "tabular-nums";
+  statElapsed.append(statElapsedLabel, statElapsedValue);
+
+  statRow.append(statSubtitles, statChars, statElapsed);
 
   const heroCard = document.createElement("section");
   heroCard.className = "hero-card";
@@ -776,13 +1036,44 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
-  const primaryActions = document.createElement("div");
-  primaryActions.className = "action-row";
-  const startButton = createButton(UI_TEXT.startCapture, actions.onStartCapture);
-  const stopButton = createButton(UI_TEXT.stopCapture, actions.onStopCapture);
-  const copyRecentButton = createButton(UI_TEXT.copyRecent, actions.onCopyRecent, "secondary");
-  primaryActions.append(startButton, stopButton, copyRecentButton);
 
+  // Group 1 — Primary capture action (가장 큰 메인 버튼)
+  const captureGroup = document.createElement("div");
+  captureGroup.className = "group";
+  const captureRow = document.createElement("div");
+  captureRow.className = "primary-row";
+  const startButton = createButton(
+    UI_TEXT.startCapture,
+    actions.onStartCapture,
+    "primary-action",
+  );
+  const stopButton = createButton(
+    UI_TEXT.stopCapture,
+    actions.onStopCapture,
+    "primary-action stop",
+  );
+  captureRow.append(startButton, stopButton);
+  captureGroup.append(captureRow);
+
+  // Group 2 — Save & quick copy (자주 쓰는 보조)
+  const saveGroup = document.createElement("div");
+  saveGroup.className = "group";
+  const saveGroupLabel = document.createElement("span");
+  saveGroupLabel.className = "group-label";
+  saveGroupLabel.textContent = "저장 / 복사";
+  const saveRow = document.createElement("div");
+  saveRow.className = "secondary-row";
+  const saveButton = createButton(UI_TEXT.saveSession, actions.onSaveSession);
+  const copyRecentButton = createButton(UI_TEXT.copyRecent, actions.onCopyRecent, "secondary");
+  saveRow.append(saveButton, copyRecentButton);
+  saveGroup.append(saveGroupLabel, saveRow);
+
+  // Group 3 — Export by format
+  const exportGroup = document.createElement("div");
+  exportGroup.className = "group";
+  const exportGroupLabel = document.createElement("span");
+  exportGroupLabel.className = "group-label";
+  exportGroupLabel.textContent = "다른 형식으로 저장";
   const exportRow = document.createElement("div");
   exportRow.className = "export-row";
   const exportButtons = (["txt", "srt", "vtt", "json"] as ExportFormat[]).map((format) => {
@@ -790,11 +1081,18 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
     exportRow.append(button);
     return button;
   });
+  exportGroup.append(exportGroupLabel, exportRow);
 
-  const secondaryActions = document.createElement("div");
-  secondaryActions.className = "action-row";
+  // Group 4 — Advanced (collapsible) — 처음 사용자에겐 숨겨두는 고급 기능
+  const advancedGroup = document.createElement("div");
+  advancedGroup.className = "group";
+  const advancedDetails = document.createElement("details");
+  advancedDetails.className = "advanced";
+  const advancedSummary = document.createElement("summary");
+  advancedSummary.textContent = "더보기 · 화면 비우기, 중요 표시, 새 세션";
+  const advancedBody = document.createElement("div");
+  advancedBody.className = "advanced-body";
   const clearButton = createButton(UI_TEXT.clearSession, actions.onClearSession, "secondary");
-  const saveButton = createButton(UI_TEXT.saveSession, actions.onSaveSession, "secondary");
   const highlightLatestButton = createButton(
     "최신 중요 표시",
     actions.onHighlightLatestEntry ?? (() => undefined),
@@ -805,8 +1103,11 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
     actions.onSaveAndStartNewSession ?? (() => undefined),
     "secondary",
   );
-  secondaryActions.append(clearButton, saveButton, highlightLatestButton, rolloverButton);
-  controlsCard.append(primaryActions, exportRow, secondaryActions);
+  advancedBody.append(clearButton, highlightLatestButton, rolloverButton);
+  advancedDetails.append(advancedSummary, advancedBody);
+  advancedGroup.append(advancedDetails);
+
+  controlsCard.append(captureGroup, saveGroup, exportGroup, advancedGroup);
 
   const notice = document.createElement("div");
   notice.className = "notice";
@@ -829,7 +1130,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const panelScroll = document.createElement("div");
   panelScroll.className = "panel-scroll";
-  panelScroll.append(heroCard, notice, controlsCard, footer);
+  panelScroll.append(statRow, heroCard, notice, controlsCard, footer);
 
   panel.append(header, panelScroll);
   wrapper.append(collapsedTab, panel);
@@ -881,6 +1182,11 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
       modeBadge.textContent = formatCaptureMode(nextState.captureMode);
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
+
+      // Stat row
+      statSubtitlesValue.textContent = `${nextState.subtitleCount.toLocaleString("ko-KR")}줄`;
+      statCharsValue.textContent = `${nextState.charCount.toLocaleString("ko-KR")}자`;
+      statElapsedValue.textContent = formatElapsedTime(nextState.startedAt, nextState.status);
 
       const nextPreviewText =
         nextState.livePreviewText.trim() || nextState.previewText.trim() || emptyPreviewText;
