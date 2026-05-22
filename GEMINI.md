@@ -42,7 +42,11 @@ npm run verify:e2e
 - `manifest.json`
 - `src/background/service-worker.ts`
 - `src/content/content-script.ts`
+- `src/content/app/context.ts`
+- `src/content/app/runtime.ts`
 - `src/content/runtime/*`
+- `src/content/inpage-panel.ts`
+- `src/content/inpage-panel/*`
 - `src/popup/App.tsx`
 - `src/options/App.tsx`
 - `src/history/App.tsx`
@@ -54,6 +58,7 @@ npm run verify:e2e
 - `src/content/frame-probe.ts`
 - `src/content/injected-observer.ts`
 - `src/content/panel-live-rows.ts`
+- `src/content/inpage-panel.ts`는 공개 facade이고, 패널 상태/DOM/렌더링 세부 구현은 `src/content/inpage-panel/` 하위 모듈에 있습니다.
 - `src/core/live-capture.ts`
 - `src/core/session-lineage.ts`
 - `src/core/subtitle-pipeline.ts`

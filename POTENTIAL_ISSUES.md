@@ -12,6 +12,7 @@
 > **추가 진행 상태 (2026-05-10 기준)**
 >
 > - v4 로컬 메타데이터, 전체 기록 검색, history entry 편집/병합/분할/삭제, Markdown/CSV export, preset CRUD, 실험형 side panel, DOM fixture, `npm run verify:e2e` smoke 검증이 추가되었습니다.
+> - content script는 현재 `src/content/content-script.ts` bootstrap facade와 `src/content/app/runtime.ts` 런타임 조립부로 분리되어 있습니다. 아래 후보의 과거 line-number 참조는 현재 모듈 경계 기준으로 갱신했습니다.
 > - 현재 기능 범위와 운영 기준은 `README.md`, `FEATURE_ENHANCEMENT_ANALYSIS.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, 권한/개인정보 문서, 코드와 테스트를 우선합니다.
 
 각 항목은 다음 형식을 따릅니다.
@@ -88,7 +89,7 @@
 
 ### 2-2. `popup` / `options`의 visibility 처리가 “돌아왔을 때”를 다루지 않음
 
-- **위치**: [src/content/content-script.ts:1823](src/content/content-script.ts:1823), [src/popup/App.tsx](src/popup/App.tsx)
+- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts), [src/popup/App.tsx](src/popup/App.tsx)
 - **증거**: `document.addEventListener("visibilitychange")`는 `hidden`일 때만 page-exit 스냅샷을 호출하고, `visible` 복귀 시 별도 핸들러가 없습니다.
 - **현상 / 위험**:
   - 탭이 백그라운드에 있을 때 자막 DOM이 일시 정지되거나 BFCache로 들어갔다 돌아올 경우, observer 재설치/nonce 재동기화/패널 갱신이 늦어질 수 있습니다.
@@ -99,7 +100,7 @@
 
 ### 2-3. running autosave 비활성 상태에서도 visibility 스냅샷이 항상 저장됨
 
-- **위치**: [src/content/content-script.ts:847](src/content/content-script.ts:847) `persistRunningSnapshotForVisibilityChange`
+- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts) `persistRunningSnapshotForVisibilityChange`
 - **증거**: `canPersistCurrentRunningState()`는 `state.status === "running" && entries.length > 0`만 검사하고 `settings.runningAutoSaveEnabled`는 보지 않습니다.
 - **현상 / 위험**:
   - 사용자가 “수집 중 자동 저장”을 끈 상태에서도 탭을 잠깐 가리면 백그라운드 저장이 일어나 의도와 다른 동작이 됩니다.
@@ -110,7 +111,7 @@
 
 ### 2-4. `autoStartEnabled` 기본값 ON + `all_frames` 자동 시작이 “명시적 stop” 의도를 넘어섬
 
-- **위치**: [src/shared/constants.ts:43](src/shared/constants.ts:43) `autoStartEnabled: true`, [src/content/content-script.ts:1939](src/content/content-script.ts:1939)
+- **위치**: [src/shared/constants.ts](src/shared/constants.ts) `autoStartEnabled: true`, [src/content/app/runtime.ts](src/content/app/runtime.ts)
 - **현상 / 위험**:
   - 사용자가 `멈추기` → 페이지 이동 / 새로고침 시 다음 페이지에서 다시 자동 시작합니다. spec에는 “page navigation = 새 세션” 의미가 있어 의도된 동작일 수 있지만, 사용자 입장에서 “멈췄는데 또 모은다”라는 착각을 줄 수 있고, AI 자막 레이어를 자동으로 강제 활성화하므로 라이브 시청 UX와 충돌할 수 있습니다.
   - 또한 자동 활성화에 사용되는 `clickActivationControl` 등은 페이지 측 이벤트 핸들러를 트리거하므로 분석 추적, A/B 등에 의도치 않은 클릭이 들어갈 수 있습니다.
@@ -135,7 +136,7 @@
 
 ### 3-1. `frame-forward nonce` 폴백 무작위성 강화
 
-- **위치**: [src/background/service-worker.ts:106](src/background/service-worker.ts:106), [src/content/content-script.ts:228](src/content/content-script.ts:228)
+- **위치**: [src/background/service-worker.ts](src/background/service-worker.ts), [src/content/app/context.ts](src/content/app/context.ts), [src/content/app/runtime.ts](src/content/app/runtime.ts)
 - **현상 / 위험**: `crypto.randomUUID`가 없을 때 `${Date.now()}_${Math.random().toString(16).slice(2)}`를 사용. 동일 ms 동안 두 frame 가 같은 nonce를 만들 확률은 매우 낮지만, observer bridge token / nonce / sessionId 모두에서 같은 패턴을 사용해 단일 fallback 결함이 여러 곳을 동시에 약화시킵니다.
 - **권장 조치 (P2)**: 공통 `createRandomToken(byteLen = 16)` helper로 통합하고, `crypto.getRandomValues` 우선 사용 + `Math.random` fallback 조합으로 충돌 가능성 추가 감소. nonce는 어디까지나 deduplication용이라 보안 critical은 아니지만 일관성 가치가 큼.
 
@@ -158,7 +159,7 @@
 
 ### 3-5. `bindSettingsChanges`에서 변경된 settings로 streak 재설정 안 됨
 
-- **위치**: [src/content/content-script.ts:1789](src/content/content-script.ts:1789)
+- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts)
 - **현상 / 위험**: 사용자가 옵션에서 `filterUnconfirmedEnabled`를 토글하면 polling/observer 재시작은 일어나지만 `localPollingUnconfirmedFallbackBlockStreak`는 그대로라, 한쪽 설정 변경 후 streak 카운터가 바로 0/임계 상태로 리셋되지 않으면 “동일 페이지에서 6회째까지 차단” 동작이 갑자기 변할 수 있습니다.
 - **권장 조치 (P2)**: settings 변경 시 streak / lastSubtitleActivationAttemptAt 등 “옵션 영향을 받는 휴리스틱 상태”를 명시적으로 초기화.
 
@@ -174,13 +175,13 @@
 
 ### 4-2. `복사할 자막이 아직 없습니다.` 와 `저장할 자막이 아직 없습니다.` 분기 명료화
 
-- **위치**: [src/content/content-script.ts:899](src/content/content-script.ts:899), [src/content/content-script.ts:1530](src/content/content-script.ts:1530)
+- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts)
 - **현상**: spec(`hasPersistableContent`) 기준 일관성은 유지되나, “preview만 있고 commit이 없는 상태”에서 사용자는 “화면에 보이는데 저장도 복사도 안 됨”의 이유를 직관적으로 알기 어렵습니다.
 - **권장**: 패널 notice 메시지에 `persistabilityHint`를 그대로 노출. 예: “현재 자막은 아직 확정 전이라 저장되지 않습니다. 확정될 때까지 기다리거나 noise filter를 끄고 다시 시도하세요.”
 
 ### 4-3. `download` 실패 메시지의 사용자 가이드
 
-- **위치**: [src/shared/download-errors.ts](src/shared/download-errors.ts), [src/content/content-script.ts:1505](src/content/content-script.ts:1505)
+- **위치**: [src/shared/download-errors.ts](src/shared/download-errors.ts), [src/content/app/runtime.ts](src/content/app/runtime.ts)
 - **현상**: `mapDownloadErrorMessage`가 `single-session` / `history-partial` / `library-backup` 등을 구분하지만, `runtime message length exceeded` / `invalid data URL` 케이스에서 사용자가 “선택 export로 우회”를 인지하기 어렵습니다.
 - **권장**: 사용자 메시지에 “저장된 기록 화면 → 선택 export”로의 직접 링크/단축키 안내 추가.
 
@@ -208,12 +209,12 @@
 
 ### 5-2. `bootstrap()`이 `document.title`을 두 번 읽음
 
-- **위치**: [src/content/content-script.ts:1890](src/content/content-script.ts:1890), [src/content/content-script.ts:1912](src/content/content-script.ts:1912)
+- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts)
 - **현상**: `getSettings()` 호출 전후에 같은 값을 두 번 대입. 의도(예: 설정 로드 중 SPA 타이틀 변경 대응)라면 주석으로 명시.
 
 ### 5-3. `subtitle:health` 이벤트가 sourceUrl/title 갱신을 트리거하지 않음
 
-- **위치**: [src/content/content-script.ts:1070](src/content/content-script.ts:1070)
+- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts)
 - **현상**: 호스트 페이지가 SPA로 navigate하더라도 `health`만 수신하면 `state.sourceUrl`/`state.title`이 stale로 남습니다.
 - **권장**: `health` 이벤트에 `sourceUrl`이 포함될 때 `state.sourceUrl`/`title` 갱신 로직 추가, 또는 별도 `popstate`/`pushState` 가드.
 

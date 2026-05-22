@@ -22,7 +22,7 @@
 
 ## 2. 강한 부분
 
-- `content-script`, `session-store`, `history`, `background` 사이 책임 경계가 이전보다 명확하다.
+- `content-script`는 bootstrap facade로 얇아졌고, `src/content/app/runtime.ts`, `session-store`, `history`, `background` 사이 책임 경계가 이전보다 명확하다.
 - 장시간 캡처 중 저장 실패가 나더라도 fallback 저장소와 replay queue 경로가 있다.
 - 대형 파일 관련 테스트가 이미 많고, build/typecheck/test 루틴이 안정적으로 돌아간다.
 - 세션 저장/내보내기 정합성은 `committed entries only` 원칙으로 일관된다.

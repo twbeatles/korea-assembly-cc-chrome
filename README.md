@@ -228,8 +228,10 @@ npm run build
 ### content script
 
 - 현재 탭에서 세션 상태를 보유합니다
+- `src/content/content-script.ts`는 manifest가 바라보는 얇은 엔트리이며, 실제 mutable 런타임 조립은 `src/content/app/runtime.ts`, 런타임 경계 타입은 `src/content/app/context.ts`에 둡니다
 - popup이 닫혀도 수집은 계속됩니다
 - top frame에 우측 패널을 삽입해 현재 상태를 바로 보여 줍니다
+- in-page panel 공개 import 경로는 `src/content/inpage-panel.ts` facade로 유지하고, 상태 변환/DOM 생성/스타일/스크롤/렌더링 구현은 `src/content/inpage-panel/` 하위 패키지로 분리합니다
 - subframe content script는 background에서 탭 단위 frame-forward nonce를 bootstrap 받고, 15초 주기 및 nonce mismatch 시점에 다시 동기화합니다
 - page-world `MutationObserver`, local polling, top-frame fallback을 모두 같은 `normalized capture event` 형태로 파이프라인에 전달합니다
 - top frame에서는 `framePath + nodeKey` 기준 live row ledger를 유지하고, 같은 row 보정은 live view와 마지막 entry를 제자리 갱신합니다

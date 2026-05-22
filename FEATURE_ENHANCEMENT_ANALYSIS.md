@@ -100,8 +100,9 @@
 
 - `src/shared/capture-diagnostics.ts`
 - `src/shared/message-types.ts`
-- `src/content/content-script.ts`
+- `src/content/app/runtime.ts`
 - `src/content/inpage-panel.ts`
+- `src/content/inpage-panel/`
 - `src/options/App.tsx`
 - `src/history/App.tsx`
 
@@ -125,7 +126,8 @@
 관련 파일:
 
 - `src/content/inpage-panel.ts`
-- `src/content/content-script.ts`
+- `src/content/inpage-panel/`
+- `src/content/app/runtime.ts`
 - `src/shared/capture-diagnostics.ts`
 - `src/shared/ui-labels.ts`
 - `tests/inpage-panel.test.ts`
@@ -210,6 +212,7 @@
 - `src/history/App.tsx`
 - `src/storage/session-backup.ts`
 - `src/content/inpage-panel.ts`
+- `src/content/inpage-panel/`
 
 #### 7. 자막 편집: 수정, 병합, 분할, 삭제
 
@@ -280,8 +283,9 @@
 
 관련 파일:
 
-- `src/content/content-script.ts`
+- `src/content/app/runtime.ts`
 - `src/content/inpage-panel.ts`
+- `src/content/inpage-panel/`
 - `src/shared/byte-size.ts`
 - `src/history/App.tsx`
 
