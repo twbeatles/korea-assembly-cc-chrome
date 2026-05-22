@@ -193,14 +193,14 @@ npm run build
 
 1. `https://assembly.webcast.go.kr/main`, `https://assembly.webcast.go.kr/main/`, `https://webcast.assembly.go.kr/main`, `https://webcast.assembly.go.kr/main/`, `https://assembly.webcast.go.kr/main/player*`, `https://webcast.assembly.go.kr/main/player*` 중 지원 페이지를 연다
 2. 페이지 오른쪽의 `국회 자막 도우미` 패널을 확인한다
-3. 홈(`main`/`main/`)에서는 패널과 진단 UI만 먼저 확인하고, 실제 수집은 플레이어(`main/player*`)로 들어간 뒤 `자막 모으기`를 눌러 시작한다
+3. 홈(`main`/`main/`)에서는 패널과 진단 UI만 먼저 확인하고, 실제 수집은 플레이어(`main/player*`)로 들어가면 자동 시작된다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어/텍스트/control 신호는 접근 가능한 frame 전체를 기준으로 판정한다. 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 실제 텍스트로 표시한다. 기본 idle 안내만 숨기고, 오류/복구/자동 조정 notice 는 패널에서 바로 확인할 수 있다
-5. `실시간 내용`은 패널 상단의 큰 미리보기 영역에서 먼저 확인하고, 바로 아래 `수집된 자막`에서 확정된 누적 목록의 최신 `300`건 렌더를 본다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 안정 관측 뒤 commit된 entry가 이 목록에 남고, 전체 세션 기록 / 저장 / export 기준은 누적 committed entry 전체를 그대로 유지한다
+5. 사이트 안 우측 패널은 `수집된 자막` 목록을 가장 큰 주 영역으로 먼저 배치하며, 확정된 누적 목록의 최신 `300`건 렌더를 큰 카드 형태로 보여 준다. `실시간 내용`은 보조 미리보기 영역으로 제공된다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 안정 관측 뒤 commit된 entry가 이 목록에 남고, 전체 세션 기록 / 저장 / export 기준은 누적 committed entry 전체를 그대로 유지한다
 6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, fallback preview는 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측된 뒤에만 저장 대상으로 승격한다. 반대로 preview-only 상태나 notice-only 오류 상태에서도 `화면 비우기`로 패널을 직접 리셋할 수 있다
 7. 실행 중 세션이 현재 threshold(`balanced` 기본값: 2000문장 / 120000자 / 90분, options preset/숫자 필드에서 조정 가능)를 넘기면, 현재 구간을 저장한 뒤 같은 lineage의 다음 `세그먼트`로 자동 전환한다
 8. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
-9. `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
-10. 직전 stopped 세션 저장이 실패한 상태에서 다시 `자막 모으기` 또는 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
+9. popup 등 보조 화면에서 `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
+10. 직전 stopped 세션 저장이 실패한 상태에서 다시 자동 수집을 시작하거나 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
 11. 브라우저/확장을 다시 시작하면 먼저 page-exit 시점에 남겨둔 stopped 저장 replay queue를 복구하고, 그 다음 남아 있던 `running` 세션을 `stopped`로 정리한다
 12. history에서는 회의 lineage 단위 목록에서 `즐겨찾기`, `메모 저장`, 삭제, lineage export를 사용할 수 있고, 상세 화면에서는 segment 목록과 개별 segment entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 유지한다. 대용량 lineage는 `segment-001` suffix가 붙은 분할 저장을 실행할 수 있다
 13. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 두 작업 모두 현재 단계와 진행량을 표시하고 취소를 지원한다. 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부하며, 취소 시 이미 저장된 일부 레코드는 유지된다. 전체 라이브러리 작업은 `25 MiB` 하드 제한을 넘기면 명시적 오류로 중단된다
@@ -242,7 +242,7 @@ npm run build
 - 패널 notice는 기본 idle 안내만 숨기고, `정상 수집 / 자동 조정 중 수집 / reset 복구 중 / 수동 클릭 안내 / 오류·액션 피드백`을 실제 텍스트로 구분해 표시합니다
 - 패널과 popup은 `수집 진단` 화면으로 이동하는 진입점을 제공하고, 상세 진단(`structured / fallback / polling`, observer, selector, frame path, 최근 저장 시각, 저장 복구 상태, 현재 세그먼트 threshold 사용량, 예상 export 크기)은 options 페이지의 `수집 진단` 탭에서 live 상태로 표시합니다
 - 수집 진단에는 `persistabilityState` / `persistabilityHint`, stable/unstable row count, unconfirmed 필터 count, row key source, fallback commit 상태도 포함되며, panel/popup/options가 같은 이유 문구로 preview-only / unstable-only / filtered / duplicate 상태를 공유합니다
-- stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
+- stopped 세션 최종 저장이 실패하면 다음 자동 수집 시작 또는 `화면 비우기` 전에 한 번 더 저장을 재시도하고, 계속 실패할 때만 사용자 확인 후 폐기합니다
 - 저장 가능한 자막이 없을 때 `SAVE_SESSION` 요청은 조용히 무시하지 않고 패널/popup 모두 `저장할 자막이 아직 없습니다.` 피드백을 남깁니다
 - 패널 `화면 비우기`는 저장/복사/export 와 별도 gating을 사용해, running 상태이거나 preview/notice가 남아 있을 때도 수동 reset 을 허용합니다
 

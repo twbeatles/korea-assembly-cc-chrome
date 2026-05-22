@@ -234,6 +234,74 @@ describe("in-page panel", () => {
     controller.destroy();
   });
 
+  it("prioritizes the collected subtitle layout and removes the manual capture button", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(buildPanelState());
+
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const panelScroll = shadowRoot?.querySelector(
+      ".panel-scroll",
+    ) as HTMLDivElement | null;
+    const heroCard = shadowRoot?.querySelector(
+      ".hero-card",
+    ) as HTMLElement | null;
+    const statRow = shadowRoot?.querySelector(
+      ".stat-row",
+    ) as HTMLElement | null;
+    const buttons = [...(shadowRoot?.querySelectorAll("button") ?? [])];
+
+    expect(heroCard).not.toBeNull();
+    expect(statRow).not.toBeNull();
+    expect(panelScroll?.firstElementChild).toBe(heroCard);
+    expect(
+      heroCard!.compareDocumentPosition(statRow!) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      buttons.some((button) => button.textContent === "자막 모으기"),
+    ).toBe(false);
+    expect(buttons.some((button) => button.textContent === "멈추기")).toBe(
+      false,
+    );
+
+    controller.destroy();
+  });
+
+  it("lets the live preview expansion grow within the collected subtitle card", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        options: {
+          previewCollapsed: false,
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const styleText = shadowRoot?.querySelector("style")?.textContent ?? "";
+    const previewSection = shadowRoot?.querySelector(
+      ".preview-section",
+    ) as HTMLDivElement | null;
+    const previewToggle = shadowRoot?.querySelector(
+      ".preview-toggle",
+    ) as HTMLButtonElement | null;
+
+    expect(previewSection?.classList.contains("collapsed")).toBe(false);
+    expect(previewToggle?.textContent).toBe("실시간 내용 접기");
+    expect(styleText).toMatch(/\.hero-card\s*\{[\s\S]*?flex:\s*1 0 auto;/);
+    expect(styleText).toMatch(
+      /\.preview-section\s*\{[\s\S]*?flex:\s*0 0 auto;/,
+    );
+
+    controller.destroy();
+  });
+
   it("shows a live capture label while fallback collection is still producing subtitles", () => {
     const controller = createInPagePanel(createActions());
 

@@ -304,6 +304,104 @@ describe("popup app", () => {
     );
   });
 
+  it("renders side panel subtitles without the manual start button", async () => {
+    const messageListeners: Array<(message: unknown) => void> = [];
+    const port = {
+      onMessage: {
+        addListener: vi.fn((listener: (message: unknown) => void) => {
+          messageListeners.push(listener);
+        }),
+      },
+      onDisconnect: {
+        addListener: vi.fn(),
+      },
+      postMessage: vi.fn(),
+      disconnect: vi.fn(),
+    } as unknown as chrome.runtime.Port;
+
+    chromeApiMocks.queryActiveTab.mockResolvedValue({
+      id: 1,
+      url: "https://assembly.webcast.go.kr/main/player.asp",
+    });
+    chromeApiMocks.sendRuntimeMessage.mockResolvedValue({
+      ok: true,
+      ready: true,
+      requiresReload: false,
+    });
+    chromeApiMocks.connectToTab.mockReturnValue(port);
+
+    render(<App surface="sidepanel" />);
+
+    await waitFor(() => {
+      expect(chromeApiMocks.connectToTab).toHaveBeenCalled();
+    });
+
+    act(() => {
+      messageListeners.forEach((listener) =>
+        listener({
+          type: "CAPTURE_STATUS",
+          payload: {
+            connected: true,
+            requiresReload: false,
+            status: "running",
+            sessionId: "session_sidepanel",
+            title: "정무위",
+            committeeName: "정무위원회",
+            sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+            subtitleCount: 2,
+            charCount: 32,
+            previewText: "현재 감지 중인 자막",
+            recentEntries: [
+              {
+                id: "subtitle_1",
+                text: "첫 번째로 수집된 자막입니다.",
+                timestamp: "2026-03-10T09:00:01.000Z",
+                startTime: "00:00:01",
+                endTime: "00:00:03",
+              },
+              {
+                id: "subtitle_2",
+                text: "두 번째로 수집된 자막입니다.",
+                timestamp: "2026-03-10T09:00:04.000Z",
+                startTime: "00:00:04",
+                endTime: "00:00:06",
+              },
+            ],
+            startedAt: "2026-03-10T09:00:00.000Z",
+            endedAt: null,
+            updatedAt: "2026-03-10T09:00:04.000Z",
+            lastPersistedAt: "2026-03-10T09:00:04.000Z",
+            observerActive: true,
+            currentSelector: "#viewSubtit",
+            currentFramePath: [],
+            diagnostics: {
+              captureMode: "structured",
+              observerActive: true,
+              currentSelector: "#viewSubtit",
+              currentFramePath: [],
+              sourceLabel: "structured",
+              persistabilityState: "persistable",
+              persistabilityHint: "저장 가능한 확정 자막이 누적되고 있습니다.",
+            },
+            hasPersistableContent: true,
+          },
+        }),
+      );
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "수집된 자막" })).toBeTruthy();
+      expect(screen.getByText("첫 번째로 수집된 자막입니다.")).toBeTruthy();
+      expect(screen.getByText("두 번째로 수집된 자막입니다.")).toBeTruthy();
+    });
+    expect(screen.queryByRole("button", { name: "자막 모으기" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "멈추기" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "사이드 패널" })).toBeNull();
+    expect(screen.getByRole("button", { name: "지금 저장" }).hasAttribute("disabled")).toBe(
+      false,
+    );
+  });
+
   it("reconnects to the current active tab when the active tab changes", async () => {
     let activatedListener:
       | ((activeInfo: chrome.tabs.TabActiveInfo) => void)

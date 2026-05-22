@@ -41,7 +41,7 @@ const PANEL_STYLE = `
   }
 
   .panel {
-    width: min(560px, calc(100vw - 24px));
+    width: min(640px, calc(100vw - 24px));
     height: calc(100vh - 24px);
     display: flex;
     flex-direction: column;
@@ -268,9 +268,9 @@ const PANEL_STYLE = `
   .hero-card {
     display: flex;
     flex-direction: column;
-    flex: 1 1 auto;
-    min-height: 0;
-    gap: 12px;
+    flex: 1 0 auto;
+    min-height: min(520px, calc(100vh - 300px));
+    gap: 14px;
     overflow: hidden;
   }
 
@@ -314,7 +314,7 @@ const PANEL_STYLE = `
   }
 
   .section-copy h2 {
-    font-size: 18px;
+    font-size: 24px;
     line-height: 1.15;
   }
 
@@ -337,9 +337,11 @@ const PANEL_STYLE = `
   .preview-section {
     display: flex;
     flex-direction: column;
+    flex: 0 0 auto;
     gap: 8px;
+    margin-top: 10px;
     padding: 10px 12px 12px;
-    border-radius: 18px;
+    border-radius: 12px;
     background: linear-gradient(180deg, rgba(242, 246, 251, 0.94), rgba(235, 242, 249, 0.82));
     border: 1px solid rgba(20, 54, 90, 0.06);
   }
@@ -369,14 +371,14 @@ const PANEL_STYLE = `
   .live-row-shell {
     position: relative;
     flex: 1 1 auto;
-    min-height: 0;
+    min-height: 320px;
     display: flex;
   }
 
   .preview-box {
     overflow: hidden;
     flex-shrink: 0;
-    height: 96px;
+    height: 72px;
     min-height: 0;
     opacity: 1;
     transition:
@@ -418,7 +420,7 @@ const PANEL_STYLE = `
     padding: 14px;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
-    min-height: 0;
+    min-height: 320px;
     background: linear-gradient(180deg, #f8fbff, #edf4fb);
   }
 
@@ -448,7 +450,7 @@ const PANEL_STYLE = `
   }
 
   .live-row {
-    padding: 14px 16px;
+    padding: 17px 18px;
     border-radius: 14px;
     background: #ffffff;
     border: 1px solid var(--line-soft);
@@ -466,7 +468,7 @@ const PANEL_STYLE = `
   .live-row p {
     margin: 0;
     color: var(--ink-900);
-    font-size: 18px;
+    font-size: 21px;
     font-weight: 600;
     line-height: 1.7;
   }
@@ -480,7 +482,7 @@ const PANEL_STYLE = `
     padding: 0 10px;
     text-align: center;
     color: #35536e;
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 700;
     line-height: 1.7;
   }
@@ -531,23 +533,6 @@ const PANEL_STYLE = `
   .footer-actions button:hover:not(:disabled) {
     background: var(--tint-200);
     color: var(--navy-800);
-  }
-
-  .primary-row {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 8px;
-  }
-
-  .primary-action {
-    font-size: 15px !important;
-    padding: 13px 14px !important;
-    min-height: 48px !important;
-    letter-spacing: 0.005em;
-  }
-
-  .primary-action.stop {
-    background: linear-gradient(135deg, #0f6b2f 0%, #0a5225 100%);
   }
 
   .secondary-row {
@@ -704,13 +689,14 @@ const PANEL_STYLE = `
       justify-content: flex-start;
     }
 
+    .live-row-shell,
     .live-row-list {
-      min-height: 220px;
+      min-height: 260px;
     }
 
     .live-row p,
     .empty-text {
-      font-size: 15px;
+      font-size: 17px;
     }
   }
 `;
@@ -1037,25 +1023,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
 
-  // Group 1 — Primary capture action (가장 큰 메인 버튼)
-  const captureGroup = document.createElement("div");
-  captureGroup.className = "group";
-  const captureRow = document.createElement("div");
-  captureRow.className = "primary-row";
-  const startButton = createButton(
-    UI_TEXT.startCapture,
-    actions.onStartCapture,
-    "primary-action",
-  );
-  const stopButton = createButton(
-    UI_TEXT.stopCapture,
-    actions.onStopCapture,
-    "primary-action stop",
-  );
-  captureRow.append(startButton, stopButton);
-  captureGroup.append(captureRow);
-
-  // Group 2 — Save & quick copy (자주 쓰는 보조)
+  // Group 1 — Save & quick copy (자주 쓰는 보조)
   const saveGroup = document.createElement("div");
   saveGroup.className = "group";
   const saveGroupLabel = document.createElement("span");
@@ -1068,7 +1036,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   saveRow.append(saveButton, copyRecentButton);
   saveGroup.append(saveGroupLabel, saveRow);
 
-  // Group 3 — Export by format
+  // Group 2 — Export by format
   const exportGroup = document.createElement("div");
   exportGroup.className = "group";
   const exportGroupLabel = document.createElement("span");
@@ -1083,7 +1051,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   });
   exportGroup.append(exportGroupLabel, exportRow);
 
-  // Group 4 — Advanced (collapsible) — 처음 사용자에겐 숨겨두는 고급 기능
+  // Group 3 — Advanced (collapsible) — 처음 사용자에겐 숨겨두는 고급 기능
   const advancedGroup = document.createElement("div");
   advancedGroup.className = "group";
   const advancedDetails = document.createElement("details");
@@ -1107,7 +1075,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
   advancedDetails.append(advancedSummary, advancedBody);
   advancedGroup.append(advancedDetails);
 
-  controlsCard.append(captureGroup, saveGroup, exportGroup, advancedGroup);
+  controlsCard.append(saveGroup, exportGroup, advancedGroup);
 
   const notice = document.createElement("div");
   notice.className = "notice";
@@ -1130,7 +1098,7 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
 
   const panelScroll = document.createElement("div");
   panelScroll.className = "panel-scroll";
-  panelScroll.append(statRow, heroCard, notice, controlsCard, footer);
+  panelScroll.append(heroCard, statRow, notice, controlsCard, footer);
 
   panel.append(header, panelScroll);
   wrapper.append(collapsedTab, panel);
@@ -1255,8 +1223,6 @@ export function createInPagePanel(actions: InPagePanelActions): InPagePanelContr
         renderedShowNotice = nextShowNotice;
       }
 
-      startButton.style.display = nextState.status === "running" ? "none" : "";
-      stopButton.style.display = nextState.status === "running" ? "" : "none";
       clearButton.disabled = !nextState.canClearSession;
       saveButton.disabled = !nextState.hasPersistableContent;
       highlightLatestButton.disabled = !nextState.canHighlightLatestEntry;

@@ -6,7 +6,7 @@ import "../popup/popup.css";
 
 createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <PopupApp />
+    <PopupApp surface="sidepanel" />
   </React.StrictMode>,
 );
 

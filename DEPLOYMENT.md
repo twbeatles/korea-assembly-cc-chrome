@@ -59,10 +59,10 @@ npm run verify:e2e
 
 - 국회 의사중계 페이지에서 실제 자막 추출
 - `main` / `main/` 홈에서 페이지 오른쪽 패널이 자동으로 뜨는지 확인
-- 홈(`main`/`main/`)에서는 패널이 바로 보이지만 `자막 모으기`를 누르면 플레이어 페이지에서만 수집을 시작할 수 있다는 안내가 나오는지 확인
+- 홈(`main`/`main/`)에서는 패널이 바로 보이고, 플레이어 페이지로 들어가면 자동 수집이 시작되는지 확인
 - `main/player*` 플레이어 페이지에서는 패널이 계속 보이고 실제 자막 수집이 시작되는지 확인
-- 패널에서 `자막 모으기` 직후 AI 자막 레이어가 자동으로 열리는지 확인
-- 패널 상단의 큰 `실시간 내용` 영역이 먼저 보이는지 확인
+- 플레이어 페이지 진입 직후 AI 자막 레이어가 자동으로 열리는지 확인
+- 패널 첫 화면에서 `수집된 자막` 목록이 가장 큰 주 영역으로 먼저 보이는지 확인
 - `수집된 자막` 목록에서 같은 `.smi_word`가 보정될 때 카드가 재생성되지 않고 제자리 갱신되는지 확인
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) 페이지에서는 container fallback 내부 raw가 commit/diff 용으로 전체 보존되고, 화면 preview 는 `400자/3줄` tail 로 짧게 표시되는지 확인
 - fallback-only 자막은 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측된 뒤 `sourceCaptureMode: "fallback"` entry 로 commit 되고, 그 전에는 저장/export 대상이 아닌지 확인
@@ -98,7 +98,7 @@ npm run verify:e2e
 - options segment preset(`stability` / `balanced` / `capacity` / `custom`)이 threshold 값을 반영하고, 숫자 필드를 직접 수정하면 `custom`으로 전환되는지 확인
 - export filename 생성 시 금지 문자가 여러 개 있어도 모두 제거되는지 확인
 - options noise filter 설명이 한글/영문 중심 판정과 foreign text 보존 시 filter off 필요성을 안내하는지 확인
-- stopped 세션 저장 실패 뒤 다시 `자막 모으기`/`화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
+- stopped 세션 저장 실패 뒤 다시 자동 수집이 시작되거나 `화면 비우기`를 눌렀을 때 저장 재시도 후 폐기 확인으로 이어지는지 확인
 - popup / 패널의 `수집 진단` 버튼이 options 페이지의 `수집 진단` 탭으로 연결되고, 그 탭에서 수집 방식, observer, selector, frame path 진단이 현재 상태와 맞는지 확인
 
 ## 4. 로컬 설치
@@ -225,7 +225,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.9-cw
 7. 브라우저/확장 재시작 뒤 남아 있던 `running` 세션이 `stopped`로 정리되는지
 8. 브라우저/확장 재시작 뒤 page-exit queued stopped snapshot replay가 cleanup보다 먼저 적용되는지
 9. 대용량 export에서 offscreen Blob 경로가 우선 사용되고 필요 시 fallback 되는지
-10. `자막 모으기` 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하고, 성공 판정이 `visible && (hasText || controlActive)`와 맞는지 확인
+10. 자동 수집 중 자막 레이어가 닫히거나 비어도 자동 재활성화 시도가 동작하고, 성공 판정이 `visible && (hasText || controlActive)`와 맞는지 확인
 11. JSON 내보내기에서 carry-over 중복이 정리되고 내부 발언자 메타가 노출되지 않는지
 12. 자막 보정 중에는 패널의 `실시간 내용`과 `수집된 자막`이 바로 갱신되는지
 13. `수집된 자막` 목록이 최근 row를 누적 표시하고, preview-only 갱신만으로 깜빡이거나 맨 아래로 튀지 않는지
