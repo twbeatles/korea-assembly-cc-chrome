@@ -72,4 +72,23 @@ describe("page exit persistence", () => {
     expect(queueRecordInBackground).toHaveBeenCalledTimes(1);
     expect(persistRecordInBackground).toHaveBeenCalledTimes(1);
   });
+
+  it("still queues and persists when the diagnostics attempt fails", async () => {
+    const queueRecord = vi.fn();
+    const persistRecordInBackground = vi.fn();
+    const onPersistAttemptError = vi.fn();
+
+    await persistQueuedPageExitRecord(buildRecord(), {
+      queueRecord,
+      persistRecordInBackground,
+      onPersistAttempt: async () => {
+        throw new Error("diagnostics failed");
+      },
+      onPersistAttemptError,
+    });
+
+    expect(onPersistAttemptError).toHaveBeenCalledWith(expect.any(Error));
+    expect(queueRecord).toHaveBeenCalledTimes(1);
+    expect(persistRecordInBackground).toHaveBeenCalledTimes(1);
+  });
 });

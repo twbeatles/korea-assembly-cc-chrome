@@ -4,7 +4,7 @@
 
 - `sidePanel`: 사용자가 국회 의사중계 페이지를 계속 보면서도 브라우저 측면에서 수집 상태와 최근 자막을 확인하고 저장/기록/설정 화면으로 이동할 수 있도록 보조 패널을 열기 위해 사용합니다. 기존 in-page panel은 계속 기본 UI이며, side panel은 popup처럼 닫히는 임시 화면이 아니라 회의 중 보조 모니터 역할을 하는 확장 UI입니다. Chrome side panel API를 사용할 수 없는 환경에서는 일반 확장 페이지 fallback을 엽니다.
 - `storage`: 기존 설정/세션/진단 데이터에 더해 로컬 메타데이터인 `tags`, `category`, `speakerLabels`, `highlighted`, `entryNote`, `labels`, `originalText`, `sourceEntryIds`, 그리고 preset 목록을 저장합니다. 모든 새 데이터는 로컬 IndexedDB 또는 `chrome.storage.local`에만 저장됩니다.
-- `downloads`: 기존 TXT/SRT/VTT/JSON 외에 Markdown/CSV export 파일 저장에도 사용합니다. 사용자가 직접 export 버튼을 누른 경우에만 동작합니다.
+- `downloads`: TXT/SRT/VTT/JSON/MD/CSV export 파일 저장에 사용합니다. 사용자가 직접 export 버튼을 누른 경우에만 동작합니다.
 - 외부 AI 요약, 외부 전송, 영상 캡처, 넓은 host permission은 포함하지 않습니다.
 
 Chrome Web Store 제출 폼에 바로 붙여넣을 수 있도록 간략 문안만 정리한 파일입니다.
@@ -15,7 +15,7 @@ Chrome Web Store 제출 폼에 바로 붙여넣을 수 있도록 간략 문안�
 
 ## downloads 사용 근거
 
-사용자가 직접 요청한 자막 기록을 TXT, SRT, VTT, JSON 파일로 저장하기 위해 사용합니다. 자동 다운로드는 하지 않으며, 페이지 패널이나 history 화면에서 저장 버튼을 눌렀을 때만 동작합니다. 수동 저장 / 내보내기에서는 확정된 `수집된 자막` 누적 목록만 직렬화하며, fallback `실시간 내용`은 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측되어 확정 entry가 된 뒤에만 저장 대상으로 포함됩니다. 단일 세션 export, lineage export, 전체 기록 JSON 백업도 모두 사용자의 명시적 요청일 때만 실행됩니다.
+사용자가 직접 요청한 자막 기록을 TXT, SRT, VTT, JSON, MD, CSV 파일로 저장하기 위해 사용합니다. 자동 다운로드는 하지 않으며, 페이지 패널이나 history 화면에서 저장 버튼을 눌렀을 때만 동작합니다. 수동 저장 / 내보내기에서는 확정된 `수집된 자막` 누적 목록만 직렬화하며, fallback `실시간 내용`은 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측되어 확정 entry가 된 뒤에만 저장 대상으로 포함됩니다. CSV export 는 스프레드시트 formula prefix 를 neutralize 하고, Markdown export 는 table-breaking 문자를 escape 합니다. 단일 세션 export, lineage export, 전체 기록 JSON 백업도 모두 사용자의 명시적 요청일 때만 실행됩니다.
 
 ## activeTab 사용 근거
 

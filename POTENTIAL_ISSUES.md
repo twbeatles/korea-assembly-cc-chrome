@@ -11,7 +11,7 @@
 >
 > **추가 진행 상태 (2026-05-10 기준)**
 >
-> - v4 로컬 메타데이터, 전체 기록 검색, history entry 편집/병합/분할/삭제, Markdown/CSV export, preset CRUD, 실험형 side panel, DOM fixture, `npm run verify:e2e` smoke 검증이 추가되었습니다.
+> - v4 로컬 메타데이터, 전체 기록 검색, history entry 편집/병합/분할/삭제, MD/CSV export, preset CRUD, 실험형 side panel, DOM fixture, `npm run verify:e2e` smoke 검증이 추가되었습니다.
 > - content script는 현재 `src/content/content-script.ts` bootstrap facade와 `src/content/app/runtime.ts` 런타임 조립부로 분리되어 있습니다. 아래 후보의 과거 line-number 참조는 현재 모듈 경계 기준으로 갱신했습니다.
 > - 현재 기능 범위와 운영 기준은 `README.md`, `FEATURE_ENHANCEMENT_ANALYSIS.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, 권한/개인정보 문서, 코드와 테스트를 우선합니다.
 
@@ -150,6 +150,7 @@
 
 - **위치**: [src/storage/persist-recovery.ts:237](src/storage/persist-recovery.ts:237)
 - **현상 / 위험**: 종료 직전 background persist 실패가 retry로 반복되면 매 attempt마다 diagnostics를 storage에 다시 기록. 페이지 종료 직전인 점을 감안하면 race가 잦지는 않지만, replay queue write 실패 시에는 무한 루프와 결합 가능.
+- **현재 보강**: `persistQueuedPageExitRecord()` 는 diagnostics attempt 실패를 best-effort 로 분리해 queue/background persist 자체가 중단되지 않게 되었습니다. 다만 diagnostics 기록 자체의 throttle/merge 정책은 아직 별도 과제로 남아 있습니다.
 - **권장 조치 (P2)**: 실패 메시지 변화가 없을 때 마지막 timestamp만 갱신하는 합치기 정책, 또는 `requestIdleCallback` 류로 throttle.
 
 ### 3-4. `sessionStorage` 기반 cooldown / debounce 부재

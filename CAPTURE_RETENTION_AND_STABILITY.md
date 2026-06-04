@@ -55,7 +55,8 @@
 - 세션을 다시 저장할 때는 digest 가 바뀐 chunk 만 갱신하고, 줄어든 경우 초과 chunk 만 삭제한다.
 - 전체 세션을 읽는 경로(`loadSession`, 단일 export, lineage export, 전체 backup)는 필요한 시점에 chunk 를 hydrate 한다.
 - `listSessionLineageSegments()` 는 `lineageId` index 로 대상 lineage record 만 조회한 뒤 hydrate 한다.
-- fallback record 가 있을 때의 history page listing 은 metadata 기준으로 page 를 계산하고, 현재 page record 만 hydrate 한다.
+- `listSessionsPage()` 와 `listSessionLineagesPage()` 는 metadata-only record 로 page 를 계산한다. page 결과의 `entries` 는 항상 빈 배열이며, 상세 화면 / export / backup 처럼 본문이 필요한 경로만 `loadSession()` 또는 `loadSessionsByIds()` 로 hydrate 한다.
+- fallback storage 는 full record 와 별도로 entryless metadata snapshot/index 를 유지한다. 기존 fallback record 만 있는 설치는 migration/backfill 때 1회 full read 로 metadata snapshot 을 만든 뒤 이후 listing 에서는 metadata 를 우선 사용한다.
 
 ### 저장되지 않는 것
 
@@ -70,12 +71,15 @@
 
 ## 4. export / backup 범위와 한계
 
-### TXT / SRT / VTT / JSON
+### TXT / SRT / VTT / JSON / MD / CSV
 
 - export 는 현재 세션 또는 lineage 의 `확정 자막 전체`를 사용한다.
 - 패널이 최신 `300건`만 보여도 export 는 세션 전체 `entries` 를 대상으로 한다.
 - JSON 단일 export 와 backup/import sanitize 경로는 `lineageId`, `segmentNumber` 를 보존한다.
 - 기존 JSON 에 두 필드가 없어도 import 가능하며, 누락 시 `lineageId = id`, `segmentNumber = 1` 기본값을 적용한다.
+- JSON 가져오기는 session `id` 를 trim 한 뒤 빈 값이면 invalid record 로 거부한다.
+- CSV export 는 스프레드시트 formula injection 을 막기 위해 trim 기준 `=`, `+`, `-`, `@`, tab, CR prefix 를 apostrophe prefix 로 neutralize 한다.
+- Markdown export 는 table/metadata cell 에서 `|`, `<`, `>`, CR/LF 가 table 구조나 HTML-like 렌더링을 깨지 않도록 escape 한다.
 - export 직전에는 `normalizeSessionForExport()` 가 마지막 안전망으로 중복/이어붙기 흔적을 한 번 더 정리한다.
 
 ### 단일 세션 / lineage export
@@ -90,7 +94,7 @@
 
 ### 전체 라이브러리 JSON backup/import
 
-- 전체 JSON 백업은 page-wise session listing 과 incremental packaging 으로 진행률을 갱신한다.
+- 전체 JSON 백업은 page-wise metadata listing 으로 session id 를 순회하고, 각 page id 는 중복 제거 후 `loadSessionsByIds()` 로 한 번만 full hydrate 하며, incremental packaging 으로 진행률을 갱신한다.
 - 생성된 전체 backup payload 는 history extension page 에서 Blob URL 로 직접 다운로드한다.
 - Blob URL 은 다운로드 완료/중단 이벤트 또는 timeout 뒤 revoke 한다.
 - 전체 backup 은 더 이상 `DOWNLOAD_REQUEST` 메시지에 대형 `content` 문자열을 실어 service worker 로 보내지 않는다.

@@ -1,11 +1,17 @@
 import type { SessionRecord, SubtitleEntry } from "../subtitle-models";
 
+const DANGEROUS_SPREADSHEET_PREFIX = /^[\t\r]*[=+\-@]/;
+
 function escapeCsv(value: string | boolean): string {
-  const raw = String(value ?? "");
+  const raw = neutralizeSpreadsheetFormula(String(value ?? ""));
   if (/[",\r\n]/.test(raw)) {
     return `"${raw.replaceAll('"', '""')}"`;
   }
   return raw;
+}
+
+function neutralizeSpreadsheetFormula(value: string): string {
+  return DANGEROUS_SPREADSHEET_PREFIX.test(value.trimStart()) ? `'${value}` : value;
 }
 
 function resolveSpeaker(session: SessionRecord, entry: SubtitleEntry): string {

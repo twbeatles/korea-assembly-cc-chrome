@@ -6,7 +6,7 @@
 
 - 이 저장소의 활성 구현은 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 입니다.
 - 과거 `PyQt6 + Selenium` 데스크톱 앱은 `legacy/` 아래 아카이브 대상으로 분리되어 있으며, 현재 작업 대상이 아닙니다.
-- 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON / Markdown / CSV 내보내기`, `history 검색/정리/편집` 입니다.
+- 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON / MD / CSV 내보내기`, `history 검색/정리/편집` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정 / 수집 진단` 중심의 보조 화면입니다.
 - 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 전체 기록 검색/기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모/태그/카테고리`, `entry 체크박스 기반 부분 복사/부분 export`, `중요 표시만 export`, `시간 범위 export`, `entry 텍스트/발언자/중요 표시/entry note/labels inline 편집`, `entry 병합/분할/삭제`, `preset CRUD`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`, `실험형 side panel`이 포함됩니다.
 - 현재 기준 기본 검증 명령은 아래 5개입니다.
@@ -208,7 +208,7 @@ offscreen.html
 - history 의 `전체 삭제` 는 현재 로드된 1000건만이 아니라 저장소 전체를 비워야 하며, 선택 삭제는 부분 성공/실패 요약을 남긴 뒤 항상 refresh 해야 합니다.
 - history 는 session-level `즐겨찾기`, `메모`, `즐겨찾기만 보기` 필터를 제공하고, 이 메타데이터는 persistence 및 JSON 백업/복원에서 함께 보존되어야 합니다.
 - history 의 즐겨찾기/메모 저장은 전용 `updateSessionMetadata(sessionId, patch)` 경로를 사용해야 하며, stale detail snapshot 이 `entries` / `subtitleCount` / `status` 를 되돌리면 안 됩니다.
-- history detail 은 entry 체크박스 기반 `선택한 항목 복사`, 전체/선택/중요 표시만/시간 범위 `TXT/SRT/VTT/JSON/Markdown/CSV export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
+- history detail 은 entry 체크박스 기반 `선택한 항목 복사`, 전체/선택/중요 표시만/시간 범위 `TXT/SRT/VTT/JSON/MD/CSV export` 를 제공하며, 선택 export 의 시간 기준은 원본 세션 시작 시각 기준 상대 시간 의미론을 유지해야 합니다.
 - entry 편집은 `updateSessionContent(sessionId, patch)` 경로를 사용해야 하며, 첫 텍스트 수정 시 기존 `text`를 `originalText`에 보존합니다. 병합은 화면 순서상 연속 entry에만 허용하고 `sourceEntryIds`, `originalText`, note/labels/highlight를 보존합니다.
 - history 상단은 전체 저장소 기준 `JSON 백업` 과 단일 세션/번들 `JSON 가져오기` 를 지원하며, 가져오기는 같은 `id` 충돌 시 더 최신 `updatedAt` 레코드를 유지합니다.
 - history 의 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원해야 합니다. JSON import read phase 와 backup package phase 도 abort-aware 여야 하며, 가져오기 취소는 이미 저장된 부분 완료 레코드를 rollback 하지 않습니다.

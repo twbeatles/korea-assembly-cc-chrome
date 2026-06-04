@@ -5,6 +5,7 @@ interface PageExitPersistOptions {
   queueRecordInBackground?: (record: SessionRecord) => void | Promise<void>;
   persistRecordInBackground: (record: SessionRecord) => void;
   onPersistAttempt?: (record: SessionRecord) => void | Promise<void>;
+  onPersistAttemptError?: (error: unknown) => void;
   onQueueError?: (error: unknown) => void;
 }
 
@@ -12,7 +13,12 @@ export async function persistQueuedPageExitRecord(
   record: SessionRecord,
   options: PageExitPersistOptions,
 ): Promise<void> {
-  await options.onPersistAttempt?.(record);
+  try {
+    await options.onPersistAttempt?.(record);
+  } catch (error) {
+    options.onPersistAttemptError?.(error);
+  }
+
   try {
     await options.queueRecord(record);
   } catch (error) {

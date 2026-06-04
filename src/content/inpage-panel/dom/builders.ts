@@ -239,7 +239,7 @@ export function createInPagePanelElements(
   exportGroupLabel.textContent = "다른 형식으로 저장";
   const exportRow = document.createElement("div");
   exportRow.className = "export-row";
-  const exportButtons = (["txt", "srt", "vtt", "json"] as ExportFormat[]).map(
+  const exportButtons = (["txt", "srt", "vtt", "json", "md", "csv"] as ExportFormat[]).map(
     (format) => {
       const button = createButton(getExportFormatLabel(format), () =>
         actions.onExport(format),

@@ -136,6 +136,11 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     return undefined;
   }
 
+  const id = value.id.trim();
+  if (!id) {
+    return undefined;
+  }
+
   const entries = value.entries.map((entry) => sanitizeSubtitleEntry(entry));
   if (entries.some((entry) => entry === undefined)) {
     return undefined;
@@ -165,7 +170,7 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
   const sourceUrl = isSupportedAssemblyUrl(sourceUrlCandidate) ? sourceUrlCandidate : "";
 
   return {
-    id: value.id,
+    id,
     version: typeof value.version === "string" && value.version ? value.version : SESSION_RECORD_VERSION,
     title: sanitizeOptionalString(value.title, "국회 자막 세션"),
     committeeName: sanitizeOptionalString(value.committeeName),

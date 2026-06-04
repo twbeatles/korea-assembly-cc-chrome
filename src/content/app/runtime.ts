@@ -134,6 +134,11 @@ import {
   buildSegmentRolloverNotice,
 } from "../runtime/segment-rollover";
 import {
+  DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX,
+  drainSegmentEventQueue,
+  enqueueBoundedSegmentEvent,
+} from "../runtime/segment-event-queue";
+import {
   buildPreparedSessionRecord as buildPreparedSessionRecordFromState,
   buildPreparedSessionState as buildPreparedSessionStateFromState,
   buildVisibleOutputEntries as buildVisibleOutputEntriesFromEntries,
@@ -272,7 +277,8 @@ let latestPersistabilityState: PersistabilityState = "idle";
 let latestRowDiagnostics = createEmptyRowDiagnostics();
 let latestFallbackCommitState: FallbackCommitState = "idle";
 let segmentRolloverInFlight = false;
-let queuedSegmentRolloverEvent: ObserverBridgeEvent | null = null;
+let queuedSegmentRolloverEvents: ObserverBridgeEvent[] = [];
+let flushingSegmentRolloverEvents = false;
 let segmentRolloverToken = 0;
 let fallbackCommitCandidate: FallbackCommitCandidate | null = null;
 let fallbackCommitTimer: number | null = null;
@@ -347,17 +353,30 @@ function cloneObserverBridgeEventForReplay(
 }
 
 function queueSegmentRolloverEvent(event: ObserverBridgeEvent): void {
-  queuedSegmentRolloverEvent = cloneObserverBridgeEventForReplay(event);
+  queuedSegmentRolloverEvents = enqueueBoundedSegmentEvent(
+    queuedSegmentRolloverEvents,
+    cloneObserverBridgeEventForReplay(event),
+    DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX,
+  );
 }
 
 function flushQueuedSegmentRolloverEvent(): void {
-  if (segmentRolloverInFlight || !queuedSegmentRolloverEvent) {
+  if (segmentRolloverInFlight || !queuedSegmentRolloverEvents.length) {
     return;
   }
 
-  const queuedEvent = queuedSegmentRolloverEvent;
-  queuedSegmentRolloverEvent = null;
-  handleTopFrameEvent(queuedEvent);
+  flushingSegmentRolloverEvents = true;
+  try {
+    queuedSegmentRolloverEvents = drainSegmentEventQueue(
+      queuedSegmentRolloverEvents,
+      (queuedEvent) => {
+        handleTopFrameEvent(queuedEvent);
+        return !segmentRolloverInFlight;
+      },
+    );
+  } finally {
+    flushingSegmentRolloverEvents = false;
+  }
 }
 
 function clearLocalPolling(): void {
@@ -926,7 +945,9 @@ function commitFallbackCandidate(token: number, now = Date.now()): boolean {
     );
     if (segmentationReason) {
       segmentRolloverInFlight = true;
-      queuedSegmentRolloverEvent = null;
+      if (!flushingSegmentRolloverEvents) {
+        queuedSegmentRolloverEvents = [];
+      }
       const rolloverToken = ++segmentRolloverToken;
       setPanelNotice(
         "현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.",
@@ -1267,6 +1288,12 @@ function persistStoppedSnapshotForPageExit(now = Date.now()): void {
     },
     onPersistAttempt: (queuedRecord) =>
       recordPageExitPersistAttempt(queuedRecord),
+    onPersistAttemptError: (error) => {
+      console.warn(
+        "[assembly-subtitle] Failed to record page-exit persist attempt",
+        error,
+      );
+    },
     onQueueError: (error) => {
       void recordPageExitPersistAttempt(record, error).catch(() => {
         // The original page-exit failure is already logged below.
@@ -1635,7 +1662,9 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
         );
         if (segmentationReason) {
           segmentRolloverInFlight = true;
-          queuedSegmentRolloverEvent = null;
+          if (!flushingSegmentRolloverEvents) {
+            queuedSegmentRolloverEvents = [];
+          }
           const rolloverToken = ++segmentRolloverToken;
           setPanelNotice(
             "현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.",
@@ -2040,7 +2069,7 @@ function resetRuntimeState(): void {
   clearRunningPersistTimer();
   clearStructuredRuntimeState();
   segmentRolloverToken += 1;
-  queuedSegmentRolloverEvent = null;
+  queuedSegmentRolloverEvents = [];
   segmentRolloverInFlight = false;
   setPersistabilityState("idle");
   state = createResetSessionState(
@@ -2182,7 +2211,7 @@ async function startCapture(): Promise<void> {
 async function stopCapture(): Promise<void> {
   segmentRolloverToken += 1;
   segmentRolloverInFlight = false;
-  queuedSegmentRolloverEvent = null;
+  queuedSegmentRolloverEvents = [];
   clearRunningPersistTimer();
   clearPendingReset();
   const now = Date.now();

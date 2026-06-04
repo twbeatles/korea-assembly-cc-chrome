@@ -98,6 +98,28 @@ describe("session backup helpers", () => {
     );
   });
 
+  it("treats empty session ids as invalid import records", () => {
+    const parsed = parseSessionImportPayload({
+      kind: SESSION_BACKUP_KIND,
+      version: SESSION_BACKUP_VERSION,
+      exportedAt: "2026-03-12T12:30:45.000Z",
+      sessions: [
+        buildSession("session_valid", "2026-03-12T12:00:00.000Z"),
+        {
+          ...buildSession("session_empty", "2026-03-12T12:00:00.000Z"),
+          id: "",
+        },
+        {
+          ...buildSession("session_blank", "2026-03-12T12:00:00.000Z"),
+          id: "   ",
+        },
+      ],
+    });
+
+    expect(parsed.records.map((record) => record.id)).toEqual(["session_valid"]);
+    expect(parsed.invalidCount).toBe(2);
+  });
+
   it("rejects unsupported backup versions and invalid timestamps", () => {
     expect(() =>
       parseSessionImportPayload({

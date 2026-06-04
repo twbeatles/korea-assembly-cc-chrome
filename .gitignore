@@ -48,6 +48,7 @@ e2e-screenshots/
 .idea/
 *.code-workspace
 .claude/
+.codegraph/
 .DS_Store
 Thumbs.db
 desktop.ini

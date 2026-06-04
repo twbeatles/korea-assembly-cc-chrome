@@ -69,6 +69,7 @@ export async function stringifySessionBackupBundleIncrementally(
   let sessionCount = 0;
   let currentByteLength = 0;
   const chunks: string[] = [];
+  const seenSessionIds = new Set<string>();
 
   currentByteLength = appendBackupChunk(
     chunks,
@@ -87,9 +88,19 @@ export async function stringifySessionBackupBundleIncrementally(
     throwIfBackupAborted(signal, "전체 JSON 백업을 취소했습니다.");
 
     total = pageResult.totalCount;
-    const pageSessions = await loadSessionsByIds(
-      pageResult.sessions.map((session) => session.id),
-    );
+    const sessionIdsToLoad = [
+      ...new Set(
+        pageResult.sessions
+          .map((session) => session.id)
+          .filter((id): id is string => typeof id === "string" && id.length > 0),
+      ),
+    ].filter((id) => !seenSessionIds.has(id));
+    sessionIdsToLoad.forEach((id) => {
+      seenSessionIds.add(id);
+    });
+    const pageSessions = sessionIdsToLoad.length
+      ? await loadSessionsByIds(sessionIdsToLoad)
+      : [];
 
     pageSessions.forEach((session) => {
       throwIfBackupAborted(signal, "전체 JSON 백업을 취소했습니다.");
@@ -102,7 +113,7 @@ export async function stringifySessionBackupBundleIncrementally(
       onProgress?.(sessionCount, total);
     });
 
-    if (!pageResult.sessions.length || sessionCount >= total) {
+    if (!pageResult.sessions.length || seenSessionIds.size >= total || sessionCount >= total) {
       break;
     }
 

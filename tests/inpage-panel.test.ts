@@ -207,6 +207,34 @@ describe("in-page panel", () => {
     expect(document.getElementById(IN_PAGE_PANEL_HOST_ID)).toBeNull();
   });
 
+  it("renders Markdown and CSV export actions in the in-page panel", () => {
+    const actions = createActions();
+    const controller = createInPagePanel(actions);
+
+    controller.update(buildPanelState());
+
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const markdownButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (button) => button.textContent === "회의록(MD)",
+    ) as HTMLButtonElement | undefined;
+    const csvButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (button) => button.textContent === "표(CSV)",
+    ) as HTMLButtonElement | undefined;
+
+    expect(markdownButton?.disabled).toBe(false);
+    expect(csvButton?.disabled).toBe(false);
+
+    markdownButton?.click();
+    csvButton?.click();
+
+    expect(actions.onExport).toHaveBeenCalledWith("md");
+    expect(actions.onExport).toHaveBeenCalledWith("csv");
+
+    controller.destroy();
+  });
+
   it("renders the screen subtitles section before the preview section", () => {
     const controller = createInPagePanel(createActions());
 
@@ -829,11 +857,19 @@ describe("in-page panel", () => {
     ].find((element) => element.textContent === "최신 중요 표시") as
       | HTMLButtonElement
       | undefined;
+    const markdownButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (element) => element.textContent === "회의록(MD)",
+    ) as HTMLButtonElement | undefined;
+    const csvButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
+      (element) => element.textContent === "표(CSV)",
+    ) as HTMLButtonElement | undefined;
 
     expect(clearButton?.disabled).toBe(false);
     expect(saveButton?.disabled).toBe(true);
     expect(copyButton?.disabled).toBe(true);
     expect(highlightButton?.disabled).toBe(true);
+    expect(markdownButton?.disabled).toBe(true);
+    expect(csvButton?.disabled).toBe(true);
     highlightButton?.click();
     expect(actions.onHighlightLatestEntry).not.toHaveBeenCalled();
 

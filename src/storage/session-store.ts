@@ -85,6 +85,7 @@ import { createSessionExportPayload } from "./session-store/export-payload";
 
 const LEGACY_FALLBACK_STORAGE_KEY = "assembly-subtitle-session-fallback";
 const FALLBACK_INDEX_STORAGE_KEY = "assembly-subtitle-session-fallback:index";
+const FALLBACK_METADATA_STORAGE_KEY = "assembly-subtitle-session-fallback:metadata";
 const FALLBACK_RECORD_PREFIX = "assembly-subtitle-session-fallback:record:";
 export const SESSION_NOTE_MAX_LENGTH = 4096;
 
@@ -284,13 +285,25 @@ async function hydrateIndexedDbSessionRecord(
 function normalizeIndexedDbSessionMetadataRecord(
   record: IndexedDbSessionRecord,
 ): SessionRecord {
-  return normalizeSessionRecord(
+  const normalized = normalizeSessionRecord(
     toEntrylessSessionRecord(record),
     {
       preserveTimestamps: true,
       forceStatus: record.status,
     },
   );
+  return {
+    ...normalized,
+    subtitleCount:
+      typeof record.subtitleCount === "number" && Number.isFinite(record.subtitleCount)
+        ? Math.max(0, Math.floor(record.subtitleCount))
+        : normalized.subtitleCount,
+    charCount:
+      typeof record.charCount === "number" && Number.isFinite(record.charCount)
+        ? Math.max(0, Math.floor(record.charCount))
+        : normalized.charCount,
+    entries: [],
+  };
 }
 
 function buildSessionSortKey(
@@ -957,6 +970,63 @@ function setMemorySnapshot(snapshot: Record<string, SessionRecord>): void {
   });
 }
 
+function toSessionMetadataOnly(record: SessionRecord): SessionRecord {
+  return {
+    ...cloneSessionRecord(record),
+    entries: [],
+  };
+}
+
+function cloneFallbackMetadataRecord(record: SessionRecord): SessionRecord {
+  return toSessionMetadataOnly(record);
+}
+
+function sanitizeFallbackMetadataSnapshot(value: unknown): Record<string, SessionRecord> | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const snapshot: Record<string, SessionRecord> = {};
+  Object.entries(value as Record<string, SessionRecord>).forEach(([key, record]) => {
+    if (!record || typeof record !== "object" || typeof record.id !== "string" || !record.id) {
+      return;
+    }
+    snapshot[key] = cloneFallbackMetadataRecord({
+      ...record,
+      entries: Array.isArray(record.entries) ? record.entries : [],
+    });
+  });
+  return snapshot;
+}
+
+async function readChromeFallbackMetadataSnapshot(): Promise<Record<string, SessionRecord> | undefined> {
+  if (!hasChromeStorageFallback()) {
+    return undefined;
+  }
+
+  try {
+    const result = await chrome.storage.local.get(FALLBACK_METADATA_STORAGE_KEY);
+    return sanitizeFallbackMetadataSnapshot(result[FALLBACK_METADATA_STORAGE_KEY]);
+  } catch (error) {
+    logStoreError("Failed to read chrome.storage.local fallback metadata", error);
+    return undefined;
+  }
+}
+
+async function persistChromeFallbackMetadataSnapshot(
+  snapshot: Record<string, SessionRecord>,
+): Promise<void> {
+  if (!hasChromeStorageFallback()) {
+    return;
+  }
+
+  await chrome.storage.local.set({
+    [FALLBACK_METADATA_STORAGE_KEY]: Object.fromEntries(
+      Object.entries(snapshot).map(([id, record]) => [id, cloneFallbackMetadataRecord(record)]),
+    ),
+  });
+}
+
 function getFallbackRecordStorageKey(id: string): string {
   return `${FALLBACK_RECORD_PREFIX}${id}`;
 }
@@ -966,6 +1036,7 @@ function getFallbackStorageKeys(snapshot: Record<string, unknown>): string[] {
     (key) =>
       key === LEGACY_FALLBACK_STORAGE_KEY ||
       key === FALLBACK_INDEX_STORAGE_KEY ||
+      key === FALLBACK_METADATA_STORAGE_KEY ||
       key.startsWith(FALLBACK_RECORD_PREFIX),
   );
 }
@@ -1017,8 +1088,11 @@ async function migrateLegacyChromeFallbackIfNeeded(): Promise<void> {
     return;
   }
 
-  const writes: Record<string, SessionRecord | string[]> = {
+  const writes: Record<string, SessionRecord | string[] | Record<string, SessionRecord>> = {
     [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+    [FALLBACK_METADATA_STORAGE_KEY]: Object.fromEntries(
+      nextIndex.map((id) => [id, cloneFallbackMetadataRecord(snapshot[id])]),
+    ),
   };
   nextIndex.forEach((id) => {
     writes[getFallbackRecordStorageKey(id)] = cloneSessionRecord(snapshot[id]);
@@ -1071,6 +1145,57 @@ async function readChromeFallbackRecords(ids: string[]): Promise<Record<string, 
   }
 }
 
+async function readChromeFallbackMetadataRecords(
+  ids: string[],
+): Promise<Record<string, SessionRecord> | undefined> {
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (!uniqueIds.length) {
+    return {};
+  }
+
+  const metadataSnapshot = await readChromeFallbackMetadataSnapshot();
+  if (metadataSnapshot) {
+    const records: Record<string, SessionRecord> = {};
+    const missingIds: string[] = [];
+    uniqueIds.forEach((id) => {
+      const record = metadataSnapshot[id];
+      if (record) {
+        records[id] = cloneFallbackMetadataRecord(record);
+      } else {
+        missingIds.push(id);
+      }
+    });
+    if (!missingIds.length) {
+      return records;
+    }
+  }
+
+  const fullRecords = await readChromeFallbackRecords(uniqueIds);
+  if (!fullRecords) {
+    return undefined;
+  }
+
+  const metadataRecords = Object.fromEntries(
+    Object.entries(fullRecords).map(([id, record]) => [id, cloneFallbackMetadataRecord(record)]),
+  );
+  const nextSnapshot = {
+    ...(metadataSnapshot ?? {}),
+    ...metadataRecords,
+  };
+  await persistChromeFallbackMetadataSnapshot(nextSnapshot).catch((error) => {
+    logStoreError("Failed to backfill chrome.storage.local fallback metadata", error);
+  });
+
+  return {
+    ...Object.fromEntries(
+      uniqueIds
+        .map((id) => [id, metadataSnapshot?.[id]] as const)
+        .filter((entry): entry is readonly [string, SessionRecord] => Boolean(entry[1])),
+    ),
+    ...metadataRecords,
+  };
+}
+
 async function saveChromeFallbackRecord(record: SessionRecord): Promise<void> {
   if (!hasChromeStorageFallback()) {
     return;
@@ -1081,8 +1206,13 @@ async function saveChromeFallbackRecord(record: SessionRecord): Promise<void> {
       await migrateLegacyChromeFallbackIfNeeded();
       const index = (await readChromeFallbackIndex()) ?? [];
       const nextIndex = index.includes(record.id) ? index : [...index, record.id];
+      const metadataSnapshot = (await readChromeFallbackMetadataSnapshot()) ?? {};
       await chrome.storage.local.set({
         [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+        [FALLBACK_METADATA_STORAGE_KEY]: {
+          ...metadataSnapshot,
+          [record.id]: cloneFallbackMetadataRecord(record),
+        },
         [getFallbackRecordStorageKey(record.id)]: cloneSessionRecord(record),
       });
     });
@@ -1101,8 +1231,11 @@ async function deleteChromeFallbackRecord(id: string): Promise<void> {
       await migrateLegacyChromeFallbackIfNeeded();
       const index = (await readChromeFallbackIndex()) ?? [];
       const nextIndex = index.filter((item) => item !== id);
+      const metadataSnapshot = (await readChromeFallbackMetadataSnapshot()) ?? {};
+      delete metadataSnapshot[id];
       await chrome.storage.local.set({
         [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+        [FALLBACK_METADATA_STORAGE_KEY]: metadataSnapshot,
       });
       await chrome.storage.local.remove(getFallbackRecordStorageKey(id));
     });
@@ -1362,6 +1495,21 @@ async function listFallbackRecords(options: SessionListOptions = {}): Promise<Se
   return sortSessions([...memoryFallbackStore.values()], options);
 }
 
+async function listFallbackMetadataRecords(options: SessionListOptions = {}): Promise<SessionRecord[]> {
+  const index = await readChromeFallbackIndex();
+  if (index) {
+    const records = await readChromeFallbackMetadataRecords(index);
+    if (records) {
+      return sortSessions(Object.values(records), options);
+    }
+  }
+
+  return sortSessions(
+    [...memoryFallbackStore.values()].map(cloneFallbackMetadataRecord),
+    options,
+  );
+}
+
 async function deleteFallbackRecord(id: string): Promise<void> {
   if (!id) {
     return;
@@ -1617,13 +1765,6 @@ function toSessionLibraryPreview(record: SessionRecord): SessionLibraryPreview {
   };
 }
 
-function toSessionMetadataOnly(record: SessionRecord): SessionRecord {
-  return {
-    ...cloneSessionRecord(record),
-    entries: [],
-  };
-}
-
 export async function getSessionLibraryOverview(
   previewLimit = 3,
 ): Promise<SessionLibraryOverview> {
@@ -1721,7 +1862,7 @@ export async function buildSessionLibraryBackupExport(
 export async function listSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
   const [indexedDbResult, fallbackRecords] = await Promise.all([
     tryIndexedDb(async () => listIndexedDbSessions(options)),
-    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+    listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
 
   return sortSessions(
@@ -1731,9 +1872,7 @@ export async function listSessions(options: SessionListOptions = {}): Promise<Se
             normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
           )
         : [],
-      fallbackRecords.map((record) =>
-        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-      ),
+      fallbackRecords.map(toSessionMetadataOnly),
     ),
     options,
   );
@@ -1747,19 +1886,19 @@ export async function listSessionLineageSegments(lineageId: string): Promise<Ses
 
   const [indexedDbResult, fallbackRecords] = await Promise.all([
     tryIndexedDb(async () => listIndexedDbLineageSessions(safeLineageId)),
-    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+    listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
+  const fallbackLineageIds = fallbackRecords
+    .filter((session) => resolveSessionLineageId(session.id, session.lineageId) === safeLineageId)
+    .map((session) => session.id);
+  const fallbackLineageRecords = await Promise.all(
+    fallbackLineageIds.map((sessionId) => loadFallbackRecord(sessionId)),
+  );
 
   return sortSessionSegments(
     mergeSessionCollections(
       indexedDbResult.ok && indexedDbResult.value ? indexedDbResult.value : [],
-      fallbackRecords
-        .filter(
-          (session) => resolveSessionLineageId(session.id, session.lineageId) === safeLineageId,
-        )
-        .map((record) =>
-          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-        ),
+      fallbackLineageRecords.filter((record): record is SessionRecord => Boolean(record)),
     ),
   );
 }
@@ -1777,18 +1916,14 @@ export async function listSessionsPage(
 
   const [indexedDbMetadataResult, fallbackRecords] = await Promise.all([
     tryIndexedDb(async () => listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER })),
-    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+    listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
   const metadataSessions = sortSessions(
     mergeSessionCollections(
       indexedDbMetadataResult.ok && indexedDbMetadataResult.value
         ? indexedDbMetadataResult.value.map(toSessionMetadataOnly)
         : [],
-      fallbackRecords.map((record) =>
-        toSessionMetadataOnly(
-          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-        ),
-      ),
+      fallbackRecords.map(toSessionMetadataOnly),
     ),
     { limit: Number.MAX_SAFE_INTEGER },
   );
@@ -1801,15 +1936,9 @@ export async function listSessionsPage(
   const page = Math.min(Math.max(1, options.page), pageCount);
   const start = (page - 1) * pageSize;
   const pageMetadataSessions = filteredSessions.slice(start, start + pageSize);
-  const loadedPageSessions = await loadSessionsByIds(
-    pageMetadataSessions.map((session) => session.id),
-  );
-  const loadedById = new Map(loadedPageSessions.map((session) => [session.id, session]));
 
   return {
-    sessions: pageMetadataSessions.map((session) =>
-      cloneSessionRecord(loadedById.get(session.id) ?? session),
-    ),
+    sessions: pageMetadataSessions.map(toSessionMetadataOnly),
     totalCount,
     page,
     pageSize,
@@ -1820,18 +1949,14 @@ export async function listSessionLineagesPage(
   options: SessionPageOptions,
 ): Promise<SessionLineagePageResult> {
   const [indexedDbResult, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () => listAllIndexedDbSessions()),
-    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+    tryIndexedDb(async () => listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER })),
+    listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
   const allSessions = mergeSessionCollections(
     indexedDbResult.ok && indexedDbResult.value
-      ? indexedDbResult.value.map((record) =>
-          normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-        )
+      ? indexedDbResult.value.map(toSessionMetadataOnly)
       : [],
-    fallbackRecords.map((record) =>
-      normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-    ),
+    fallbackRecords.map(toSessionMetadataOnly),
   );
   const summaries = buildSessionLineageSummaries(allSessions);
   const filteredSummaries = options.starredOnly

@@ -24,7 +24,7 @@
 - history는 전체 기록 통합 검색, 태그/카테고리 필터, 중요 표시만 보기, 중요 표시만 export, 시간 범위 export를 지원합니다.
 - entry 텍스트, 발언자 override, 중요 표시, entry note, labels는 history에서 inline으로 편집합니다.
 - entry 병합은 화면 순서상 연속된 항목에만 허용하며, 분할은 기존 시간 범위 안에서 줄 단위로 새 entry를 만듭니다.
-- export 형식은 `TXT / SRT / VTT / JSON / Markdown / CSV`입니다. TXT의 발언자/entry 메타데이터 포함은 설정으로 제어하며 기본값은 꺼져 있습니다.
+- export 형식은 `TXT / SRT / VTT / JSON / MD / CSV`입니다. TXT의 발언자/entry 메타데이터 포함은 설정으로 제어하며 기본값은 꺼져 있습니다.
 - in-page panel은 최신 확정 entry 빠른 중요 표시와 `중간 저장 후 새 세션 시작`을 제공합니다. preview-only 텍스트는 저장/export/중요 표시 대상이 아닙니다.
 - options는 preset 추가/수정/삭제, 중복 URL 차단, TXT export 세부 옵션을 제공합니다. popup은 preset 바로 열기를 제공합니다.
 - `tests/fixtures/` DOM fixture와 `npm run verify:e2e` Playwright smoke 검증이 추가되었습니다.
@@ -36,7 +36,7 @@
 
 - `MutationObserver` 우선, polling fallback, frame forwarding nonce, top-frame fallback 등 수집 복원력이 높습니다.
 - preview-only 텍스트를 저장/export 대상으로 승격하지 않는 정책이 명확합니다.
-- `TXT / SRT / VTT / JSON / Markdown / CSV` export, history 부분 export, 중요 표시만 export, 시간 범위 export, 전체 JSON 백업/가져오기가 구현되어 있습니다.
+- `TXT / SRT / VTT / JSON / MD / CSV` export, history 부분 export, 중요 표시만 export, 시간 범위 export, 전체 JSON 백업/가져오기가 구현되어 있습니다.
 - `IndexedDB` 우선 저장, `chrome.storage.local` fallback, page-exit replay queue, startup cleanup이 있어 종료/재시작 복구 정책이 탄탄합니다.
 - popup, in-page panel, options diagnostics, history가 역할별로 분리되어 있습니다.
 - 권한 범위가 국회 의사중계 도메인 2개로 제한되어 있고, 개인정보처리방침도 로컬 처리 원칙과 맞아 있습니다.
@@ -250,17 +250,17 @@
 - `src/storage/settings-store.ts`
 - `src/shared/constants.ts`
 
-#### 9. Export 확장: Markdown, CSV, 회의록 템플릿
+#### 9. Export 확장: MD, CSV, 회의록 템플릿
+
+상태: MD/CSV export 는 현재 구현되어 있으며, 2026-06-04 보강으로 in-page panel 직접 export, CSV formula neutralization, Markdown table/HTML-like text escaping 까지 반영되었습니다. 남은 검토 대상은 별도 회의록 템플릿과 TXT 옵션 추가 범위입니다.
 
 문제: TXT/SRT/VTT/JSON은 자막 저장에는 충분하지만 문서 작업이나 스프레드시트 후처리에는 아쉬울 수 있습니다.  
 가치: 발췌/보고/분석 워크플로우에 바로 붙습니다.
 
-권장 구현:
+남은 권장 구현:
 
-- Markdown export: 제목, 일시, URL, 메모, 자막 목록, 중요 표시를 구조화합니다.
-- CSV export: startTime, endTime, speaker, text, highlighted, note 컬럼을 제공합니다.
 - TXT export 옵션을 확장해 타임스탬프/발언자/메모 포함 여부를 선택합니다.
-- README의 export 정합성 섹션에 새 포맷을 추가합니다.
+- 별도 회의록 템플릿이 필요하면 MD export 위에 템플릿 preset 을 추가합니다.
 
 관련 파일:
 
@@ -369,7 +369,7 @@
 | 중요 표시/북마크    | 높음        | 중간        | 낮음           | 빠른 도입        |
 | 자막 수정/병합/분할 | 높음        | 높음        | 낮음           | schema 설계 후   |
 | preset 관리         | 중간        | 중간        | 낮음           | 반복 사용자용    |
-| Markdown/CSV export | 중간        | 낮음        | 낮음           | 빠른 도입        |
+| MD/CSV export       | 중간        | 낮음        | 낮음           | 구현됨           |
 | 세션 크기 경고/분할 | 중간        | 중간        | 낮음           | 장시간 회의 대응 |
 | DOM fixture/E2E     | 높음        | 중간        | 낮음           | 운영 안정화      |
 | 네이티브 side panel | 중간        | 중간~높음   | 중간           | 실험 옵션        |
@@ -391,7 +391,7 @@
 
 - 태그/카테고리
 - 중요 표시/북마크
-- Markdown/CSV export
+- MD/CSV export는 구현됨. 다음 묶음에서는 회의록 템플릿 preset 여부만 검토
 - 태그/중요 표시 JSON 백업/가져오기 호환
 
 목표: history를 회의 기록 관리 화면으로 발전시키는 릴리스입니다.

@@ -4,7 +4,7 @@
 
 ## 1. 프로젝트 한 줄 요약
 
-국회 의사중계 페이지에서 AI 자막을 실시간 추출하고, 페이지 오른쪽 패널에서 바로 보여 주며, 기록을 저장하고 `TXT / SRT / VTT / JSON / Markdown / CSV` 로 내보내는 `Manifest V3` 기반 확장프로그램입니다.
+국회 의사중계 페이지에서 AI 자막을 실시간 추출하고, 페이지 오른쪽 패널에서 바로 보여 주며, 기록을 저장하고 `TXT / SRT / VTT / JSON / MD / CSV` 로 내보내는 `Manifest V3` 기반 확장프로그램입니다.
 
 ## 2. 현재 활성 범위
 
@@ -198,7 +198,7 @@ npm run verify:e2e
 - session record schema 는 `starred`, `pinnedAt`, `note` 를 포함하며 history 즐겨찾기/메모/JSON 백업·복원에서 그대로 유지
 - IndexedDB schema `5` 는 `lineageId` index 를 포함하며, migration 은 기존 record 의 `lineageId`, `segmentNumber` 기본값을 채워야 함
 - history 즐겨찾기/메모 저장은 전용 `updateSessionMetadata(sessionId, patch)` 경로를 사용해야 하며, stale detail snapshot 이 최신 `entries` / `subtitleCount` / `status` 를 덮어쓰면 안 됨
-- history 는 `즐겨찾기만 보기`, 전체 기록 검색, 태그/카테고리 필터, 세션 메모 저장, 세션/entry 발언자 라벨, entry 중요 표시/note/labels inline 편집, entry 체크박스 기반 `선택한 항목 복사`, 전체/선택/중요 표시만/시간 범위 `TXT/SRT/VTT/JSON/Markdown/CSV` export, 전체 JSON 백업/가져오기를 지원
+- history 는 `즐겨찾기만 보기`, 전체 기록 검색, 태그/카테고리 필터, 세션 메모 저장, 세션/entry 발언자 라벨, entry 중요 표시/note/labels inline 편집, entry 체크박스 기반 `선택한 항목 복사`, 전체/선택/중요 표시만/시간 범위 `TXT/SRT/VTT/JSON/MD/CSV` export, 전체 JSON 백업/가져오기를 지원
 - entry 편집은 `updateSessionContent(sessionId, patch)` 경로를 사용하고, 첫 텍스트 수정 시 기존 `text`를 `originalText`로 보존해야 함
 - 전체 JSON 백업 / JSON 가져오기는 현재 단계와 진행량을 표시하고 취소를 지원하며, JSON import read phase 와 backup package phase 도 abort-aware 여야 하고 import cancel 은 이미 저장된 부분 완료 레코드를 rollback 하지 않음
 - history 전체 삭제 확인은 전체 preload 가 아니라 저장소 overview(count + preview) helper 기준으로 동작해야 함

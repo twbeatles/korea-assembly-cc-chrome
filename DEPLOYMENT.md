@@ -69,8 +69,8 @@ npm run verify:e2e
 - structured row snapshot 안에 stable/unstable row가 함께 있을 때 stable row만 `수집된 자막` 목록과 저장/export 대상에 반영되고 unstable row는 preview-only로 남는지 확인
 - `로딩중..`, `로딩 중...`, `Loading...` 같은 placeholder 문구가 저장/export/누적 목록에 들어가지 않는지 확인
 - 동일한 carry-over 문장이 반복 노출되더라도 export 결과에서 한 번만 남는지 확인
-- 패널의 `저장 / 내보내기` 버튼에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장 확인
-- history의 `Markdown / CSV` 저장, 선택 export, 중요 표시만 export, 시간 범위 export 확인
+- 패널의 `저장 / 내보내기` 버튼에서 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON) / 회의록(MD) / 표(CSV)` 저장 확인
+- history의 `TXT/SRT/VTT/JSON/MD/CSV` 저장, 선택 export, 중요 표시만 export, 시간 범위 export 확인
 - observer 가 먼저 처리한 row 를 polling/top-frame fallback 이 다시 봐도 중복 entry 가 생기지 않는지 확인
 - 수집 중 새로고침/페이지 이동 시 브라우저 경고가 뜨는지 확인
 - 탭 숨김 또는 페이지 이탈 직전 마지막 running/stopped 스냅샷이 저장되는지 확인
@@ -84,7 +84,7 @@ npm run verify:e2e
 - preview-only 또는 notice-only 상태에서도 패널 `화면 비우기`는 활성화되고 저장/복사/export 는 계속 비활성화되는지 확인
 - history 즐겨찾기 토글 / 즐겨찾기만 보기 / 세션 메모 저장 확인
 - 수집 중이거나 stale selection 상태의 history detail 에서 즐겨찾기/메모를 저장해도 최신 subtitle count / status / entries 가 되돌아가지 않는지 확인
-- history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export 확인
+- history entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON/MD/CSV` export 확인
 - history 목록이 lineage summary 기준으로 표시되고, 즐겨찾기/핀/메모/삭제/export 작업이 lineage 전체 segment 에 적용되는지 확인
 - lineage export 예상 용량이 `8 MiB` 를 넘는 경우 `segment-001` suffix 기반 분할 저장 액션이 보이는지 확인
 - history `전체 JSON 백업` 과 `JSON 가져오기`(단일 세션 / bundle) 확인
@@ -184,7 +184,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.9-cw
 - 국회 의사중계 도메인에서만 동작함
 - AI 자막 DOM 을 읽어 사용자가 파일로 저장할 수 있게 함
 - 수집 데이터는 세션 저장 및 내보내기 목적
-- `downloads` 권한은 TXT/SRT/VTT/JSON/Markdown/CSV 파일 저장용
+- `downloads` 권한은 TXT/SRT/VTT/JSON/MD/CSV 파일 저장용
 - `storage` 권한은 설정, 세션 저장 fallback, page-exit replay queue, 탭 단위 frame-forward nonce, 저장 복구 diagnostics 용
 - `storage` 는 즐겨찾기/메모/태그/카테고리/발언자 라벨/중요 표시/entry note/labels 같은 로컬 메타데이터와 JSON 가져오기 후 복원된 기록 저장에도 사용됨
 - `sidePanel` 권한은 Chrome 114+의 브라우저 측면 보조 패널을 열기 위한 용도이며, 국회 의사중계 탭을 유지한 채 수집 상태, 최근 자막, 저장/기록/설정 바로가기를 확인하게 합니다. 기존 in-page panel이 기본 UI이고, side panel은 추가 웹사이트 접근/외부 전송/영상 캡처에 사용하지 않습니다.
@@ -397,7 +397,11 @@ Deployment documentation consistency sources:
 - Release verification should confirm that runtime segmentation thresholds (`세그먼트 최대 문장/글자/시간`) can be edited in options and affect later roll-over decisions.
 - Release verification should confirm that large export downloads use the offscreen Blob chunk path first, and that payloads above the bounded `data:` fallback path surface the explicit large-export guidance instead of attempting an impractical fallback.
 - Release verification should confirm that full-library JSON backup uses the history page Blob URL helper and revokes the Blob URL after completion, interruption, or timeout.
+- Release verification should confirm that full-library JSON backup lists metadata-only pages and hydrates each page id once through `loadSessionsByIds()`, without preloading full session bodies for listing.
+- Release verification should confirm that CSV export neutralizes spreadsheet formula prefixes and Markdown export escapes table-breaking pipes/newlines and HTML-like angle brackets.
 - Release verification should confirm that JSON single-session export and backup/import preserve `lineageId` and `segmentNumber`, while older JSON without those fields still imports.
+- Release verification should confirm that JSON import rejects empty or whitespace-only session ids before dedupe/save.
+- Release verification should confirm that segment rollover replays multiple queued update/reset events in bounded FIFO order after an in-flight rollover completes.
 - Release verification should confirm that `pendingPreviews` are not materialized into saved or exported entries.
 
 ## 2026-04-28 Deployment Consistency Update

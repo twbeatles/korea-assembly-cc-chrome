@@ -68,7 +68,7 @@ export interface ContentRuntimeContext {
     latestFallbackCommitState: FallbackCommitState;
     latestRowDiagnostics: RowDiagnosticsState;
     fallbackCommitCandidate: FallbackCommitCandidate | null;
-    queuedSegmentRolloverEvent: ObserverBridgeEvent | null;
+    queuedSegmentRolloverEvents: ObserverBridgeEvent[];
     captureMode: CaptureMode;
   };
   ui: {

@@ -4,7 +4,7 @@
   <img src="public/icons/icon128.png" alt="국회 AI 자막 추출기 아이콘" width="128" />
 </p>
 
-기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON / Markdown / CSV`로 저장하고 기록을 검색·편집할 수 있는 로컬 회의록 도구를 제공하는 것입니다.
+기존 `PyQt6 + Selenium` 데스크톱 앱을 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 구조로 재설계한 저장소입니다. 목표는 국회 의사중계/생중계 페이지에서 AI 자막을 실시간으로 수집하고, 페이지 오른쪽 패널에서 바로 보여 주며, 모은 내용을 `TXT / SRT / VTT / JSON / MD / CSV`로 저장하고 기록을 검색·편집할 수 있는 로컬 회의록 도구를 제공하는 것입니다.
 
 현재 스토어 배포 준비 기준 버전은 `1.0.9` 입니다.
 
@@ -39,7 +39,7 @@
 - keepalive 기반 마지막 자막 `endTime` 갱신
 - `subtitle_reset` 처리
 - 저장된 기록 관리
-- `TXT / SRT / VTT / JSON / Markdown / CSV` 내보내기
+- `TXT / SRT / VTT / JSON / MD / CSV` 내보내기
 - 사이트 안 우측 패널에서 실시간 자막 확인
 - 수집 시작 시 AI 자막 레이어 자동 활성화 시도
 - AI 자막 레이어 자동 활성화 성공은 `visible && (hasText || controlActive)` 신호 기준으로 판정
@@ -196,13 +196,13 @@ npm run build
 3. 홈(`main`/`main/`)에서는 패널과 진단 UI만 먼저 확인하고, 실제 수집은 플레이어(`main/player*`)로 들어가면 자동 시작된다
 4. 확장은 `AI 자막보기` 레이어를 자동으로 열려고 시도하며, 레이어/텍스트/control 신호는 접근 가능한 frame 전체를 기준으로 판정한다. 레이어가 실제로 보이고 텍스트 또는 활성화 control 신호가 확인되지 않으면 패널 notice 로 수동 클릭 안내를 실제 텍스트로 표시한다. 기본 idle 안내만 숨기고, 오류/복구/자동 조정 notice 는 패널에서 바로 확인할 수 있다
 5. 사이트 안 우측 패널은 `수집된 자막` 목록을 가장 큰 주 영역으로 먼저 배치하며, 확정된 누적 목록의 최신 `300`건 렌더를 큰 카드 형태로 보여 준다. `실시간 내용`은 보조 미리보기 영역으로 제공된다. 본회의처럼 structured row 대신 container fallback으로만 잡히는 경우에도 안정 관측 뒤 commit된 entry가 이 목록에 남고, 전체 세션 기록 / 저장 / export 기준은 누적 committed entry 전체를 그대로 유지한다
-6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON)` 저장을 실행한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, fallback preview는 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측된 뒤에만 저장 대상으로 승격한다. 반대로 preview-only 상태나 notice-only 오류 상태에서도 `화면 비우기`로 패널을 직접 리셋할 수 있다
+6. 필요하면 패널의 `저장 / 내보내기` 버튼으로 `텍스트(TXT) / 자막(SRT) / 웹자막(VTT) / 기록(JSON) / 회의록(MD) / 표(CSV)` 저장을 실행한다. 수동 저장 / 내보내기는 확정된 `수집된 자막` 누적 목록만 기준으로 하며, fallback preview는 같은 normalized raw가 2회 이상 또는 400ms 이상 안정적으로 관측된 뒤에만 저장 대상으로 승격한다. 반대로 preview-only 상태나 notice-only 오류 상태에서도 `화면 비우기`로 패널을 직접 리셋할 수 있다
 7. 실행 중 세션이 현재 threshold(`balanced` 기본값: 2000문장 / 120000자 / 90분, options preset/숫자 필드에서 조정 가능)를 넘기면, 현재 구간을 저장한 뒤 같은 lineage의 다음 `세그먼트`로 자동 전환한다
 8. 필요하면 페이지 패널 또는 history에서 `최근 N줄 복사`를 실행한다. 페이지 패널에서도 현재 화면 조각이 아니라 세션에 누적된 최근 `N`줄을 복사한다
 9. popup 등 보조 화면에서 `멈추기`를 누르면 수집이 끝나고 저장소 fallback 정책에 따라 정지 상태로 저장된다
 10. 직전 stopped 세션 저장이 실패한 상태에서 다시 자동 수집을 시작하거나 `화면 비우기`를 시도하면, 확장은 먼저 저장을 재시도하고 계속 실패할 때만 폐기 확인을 묻는다
 11. 브라우저/확장을 다시 시작하면 먼저 page-exit 시점에 남겨둔 stopped 저장 replay queue를 복구하고, 그 다음 남아 있던 `running` 세션을 `stopped`로 정리한다
-12. history에서는 회의 lineage 단위 목록에서 `즐겨찾기`, `메모 저장`, 삭제, lineage export를 사용할 수 있고, 상세 화면에서는 segment 목록과 개별 segment entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON` export를 유지한다. 대용량 lineage는 `segment-001` suffix가 붙은 분할 저장을 실행할 수 있다
+12. history에서는 회의 lineage 단위 목록에서 `즐겨찾기`, `메모 저장`, 삭제, lineage export를 사용할 수 있고, 상세 화면에서는 segment 목록과 개별 segment entry 체크박스 기반 `선택한 항목 복사`, `선택 TXT/SRT/VTT/JSON/MD/CSV` export를 유지한다. 대용량 lineage는 `segment-001` suffix가 붙은 분할 저장을 실행할 수 있다
 13. history 상단에서는 저장된 기록 전체 `JSON 백업`과 단일 세션/번들 `JSON 가져오기`를 실행할 수 있으며, 두 작업 모두 현재 단계와 진행량을 표시하고 취소를 지원한다. 가져오기는 허용 필드만 sanitize 하고 지원하지 않는 wrapper version / 잘못된 timestamp를 거부하며, 취소 시 이미 저장된 일부 레코드는 유지된다. 전체 라이브러리 작업은 `25 MiB` 하드 제한을 넘기면 명시적 오류로 중단된다
 14. 확장 아이콘 popup은 `페이지 패널 열기`, `저장된 기록`, `환경 설정`, `수집 진단`을 빠르게 여는 보조 화면으로 사용하며, 상세 진단은 options 페이지의 `수집 진단` 탭과 `저장 복구 상태` 섹션에서 확인한다. 진단 화면에서는 `persistabilityState` / `persistabilityHint`로 preview-only, unstable-only, filtered, duplicate 상태를 구분하고, stable/unstable row 수, unconfirmed 필터 차단 수, row key source, fallback commit 상태, 현재 세그먼트 threshold 사용량과 포맷별 예상 export 크기도 함께 본다
 15. 현재 세션에 저장 가능한 내용이 없으면 popup의 `지금 저장` 버튼은 비활성화되며, 우회 호출이 들어와도 패널과 popup 모두 `저장할 자막이 아직 없습니다.` 문구로 일관되게 응답한다
@@ -215,7 +215,7 @@ npm run build
 ## 권한 설명
 
 - `storage`: options, 저장된 세션 본문, 즐겨찾기/메모/태그/카테고리/발언자 라벨/중요 표시/entry note/labels 같은 로컬 메타데이터, preset 목록, page-exit replay queue, phase별 저장 복구 diagnostics, 탭 단위 frame-forward nonce 저장
-- `downloads`: TXT/SRT/VTT/JSON/Markdown/CSV 파일 다운로드
+- `downloads`: TXT/SRT/VTT/JSON/MD/CSV 파일 다운로드
 - `offscreen`: 대용량 export용 Blob URL 생성
 - `activeTab`: 현재 탭 상태 조회
 - `scripting`: MV3 런타임 보조 권한

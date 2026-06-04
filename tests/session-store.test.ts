@@ -194,6 +194,8 @@ describe("session store", () => {
     expect(summary?.segmentCount).toBe(2);
     expect(summary?.subtitleCount).toBe(2);
     expect(summary?.sessionIds).toEqual(["lineage_summary_1", "lineage_summary_2"]);
+    expect(summary?.representativeSession.entries).toEqual([]);
+    expect(summary?.representativeSession.subtitleCount).toBe(1);
 
     await updateSessionLineageMetadata("lineage_summary", {
       starred: true,
@@ -360,6 +362,12 @@ describe("session store", () => {
       "session_page_3",
       "session_page_2",
     ]);
+    expect(firstPage.sessions.every((session) => session.entries.length === 0)).toBe(true);
+    expect(firstPage.sessions[0]?.subtitleCount).toBe(1);
+    await expect(loadSession("session_page_3")).resolves.toMatchObject({
+      id: "session_page_3",
+      entries: expect.arrayContaining([expect.objectContaining({ id: expect.any(String) })]),
+    });
     expect(secondPage.sessions.map((session) => session.id)).toEqual(["session_page_1"]);
     expect(starredOnlyPage.totalCount).toBe(1);
     expect(starredOnlyPage.sessions.map((session) => session.id)).toEqual(["session_page_3"]);
@@ -395,6 +403,7 @@ describe("session store", () => {
       "session_idb_page",
       "session_fallback_page",
     ]);
+    expect(page.sessions.every((session) => session.entries.length === 0)).toBe(true);
   });
 
   it("fills default favorite and note fields for imported legacy records", async () => {
@@ -1291,6 +1300,7 @@ describe("session store", () => {
     expect(backup.sessionCount).toBe(2);
     expect(backup.payload.filename.endsWith(".json")).toBe(true);
     expect(parsed.sessions).toHaveLength(2);
+    expect(parsed.sessions.every((session) => session.entries.length > 0)).toBe(true);
   });
 
   it("reports backup progress and honors cancellation during page-wise packaging", async () => {

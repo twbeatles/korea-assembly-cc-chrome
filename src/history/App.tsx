@@ -603,7 +603,19 @@ export default function App() {
           return;
         }
 
-        setLineageSessions(sessions.length ? sessions : [selectedSession]);
+        const nextSessions = sessions.length ? sessions : [selectedSession];
+        setLineageSessions(nextSessions);
+        const hydratedSelectedSession =
+          nextSessions.find((session) => session.id === selectedSession.id) ?? null;
+        if (
+          selectedSession.entries.length === 0 &&
+          hydratedSelectedSession &&
+          hydratedSelectedSession.entries.length > 0
+        ) {
+          setSelectedSession((current) =>
+            current?.id === hydratedSelectedSession.id ? hydratedSelectedSession : current,
+          );
+        }
       })
       .catch(() => {
         if (!active) {

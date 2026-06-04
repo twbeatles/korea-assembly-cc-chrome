@@ -1,8 +1,20 @@
 import type { SessionRecord, SubtitleEntry } from "../subtitle-models";
 import { formatClockTime } from "../timeline";
 
-function escapeMarkdown(value: string): string {
-  return String(value ?? "").replaceAll("|", "\\|").trim();
+function escapeMarkdownInline(value: string): string {
+  return String(value ?? "")
+    .replaceAll("|", "\\|")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replace(/[\r\n]+/g, " ")
+    .trim();
+}
+
+function escapeMarkdownBlock(value: string): string {
+  return String(value ?? "")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .trim();
 }
 
 function resolveSpeaker(session: SessionRecord, entry: SubtitleEntry): string {
@@ -26,22 +38,22 @@ function resolveSpeaker(session: SessionRecord, entry: SubtitleEntry): string {
 
 export function exportMarkdown(session: SessionRecord): string {
   const lines = [
-    `# ${escapeMarkdown(session.title || session.committeeName || "국회 자막 기록")}`,
+    `# ${escapeMarkdownInline(session.title || session.committeeName || "국회 자막 기록")}`,
     "",
-    `- 위원회: ${escapeMarkdown(session.committeeName || "-")}`,
+    `- 위원회: ${escapeMarkdownInline(session.committeeName || "-")}`,
     `- 시작: ${session.startedAt}`,
     `- 종료: ${session.endedAt ?? "-"}`,
-    `- 원본: ${session.sourceUrl || "-"}`,
+    `- 원본: ${escapeMarkdownInline(session.sourceUrl || "-")}`,
   ];
 
   if (session.category?.trim()) {
-    lines.push(`- 카테고리: ${escapeMarkdown(session.category)}`);
+    lines.push(`- 카테고리: ${escapeMarkdownInline(session.category)}`);
   }
   if (session.tags?.length) {
-    lines.push(`- 태그: ${session.tags.map((tag) => `#${escapeMarkdown(tag)}`).join(" ")}`);
+    lines.push(`- 태그: ${session.tags.map((tag) => `#${escapeMarkdownInline(tag)}`).join(" ")}`);
   }
   if (session.note.trim()) {
-    lines.push("", "## 메모", "", session.note.trim());
+    lines.push("", "## 메모", "", escapeMarkdownBlock(session.note));
   }
 
   lines.push("", "## 자막", "", "| 시간 | 발언자 | 내용 | 비고 |", "| --- | --- | --- | --- |");
@@ -52,7 +64,7 @@ export function exportMarkdown(session: SessionRecord): string {
       entry.labels?.length ? entry.labels.map((label) => `#${label}`).join(" ") : "",
     ].filter(Boolean);
     lines.push(
-      `| ${formatClockTime(entry.startTime || entry.timestamp)} | ${escapeMarkdown(resolveSpeaker(session, entry))} | ${escapeMarkdown(entry.text)} | ${escapeMarkdown(flags.join(" / "))} |`,
+      `| ${formatClockTime(entry.startTime || entry.timestamp)} | ${escapeMarkdownInline(resolveSpeaker(session, entry))} | ${escapeMarkdownInline(entry.text)} | ${escapeMarkdownInline(flags.join(" / "))} |`,
     );
   });
 
