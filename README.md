@@ -120,13 +120,12 @@ src/
 tests/
 ```
 
-현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CODEBASE_AUDIT.md`, `CAPTURE_RETENTION_AND_STABILITY.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브나 종료된 구현 계획 문서는 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
+현재 Git 추적 기준의 핵심 문서는 루트의 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `POTENTIAL_ISSUES.md`, `CAPTURE_RETENTION_AND_STABILITY.md`, `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`, `PRIVACY_POLICY_DRAFT_KO.md` 입니다. 과거 Python 데스크톱 아카이브, 종료된 구현 계획 문서, 이전 감사 스냅샷은 로컬 작업 환경에만 남아 있을 수 있으며 Git 추적 대상으로 전제하지 않습니다.
 
 - `DEPLOYMENT.md`
-- `FEATURE_ENHANCEMENT_ANALYSIS.md`
+- `POTENTIAL_ISSUES.md`
 - `CLAUDE.md`
 - `GEMINI.md`
-- `CODEBASE_AUDIT.md`
 - `CAPTURE_RETENTION_AND_STABILITY.md`
 - `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - `PRIVACY_POLICY_DRAFT_KO.md`
@@ -228,7 +227,7 @@ npm run build
 ### content script
 
 - 현재 탭에서 세션 상태를 보유합니다
-- `src/content/content-script.ts`는 manifest가 바라보는 얇은 엔트리이며, 실제 mutable 런타임 조립은 `src/content/app/runtime.ts`, 런타임 경계 타입은 `src/content/app/context.ts`에 둡니다
+- `src/content/content-script.ts`는 manifest가 바라보는 얇은 엔트리이며, `src/content/app/runtime.ts`는 공개 facade, 실제 mutable 런타임 조립은 `src/content/app/runtime/implementation.ts`, 런타임 경계 타입은 `src/content/app/context.ts`에 둡니다
 - popup이 닫혀도 수집은 계속됩니다
 - top frame에 우측 패널을 삽입해 현재 상태를 바로 보여 줍니다
 - in-page panel 공개 import 경로는 `src/content/inpage-panel.ts` facade로 유지하고, 상태 변환/DOM 생성/스타일/스크롤/렌더링 구현은 `src/content/inpage-panel/` 하위 패키지로 분리합니다

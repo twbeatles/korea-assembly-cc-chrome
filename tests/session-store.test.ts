@@ -23,6 +23,7 @@ import {
   replayQueuedExitPersistRecords,
   resetSessionStoreForTests,
   saveSession,
+  searchSessionLineagesPage,
   searchSessions,
   SESSION_NOTE_MAX_LENGTH,
   updateSessionContent,
@@ -205,6 +206,33 @@ describe("session store", () => {
 
     expect(updatedSegments.every((session) => session.starred)).toBe(true);
     expect(updatedSegments.every((session) => session.note === "회의 전체 메모")).toBe(true);
+  });
+
+  it("lists fallback lineage summaries without hydrating session bodies", async () => {
+    const originalIndexedDb = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+
+    try {
+      await saveSession({
+        ...buildSession("fallback_lineage_segment", "saved"),
+        lineageId: "fallback_lineage",
+        segmentNumber: 1,
+      });
+    } finally {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: originalIndexedDb,
+      });
+    }
+
+    const page = await listSessionLineagesPage({ page: 1, pageSize: 20 });
+    const summary = page.lineages.find((lineage) => lineage.lineageId === "fallback_lineage");
+
+    expect(summary?.representativeSession.entries).toEqual([]);
+    expect(summary?.subtitleCount).toBe(1);
   });
 
   it("persists favorites and notes and sorts favorites to the top", async () => {
@@ -451,6 +479,32 @@ describe("session store", () => {
 
     const loaded = await loadSession("session_invalid_source_import");
     expect(loaded?.sourceUrl).toBe("");
+  });
+
+  it("preserves imported user metadata through storage", async () => {
+    await importSessionRecords([
+      {
+        ...buildSession("session_import_metadata", "saved"),
+        tags: ["예산", "속기"],
+        category: "회의록",
+        speakerLabels: { primary: "위원장" },
+        qualityStats: {
+          health: "good",
+          entryCount: 1,
+          charCount: 8,
+          estimatedBytes: 512,
+          fallbackOnly: false,
+          lastComputedAt: "2026-03-10T09:02:00.000Z",
+        },
+      },
+    ]);
+
+    const loaded = await loadSession("session_import_metadata");
+
+    expect(loaded?.tags).toEqual(["예산", "속기"]);
+    expect(loaded?.category).toBe("회의록");
+    expect(loaded?.speakerLabels?.primary).toBe("위원장");
+    expect(loaded?.qualityStats?.health).toBe("good");
   });
 
   it("normalizes imported running sessions to saved records before storage", async () => {
@@ -1466,6 +1520,55 @@ describe("session store", () => {
         text: "국가 재정과 민생 지원을 논의합니다.",
       },
     });
+  });
+
+  it("returns lineage-first search results across matching segments", async () => {
+    await saveSession({
+      ...buildSession("lineage_search_segment_1", "saved"),
+      lineageId: "lineage_search",
+      segmentNumber: 1,
+      tags: ["예산"],
+      category: "재정",
+      entries: [
+        {
+          ...buildSession("lineage_search_segment_1", "saved").entries[0],
+          text: "민생 예산 질의",
+          highlighted: true,
+        },
+      ],
+    });
+    await saveSession({
+      ...buildSession("lineage_search_segment_2", "saved"),
+      lineageId: "lineage_search",
+      segmentNumber: 2,
+      tags: ["예산"],
+      category: "재정",
+      entries: [
+        {
+          ...buildSession("lineage_search_segment_2", "saved").entries[0],
+          text: "후속 발언",
+        },
+      ],
+    });
+    await saveSession({
+      ...buildSession("lineage_search_other", "saved"),
+      lineageId: "lineage_other",
+      tags: ["운영"],
+      category: "기타",
+    });
+
+    const page = await searchSessionLineagesPage({
+      query: "민생",
+      tag: "예산",
+      category: "재정",
+      highlightedOnly: true,
+      page: 1,
+      pageSize: 10,
+    });
+
+    expect(page.totalCount).toBe(1);
+    expect(page.lineages[0]?.lineageId).toBe("lineage_search");
+    expect(page.lineages[0]?.sessionIds).toEqual(["lineage_search_segment_1"]);
   });
 
   it("updates session metadata and content while preserving original entry text", async () => {

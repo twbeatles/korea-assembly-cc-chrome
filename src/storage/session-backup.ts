@@ -3,7 +3,10 @@ import {
   cloneSessionRecord,
   type PersistedSessionStatus,
   type SessionBackupBundle,
+  type SessionQualityStats,
   type SessionRecord,
+  type SpeakerChannel,
+  type SpeakerLabels,
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../core/subtitle-models";
@@ -49,6 +52,62 @@ function sanitizeStringList(value: unknown, maxItems = 50, maxLength = 80): stri
         .map((item) => item.slice(0, maxLength)),
     ),
   ].slice(0, maxItems);
+}
+
+function sanitizeSpeakerLabels(value: unknown): SpeakerLabels {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const labels: SpeakerLabels = {};
+  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach((channel) => {
+    const label = (value as Partial<Record<SpeakerChannel, unknown>>)[channel];
+    if (typeof label === "string" && label.trim()) {
+      labels[channel] = label.trim().slice(0, 80);
+    }
+  });
+  return labels;
+}
+
+function sanitizeQualityStats(value: unknown): SessionQualityStats | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const stats = value as Partial<Record<keyof SessionQualityStats, unknown>>;
+  const health = stats.health;
+  const lastComputedAt = stats.lastComputedAt;
+  if (
+    health !== "good" &&
+    health !== "warning" &&
+    health !== "unstable"
+  ) {
+    return undefined;
+  }
+  if (!isValidDateString(lastComputedAt)) {
+    return undefined;
+  }
+
+  const entryCount = Number(stats.entryCount);
+  const charCount = Number(stats.charCount);
+  const estimatedBytes = Number(stats.estimatedBytes);
+  if (
+    !Number.isFinite(entryCount) ||
+    !Number.isFinite(charCount) ||
+    !Number.isFinite(estimatedBytes)
+  ) {
+    return undefined;
+  }
+
+  return {
+    health,
+    entryCount: Math.max(0, Math.floor(entryCount)),
+    charCount: Math.max(0, Math.floor(charCount)),
+    estimatedBytes: Math.max(0, Math.floor(estimatedBytes)),
+    fallbackOnly:
+      typeof stats.fallbackOnly === "boolean" ? stats.fallbackOnly : undefined,
+    lastComputedAt,
+  };
 }
 
 function sanitizeOptionalNullableDateString(value: unknown): string | null | undefined {
@@ -191,6 +250,11 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     starred: typeof value.starred === "boolean" ? value.starred : undefined,
     pinnedAt: sanitizeOptionalNullableDateString(value.pinnedAt) ?? undefined,
     note: typeof value.note === "string" ? value.note : undefined,
+    tags: sanitizeStringList(value.tags),
+    category:
+      typeof value.category === "string" ? value.category.trim().slice(0, 120) : undefined,
+    speakerLabels: sanitizeSpeakerLabels(value.speakerLabels),
+    qualityStats: sanitizeQualityStats(value.qualityStats),
     lineageId: sanitizeLineageId(value.lineageId),
     segmentNumber: sanitizeSegmentNumber(value.segmentNumber),
     entries: entries.map((entry) => cloneEntry(entry!)),
@@ -214,6 +278,10 @@ function cloneImportedRecord(record: StoredSessionRecord): StoredSessionRecord {
     starred: record.starred,
     pinnedAt: record.pinnedAt,
     note: record.note,
+    tags: record.tags ? [...record.tags] : undefined,
+    category: record.category,
+    speakerLabels: record.speakerLabels ? { ...record.speakerLabels } : undefined,
+    qualityStats: record.qualityStats ? { ...record.qualityStats } : undefined,
     lineageId: record.lineageId,
     segmentNumber: record.segmentNumber,
     entries: record.entries.map((entry) => cloneEntry(entry)),

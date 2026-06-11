@@ -1,0 +1,2546 @@
+import { normalizeEntriesForOutput } from "../../core/output-normalizer";
+import {
+  resolveSessionLineageId,
+  resolveSessionSegmentNumber,
+} from "../../core/subtitle-models";
+import {
+  mergeSessionSegments,
+  sortSessionSegments,
+} from "../../core/session-lineage";
+import {
+  cloneSessionRecord,
+  getSessionCharCount,
+  type ExportFormat,
+  type SessionRecord,
+  type SpeakerChannel,
+  type SpeakerLabels,
+  type StoredSessionRecord,
+  type SubtitleEntry,
+} from "../../core/subtitle-models";
+import {
+  clearQueuedExitPersistRecord,
+  clearQueuedExitPersistRecordsUpTo,
+  listQueuedExitPersistRecords,
+  resetPersistRecoveryStateForTests,
+} from "../persist-recovery";
+import {
+  createExtensionContextInvalidatedError,
+  hasExtensionContextInvalidated,
+  isExtensionContextInvalidatedError,
+  markExtensionContextInvalidated,
+  resetExtensionContextInvalidationForTests,
+} from "../../shared/extension-context";
+import {
+  buildSessionBackupFilename,
+} from "../session-backup";
+import { createRandomToken } from "../../shared/random-token";
+import {
+  SESSION_DB_SCHEMA_VERSION,
+  SESSION_DB_NAME,
+  SESSION_RECORD_VERSION,
+  SESSION_LIBRARY_REVISION_STORAGE_KEY,
+  SESSION_STORE_NAME,
+  isSupportedAssemblyUrl,
+} from "../../shared/constants";
+import type {
+  BuildSessionLibraryBackupExportOptions,
+  ExportPayload,
+  ImportSessionRecordsOptions,
+  LibraryBackupExport,
+  PersistReplaySummary,
+  SessionExportOptions,
+  SessionContentPatch,
+  SessionMetadataPatch,
+  SessionSearchHit,
+  SessionSearchOptions,
+  SessionSearchPageResult,
+  SessionSearchResult,
+  SessionLongTaskProgress,
+  SessionImportSummary,
+  SessionLibraryOverview,
+  SessionLibraryPreview,
+  SessionLineagePageResult,
+  SessionLineageSummary,
+  SessionListOptions,
+  SessionPageOptions,
+  SessionPageResult,
+  StartupCleanupSummary,
+} from "../types";
+import {
+  buildSessionEntryChunkKey,
+  buildSessionEntryChunks,
+  getChunkDigests,
+  hasChunkedSessionEntries,
+  hydrateChunkedSessionRecord,
+  SESSION_ENTRY_CHUNK_INDEX_NAME,
+  SESSION_ENTRY_CHUNK_SIZE,
+  SESSION_ENTRY_CHUNK_STORE_NAME,
+  stripSessionEntries,
+  toEntrylessSessionRecord,
+  type ChunkedSessionMetadataRecord,
+  type SessionEntryChunkRecord,
+} from "./entry-chunks";
+import { stringifySessionBackupBundleIncrementally } from "./backup-bundle";
+import { createSessionExportPayload } from "./export-payload";
+
+const LEGACY_FALLBACK_STORAGE_KEY = "assembly-subtitle-session-fallback";
+const FALLBACK_INDEX_STORAGE_KEY = "assembly-subtitle-session-fallback:index";
+const FALLBACK_METADATA_STORAGE_KEY = "assembly-subtitle-session-fallback:metadata";
+const FALLBACK_RECORD_PREFIX = "assembly-subtitle-session-fallback:record:";
+export const SESSION_NOTE_MAX_LENGTH = 4096;
+
+function clampSessionNote(note: string): string {
+  if (typeof note !== "string") {
+    return "";
+  }
+  if (note.length <= SESSION_NOTE_MAX_LENGTH) {
+    return note;
+  }
+  return note.slice(0, SESSION_NOTE_MAX_LENGTH);
+}
+
+function sanitizeStringList(value: unknown, maxItems = 50, maxLength = 80): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .map((item) => item.slice(0, maxLength)),
+    ),
+  ].slice(0, maxItems);
+}
+
+function sanitizeSpeakerLabels(value: unknown): SpeakerLabels {
+  if (!value || typeof value !== "object") {
+    return {};
+  }
+
+  const labels: SpeakerLabels = {};
+  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach((channel) => {
+    const label = (value as Partial<Record<SpeakerChannel, unknown>>)[channel];
+    if (typeof label === "string" && label.trim()) {
+      labels[channel] = label.trim().slice(0, 80);
+    }
+  });
+  return labels;
+}
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+let indexedDbAvailable = true;
+const memoryFallbackStore = new Map<string, SessionRecord>();
+let fallbackMutationQueue = Promise.resolve();
+
+interface IndexedDbAttempt<T> {
+  ok: boolean;
+  value?: T;
+  error?: unknown;
+}
+
+type SessionRecordSource = "indexeddb" | "fallback";
+
+interface SourcedSessionRecord {
+  source: SessionRecordSource;
+  record: SessionRecord;
+}
+
+interface IndexedDbSessionRecord extends ChunkedSessionMetadataRecord {
+  starredIndexKey: 0 | 1;
+  sortKey: string;
+}
+
+function createAbortError(message = "작업을 취소했습니다."): Error {
+  if (typeof DOMException !== "undefined") {
+    return new DOMException(message, "AbortError");
+  }
+
+  const error = new Error(message);
+  error.name = "AbortError";
+  return error;
+}
+
+function throwIfAborted(signal?: AbortSignal, message?: string): void {
+  if (signal?.aborted) {
+    throw createAbortError(message);
+  }
+}
+
+function emitLongTaskProgress(
+  onProgress: ((progress: SessionLongTaskProgress) => void) | undefined,
+  progress: SessionLongTaskProgress,
+): void {
+  onProgress?.({ ...progress });
+}
+
+function createCancelledImportError(summary: SessionImportSummary): Error & {
+  summary: SessionImportSummary;
+} {
+  const error = createAbortError("JSON 가져오기를 취소했습니다.") as Error & {
+    summary: SessionImportSummary;
+  };
+  error.summary = { ...summary };
+  return error;
+}
+
+function logStoreError(message: string, error?: unknown): void {
+  if (hasExtensionContextInvalidated() || markExtensionContextInvalidated(error)) {
+    return;
+  }
+  console.warn(`[session-store] ${message}`, error);
+}
+
+function toIndexedDbRecord(record: SessionRecord): IndexedDbSessionRecord {
+  const metadata = stripSessionEntries(record);
+  return {
+    ...metadata,
+    starredIndexKey: record.starred ? 1 : 0,
+    sortKey: buildSessionSortKey(record),
+  };
+}
+
+function readChunkRecordsBySessionId(
+  chunkStore: IDBObjectStore,
+  sessionId: string,
+): Promise<SessionEntryChunkRecord[]> {
+  return new Promise<SessionEntryChunkRecord[]>((resolve, reject) => {
+    const index = chunkStore.index(SESSION_ENTRY_CHUNK_INDEX_NAME);
+    const request = index.openCursor(
+      IDBKeyRange.bound([sessionId, 0], [sessionId, Number.MAX_SAFE_INTEGER]),
+      "next",
+    );
+    const chunks: SessionEntryChunkRecord[] = [];
+
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor) {
+        resolve(chunks);
+        return;
+      }
+
+      chunks.push(cursor.value as SessionEntryChunkRecord);
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB chunk read failed"));
+  });
+}
+
+function writeChunkedSessionRecord(
+  chunkStore: IDBObjectStore,
+  metadataRecord: IndexedDbSessionRecord,
+  chunks: SessionEntryChunkRecord[],
+  previousMetadataRecord?: Partial<IndexedDbSessionRecord>,
+): Promise<void> {
+  const previousChunkDigests = getChunkDigests(previousMetadataRecord ?? {});
+  const previousChunkCount =
+    typeof previousMetadataRecord?.entryChunkCount === "number" &&
+    previousMetadataRecord.entryChunkCount >= 0
+      ? previousMetadataRecord.entryChunkCount
+      : 0;
+
+  return Promise.all([
+    ...chunks.flatMap((chunk, chunkIndex) =>
+      previousChunkDigests[chunkIndex] === chunk.digest
+        ? []
+        : [withRequest(chunkStore.put(chunk))],
+    ),
+    ...Array.from(
+      { length: Math.max(0, previousChunkCount - chunks.length) },
+      (_value, index) =>
+        withRequest(
+          chunkStore.delete(
+            buildSessionEntryChunkKey(metadataRecord.id, chunks.length + index),
+          ),
+        ),
+    ),
+  ]).then(() => undefined);
+}
+
+async function hydrateIndexedDbSessionRecord(
+  metadataRecord: IndexedDbSessionRecord,
+  chunkStore: IDBObjectStore,
+): Promise<SessionRecord> {
+  if (!hasChunkedSessionEntries(metadataRecord)) {
+    return normalizeSessionRecord(metadataRecord as StoredSessionRecord, {
+      preserveTimestamps: true,
+    });
+  }
+
+  const chunks = await readChunkRecordsBySessionId(chunkStore, metadataRecord.id);
+  if (chunks.length !== metadataRecord.entryChunkCount) {
+    throw new Error(`Session chunk count mismatch for ${metadataRecord.id}`);
+  }
+
+  return normalizeSessionRecord(
+    hydrateChunkedSessionRecord(metadataRecord, chunks),
+    {
+      preserveTimestamps: true,
+      forceStatus: metadataRecord.status,
+    },
+  );
+}
+
+function normalizeIndexedDbSessionMetadataRecord(
+  record: IndexedDbSessionRecord,
+): SessionRecord {
+  const normalized = normalizeSessionRecord(
+    toEntrylessSessionRecord(record),
+    {
+      preserveTimestamps: true,
+      forceStatus: record.status,
+    },
+  );
+  return {
+    ...normalized,
+    subtitleCount:
+      typeof record.subtitleCount === "number" && Number.isFinite(record.subtitleCount)
+        ? Math.max(0, Math.floor(record.subtitleCount))
+        : normalized.subtitleCount,
+    charCount:
+      typeof record.charCount === "number" && Number.isFinite(record.charCount)
+        ? Math.max(0, Math.floor(record.charCount))
+        : normalized.charCount,
+    entries: [],
+  };
+}
+
+function buildSessionSortKey(
+  record: Pick<SessionRecord, "id" | "starred" | "pinnedAt" | "updatedAt">,
+): string {
+  const starredFlag = record.starred ? "1" : "0";
+  const primaryTimestamp =
+    record.starred && record.pinnedAt ? record.pinnedAt : record.updatedAt;
+  return `${starredFlag}|${primaryTimestamp}|${record.updatedAt}|${record.id}`;
+}
+
+function withRequest<T>(request: IDBRequest<T>): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
+  });
+}
+
+async function withTransaction<T>(
+  mode: IDBTransactionMode,
+  callback: (store: IDBObjectStore) => Promise<T>,
+): Promise<T> {
+  const db = await openDb();
+  return new Promise<T>((resolve, reject) => {
+    const transaction = db.transaction(SESSION_STORE_NAME, mode);
+    const store = transaction.objectStore(SESSION_STORE_NAME);
+    let settled = false;
+    let transactionCompleted = false;
+    let callbackCompleted = false;
+    let callbackResult: T | undefined;
+    let callbackError: unknown;
+
+    const rejectOnce = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error instanceof Error ? error : new Error("IndexedDB transaction failed"));
+    };
+
+    const resolveIfReady = (): void => {
+      if (settled || !transactionCompleted || !callbackCompleted) {
+        return;
+      }
+      settled = true;
+      resolve(callbackResult as T);
+    };
+
+    transaction.oncomplete = () => {
+      transactionCompleted = true;
+      if (callbackError) {
+        rejectOnce(callbackError);
+        return;
+      }
+      resolveIfReady();
+    };
+    transaction.onerror = () =>
+      rejectOnce(transaction.error ?? new Error("IndexedDB transaction failed"));
+    transaction.onabort = () =>
+      rejectOnce(transaction.error ?? callbackError ?? new Error("IndexedDB transaction aborted"));
+
+    try {
+      void callback(store)
+        .then((result) => {
+          callbackResult = result;
+          callbackCompleted = true;
+          resolveIfReady();
+        })
+        .catch((error) => {
+          callbackError = error;
+          try {
+            transaction.abort();
+          } catch {
+            // Ignore abort errors if the transaction already completed.
+          }
+          rejectOnce(error);
+        });
+    } catch (error) {
+      callbackError = error;
+      try {
+        transaction.abort();
+      } catch {
+        // Ignore abort errors if the transaction already completed.
+      }
+      rejectOnce(error);
+    }
+  });
+}
+
+interface SessionStoreTransactionStores {
+  sessionStore: IDBObjectStore;
+  chunkStore: IDBObjectStore;
+}
+
+async function withSessionStoresTransaction<T>(
+  mode: IDBTransactionMode,
+  callback: (stores: SessionStoreTransactionStores) => Promise<T>,
+): Promise<T> {
+  const db = await openDb();
+  return new Promise<T>((resolve, reject) => {
+    const transaction = db.transaction(
+      [SESSION_STORE_NAME, SESSION_ENTRY_CHUNK_STORE_NAME],
+      mode,
+    );
+    const stores: SessionStoreTransactionStores = {
+      sessionStore: transaction.objectStore(SESSION_STORE_NAME),
+      chunkStore: transaction.objectStore(SESSION_ENTRY_CHUNK_STORE_NAME),
+    };
+    let settled = false;
+    let transactionCompleted = false;
+    let callbackCompleted = false;
+    let callbackResult: T | undefined;
+    let callbackError: unknown;
+
+    const rejectOnce = (error: unknown): void => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error instanceof Error ? error : new Error("IndexedDB transaction failed"));
+    };
+
+    const resolveIfReady = (): void => {
+      if (settled || !transactionCompleted || !callbackCompleted) {
+        return;
+      }
+      settled = true;
+      resolve(callbackResult as T);
+    };
+
+    transaction.oncomplete = () => {
+      transactionCompleted = true;
+      if (callbackError) {
+        rejectOnce(callbackError);
+        return;
+      }
+      resolveIfReady();
+    };
+    transaction.onerror = () =>
+      rejectOnce(transaction.error ?? new Error("IndexedDB transaction failed"));
+    transaction.onabort = () =>
+      rejectOnce(transaction.error ?? callbackError ?? new Error("IndexedDB transaction aborted"));
+
+    try {
+      void callback(stores)
+        .then((result) => {
+          callbackResult = result;
+          callbackCompleted = true;
+          resolveIfReady();
+        })
+        .catch((error) => {
+          callbackError = error;
+          try {
+            transaction.abort();
+          } catch {
+            // Ignore abort errors if the transaction already completed.
+          }
+          rejectOnce(error);
+        });
+    } catch (error) {
+      callbackError = error;
+      try {
+        transaction.abort();
+      } catch {
+        // Ignore abort errors if the transaction already completed.
+      }
+      rejectOnce(error);
+    }
+  });
+}
+
+function disableIndexedDb(): void {
+  indexedDbAvailable = false;
+  dbPromise = null;
+}
+
+function openDb(): Promise<IDBDatabase> {
+  if (!indexedDbAvailable || typeof indexedDB === "undefined") {
+    return Promise.reject(new Error("IndexedDB is unavailable"));
+  }
+
+  if (!dbPromise) {
+    dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+      let request: IDBOpenDBRequest;
+
+      try {
+        request = indexedDB.open(SESSION_DB_NAME, SESSION_DB_SCHEMA_VERSION);
+      } catch (error) {
+        reject(error instanceof Error ? error : new Error("Failed to open session database"));
+        return;
+      }
+
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        const store = db.objectStoreNames.contains(SESSION_STORE_NAME)
+          ? request.transaction?.objectStore(SESSION_STORE_NAME)
+          : db.createObjectStore(SESSION_STORE_NAME, { keyPath: "id" });
+        const chunkStore = db.objectStoreNames.contains(SESSION_ENTRY_CHUNK_STORE_NAME)
+          ? request.transaction?.objectStore(SESSION_ENTRY_CHUNK_STORE_NAME)
+          : db.createObjectStore(SESSION_ENTRY_CHUNK_STORE_NAME, { keyPath: "id" });
+        if (!store) {
+          return;
+        }
+        if (!chunkStore) {
+          return;
+        }
+        if (!store.indexNames.contains("updatedAt")) {
+          store.createIndex("updatedAt", "updatedAt");
+        }
+        if (!store.indexNames.contains("status")) {
+          store.createIndex("status", "status");
+        }
+        if (!store.indexNames.contains("starred")) {
+          store.createIndex("starred", "starredIndexKey");
+        }
+        if (!store.indexNames.contains("paging")) {
+          store.createIndex("paging", "sortKey");
+        }
+        if (!store.indexNames.contains("lineageId")) {
+          store.createIndex("lineageId", "lineageId");
+        }
+        if (!chunkStore.indexNames.contains(SESSION_ENTRY_CHUNK_INDEX_NAME)) {
+          chunkStore.createIndex(SESSION_ENTRY_CHUNK_INDEX_NAME, ["sessionId", "chunkIndex"]);
+        }
+
+        const cursorRequest = store.openCursor();
+        cursorRequest.onsuccess = () => {
+          const cursor = cursorRequest.result;
+          if (!cursor) {
+            return;
+          }
+
+          const value = cursor.value as Partial<IndexedDbSessionRecord>;
+          const sessionId = typeof value.id === "string" ? value.id : "";
+          const expectedStarredIndexKey = value.starred ? 1 : 0;
+          const expectedLineageId = sessionId
+            ? resolveSessionLineageId(sessionId, value.lineageId)
+            : value.lineageId;
+          const expectedSegmentNumber = resolveSessionSegmentNumber(value.segmentNumber);
+          const expectedSortKey =
+            sessionId && typeof value.updatedAt === "string"
+              ? buildSessionSortKey({
+                  id: sessionId,
+                  starred: Boolean(value.starred),
+                  pinnedAt: typeof value.pinnedAt === "string" ? value.pinnedAt : null,
+                  updatedAt: value.updatedAt,
+                })
+              : "";
+          if (
+            value.starredIndexKey !== expectedStarredIndexKey ||
+            value.sortKey !== expectedSortKey ||
+            value.lineageId !== expectedLineageId ||
+            value.segmentNumber !== expectedSegmentNumber
+          ) {
+            cursor.update({
+              ...value,
+              starredIndexKey: expectedStarredIndexKey,
+              lineageId: expectedLineageId,
+              segmentNumber: expectedSegmentNumber,
+              sortKey: expectedSortKey,
+            });
+          }
+          cursor.continue();
+        };
+      };
+
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () =>
+        reject(request.error ?? new Error("Failed to open session database"));
+      request.onblocked = () => reject(new Error("Session database open request was blocked"));
+    }).catch((error) => {
+      disableIndexedDb();
+      throw error;
+    });
+  }
+
+  return dbPromise;
+}
+
+function normalizeEntries(entries: SubtitleEntry[]): SubtitleEntry[] {
+  return normalizeEntriesForOutput(entries);
+}
+
+function normalizeSessionRecord(
+  session: StoredSessionRecord,
+  options: {
+    preserveTimestamps?: boolean;
+    forceStatus?: SessionRecord["status"];
+  } = {},
+): SessionRecord {
+  const now = new Date().toISOString();
+  const entries = normalizeEntries(session.entries);
+  const status = options.forceStatus ?? session.status ?? "saved";
+  const createdAt =
+    typeof session.createdAt === "string" && session.createdAt
+      ? session.createdAt
+      : typeof session.startedAt === "string" && session.startedAt
+        ? session.startedAt
+        : now;
+  const startedAt =
+    typeof session.startedAt === "string" && session.startedAt
+      ? session.startedAt
+      : createdAt;
+  const updatedAt =
+    options.preserveTimestamps &&
+    typeof session.updatedAt === "string" &&
+    session.updatedAt
+      ? session.updatedAt
+      : now;
+  const starred = typeof session.starred === "boolean" ? session.starred : false;
+  const pinnedAt =
+    starred && typeof session.pinnedAt === "string" && session.pinnedAt
+      ? session.pinnedAt
+      : starred
+        ? updatedAt
+        : null;
+  const note = typeof session.note === "string" ? clampSessionNote(session.note) : "";
+  const tags = sanitizeStringList(session.tags);
+  const category =
+    typeof session.category === "string" ? session.category.trim().slice(0, 120) : "";
+  const speakerLabels = sanitizeSpeakerLabels(session.speakerLabels);
+  const qualityStats =
+    session.qualityStats && typeof session.qualityStats === "object"
+      ? { ...session.qualityStats }
+      : undefined;
+  const lineageId = resolveSessionLineageId(session.id, session.lineageId);
+  const segmentNumber = resolveSessionSegmentNumber(session.segmentNumber);
+  const endedAt =
+    status === "running"
+      ? null
+      : session.endedAt ?? updatedAt;
+
+  return {
+    id: session.id,
+    version: SESSION_RECORD_VERSION,
+    title: session.title || "국회 자막 세션",
+    committeeName: session.committeeName || "",
+    sourceUrl:
+      typeof session.sourceUrl === "string" && isSupportedAssemblyUrl(session.sourceUrl)
+        ? session.sourceUrl
+        : "",
+    startedAt,
+    endedAt,
+    createdAt,
+    updatedAt,
+    subtitleCount: entries.length,
+    charCount: getSessionCharCount(entries),
+    status,
+    starred,
+    pinnedAt,
+    note,
+    tags,
+    category,
+    speakerLabels,
+    qualityStats,
+    lineageId,
+    segmentNumber,
+    entries,
+  };
+}
+
+function normalizeImportedSessionStatus(
+  status: StoredSessionRecord["status"] | undefined,
+): SessionRecord["status"] {
+  if (status === "running") {
+    return "saved";
+  }
+
+  return status ?? "saved";
+}
+
+function mergeEditableSessionMetadata(
+  record: SessionRecord,
+  existingRecord?: SessionRecord,
+): SessionRecord {
+  if (!existingRecord) {
+    return cloneSessionRecord(record);
+  }
+
+  return {
+    ...cloneSessionRecord(record),
+    starred: existingRecord.starred,
+    pinnedAt: existingRecord.pinnedAt,
+    note: existingRecord.note,
+    tags: existingRecord.tags ? [...existingRecord.tags] : [],
+    category: existingRecord.category ?? "",
+    speakerLabels: existingRecord.speakerLabels ? { ...existingRecord.speakerLabels } : {},
+    qualityStats: existingRecord.qualityStats ? { ...existingRecord.qualityStats } : undefined,
+  };
+}
+
+function applySessionMetadataPatch(
+  record: SessionRecord,
+  patch: SessionMetadataPatch,
+  updatedAt: string,
+): SessionRecord {
+  const starred = patch.starred ?? record.starred;
+  const pinnedAt = starred
+    ? patch.pinnedAt !== undefined
+      ? patch.pinnedAt
+      : record.pinnedAt ?? updatedAt
+    : null;
+  const note =
+    patch.note !== undefined ? clampSessionNote(patch.note) : clampSessionNote(record.note);
+  const tags = patch.tags !== undefined ? sanitizeStringList(patch.tags) : (record.tags ?? []);
+  const category =
+    patch.category !== undefined
+      ? patch.category.trim().slice(0, 120)
+      : (record.category ?? "");
+  const speakerLabels =
+    patch.speakerLabels !== undefined
+      ? sanitizeSpeakerLabels(patch.speakerLabels)
+      : (record.speakerLabels ?? {});
+
+  return normalizeSessionRecord(
+    {
+      ...record,
+      starred,
+      pinnedAt,
+      note,
+      tags,
+      category,
+      speakerLabels,
+      updatedAt,
+    },
+    {
+      preserveTimestamps: true,
+      forceStatus: record.status,
+    },
+  );
+}
+
+function applySessionContentPatch(
+  record: SessionRecord,
+  patch: SessionContentPatch,
+  updatedAt: string,
+): SessionRecord {
+  const entries = patch.entries !== undefined ? normalizeEntries(patch.entries) : record.entries;
+  return normalizeSessionRecord(
+    {
+      ...record,
+      entries,
+      tags: patch.tags !== undefined ? sanitizeStringList(patch.tags) : (record.tags ?? []),
+      category:
+        patch.category !== undefined
+          ? patch.category.trim().slice(0, 120)
+          : (record.category ?? ""),
+      speakerLabels:
+        patch.speakerLabels !== undefined
+          ? sanitizeSpeakerLabels(patch.speakerLabels)
+          : (record.speakerLabels ?? {}),
+      subtitleCount: entries.length,
+      charCount: getSessionCharCount(entries),
+      updatedAt,
+    },
+    {
+      preserveTimestamps: true,
+      forceStatus: record.status,
+    },
+  );
+}
+
+async function bumpSessionLibraryRevision(): Promise<void> {
+  if (hasExtensionContextInvalidated() || typeof chrome === "undefined" || !chrome.storage?.local) {
+    return;
+  }
+
+  try {
+    await chrome.storage.local.set({
+      [SESSION_LIBRARY_REVISION_STORAGE_KEY]: `${Date.now()}:${createRandomToken()}`,
+    });
+  } catch (error) {
+    logStoreError("Failed to bump session library revision", error);
+  }
+}
+
+function sortSessions(records: SessionRecord[], options: SessionListOptions = {}): SessionRecord[] {
+  const limit = Math.max(1, options.limit ?? 100);
+  return [...records]
+    .sort((left, right) => buildSessionSortKey(right).localeCompare(buildSessionSortKey(left)))
+    .slice(0, limit)
+    .map(cloneSessionRecord);
+}
+
+function compareLineageSummaries(left: SessionLineageSummary, right: SessionLineageSummary): number {
+  const leftKey = buildSessionSortKey({
+    id: left.lineageId,
+    starred: left.starred,
+    pinnedAt: left.pinnedAt,
+    updatedAt: left.updatedAt,
+  });
+  const rightKey = buildSessionSortKey({
+    id: right.lineageId,
+    starred: right.starred,
+    pinnedAt: right.pinnedAt,
+    updatedAt: right.updatedAt,
+  });
+  return rightKey.localeCompare(leftKey);
+}
+
+function cloneLineageSummary(summary: SessionLineageSummary): SessionLineageSummary {
+  return {
+    ...summary,
+    sessionIds: [...summary.sessionIds],
+    representativeSession: cloneSessionRecord(summary.representativeSession),
+  };
+}
+
+function buildSessionLineageSummaries(sessions: SessionRecord[]): SessionLineageSummary[] {
+  const groups = new Map<string, SessionRecord[]>();
+  sessions.forEach((session) => {
+    const lineageId = resolveSessionLineageId(session.id, session.lineageId);
+    const group = groups.get(lineageId) ?? [];
+    group.push(session);
+    groups.set(lineageId, group);
+  });
+
+  return [...groups.entries()]
+    .map(([lineageId, groupSessions]) => {
+      const sorted = sortSessionSegments(groupSessions);
+      const first = sorted[0]!;
+      const last = sorted[sorted.length - 1]!;
+      const representative = cloneSessionRecord(last);
+      const commonNote = sorted.every((session) => session.note === first.note)
+        ? first.note
+        : "";
+      const latestPinnedAt = sorted
+        .map((session) => session.pinnedAt)
+        .filter((value): value is string => Boolean(value))
+        .sort()
+        .at(-1) ?? null;
+
+      return {
+        lineageId,
+        representativeSessionId: representative.id,
+        title: representative.title || first.title,
+        committeeName: representative.committeeName || first.committeeName,
+        sourceUrl: representative.sourceUrl || first.sourceUrl,
+        startedAt: first.startedAt,
+        endedAt: last.endedAt ?? last.updatedAt,
+        updatedAt: sorted
+          .map((session) => session.updatedAt)
+          .sort()
+          .at(-1) ?? last.updatedAt,
+        segmentCount: sorted.length,
+        subtitleCount: sorted.reduce((sum, session) => sum + session.subtitleCount, 0),
+        charCount: sorted.reduce((sum, session) => sum + session.charCount, 0),
+        status: last.status,
+        starred: sorted.some((session) => session.starred),
+        pinnedAt: latestPinnedAt,
+        note: commonNote,
+        sessionIds: sorted.map((session) => session.id),
+        representativeSession: representative,
+      } satisfies SessionLineageSummary;
+    })
+    .sort(compareLineageSummaries)
+    .map(cloneLineageSummary);
+}
+
+async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<IndexedDbAttempt<T>> {
+  if (!indexedDbAvailable || typeof indexedDB === "undefined") {
+    return {
+      ok: false,
+    };
+  }
+
+  try {
+    return {
+      ok: true,
+      value: await operation(),
+    };
+  } catch (error) {
+    if (markExtensionContextInvalidated(error)) {
+      return {
+        ok: false,
+        error: createExtensionContextInvalidatedError(),
+      };
+    }
+    if (!isExtensionContextInvalidatedError(error)) {
+      logStoreError("IndexedDB operation failed, falling back", error);
+    }
+    return {
+      ok: false,
+      error,
+    };
+  }
+}
+
+function compareSessionFreshness(left: SourcedSessionRecord, right: SourcedSessionRecord): number {
+  const updatedCompare = left.record.updatedAt.localeCompare(right.record.updatedAt);
+  if (updatedCompare !== 0) {
+    return updatedCompare;
+  }
+
+  if (left.source === right.source) {
+    return 0;
+  }
+
+  return left.source === "indexeddb" ? 1 : -1;
+}
+
+function mergeSessionCollections(
+  indexedDbRecords: SessionRecord[],
+  fallbackRecords: SessionRecord[],
+): SessionRecord[] {
+  const merged = new Map<string, SourcedSessionRecord>();
+
+  indexedDbRecords.forEach((record) => {
+    merged.set(record.id, {
+      source: "indexeddb",
+      record: cloneSessionRecord(record),
+    });
+  });
+
+  fallbackRecords.forEach((record) => {
+    const next: SourcedSessionRecord = {
+      source: "fallback",
+      record: cloneSessionRecord(record),
+    };
+    const current = merged.get(record.id);
+    if (!current || compareSessionFreshness(next, current) > 0) {
+      merged.set(record.id, next);
+    }
+  });
+
+  return Array.from(merged.values(), (value) => cloneSessionRecord(value.record));
+}
+
+async function bestEffortDeleteFallbackRecord(id: string): Promise<void> {
+  try {
+    await deleteFallbackRecord(id);
+  } catch (error) {
+    logStoreError(`Failed to heal fallback record for ${id}`, error);
+  }
+}
+
+function hasChromeStorageFallback(): boolean {
+  return typeof chrome !== "undefined" && Boolean(chrome.storage?.local);
+}
+
+function sanitizeFallbackIndex(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [
+    ...new Set(value.filter((item): item is string => typeof item === "string" && item.length > 0)),
+  ];
+}
+
+function enqueueFallbackMutation<T>(action: () => Promise<T>): Promise<T> {
+  const next = fallbackMutationQueue.then(action, action);
+  fallbackMutationQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
+
+function setMemorySnapshot(snapshot: Record<string, SessionRecord>): void {
+  memoryFallbackStore.clear();
+  Object.entries(snapshot).forEach(([key, value]) => {
+    memoryFallbackStore.set(key, cloneSessionRecord(value));
+  });
+}
+
+function toSessionMetadataOnly(record: SessionRecord): SessionRecord {
+  return {
+    ...cloneSessionRecord(record),
+    entries: [],
+  };
+}
+
+function cloneFallbackMetadataRecord(record: SessionRecord): SessionRecord {
+  return toSessionMetadataOnly(record);
+}
+
+function sanitizeFallbackMetadataSnapshot(value: unknown): Record<string, SessionRecord> | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const snapshot: Record<string, SessionRecord> = {};
+  Object.entries(value as Record<string, SessionRecord>).forEach(([key, record]) => {
+    if (!record || typeof record !== "object" || typeof record.id !== "string" || !record.id) {
+      return;
+    }
+    snapshot[key] = cloneFallbackMetadataRecord({
+      ...record,
+      entries: Array.isArray(record.entries) ? record.entries : [],
+    });
+  });
+  return snapshot;
+}
+
+async function readChromeFallbackMetadataSnapshot(): Promise<Record<string, SessionRecord> | undefined> {
+  if (!hasChromeStorageFallback()) {
+    return undefined;
+  }
+
+  try {
+    const result = await chrome.storage.local.get(FALLBACK_METADATA_STORAGE_KEY);
+    return sanitizeFallbackMetadataSnapshot(result[FALLBACK_METADATA_STORAGE_KEY]);
+  } catch (error) {
+    logStoreError("Failed to read chrome.storage.local fallback metadata", error);
+    return undefined;
+  }
+}
+
+async function persistChromeFallbackMetadataSnapshot(
+  snapshot: Record<string, SessionRecord>,
+): Promise<void> {
+  if (!hasChromeStorageFallback()) {
+    return;
+  }
+
+  await chrome.storage.local.set({
+    [FALLBACK_METADATA_STORAGE_KEY]: Object.fromEntries(
+      Object.entries(snapshot).map(([id, record]) => [id, cloneFallbackMetadataRecord(record)]),
+    ),
+  });
+}
+
+function getFallbackRecordStorageKey(id: string): string {
+  return `${FALLBACK_RECORD_PREFIX}${id}`;
+}
+
+function getFallbackStorageKeys(snapshot: Record<string, unknown>): string[] {
+  return Object.keys(snapshot).filter(
+    (key) =>
+      key === LEGACY_FALLBACK_STORAGE_KEY ||
+      key === FALLBACK_INDEX_STORAGE_KEY ||
+      key === FALLBACK_METADATA_STORAGE_KEY ||
+      key.startsWith(FALLBACK_RECORD_PREFIX),
+  );
+}
+
+function isQuotaExceededError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /quota|QUOTA|MAX_ITEMS|bytes/i.test(message);
+}
+
+function buildFallbackWriteError(action: string, error: unknown): Error {
+  if (hasExtensionContextInvalidated() || markExtensionContextInvalidated(error)) {
+    return createExtensionContextInvalidatedError();
+  }
+
+  if (isQuotaExceededError(error)) {
+    return new Error(`브라우저 저장소 용량이 가득 차 ${action} 내용을 영구 저장하지 못했습니다.`);
+  }
+
+  if (error instanceof Error) {
+    return new Error(`${action} 처리 중 저장소 fallback에 실패했습니다: ${error.message}`);
+  }
+
+  return new Error(`${action} 처리 중 저장소 fallback에 실패했습니다.`);
+}
+
+async function migrateLegacyChromeFallbackIfNeeded(): Promise<void> {
+  if (!hasChromeStorageFallback()) {
+    return;
+  }
+
+  const result = await chrome.storage.local.get([
+    FALLBACK_INDEX_STORAGE_KEY,
+    LEGACY_FALLBACK_STORAGE_KEY,
+  ]);
+  const existingIndex = sanitizeFallbackIndex(result[FALLBACK_INDEX_STORAGE_KEY]);
+  if (existingIndex.length > 0) {
+    return;
+  }
+
+  const legacySnapshot = result[LEGACY_FALLBACK_STORAGE_KEY];
+  if (!legacySnapshot || typeof legacySnapshot !== "object") {
+    return;
+  }
+
+  const snapshot = legacySnapshot as Record<string, SessionRecord>;
+  const nextIndex = Object.keys(snapshot);
+  if (!nextIndex.length) {
+    await chrome.storage.local.remove(LEGACY_FALLBACK_STORAGE_KEY);
+    return;
+  }
+
+  const writes: Record<string, SessionRecord | string[] | Record<string, SessionRecord>> = {
+    [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+    [FALLBACK_METADATA_STORAGE_KEY]: Object.fromEntries(
+      nextIndex.map((id) => [id, cloneFallbackMetadataRecord(snapshot[id])]),
+    ),
+  };
+  nextIndex.forEach((id) => {
+    writes[getFallbackRecordStorageKey(id)] = cloneSessionRecord(snapshot[id]);
+  });
+
+  await chrome.storage.local.set(writes);
+  await chrome.storage.local.remove(LEGACY_FALLBACK_STORAGE_KEY);
+  setMemorySnapshot(snapshot);
+}
+
+async function readChromeFallbackIndex(): Promise<string[] | undefined> {
+  if (!hasChromeStorageFallback()) {
+    return undefined;
+  }
+
+  try {
+    await migrateLegacyChromeFallbackIfNeeded();
+    const result = await chrome.storage.local.get(FALLBACK_INDEX_STORAGE_KEY);
+    return sanitizeFallbackIndex(result[FALLBACK_INDEX_STORAGE_KEY]);
+  } catch (error) {
+    logStoreError("Failed to read chrome.storage.local fallback index", error);
+    return undefined;
+  }
+}
+
+async function readChromeFallbackRecords(ids: string[]): Promise<Record<string, SessionRecord> | undefined> {
+  if (!hasChromeStorageFallback()) {
+    return undefined;
+  }
+
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (!uniqueIds.length) {
+    return {};
+  }
+
+  try {
+    const keys = uniqueIds.map(getFallbackRecordStorageKey);
+    const result = await chrome.storage.local.get(keys);
+    const snapshot: Record<string, SessionRecord> = {};
+    uniqueIds.forEach((id) => {
+      const record = result[getFallbackRecordStorageKey(id)] as SessionRecord | undefined;
+      if (record) {
+        snapshot[id] = cloneSessionRecord(record);
+      }
+    });
+    return snapshot;
+  } catch (error) {
+    logStoreError("Failed to read chrome.storage.local fallback records", error);
+    return undefined;
+  }
+}
+
+async function readChromeFallbackMetadataRecords(
+  ids: string[],
+): Promise<Record<string, SessionRecord> | undefined> {
+  const uniqueIds = [...new Set(ids.filter(Boolean))];
+  if (!uniqueIds.length) {
+    return {};
+  }
+
+  const metadataSnapshot = await readChromeFallbackMetadataSnapshot();
+  if (metadataSnapshot) {
+    const records: Record<string, SessionRecord> = {};
+    const missingIds: string[] = [];
+    uniqueIds.forEach((id) => {
+      const record = metadataSnapshot[id];
+      if (record) {
+        records[id] = cloneFallbackMetadataRecord(record);
+      } else {
+        missingIds.push(id);
+      }
+    });
+    if (!missingIds.length) {
+      return records;
+    }
+  }
+
+  const fullRecords = await readChromeFallbackRecords(uniqueIds);
+  if (!fullRecords) {
+    return undefined;
+  }
+
+  const metadataRecords = Object.fromEntries(
+    Object.entries(fullRecords).map(([id, record]) => [id, cloneFallbackMetadataRecord(record)]),
+  );
+  const nextSnapshot = {
+    ...(metadataSnapshot ?? {}),
+    ...metadataRecords,
+  };
+  await persistChromeFallbackMetadataSnapshot(nextSnapshot).catch((error) => {
+    logStoreError("Failed to backfill chrome.storage.local fallback metadata", error);
+  });
+
+  return {
+    ...Object.fromEntries(
+      uniqueIds
+        .map((id) => [id, metadataSnapshot?.[id]] as const)
+        .filter((entry): entry is readonly [string, SessionRecord] => Boolean(entry[1])),
+    ),
+    ...metadataRecords,
+  };
+}
+
+async function saveChromeFallbackRecord(record: SessionRecord): Promise<void> {
+  if (!hasChromeStorageFallback()) {
+    return;
+  }
+
+  try {
+    await enqueueFallbackMutation(async () => {
+      await migrateLegacyChromeFallbackIfNeeded();
+      const index = (await readChromeFallbackIndex()) ?? [];
+      const nextIndex = index.includes(record.id) ? index : [...index, record.id];
+      const metadataSnapshot = (await readChromeFallbackMetadataSnapshot()) ?? {};
+      await chrome.storage.local.set({
+        [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+        [FALLBACK_METADATA_STORAGE_KEY]: {
+          ...metadataSnapshot,
+          [record.id]: cloneFallbackMetadataRecord(record),
+        },
+        [getFallbackRecordStorageKey(record.id)]: cloneSessionRecord(record),
+      });
+    });
+  } catch (error) {
+    throw buildFallbackWriteError("세션", error);
+  }
+}
+
+async function deleteChromeFallbackRecord(id: string): Promise<void> {
+  if (!hasChromeStorageFallback()) {
+    return;
+  }
+
+  try {
+    await enqueueFallbackMutation(async () => {
+      await migrateLegacyChromeFallbackIfNeeded();
+      const index = (await readChromeFallbackIndex()) ?? [];
+      const nextIndex = index.filter((item) => item !== id);
+      const metadataSnapshot = (await readChromeFallbackMetadataSnapshot()) ?? {};
+      delete metadataSnapshot[id];
+      await chrome.storage.local.set({
+        [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
+        [FALLBACK_METADATA_STORAGE_KEY]: metadataSnapshot,
+      });
+      await chrome.storage.local.remove(getFallbackRecordStorageKey(id));
+    });
+  } catch (error) {
+    throw buildFallbackWriteError("세션 삭제", error);
+  }
+}
+
+async function clearChromeFallbackRecordsForTests(): Promise<void> {
+  if (!hasChromeStorageFallback()) {
+    return;
+  }
+
+  try {
+    const all = await chrome.storage.local.get(null);
+    const keys = getFallbackStorageKeys(all);
+    if (keys.length) {
+      await chrome.storage.local.remove(keys);
+    }
+  } catch (error) {
+    logStoreError("Failed to clear chrome.storage.local fallback", error);
+  }
+}
+
+async function clearFallbackRecords(action: string): Promise<void> {
+  memoryFallbackStore.clear();
+  if (!hasChromeStorageFallback()) {
+    return;
+  }
+
+  try {
+    await enqueueFallbackMutation(async () => {
+      const all = await chrome.storage.local.get(null);
+      const keys = getFallbackStorageKeys(all);
+      if (keys.length) {
+        await chrome.storage.local.remove(keys);
+      }
+    });
+  } catch (error) {
+    throw buildFallbackWriteError(action, error);
+  }
+}
+
+function readCursorRecords(
+  source: IDBObjectStore | IDBIndex,
+  options: {
+    direction?: IDBCursorDirection;
+    limit?: number;
+    offset?: number;
+    query?: IDBValidKey | IDBKeyRange | null;
+  } = {},
+): Promise<SessionRecord[]> {
+  const direction = options.direction ?? "next";
+  const limit = Math.max(1, options.limit ?? Number.MAX_SAFE_INTEGER);
+  const offset = Math.max(0, options.offset ?? 0);
+  const query = options.query ?? null;
+
+  return new Promise<SessionRecord[]>((resolve, reject) => {
+    const records: SessionRecord[] = [];
+    const request = source.openCursor(query, direction);
+    let skipped = false;
+
+    request.onsuccess = () => {
+      const cursor = request.result;
+      if (!cursor || records.length >= limit) {
+        resolve(records);
+        return;
+      }
+
+      if (offset > 0 && !skipped) {
+        skipped = true;
+        cursor.advance(offset);
+        return;
+      }
+
+      records.push(cursor.value as SessionRecord);
+      if (records.length >= limit) {
+        resolve(records);
+        return;
+      }
+      cursor.continue();
+    };
+    request.onerror = () => reject(request.error ?? new Error("IndexedDB cursor request failed"));
+  });
+}
+
+async function listIndexedDbSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
+  return withTransaction("readonly", async (store) => {
+    const limit = Math.max(1, options.limit ?? 100);
+    if (store.indexNames.contains("paging")) {
+      return (await readCursorRecords(store.index("paging"), {
+        direction: "prev",
+        limit,
+      })).map((record) =>
+        normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
+      );
+    }
+
+    return (await readCursorRecords(store.index("updatedAt"), {
+      direction: "prev",
+      limit,
+    })).map((record) =>
+      normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
+    );
+  });
+}
+
+async function listIndexedDbSessionPage(
+  options: SessionPageOptions,
+): Promise<SessionPageResult> {
+  return withTransaction("readonly", async (store) => {
+    const pageSize = Math.max(1, options.pageSize);
+    if (!store.indexNames.contains("paging")) {
+      const allSessions = sortSessions(
+        ((await withRequest(store.getAll())) as IndexedDbSessionRecord[]).map((record) =>
+          normalizeIndexedDbSessionMetadataRecord(record),
+        ),
+        { limit: Number.MAX_SAFE_INTEGER },
+      );
+      const filteredSessions = options.starredOnly
+        ? allSessions.filter((session) => session.starred)
+        : allSessions;
+      const totalCount = filteredSessions.length;
+      const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+      const page = Math.min(Math.max(1, options.page), pageCount);
+      const start = (page - 1) * pageSize;
+
+      return {
+        sessions: filteredSessions.slice(start, start + pageSize).map(cloneSessionRecord),
+        totalCount,
+        page,
+        pageSize,
+      };
+    }
+
+    const pagingIndex = store.index("paging");
+    const query = options.starredOnly
+      ? IDBKeyRange.bound("1|", "1|\uffff")
+      : null;
+    const totalCount = await withRequest(pagingIndex.count(query ?? undefined));
+    const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+    const page = Math.min(Math.max(1, options.page), pageCount);
+    const start = (page - 1) * pageSize;
+    const sessions =
+      totalCount > 0
+        ? await readCursorRecords(pagingIndex, {
+            direction: "prev",
+            query,
+            offset: start,
+            limit: pageSize,
+          })
+        : [];
+
+    return {
+      sessions: sessions.map((record) =>
+        normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
+      ),
+      totalCount,
+      page,
+      pageSize,
+    };
+  });
+}
+
+async function listIndexedDbLineageSessions(lineageId: string): Promise<SessionRecord[]> {
+  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
+    const metadataRecords = sessionStore.indexNames.contains("lineageId")
+      ? ((await readCursorRecords(sessionStore.index("lineageId"), {
+          direction: "next",
+          query: lineageId,
+        })) as IndexedDbSessionRecord[])
+      : ((await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[]).filter(
+          (record) => resolveSessionLineageId(record.id, record.lineageId) === lineageId,
+        );
+
+    return Promise.all(
+      metadataRecords.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
+    );
+  });
+}
+
+async function listAllIndexedDbSessions(): Promise<SessionRecord[]> {
+  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
+    const all = (await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[];
+    return Promise.all(
+      all.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
+    );
+  });
+}
+
+async function listIndexedDbSessionIds(): Promise<string[]> {
+  return withTransaction("readonly", async (store) => {
+    const storeWithGetAllKeys = store as IDBObjectStore & {
+      getAllKeys?: () => IDBRequest<IDBValidKey[]>;
+    };
+
+    if (typeof storeWithGetAllKeys.getAllKeys === "function") {
+      const keys = await withRequest(storeWithGetAllKeys.getAllKeys());
+      return keys.filter((key): key is string => typeof key === "string");
+    }
+
+    const records = await withRequest(store.getAll() as IDBRequest<Array<{ id?: unknown }>>);
+    return (records as Array<{ id?: unknown }>)
+      .map((record) => record.id)
+      .filter((id): id is string => typeof id === "string");
+  });
+}
+
+async function listFallbackSessionIds(): Promise<string[]> {
+  const index = await readChromeFallbackIndex();
+  if (index) {
+    return [...index];
+  }
+
+  return [...memoryFallbackStore.keys()];
+}
+
+async function saveFallbackRecord(session: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  const record = cloneSessionRecord(session);
+  memoryFallbackStore.set(record.id, cloneSessionRecord(record));
+  await saveChromeFallbackRecord(record);
+  return cloneSessionRecord(record);
+}
+
+async function loadFallbackRecord(id: string): Promise<SessionRecord | undefined> {
+  if (!id) {
+    return undefined;
+  }
+
+  const index = await readChromeFallbackIndex();
+  if (index) {
+    const records = await readChromeFallbackRecords([id]);
+    if (records && records[id]) {
+      memoryFallbackStore.set(id, cloneSessionRecord(records[id]));
+      return cloneSessionRecord(records[id]);
+    }
+  }
+
+  const record = memoryFallbackStore.get(id);
+  return record ? cloneSessionRecord(record) : undefined;
+}
+
+async function listFallbackRecords(options: SessionListOptions = {}): Promise<SessionRecord[]> {
+  const index = await readChromeFallbackIndex();
+  if (index) {
+    const records = await readChromeFallbackRecords(index);
+    if (records) {
+      setMemorySnapshot(records);
+      return sortSessions(Object.values(records), options);
+    }
+  }
+
+  return sortSessions([...memoryFallbackStore.values()], options);
+}
+
+async function listFallbackMetadataRecords(options: SessionListOptions = {}): Promise<SessionRecord[]> {
+  const index = await readChromeFallbackIndex();
+  if (index) {
+    const records = await readChromeFallbackMetadataRecords(index);
+    if (records) {
+      return sortSessions(Object.values(records), options);
+    }
+  }
+
+  return sortSessions(
+    [...memoryFallbackStore.values()].map(cloneFallbackMetadataRecord),
+    options,
+  );
+}
+
+async function deleteFallbackRecord(id: string): Promise<void> {
+  if (!id) {
+    return;
+  }
+
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  memoryFallbackStore.delete(id);
+  await deleteChromeFallbackRecord(id);
+}
+
+function stopRunningRecord(record: SessionRecord): SessionRecord {
+  const stoppedAt = record.updatedAt || new Date().toISOString();
+  const entries = normalizeEntries(record.entries);
+
+  return {
+    ...record,
+    version: SESSION_RECORD_VERSION,
+    status: "stopped",
+    endedAt: record.endedAt ?? stoppedAt,
+    updatedAt: stoppedAt,
+    subtitleCount: entries.length,
+    charCount: getSessionCharCount(entries),
+    entries,
+  };
+}
+
+async function preserveStoredSessionMetadata(record: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  const existingRecord = await loadSession(record.id);
+  return mergeEditableSessionMetadata(record, existingRecord);
+}
+
+async function writeSessionRecord(
+  record: SessionRecord,
+  options: {
+    allowFallbackOnIndexedDbError?: boolean;
+    notifyRevision?: boolean;
+  } = {},
+): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  const allowFallbackOnIndexedDbError = options.allowFallbackOnIndexedDbError !== false;
+  const notifyRevision = options.notifyRevision !== false;
+  const indexedDbResult = await tryIndexedDb(async () => {
+    const chunks = buildSessionEntryChunks(record.id, record.entries, SESSION_ENTRY_CHUNK_SIZE);
+    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
+      const previousRecord = (await withRequest(
+        sessionStore.get(record.id),
+      )) as IndexedDbSessionRecord | undefined;
+      const metadataRecord = toIndexedDbRecord(record);
+      await writeChunkedSessionRecord(chunkStore, metadataRecord, chunks, previousRecord);
+      await withRequest(sessionStore.put(metadataRecord));
+      return record;
+    });
+    return record;
+  });
+
+  if (indexedDbResult.ok && indexedDbResult.value) {
+    await bestEffortDeleteFallbackRecord(record.id);
+    await clearQueuedExitPersistRecordsUpTo(record.id, record.updatedAt);
+    if (notifyRevision) {
+      await bumpSessionLibraryRevision();
+    }
+    return cloneSessionRecord(indexedDbResult.value);
+  }
+
+  if (hasExtensionContextInvalidated() || markExtensionContextInvalidated(indexedDbResult.error)) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  if (!allowFallbackOnIndexedDbError && indexedDbResult.error) {
+    throw indexedDbResult.error instanceof Error
+      ? indexedDbResult.error
+      : new Error("IndexedDB session write failed");
+  }
+
+  const savedFallbackRecord = await saveFallbackRecord(record);
+  await clearQueuedExitPersistRecordsUpTo(savedFallbackRecord.id, savedFallbackRecord.updatedAt);
+  if (notifyRevision) {
+    await bumpSessionLibraryRevision();
+  }
+  return savedFallbackRecord;
+}
+
+export async function saveSession(session: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  const record = await preserveStoredSessionMetadata(
+    normalizeSessionRecord(
+      {
+        ...session,
+        status: session.status === "running" ? "saved" : session.status,
+      },
+      {
+        forceStatus: session.status === "running" ? "saved" : session.status,
+      },
+    ),
+  );
+  return writeSessionRecord(record);
+}
+
+export async function updateRunningSession(session: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  const record = await preserveStoredSessionMetadata(
+    normalizeSessionRecord(
+      {
+        ...session,
+        status: "running",
+      },
+      {
+        forceStatus: "running",
+      },
+    ),
+  );
+  return writeSessionRecord(record);
+}
+
+export async function upsertSessionRecord(session: SessionRecord): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  const record = normalizeSessionRecord(session, {
+    forceStatus: session.status,
+  });
+  return writeSessionRecord(record);
+}
+
+export async function updateSessionMetadata(
+  sessionId: string,
+  patch: SessionMetadataPatch,
+): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+  if (!sessionId) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const existingRecord = await loadSession(sessionId);
+  if (!existingRecord) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const record = applySessionMetadataPatch(existingRecord, patch, updatedAt);
+  return writeSessionRecord(record);
+}
+
+export async function updateSessionLineageMetadata(
+  lineageId: string,
+  patch: SessionMetadataPatch,
+): Promise<SessionRecord[]> {
+  const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
+  if (!safeLineageId) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const segments = await listSessionLineageSegments(safeLineageId);
+  if (!segments.length) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const updatedAt = new Date().toISOString();
+  const records = await Promise.all(
+    segments.map((segment) =>
+      writeSessionRecord(applySessionMetadataPatch(segment, patch, updatedAt), {
+        notifyRevision: false,
+      }),
+    ),
+  );
+  await bumpSessionLibraryRevision();
+  return records.map(cloneSessionRecord);
+}
+
+export async function updateSessionContent(
+  sessionId: string,
+  patch: SessionContentPatch,
+): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+  if (!sessionId) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  const existingRecord = await loadSession(sessionId);
+  if (!existingRecord) {
+    throw new Error("기록을 찾지 못했습니다.");
+  }
+
+  return writeSessionRecord(
+    applySessionContentPatch(existingRecord, patch, new Date().toISOString()),
+  );
+}
+
+export async function loadSession(id: string): Promise<SessionRecord | undefined> {
+  if (!id) {
+    return undefined;
+  }
+
+  const [indexedDbResult, fallbackRecord] = await Promise.all([
+    tryIndexedDb(async () =>
+      withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
+        const record = (await withRequest(sessionStore.get(id))) as IndexedDbSessionRecord | undefined;
+        if (!record) {
+          return undefined;
+        }
+
+        return hydrateIndexedDbSessionRecord(record, chunkStore);
+      }),
+    ),
+    loadFallbackRecord(id),
+  ]);
+
+  const merged = mergeSessionCollections(
+    indexedDbResult.ok && indexedDbResult.value
+      ? [cloneSessionRecord(indexedDbResult.value)]
+      : [],
+    fallbackRecord
+      ? [normalizeSessionRecord(fallbackRecord as StoredSessionRecord, { preserveTimestamps: true })]
+      : [],
+  );
+
+  return merged[0] ? cloneSessionRecord(merged[0]) : undefined;
+}
+
+export async function loadSessionsByIds(ids: string[]): Promise<SessionRecord[]> {
+  const uniqueIds = [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];
+  const sessions = await Promise.all(uniqueIds.map((id) => loadSession(id)));
+  return sessions.filter((session): session is SessionRecord => Boolean(session));
+}
+
+function toSessionLibraryPreview(record: SessionRecord): SessionLibraryPreview {
+  return {
+    id: record.id,
+    title: record.title,
+    committeeName: record.committeeName,
+    updatedAt: record.updatedAt,
+  };
+}
+
+export async function getSessionLibraryOverview(
+  previewLimit = 3,
+): Promise<SessionLibraryOverview> {
+  const safePreviewLimit = Math.max(0, previewLimit);
+  const fallbackSessionIds = await listFallbackSessionIds();
+  if (!fallbackSessionIds.length) {
+    const indexedDbResult = await tryIndexedDb(async () =>
+      listIndexedDbSessionPage({
+        page: 1,
+        pageSize: Math.max(1, safePreviewLimit || 1),
+      }),
+    );
+    if (indexedDbResult.ok && indexedDbResult.value) {
+      return {
+        totalCount: indexedDbResult.value.totalCount,
+        previewSessions: indexedDbResult.value.sessions
+          .slice(0, safePreviewLimit)
+          .map(toSessionLibraryPreview),
+      };
+    }
+  }
+
+  const [indexedDbIdsResult, previewSessions] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbSessionIds()),
+    safePreviewLimit > 0 ? listSessions({ limit: safePreviewLimit }) : Promise.resolve([]),
+  ]);
+  const uniqueIds = new Set<string>(fallbackSessionIds);
+  if (indexedDbIdsResult.ok && indexedDbIdsResult.value) {
+    indexedDbIdsResult.value.forEach((id) => uniqueIds.add(id));
+  }
+
+  return {
+    totalCount: uniqueIds.size,
+    previewSessions: previewSessions.slice(0, safePreviewLimit).map(toSessionLibraryPreview),
+  };
+}
+
+export async function buildSessionLibraryBackupExport(
+  options: BuildSessionLibraryBackupExportOptions = {},
+): Promise<LibraryBackupExport> {
+  const pageSize = Math.max(1, options.pageSize ?? 200);
+
+  emitLongTaskProgress(options.onProgress, {
+    kind: "backup",
+    phase: "prepare",
+    completed: 0,
+    total: 0,
+    message: "전체 JSON 백업을 준비하고 있습니다.",
+  });
+
+  emitLongTaskProgress(options.onProgress, {
+    kind: "backup",
+    phase: "package",
+    completed: 0,
+    total: 0,
+    message: "전체 JSON 백업 파일을 생성하고 있습니다.",
+  });
+
+  const now = new Date();
+  const { content, sessionCount } = await stringifySessionBackupBundleIncrementally({
+    exportedAt: now.toISOString(),
+    pageSize,
+    signal: options.signal,
+    listSessionsPage: async ({ page, pageSize: nextPageSize }) =>
+      listSessionsPage({
+        page,
+        pageSize: nextPageSize,
+      }),
+    loadSessionsByIds,
+    onProgress: (completed, total) => {
+      emitLongTaskProgress(options.onProgress, {
+        kind: "backup",
+        phase: "package",
+        completed,
+        total,
+        message: total
+          ? `전체 JSON 백업 파일을 생성하고 있습니다. (${completed} / ${total})`
+          : "백업 파일을 생성하고 있습니다.",
+      });
+    },
+  });
+  throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
+
+  return {
+    sessionCount,
+    payload: {
+      filename: buildSessionBackupFilename(now),
+      format: "json",
+      mimeType: "application/json;charset=utf-8",
+      content,
+    },
+  };
+}
+
+export async function listSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbSessions(options)),
+    listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+
+  return sortSessions(
+    mergeSessionCollections(
+      indexedDbResult.ok && indexedDbResult.value
+        ? indexedDbResult.value.map((record) =>
+            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+          )
+        : [],
+      fallbackRecords.map(toSessionMetadataOnly),
+    ),
+    options,
+  );
+}
+
+export async function listSessionLineageSegments(lineageId: string): Promise<SessionRecord[]> {
+  const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
+  if (!safeLineageId) {
+    return [];
+  }
+
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbLineageSessions(safeLineageId)),
+    listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+  const fallbackLineageIds = fallbackRecords
+    .filter((session) => resolveSessionLineageId(session.id, session.lineageId) === safeLineageId)
+    .map((session) => session.id);
+  const fallbackLineageRecords = await Promise.all(
+    fallbackLineageIds.map((sessionId) => loadFallbackRecord(sessionId)),
+  );
+
+  return sortSessionSegments(
+    mergeSessionCollections(
+      indexedDbResult.ok && indexedDbResult.value ? indexedDbResult.value : [],
+      fallbackLineageRecords.filter((record): record is SessionRecord => Boolean(record)),
+    ),
+  );
+}
+
+export async function listSessionsPage(
+  options: SessionPageOptions,
+): Promise<SessionPageResult> {
+  const fallbackIds = await listFallbackSessionIds();
+  if (!fallbackIds.length) {
+    const indexedDbResult = await tryIndexedDb(async () => listIndexedDbSessionPage(options));
+    if (indexedDbResult.ok && indexedDbResult.value) {
+      return indexedDbResult.value;
+    }
+  }
+
+  const [indexedDbMetadataResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER })),
+    listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+  const metadataSessions = sortSessions(
+    mergeSessionCollections(
+      indexedDbMetadataResult.ok && indexedDbMetadataResult.value
+        ? indexedDbMetadataResult.value.map(toSessionMetadataOnly)
+        : [],
+      fallbackRecords.map(toSessionMetadataOnly),
+    ),
+    { limit: Number.MAX_SAFE_INTEGER },
+  );
+  const filteredSessions = options.starredOnly
+    ? metadataSessions.filter((session) => session.starred)
+    : metadataSessions;
+  const pageSize = Math.max(1, options.pageSize);
+  const totalCount = filteredSessions.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, options.page), pageCount);
+  const start = (page - 1) * pageSize;
+  const pageMetadataSessions = filteredSessions.slice(start, start + pageSize);
+
+  return {
+    sessions: pageMetadataSessions.map(toSessionMetadataOnly),
+    totalCount,
+    page,
+    pageSize,
+  };
+}
+
+export async function listSessionLineagesPage(
+  options: SessionPageOptions,
+): Promise<SessionLineagePageResult> {
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER })),
+    listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+  const allSessions = mergeSessionCollections(
+    indexedDbResult.ok && indexedDbResult.value
+      ? indexedDbResult.value.map(toSessionMetadataOnly)
+      : [],
+    fallbackRecords.map(toSessionMetadataOnly),
+  );
+  const summaries = buildSessionLineageSummaries(allSessions);
+  const filteredSummaries = options.starredOnly
+    ? summaries.filter((summary) => summary.starred)
+    : summaries;
+  const pageSize = Math.max(1, options.pageSize);
+  const totalCount = filteredSummaries.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(Math.max(1, options.page), pageCount);
+  const start = (page - 1) * pageSize;
+
+  return {
+    lineages: filteredSummaries.slice(start, start + pageSize).map(cloneLineageSummary),
+    totalCount,
+    page,
+    pageSize,
+  };
+}
+
+function normalizeSearchToken(value: string | undefined): string {
+  return String(value ?? "").trim().toLocaleLowerCase();
+}
+
+function includesSearchToken(value: string | undefined, token: string): boolean {
+  return Boolean(token) && String(value ?? "").toLocaleLowerCase().includes(token);
+}
+
+function buildSearchHits(session: SessionRecord, token: string): SessionSearchHit[] {
+  if (!token) {
+    return [];
+  }
+
+  const hits: SessionSearchHit[] = [];
+  if (includesSearchToken(session.title, token)) {
+    hits.push({ field: "title", text: session.title });
+  }
+  if (includesSearchToken(session.committeeName, token)) {
+    hits.push({ field: "committeeName", text: session.committeeName });
+  }
+  if (includesSearchToken(session.note, token)) {
+    hits.push({ field: "note", text: session.note });
+  }
+  if (includesSearchToken(session.category, token)) {
+    hits.push({ field: "category", text: session.category ?? "" });
+  }
+  (session.tags ?? []).forEach((tag) => {
+    if (includesSearchToken(tag, token)) {
+      hits.push({ field: "tag", text: tag });
+    }
+  });
+  session.entries.forEach((entry) => {
+    if (includesSearchToken(entry.text, token)) {
+      hits.push({ field: "entry", entryId: entry.id, text: entry.text });
+    }
+    if (includesSearchToken(entry.entryNote, token)) {
+      hits.push({ field: "entry", entryId: entry.id, text: entry.entryNote ?? "" });
+    }
+  });
+  return hits;
+}
+
+function sessionMatchesSearchFilters(
+  session: SessionRecord,
+  options: SessionSearchOptions,
+  token: string,
+): SessionSearchResult | null {
+  if (options.starredOnly && !session.starred) {
+    return null;
+  }
+
+  const tag = normalizeSearchToken(options.tag);
+  if (tag && !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)) {
+    return null;
+  }
+
+  const category = normalizeSearchToken(options.category);
+  if (category && normalizeSearchToken(session.category) !== category) {
+    return null;
+  }
+
+  if (options.highlightedOnly && !session.entries.some((entry) => entry.highlighted)) {
+    return null;
+  }
+
+  const hits = buildSearchHits(session, token);
+  if (token && hits.length === 0) {
+    return null;
+  }
+
+  return {
+    session: cloneSessionRecord(session),
+    matchCount: token ? hits.length : 1,
+    firstHit: hits[0] ?? null,
+  };
+}
+
+export async function searchSessions(
+  options: SessionSearchOptions,
+): Promise<SessionSearchPageResult> {
+  const pageSize = Math.max(1, options.pageSize);
+  const requestedPage = Math.max(1, options.page);
+  const token = normalizeSearchToken(options.query);
+  const [indexedDbResult, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listAllIndexedDbSessions()),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+  const allSessions = sortSessions(
+    mergeSessionCollections(
+      indexedDbResult.ok && indexedDbResult.value
+        ? indexedDbResult.value.map((record) =>
+            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+          )
+        : [],
+      fallbackRecords.map((record) =>
+        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+      ),
+    ),
+    { limit: Number.MAX_SAFE_INTEGER },
+  );
+  const results = allSessions
+    .map((session) => sessionMatchesSearchFilters(session, options, token))
+    .filter((result): result is SessionSearchResult => Boolean(result));
+  const totalCount = results.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const start = (page - 1) * pageSize;
+
+  return {
+    results: results.slice(start, start + pageSize),
+    totalCount,
+    page,
+    pageSize,
+  };
+}
+
+export async function searchSessionLineagesPage(
+  options: SessionSearchOptions,
+): Promise<SessionLineagePageResult> {
+  const pageSize = Math.max(1, options.pageSize);
+  const requestedPage = Math.max(1, options.page);
+  const sessionSearch = await searchSessions({
+    ...options,
+    page: 1,
+    pageSize: Number.MAX_SAFE_INTEGER,
+  });
+  const summaries = buildSessionLineageSummaries(
+    sessionSearch.results.map((result) => result.session),
+  );
+  const totalCount = summaries.length;
+  const pageCount = Math.max(1, Math.ceil(totalCount / pageSize));
+  const page = Math.min(requestedPage, pageCount);
+  const start = (page - 1) * pageSize;
+
+  return {
+    lineages: summaries.slice(start, start + pageSize).map(cloneLineageSummary),
+    totalCount,
+    page,
+    pageSize,
+  };
+}
+
+export async function deleteSession(id: string): Promise<void> {
+  if (!id) {
+    return;
+  }
+
+  const indexedDbResult = await tryIndexedDb(async () => {
+    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
+      const record = (await withRequest(sessionStore.get(id))) as IndexedDbSessionRecord | undefined;
+      const chunkCount =
+        typeof record?.entryChunkCount === "number" && record.entryChunkCount >= 0
+          ? record.entryChunkCount
+          : 0;
+      await Promise.all([
+        withRequest(sessionStore.delete(id)),
+        ...Array.from({ length: chunkCount }, (_value, index) =>
+          withRequest(chunkStore.delete(buildSessionEntryChunkKey(id, index))),
+        ),
+      ]);
+    });
+    return true;
+  });
+
+  if (indexedDbResult.ok && indexedDbResult.value) {
+    await bestEffortDeleteFallbackRecord(id);
+    await bumpSessionLibraryRevision();
+    return;
+  }
+
+  await deleteFallbackRecord(id);
+  await bumpSessionLibraryRevision();
+}
+
+export async function deleteSessionLineage(lineageId: string): Promise<void> {
+  const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
+  if (!safeLineageId) {
+    return;
+  }
+
+  const segments = await listSessionLineageSegments(safeLineageId);
+  const ids = segments.map((session) => session.id);
+  if (!ids.length) {
+    return;
+  }
+
+  await Promise.all(ids.map((id) => deleteSession(id)));
+}
+
+export async function deleteAllSessions(): Promise<void> {
+  const errors: string[] = [];
+  let clearedAnyStore = false;
+  const indexedDbResult = await tryIndexedDb(async () => {
+    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
+      await Promise.all([
+        withRequest(sessionStore.clear()),
+        withRequest(chunkStore.clear()),
+      ]);
+    });
+    return true;
+  });
+
+  if (indexedDbResult.ok && indexedDbResult.value) {
+    clearedAnyStore = true;
+  } else if (indexedDbResult.error) {
+    const message =
+      indexedDbResult.error instanceof Error
+        ? indexedDbResult.error.message
+        : "알 수 없는 오류";
+    errors.push(`IndexedDB 정리 실패: ${message}`);
+  }
+
+  try {
+    await clearFallbackRecords("전체 세션 삭제");
+    clearedAnyStore = true;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "알 수 없는 오류";
+    errors.push(`fallback 저장소 정리 실패: ${message}`);
+  }
+
+  if (clearedAnyStore) {
+    await bumpSessionLibraryRevision();
+  }
+  if (errors.length > 0) {
+    const partialSuccessLabel = clearedAnyStore ? " 다른 저장소 정리는 완료했습니다." : "";
+    throw new Error(`${errors.join(" / ")}.${partialSuccessLabel}`);
+  }
+}
+
+export async function importSessionRecords(
+  sessions: StoredSessionRecord[],
+  options: ImportSessionRecordsOptions = {},
+): Promise<SessionImportSummary> {
+  const importedById = new Map<string, SessionRecord>();
+  let sanitizedCount = 0;
+
+  emitLongTaskProgress(options.onProgress, {
+    kind: "import",
+    phase: "sanitize",
+    completed: 0,
+    total: sessions.length,
+    message: sessions.length
+      ? `가져올 기록을 정리하고 있습니다. (0 / ${sessions.length})`
+      : "가져올 기록이 없습니다.",
+  });
+
+  for (const session of sessions) {
+    throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
+    const normalized = normalizeSessionRecord(session, {
+      preserveTimestamps: true,
+      forceStatus: normalizeImportedSessionStatus(session.status),
+    });
+    const current = importedById.get(normalized.id);
+    if (!current || normalized.updatedAt.localeCompare(current.updatedAt) > 0) {
+      importedById.set(normalized.id, normalized);
+    }
+    sanitizedCount += 1;
+    emitLongTaskProgress(options.onProgress, {
+      kind: "import",
+      phase: "sanitize",
+      completed: sanitizedCount,
+      total: sessions.length,
+      message: `가져올 기록을 정리하고 있습니다. (${sanitizedCount} / ${sessions.length})`,
+    });
+  }
+
+  throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
+  emitLongTaskProgress(options.onProgress, {
+    kind: "import",
+    phase: "compare",
+    completed: 0,
+    total: importedById.size,
+    message: importedById.size
+      ? "기존 기록과 비교하고 있습니다."
+      : "가져올 기록이 없습니다.",
+  });
+  const existingSessions = await loadSessionsByIds([...importedById.keys()]);
+  throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
+  const existingById = new Map(existingSessions.map((session) => [session.id, session]));
+
+  let addedCount = 0;
+  let updatedCount = 0;
+  let keptCount = 0;
+  let failedCount = 0;
+  let processedCount = 0;
+  const summary = (): SessionImportSummary => ({
+    addedCount,
+    updatedCount,
+    keptCount,
+    failedCount,
+  });
+
+  emitLongTaskProgress(options.onProgress, {
+    kind: "import",
+    phase: "write",
+    completed: 0,
+    total: importedById.size,
+    message: importedById.size
+      ? `JSON 가져오기를 진행하고 있습니다. (0 / ${importedById.size})`
+      : "가져올 기록이 없습니다.",
+  });
+
+  for (const record of importedById.values()) {
+    if (options.signal?.aborted) {
+      if (addedCount > 0 || updatedCount > 0) {
+        await bumpSessionLibraryRevision();
+      }
+      throw createCancelledImportError(summary());
+    }
+
+    try {
+      const existing = existingById.get(record.id);
+      if (!existing) {
+        await writeSessionRecord(record, {
+          notifyRevision: false,
+        });
+        addedCount += 1;
+      } else if (record.updatedAt.localeCompare(existing.updatedAt) > 0) {
+        await writeSessionRecord(record, {
+          notifyRevision: false,
+        });
+        updatedCount += 1;
+      } else {
+        keptCount += 1;
+      }
+    } catch (error) {
+      failedCount += 1;
+      logStoreError(`Failed to import session ${record.id}`, error);
+    } finally {
+      processedCount += 1;
+      emitLongTaskProgress(options.onProgress, {
+        kind: "import",
+        phase: "write",
+        completed: processedCount,
+        total: importedById.size,
+        message: `JSON 가져오기를 진행하고 있습니다. (${processedCount} / ${importedById.size})`,
+      });
+    }
+  }
+
+  if (addedCount > 0 || updatedCount > 0) {
+    await bumpSessionLibraryRevision();
+  }
+
+  return {
+    addedCount,
+    updatedCount,
+    keptCount,
+    failedCount,
+  };
+}
+
+export async function exportSessionData(
+  session: SessionRecord,
+  format: ExportFormat,
+  options: SessionExportOptions = {},
+): Promise<ExportPayload> {
+  return createSessionExportPayload({
+    session,
+    format,
+    normalizeSessionRecord,
+    exportOptions: options,
+  });
+}
+
+export async function exportSessionLineageData(
+  lineageId: string,
+  format: ExportFormat,
+  options: SessionExportOptions = {},
+): Promise<ExportPayload> {
+  const segments = await listSessionLineageSegments(lineageId);
+  if (!segments.length) {
+    throw new Error("내보낼 연속 캡처 기록을 찾지 못했습니다.");
+  }
+
+  const mergedSession = mergeSessionSegments(segments);
+  const entries = Array.isArray(options.entryIds)
+    ? mergedSession.entries.filter((entry) => options.entryIds?.includes(entry.id))
+    : options.entries;
+
+  return createSessionExportPayload({
+    session: mergedSession,
+    format,
+    normalizeSessionRecord,
+    exportOptions: {
+      ...options,
+      entries,
+    },
+  });
+}
+
+export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySummary> {
+  const queuedRecords = (await listQueuedExitPersistRecords()).sort((left, right) =>
+    left.record.updatedAt.localeCompare(right.record.updatedAt),
+  );
+  let replayedCount = 0;
+  let skippedCount = 0;
+  let failedCount = 0;
+
+  for (const queuedRecord of queuedRecords) {
+    try {
+      const existingRecord = await loadSession(queuedRecord.sessionId);
+      if (
+        existingRecord &&
+        existingRecord.updatedAt.localeCompare(queuedRecord.record.updatedAt) >= 0
+      ) {
+        skippedCount += 1;
+        await clearQueuedExitPersistRecord(queuedRecord.sessionId);
+        continue;
+      }
+
+      await saveSession(queuedRecord.record);
+      replayedCount += 1;
+      await clearQueuedExitPersistRecord(queuedRecord.sessionId);
+    } catch (error) {
+      failedCount += 1;
+      logStoreError(`Failed to replay queued exit persist record for ${queuedRecord.sessionId}`, error);
+    }
+  }
+
+  return {
+    queuedCount: queuedRecords.length,
+    replayedCount,
+    skippedCount,
+    failedCount,
+  };
+}
+
+export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSummary> {
+  const [indexedDbRecords, fallbackRecords] = await Promise.all([
+    tryIndexedDb(async () => listAllIndexedDbSessions()),
+    listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
+  ]);
+
+  const indexedDbRunning =
+    indexedDbRecords.ok && indexedDbRecords.value
+      ? indexedDbRecords.value.filter((record) => record.status === "running")
+      : [];
+  const fallbackRunning = fallbackRecords.filter((record) => record.status === "running");
+  const statusById = new Map<
+    string,
+    {
+      indexedDbRequired: boolean;
+      fallbackRequired: boolean;
+      indexedDbClosed: boolean;
+      fallbackClosed: boolean;
+    }
+  >();
+
+  indexedDbRunning.forEach((record) => {
+    statusById.set(record.id, {
+      indexedDbRequired: true,
+      fallbackRequired: statusById.get(record.id)?.fallbackRequired ?? false,
+      indexedDbClosed: false,
+      fallbackClosed: statusById.get(record.id)?.fallbackClosed ?? false,
+    });
+  });
+  fallbackRunning.forEach((record) => {
+    const current = statusById.get(record.id);
+    statusById.set(record.id, {
+      indexedDbRequired: current?.indexedDbRequired ?? false,
+      fallbackRequired: true,
+      indexedDbClosed: current?.indexedDbClosed ?? false,
+      fallbackClosed: false,
+    });
+  });
+
+  if (indexedDbRunning.length) {
+    const indexedDbWriteResult = await tryIndexedDb(async () =>
+      withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
+        await Promise.all(
+          indexedDbRunning.map(async (record) => {
+            const stoppedRecord = stopRunningRecord(record);
+            const chunks = buildSessionEntryChunks(
+              stoppedRecord.id,
+              stoppedRecord.entries,
+              SESSION_ENTRY_CHUNK_SIZE,
+            );
+            const previousRecord = (await withRequest(
+              sessionStore.get(stoppedRecord.id),
+            )) as IndexedDbSessionRecord | undefined;
+            const metadataRecord = toIndexedDbRecord(stoppedRecord);
+            await writeChunkedSessionRecord(
+              chunkStore,
+              metadataRecord,
+              chunks,
+              previousRecord,
+            );
+            await withRequest(sessionStore.put(metadataRecord));
+          }),
+        );
+      }),
+    );
+    if (indexedDbWriteResult.ok) {
+      indexedDbRunning.forEach((record) => {
+        const current = statusById.get(record.id);
+        if (current) {
+          current.indexedDbClosed = true;
+        }
+      });
+    }
+  }
+
+  const fallbackResults = await Promise.allSettled(
+    fallbackRunning.map(async (record) => {
+      await saveFallbackRecord(stopRunningRecord(record));
+      return record.id;
+    }),
+  );
+  fallbackResults.forEach((result, index) => {
+    if (result.status !== "fulfilled") {
+      logStoreError(`Failed to close fallback running session ${fallbackRunning[index]?.id}`, result.reason);
+      return;
+    }
+    const current = statusById.get(result.value);
+    if (current) {
+      current.fallbackClosed = true;
+    }
+  });
+
+  const detectedCount = statusById.size;
+  const closedCount = [...statusById.values()].filter((status) => {
+    const indexedDbDone = status.indexedDbRequired ? status.indexedDbClosed : true;
+    const fallbackDone = status.fallbackRequired ? status.fallbackClosed : true;
+    return indexedDbDone && fallbackDone;
+  }).length;
+  if (closedCount > 0) {
+    await bumpSessionLibraryRevision();
+  }
+  return {
+    detectedCount,
+    closedCount,
+    failedCount: detectedCount - closedCount,
+  };
+}
+
+export async function resetSessionStoreForTests(): Promise<void> {
+  memoryFallbackStore.clear();
+  resetExtensionContextInvalidationForTests();
+  await clearChromeFallbackRecordsForTests();
+  await resetPersistRecoveryStateForTests();
+  if (typeof chrome !== "undefined" && chrome.storage?.local) {
+    await chrome.storage.local.remove(SESSION_LIBRARY_REVISION_STORAGE_KEY);
+  }
+  indexedDbAvailable = true;
+
+  if (dbPromise) {
+    try {
+      const db = await dbPromise;
+      db.close();
+    } catch {
+      // Ignore cached open failures while resetting test state.
+    }
+    dbPromise = null;
+  }
+
+  if (typeof indexedDB === "undefined") {
+    return;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const request = indexedDB.deleteDatabase(SESSION_DB_NAME);
+    request.onsuccess = () => resolve();
+    request.onerror = () =>
+      reject(request.error ?? new Error("Failed to reset session database"));
+    request.onblocked = () => resolve();
+  });
+}

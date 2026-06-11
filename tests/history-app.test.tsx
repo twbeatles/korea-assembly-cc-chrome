@@ -39,6 +39,7 @@ const sessionStoreMocks = vi.hoisted(() => ({
   listSessionsPage: vi.fn(),
   loadSession: vi.fn(),
   loadSessionsByIds: vi.fn(),
+  searchSessionLineagesPage: vi.fn(),
   searchSessions: vi.fn(),
   SESSION_NOTE_MAX_LENGTH: 4096,
   updateSessionContent: vi.fn(),
@@ -206,6 +207,12 @@ describe("history app", () => {
     sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
       ids.includes(session.id) ? [session] : [],
     );
+    sessionStoreMocks.searchSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(session)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
     sessionStoreMocks.getSessionLibraryOverview.mockResolvedValue({
       totalCount: 1,
       previewSessions: [
@@ -829,6 +836,51 @@ describe("history app", () => {
     await waitFor(() => {
       expect(noteInput?.value).toBe("");
     });
+  });
+
+  it("uses lineage-first search when history filters are active", async () => {
+    const matchedSession = buildSession({
+      id: "session_search_match",
+      title: "민생 예산",
+      committeeName: "민생 예산",
+      tags: ["예산"],
+      category: "재정",
+    });
+    sessionStoreMocks.searchSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(matchedSession)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+
+    render(<App />);
+    await screen.findByRole("button", { name: "원본 페이지 열기" });
+
+    fireEvent.change(
+      screen.getByPlaceholderText("전체 기록에서 제목, 메모, 자막 찾기"),
+      {
+        target: { value: "민생" },
+      },
+    );
+    fireEvent.change(screen.getByPlaceholderText("태그 필터"), {
+      target: { value: "예산" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("카테고리 필터"), {
+      target: { value: "재정" },
+    });
+
+    await waitFor(() => {
+      expect(sessionStoreMocks.searchSessionLineagesPage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          query: "민생",
+          tag: "예산",
+          category: "재정",
+          highlightedOnly: false,
+          starredOnly: false,
+        }),
+      );
+    });
+    expect(screen.getAllByText("민생 예산").length).toBeGreaterThan(0);
   });
 
   it("saves inline entry text, speaker, labels, and note metadata", async () => {

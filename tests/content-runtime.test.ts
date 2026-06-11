@@ -8,6 +8,10 @@ import {
   buildSegmentRolloverNotice,
 } from "../src/content/runtime/segment-rollover";
 import {
+  DUPLICATE_START_CAPTURE_NOTICE,
+  shouldIgnoreStartCapture,
+} from "../src/content/runtime/capture-start";
+import {
   buildPreparedSessionRecord,
   buildVisibleSessionState,
 } from "../src/content/runtime/session-records";
@@ -169,5 +173,11 @@ describe("content runtime helpers", () => {
   it("formats rollout notices by boundary reason", () => {
     expect(buildSegmentRolloverNotice(2, "entry_limit")).toContain("세그먼트 2");
     expect(buildSegmentRolloverNotice(3, "duration_limit")).toContain("장시간 수집 안정성");
+  });
+
+  it("guards duplicate capture start requests while already running", () => {
+    expect(shouldIgnoreStartCapture("running")).toBe(true);
+    expect(shouldIgnoreStartCapture("idle")).toBe(false);
+    expect(DUPLICATE_START_CAPTURE_NOTICE).toContain("이미 실행 중");
   });
 });

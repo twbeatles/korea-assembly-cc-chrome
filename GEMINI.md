@@ -43,13 +43,14 @@ npm run verify:e2e
 - `src/background/service-worker.ts`
 - `src/content/content-script.ts`
 - `src/content/app/context.ts`
-- `src/content/app/runtime.ts`
+- `src/content/app/runtime.ts` (public facade)
+- `src/content/app/runtime/implementation.ts`
 - `src/content/runtime/*`
 - `src/content/inpage-panel.ts`
 - `src/content/inpage-panel/*`
-- `src/popup/App.tsx`
-- `src/options/App.tsx`
-- `src/history/App.tsx`
+- `src/popup/App.tsx` (public facade), `src/popup/app/*`
+- `src/options/App.tsx` (public facade), `src/options/app/*`
+- `src/history/App.tsx` (public facade), `src/history/app/*`
 - `src/offscreen/main.ts`
 
 ### 4.2 자막 수집 코어
@@ -66,7 +67,7 @@ npm run verify:e2e
 
 ### 4.3 저장 / 내보내기
 
-- `src/storage/session-store.ts`
+- `src/storage/session-store.ts` (public facade)
 - `src/storage/session-store/*`
 - `src/storage/session-backup.ts`
 - `src/storage/settings-store.ts`

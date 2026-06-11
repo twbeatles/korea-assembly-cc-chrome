@@ -40,6 +40,8 @@ src/
     app/
       context.ts
       runtime.ts
+      runtime/
+        implementation.ts
     inpage-panel.ts
     inpage-panel/
       controller/
@@ -65,11 +67,15 @@ src/
   storage/
     session-store.ts
     session-store/
+      implementation.ts
     session-backup.ts
     settings-store.ts
   popup/
+    app/
   options/
+    app/
   history/
+    app/
     page-blob-download.ts
 tests/
 README.md
@@ -110,7 +116,7 @@ offscreen.html
 - observer, local polling, top-frame fallback 은 모두 같은 `NormalizedCaptureEvent` 형태로 합류합니다.
 - top frame 에서는 자막 공백을 즉시 reset 하지 않고 약 1초 grace 뒤에만 실제 reset 을 commit 합니다.
 - observer 실패 또는 타겟 미탐색 시 polling fallback 이 동작합니다.
-- `content-script.ts` 는 manifest가 로드하는 bootstrap facade 이며, `src/content/app/runtime.ts` 가 top frame 세션 상태와 subtitle pipeline orchestration 을 소유합니다.
+- `content-script.ts` 는 manifest가 로드하는 bootstrap facade 입니다. `src/content/app/runtime.ts` 는 공개 import 경로를 보존하는 facade 이며, `src/content/app/runtime/implementation.ts` 가 top frame 세션 상태와 subtitle pipeline orchestration 을 소유합니다.
 - `src/content/inpage-panel.ts` 는 기존 공개 import 경로를 유지하는 facade 이며, 실제 패널 구현은 `src/content/inpage-panel/` 아래의 state / DOM builder / renderer / style 모듈로 분리되어 있습니다.
 
 ## 5. subtitle pipeline 고정 의미론

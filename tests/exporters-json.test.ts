@@ -17,6 +17,17 @@ const session: SessionRecord = {
   starred: true,
   pinnedAt: "2026-03-10T09:00:04.000Z",
   note: "중요 세션",
+  tags: ["예산", "속기"],
+  category: "회의록",
+  speakerLabels: { primary: "위원장" },
+  qualityStats: {
+    health: "good",
+    entryCount: 1,
+    charCount: 5,
+    estimatedBytes: 512,
+    fallbackOnly: false,
+    lastComputedAt: "2026-03-10T09:00:04.000Z",
+  },
   lineageId: "lineage_json",
   segmentNumber: 2,
   entries: [
@@ -48,6 +59,10 @@ describe("JSON exporter", () => {
     expect(parsed.starred).toBe(true);
     expect(parsed.pinnedAt).toBe("2026-03-10T09:00:04.000Z");
     expect(parsed.note).toBe("중요 세션");
+    expect(parsed.tags).toEqual(["예산", "속기"]);
+    expect(parsed.category).toBe("회의록");
+    expect(parsed.speakerLabels?.primary).toBe("위원장");
+    expect(parsed.qualityStats?.health).toBe("good");
     expect(parsed.lineageId).toBe("lineage_json");
     expect(parsed.segmentNumber).toBe(2);
     expect(parsed.entries).toHaveLength(1);

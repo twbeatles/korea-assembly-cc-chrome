@@ -1,6 +1,6 @@
 # 잠재 이슈 및 보강 후보 목록
 
-이 문서는 현재 저장소(`Chrome Extension MV3 + TypeScript + React + Vite`) 구현을 `CLAUDE.md` / `README.md` / 코드 본체와 대조하면서 식별한 **기능적으로 문제가 될 수 있는 부분**과 **추가 / 강화가 필요한 후보**를 정리한 검토 노트입니다. 작성 기준일은 `2026-05-07` 이며, 모든 경로는 당시 검토 worktree 루트 기준입니다.
+이 문서는 현재 저장소(`Chrome Extension MV3 + TypeScript + React + Vite`) 구현을 `CLAUDE.md` / `README.md` / 코드 본체와 대조하면서 식별한 **기능적으로 문제가 될 수 있는 부분**과 **추가 / 강화가 필요한 후보**를 정리한 검토 노트입니다. 최초 작성 기준일은 `2026-05-07` 이며, `2026-06-11` 코드 분할 리팩토링 이후 public facade 경로와 implementation 경로를 함께 봅니다.
 
 > **진행 상태 (2026-05-07 기준)**
 >
@@ -12,8 +12,9 @@
 > **추가 진행 상태 (2026-05-10 기준)**
 >
 > - v4 로컬 메타데이터, 전체 기록 검색, history entry 편집/병합/분할/삭제, MD/CSV export, preset CRUD, 실험형 side panel, DOM fixture, `npm run verify:e2e` smoke 검증이 추가되었습니다.
-> - content script는 현재 `src/content/content-script.ts` bootstrap facade와 `src/content/app/runtime.ts` 런타임 조립부로 분리되어 있습니다. 아래 후보의 과거 line-number 참조는 현재 모듈 경계 기준으로 갱신했습니다.
-> - 현재 기능 범위와 운영 기준은 `README.md`, `FEATURE_ENHANCEMENT_ANALYSIS.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, 권한/개인정보 문서, 코드와 테스트를 우선합니다.
+> - content script는 현재 `src/content/content-script.ts` bootstrap facade, `src/content/app/runtime.ts` public facade, `src/content/app/runtime/implementation.ts` 런타임 조립부로 분리되어 있습니다. 아래 후보의 과거 line-number 참조는 현재 모듈 경계 기준으로 봅니다.
+> - `src/storage/session-store.ts`, `src/history/App.tsx`, `src/options/App.tsx`, `src/popup/App.tsx`도 public facade를 유지하며 실제 구현은 각 하위 `implementation.ts` 또는 `app/` 모듈에 있습니다.
+> - 현재 기능 범위와 운영 기준은 `README.md`, `CLAUDE.md`, `GEMINI.md`, `DEPLOYMENT.md`, `CAPTURE_RETENTION_AND_STABILITY.md`, 권한/개인정보 문서, 코드와 테스트를 우선합니다.
 
 각 항목은 다음 형식을 따릅니다.
 
@@ -30,7 +31,7 @@
 - **위치**: [src/core/subtitle-pipeline.ts:259](src/core/subtitle-pipeline.ts:259)
 - **증거**:
   - `extractIncrementalTextFromHistory()`가 `PIPELINE_DEFAULTS.recentDuplicateMinLength` 상수(8)를 직접 참조합니다.
-  - 옵션 화면 [src/options/App.tsx:51](src/options/App.tsx:51) / settings-store / sanitize / storage / 테스트 모두에서 `recentDuplicateMinLength`를 노출/저장하지만, 정작 `applyPreview()` → `extractIncrementalTextFromHistory()` 경로는 settings 인자를 무시합니다.
+  - 옵션 화면 public facade [src/options/App.tsx](src/options/App.tsx) / 구현 [src/options/app/App.tsx](src/options/app/App.tsx) / settings-store / sanitize / storage / 테스트 모두에서 `recentDuplicateMinLength`를 노출/저장하지만, 정작 `applyPreview()` → `extractIncrementalTextFromHistory()` 경로는 settings 인자를 무시합니다.
   - `CLAUDE.md` "noise filtering 규칙"에는 “중복 차단 최소 길이 설정 키는 `recentDuplicateMinLength` 입니다.”라고 명시되어 있어 spec과 구현이 어긋납니다.
 - **현상 / 위험**:
   - 사용자가 옵션에서 값을 변경해도 동작이 바뀌지 않습니다. 옵션 노출이 “위약 효과”에 머무릅니다.
@@ -89,7 +90,7 @@
 
 ### 2-2. `popup` / `options`의 visibility 처리가 “돌아왔을 때”를 다루지 않음
 
-- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts), [src/popup/App.tsx](src/popup/App.tsx)
+- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts) facade / [src/content/app/runtime/implementation.ts](src/content/app/runtime/implementation.ts), [src/popup/App.tsx](src/popup/App.tsx) facade / [src/popup/app/App.tsx](src/popup/app/App.tsx)
 - **증거**: `document.addEventListener("visibilitychange")`는 `hidden`일 때만 page-exit 스냅샷을 호출하고, `visible` 복귀 시 별도 핸들러가 없습니다.
 - **현상 / 위험**:
   - 탭이 백그라운드에 있을 때 자막 DOM이 일시 정지되거나 BFCache로 들어갔다 돌아올 경우, observer 재설치/nonce 재동기화/패널 갱신이 늦어질 수 있습니다.
@@ -100,7 +101,7 @@
 
 ### 2-3. running autosave 비활성 상태에서도 visibility 스냅샷이 항상 저장됨
 
-- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts) `persistRunningSnapshotForVisibilityChange`
+- **위치**: [src/content/app/runtime.ts](src/content/app/runtime.ts) facade / [src/content/app/runtime/implementation.ts](src/content/app/runtime/implementation.ts) `persistRunningSnapshotForVisibilityChange`
 - **증거**: `canPersistCurrentRunningState()`는 `state.status === "running" && entries.length > 0`만 검사하고 `settings.runningAutoSaveEnabled`는 보지 않습니다.
 - **현상 / 위험**:
   - 사용자가 “수집 중 자동 저장”을 끈 상태에서도 탭을 잠깐 가리면 백그라운드 저장이 일어나 의도와 다른 동작이 됩니다.
@@ -111,7 +112,7 @@
 
 ### 2-4. `autoStartEnabled` 기본값 ON + `all_frames` 자동 시작이 “명시적 stop” 의도를 넘어섬
 
-- **위치**: [src/shared/constants.ts](src/shared/constants.ts) `autoStartEnabled: true`, [src/content/app/runtime.ts](src/content/app/runtime.ts)
+- **위치**: [src/shared/constants.ts](src/shared/constants.ts) `autoStartEnabled: true`, [src/content/app/runtime/implementation.ts](src/content/app/runtime/implementation.ts), [src/content/runtime/autostart-cooldown.ts](src/content/runtime/autostart-cooldown.ts)
 - **현상 / 위험**:
   - 사용자가 `멈추기` → 페이지 이동 / 새로고침 시 다음 페이지에서 다시 자동 시작합니다. spec에는 “page navigation = 새 세션” 의미가 있어 의도된 동작일 수 있지만, 사용자 입장에서 “멈췄는데 또 모은다”라는 착각을 줄 수 있고, AI 자막 레이어를 자동으로 강제 활성화하므로 라이브 시청 UX와 충돌할 수 있습니다.
   - 또한 자동 활성화에 사용되는 `clickActivationControl` 등은 페이지 측 이벤트 핸들러를 트리거하므로 분석 추적, A/B 등에 의도치 않은 클릭이 들어갈 수 있습니다.
@@ -121,7 +122,7 @@
 
 ### 2-5. 세션 메모(`note`)와 entry text에 길이 캡이 없음
 
-- **위치**: [src/storage/session-store.ts:349](src/storage/session-store.ts:349), [src/core/subtitle-models.ts:8](src/core/subtitle-models.ts:8)
+- **위치**: [src/storage/session-store.ts](src/storage/session-store.ts) facade / [src/storage/session-store/implementation.ts](src/storage/session-store/implementation.ts), [src/core/subtitle-models.ts](src/core/subtitle-models.ts)
 - **현상 / 위험**:
   - `note`는 길이 검증이 없어 사용자가 매우 긴 메모를 붙여 넣으면 IndexedDB write가 비대해지고, fallback `chrome.storage.local` 단일 키 8KB / 전체 5MB 한도와 충돌해 `버퍼 사용량` 영향이 큼.
   - 단일 세션 entries도 무제한 누적 가능. 24시간 회의 등에서 IndexedDB 저장 / `25 MiB` 백업 한도와 충돌 가능.
@@ -188,7 +189,7 @@
 
 ### 4-4. `note` 미저장 dirty draft → 페이지 닫힘 시 보호 없음
 
-- **위치**: [src/history/App.tsx](src/history/App.tsx), `confirmDiscardUnsavedNote`
+- **위치**: [src/history/App.tsx](src/history/App.tsx) facade / [src/history/app/App.tsx](src/history/app/App.tsx), `confirmDiscardUnsavedNote`
 - **현상**: spec에 새로고침 / 즐겨찾기 필터 전환은 폐기 확인을 띄우지만, 브라우저 탭을 직접 닫는 경우는 막지 않습니다(history는 일반 web page).
 - **권장**: `beforeunload` 가드(`window.addEventListener("beforeunload")`)를 dirty 상태일 때만 등록.
 

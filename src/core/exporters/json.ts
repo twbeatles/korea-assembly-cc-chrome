@@ -1,7 +1,9 @@
 import {
   resolveSessionLineageId,
   resolveSessionSegmentNumber,
+  type SessionQualityStats,
   type SessionRecord,
+  type SpeakerLabels,
 } from "../subtitle-models";
 
 export interface JsonSessionExport {
@@ -20,6 +22,10 @@ export interface JsonSessionExport {
   starred: boolean;
   pinnedAt: string | null;
   note: string;
+  tags?: string[];
+  category?: string;
+  speakerLabels?: SpeakerLabels;
+  qualityStats?: SessionQualityStats;
   lineageId: string;
   segmentNumber: number;
   entries: SessionRecord["entries"];
@@ -42,6 +48,10 @@ export function buildJsonExport(session: SessionRecord): JsonSessionExport {
     starred: session.starred,
     pinnedAt: session.pinnedAt,
     note: session.note,
+    tags: session.tags ? [...session.tags] : undefined,
+    category: session.category,
+    speakerLabels: session.speakerLabels ? { ...session.speakerLabels } : undefined,
+    qualityStats: session.qualityStats ? { ...session.qualityStats } : undefined,
     lineageId: resolveSessionLineageId(session.id, session.lineageId),
     segmentNumber: resolveSessionSegmentNumber(session.segmentNumber),
     entries: session.entries.map((entry) => ({
