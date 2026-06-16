@@ -34,7 +34,9 @@
         "https://webcast.assembly.go.kr/main",
         "https://webcast.assembly.go.kr/main/",
         "https://assembly.webcast.go.kr/main/player*",
-        "https://webcast.assembly.go.kr/main/player*"
+        "https://webcast.assembly.go.kr/main/player*",
+        "https://assembly.webcast.go.kr/main/pressplayer*",
+        "https://webcast.assembly.go.kr/main/pressplayer*"
       ],
       "js": ["src/content/content-script.ts"],
       "run_at": "document_idle",

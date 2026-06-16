@@ -17,6 +17,9 @@ describe("assembly host constants", () => {
     expect(isSupportedAssemblySiteUrl("https://assembly.webcast.go.kr/main/player.do")).toBe(true);
     expect(isSupportedAssemblyUrl("https://assembly.webcast.go.kr/main/player.do")).toBe(true);
     expect(isSupportedAssemblyUrl("https://webcast.assembly.go.kr/main/player.do")).toBe(true);
+    expect(isSupportedAssemblySiteUrl("https://assembly.webcast.go.kr/main/pressplayer.asp")).toBe(true);
+    expect(isSupportedAssemblyUrl("https://assembly.webcast.go.kr/main/pressplayer.asp")).toBe(true);
+    expect(isSupportedAssemblyUrl("https://webcast.assembly.go.kr/main/pressplayer.asp")).toBe(true);
     expect(isSupportedAssemblyUrl("https://assembly.webcast.go.kr/main/")).toBe(false);
     expect(isSupportedAssemblyUrl("https://assembly.webcast.go.kr/main/sub.do?menu=20")).toBe(false);
     expect(isSupportedAssemblySiteUrl("https://assembly.webcast.go.kr/main/sub.do?menu=20")).toBe(false);
@@ -29,10 +32,14 @@ describe("assembly host constants", () => {
       "https://webcast.assembly.go.kr/main/",
       "https://assembly.webcast.go.kr/main/player*",
       "https://webcast.assembly.go.kr/main/player*",
+      "https://assembly.webcast.go.kr/main/pressplayer*",
+      "https://webcast.assembly.go.kr/main/pressplayer*",
     ]);
     expect(ASSEMBLY_CAPTURE_MATCH_PATTERNS).toEqual([
       "https://assembly.webcast.go.kr/main/player*",
       "https://webcast.assembly.go.kr/main/player*",
+      "https://assembly.webcast.go.kr/main/pressplayer*",
+      "https://webcast.assembly.go.kr/main/pressplayer*",
     ]);
   });
 

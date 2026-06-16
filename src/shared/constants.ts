@@ -105,16 +105,21 @@ export const ASSEMBLY_SITE_MATCH_PATTERNS = [
   "https://webcast.assembly.go.kr/main/",
   "https://assembly.webcast.go.kr/main/player*",
   "https://webcast.assembly.go.kr/main/player*",
+  "https://assembly.webcast.go.kr/main/pressplayer*",
+  "https://webcast.assembly.go.kr/main/pressplayer*",
 ] as const;
 
 export const ASSEMBLY_CAPTURE_MATCH_PATTERNS = [
   "https://assembly.webcast.go.kr/main/player*",
   "https://webcast.assembly.go.kr/main/player*",
+  "https://assembly.webcast.go.kr/main/pressplayer*",
+  "https://webcast.assembly.go.kr/main/pressplayer*",
 ] as const;
 
 const ASSEMBLY_HOME_PATH = "/main/";
 const ASSEMBLY_HOME_PATH_WITHOUT_TRAILING_SLASH = "/main";
 const ASSEMBLY_PLAYER_PATH_PREFIX = "/main/player";
+const ASSEMBLY_PRESS_PLAYER_PATH_PREFIX = "/main/pressplayer";
 const PLENARY_XCODE = "10";
 const PLENARY_XCGCD_PREFIX = "DCM000010";
 
@@ -137,10 +142,12 @@ export function isSupportedAssemblySiteUrl(url?: string): boolean {
 
   try {
     const parsed = new URL(url);
+    const normalizedPath = normalizeAssemblyPathname(parsed.pathname);
     return (
       isSupportedAssemblyHostname(parsed.hostname) &&
       (isAssemblyHomePath(parsed.pathname) ||
-        normalizeAssemblyPathname(parsed.pathname).startsWith(ASSEMBLY_PLAYER_PATH_PREFIX))
+        normalizedPath.startsWith(ASSEMBLY_PLAYER_PATH_PREFIX) ||
+        normalizedPath.startsWith(ASSEMBLY_PRESS_PLAYER_PATH_PREFIX))
     );
   } catch {
     return false;
