@@ -4,6 +4,12 @@
   <img src="public/icons/icon128.png" alt="국회 AI 자막 추출기 아이콘" width="128" />
 </p>
 
+<p align="center">
+  <a href="https://chromewebstore.google.com/detail/khchppfkjljacdhohihlpkbbkddmoghk">
+    <img src="https://img.shields.io/badge/Chrome%20웹%20스토어-설치하기-4285F4?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Chrome 웹 스토어에서 설치" />
+  </a>
+</p>
+
 국회 의사중계 사이트에서 AI 자막을 실시간으로 수집하고, 회의 내용을 **TXT · SRT · VTT · JSON · MD · CSV** 형식으로 저장·내보내기 할 수 있는 Chrome 확장프로그램입니다.
 
 ## 지원 사이트
@@ -59,7 +65,7 @@
 ## 설치 방법
 
 ### Chrome 웹 스토어 (권장)
-Chrome 웹 스토어에서 **국회 AI 자막 추출기**를 검색하거나 직접 링크를 통해 설치하세요. 설치 후 확장 아이콘을 툴바에 핀 고정하면 편리합니다.
+[Chrome 웹 스토어 → 국회 AI 자막 추출기](https://chromewebstore.google.com/detail/khchppfkjljacdhohihlpkbbkddmoghk) 에서 바로 설치할 수 있습니다. 설치 후 확장 아이콘을 툴바에 핀 고정하면 편리합니다.
 
 ### 직접 빌드하여 설치 (개발자용)
 
