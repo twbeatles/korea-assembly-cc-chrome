@@ -2,7 +2,7 @@
 
 업데이트 기준일: `2026-06-11`
 
-이 문서는 현재 구현이 `무엇을 얼마나 오래 들고 있는지`, `어디까지 저장/내보내기 되는지`, `몇 시간 단위 세션에서 어떤 병목을 줄였는지`를 정리한 운영 문서다. 기준 구현은 manifest-facing bootstrap 인 `src/content/content-script.ts`, content runtime 공개 facade 인 `src/content/app/runtime.ts`, 실제 content 런타임 조립부인 `src/content/app/runtime/implementation.ts`, 런타임 경계 타입인 `src/content/app/context.ts`, `src/content/session-lifecycle.ts`, `src/core/subtitle-pipeline.ts`, storage 공개 facade 인 `src/storage/session-store.ts`, 실제 storage 구현인 `src/storage/session-store/implementation.ts`, `src/storage/session-backup.ts`, `src/history/page-blob-download.ts`, `src/background/export-content.ts`, `src/shared/constants.ts` 이다.
+이 문서는 현재 구현이 `무엇을 얼마나 오래 들고 있는지`, `어디까지 저장/내보내기 되는지`, `몇 시간 단위 세션에서 어떤 병목을 줄였는지`를 정리한 운영 문서다.
 
 ## 1. 요약
 
