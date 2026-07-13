@@ -21,12 +21,16 @@ npm run verify:e2e
 
 ## 2. 핵심 기술 스택
 
-- 빌드: `Vite + @crxjs/vite-plugin`
-- 언어: `TypeScript`
+- 빌드: `Vite + @crxjs/vite-plugin` (+ esbuild emit; `tsc`는 typecheck only / `noEmit`)
+- 언어: `TypeScript` dual-track
+  - **typecheck 기본:** TypeScript **7** (`typescript-7` + `scripts/run-tsc.mjs 7`)
+  - **ESLint / `require("typescript")` API:** TypeScript **6** (`typescript@^6`)
+  - 비교용: `npm run typecheck:ts6` / `npm run typecheck:ts7`
 - UI: `React`
 - 테스트: `Vitest`
 - 확장 런타임: `Manifest V3`
 - 세션 저장: `IndexedDB` 우선, open/capability 실패 시 `chrome.storage.local` per-session fallback, 최후에는 메모리 fallback
+- 툴체인 상세·호환성: `TYPESCRIPT_7_MIGRATION_REVIEW.md`
 
 ## 3. 주요 파일 구조
 
@@ -249,9 +253,22 @@ offscreen.html
 
 - 메인 설명: `README.md`
 - 배포 절차: `DEPLOYMENT.md`
+- TypeScript 7 전환·호환성: `TYPESCRIPT_7_MIGRATION_REVIEW.md`
 - 장시간 세션 보존/안정성: `CAPTURE_RETENTION_AND_STABILITY.md`
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
+
+## Sync Delta (2026-07-13)
+
+When editing this repository, align with the TypeScript toolchain below.
+
+- Default `npm run typecheck` uses TypeScript **7** via `node scripts/run-tsc.mjs 7` (`typescript-7` npm alias to `typescript@^7`).
+- ESLint continues to resolve `typescript@^6` for the compiler API; do not force a single `typescript@7` package until `typescript-eslint` peer/API supports it.
+- Use `npm run typecheck:ts6` for parity comparison; product sources should pass both 6 and 7 with the same error set.
+- `tsc` is typecheck-only (`noEmit`); Vite/esbuild remain the emit/bundle path. Do not switch production emit to `tsc`.
+- Keep `src/css-modules.d.ts` and `noUncheckedSideEffectImports: true` for CSS side-effect imports.
+- `package.json` overrides: `vite`/`vitest` → `rollup@^4.34`, `@crxjs/vite-plugin` → `rollup@2.80.0` (avoid rollup 2 dedupe breaking Vite `parseAst`).
+- Runtime/extension compatibility: tooling-only change; session storage, export formats, and Manifest permissions are unchanged. See `TYPESCRIPT_7_MIGRATION_REVIEW.md` §13.
 
 ## Sync Delta (2026-04-13)
 

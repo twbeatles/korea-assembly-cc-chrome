@@ -84,6 +84,20 @@ npm run build
 
 > 설치 전에 열려 있던 국회 탭은 새로고침해야 패널이 나타납니다.
 
+#### 개발·검증 명령
+
+```bash
+npm run lint
+npm run typecheck      # TypeScript 7 네이티브 typecheck (기본)
+npm run typecheck:ts6  # TypeScript 6 비교용
+npm run test
+npm run build
+npm run verify         # version/injected/lint/typecheck/test/build
+```
+
+- 확장 **런타임·번들**은 Vite + esbuild가 담당합니다. TypeScript 컴파일러는 **`noEmit` typecheck 전용**입니다.
+- typecheck 기본 경로는 TypeScript **7**, ESLint가 쓰는 programmatic API는 TypeScript **6** dual-track입니다. 자세한 ROI·호환성 분석은 [TypeScript 7 전환 검토](TYPESCRIPT_7_MIGRATION_REVIEW.md)를 참고하세요.
+
 ---
 
 ## 사용 방법
@@ -180,5 +194,6 @@ npm run build
 ## 관련 문서
 
 - [배포 가이드](DEPLOYMENT.md)
+- [TypeScript 7 전환 검토 (ROI·호환성)](TYPESCRIPT_7_MIGRATION_REVIEW.md)
 - [개인정보처리방침 초안](PRIVACY_POLICY_DRAFT_KO.md)
-- [장시간 세션 안정성 가이드](CAPTURE_RETENTION_AND_STABILITY.md)
+- [장시간 세션 보존/안정성](CAPTURE_RETENTION_AND_STABILITY.md)

@@ -27,13 +27,21 @@
 ```bash
 npm install
 npm run lint
-npm run typecheck
+npm run typecheck      # TypeScript 7 (scripts/run-tsc.mjs)
+npm run typecheck:ts6  # TypeScript 6 비교
 npm run test
 npm run build
 npm run verify:e2e
 ```
 
 `npm run build` 는 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 먼저 생성한 뒤 확장 번들을 만듭니다. 전체 검증은 `npm run verify`, 로컬 Chrome 확장 smoke 는 `npm run test:e2e:extension` 기준입니다.
+
+### 3.1 TypeScript dual-track (2026-07-13)
+
+- **typecheck 기본:** TypeScript 7 (`typescript-7` + `scripts/run-tsc.mjs 7`)
+- **ESLint API:** TypeScript 6 (`typescript@^6`) — `typescript-eslint` peer/API 제약
+- emit/번들은 Vite + esbuild 유지 (`tsc --noEmit` only)
+- 상세·호환성: `TYPESCRIPT_7_MIGRATION_REVIEW.md`
 
 ## 4. 핵심 파일 지도
 
@@ -250,6 +258,15 @@ npm run verify:e2e
 - `legacy/` 는 로컬 참조 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
 - 변경 후에는 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 실행합니다.
+
+## Sync Delta (2026-07-13)
+
+Use this delta for the TypeScript toolchain.
+
+- `npm run typecheck` = TypeScript 7 via `scripts/run-tsc.mjs`; keep `typescript@6` for ESLint.
+- Do not single-package onto `typescript@7` until typescript-eslint peer/API allows it.
+- `noEmit` + Vite emit only; keep `src/css-modules.d.ts` and rollup overrides (`vite`/`vitest` → rollup 4, crxjs → 2.80.0).
+- Tooling change does not alter session storage, export formats, or Manifest contracts. See `TYPESCRIPT_7_MIGRATION_REVIEW.md` §13.
 
 ## Sync Delta (2026-04-13)
 

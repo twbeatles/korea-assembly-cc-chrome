@@ -14,7 +14,9 @@
     "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "verify:e2e": "npm run build && node tests/e2e-smoke.mjs",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.node.json --noEmit",
+    "typecheck": "node scripts/run-tsc.mjs 7",
+    "typecheck:ts6": "node scripts/run-tsc.mjs 6",
+    "typecheck:ts7": "node scripts/run-tsc.mjs 7",
     "lint": "eslint .",
     "verify": "npm run check:version && npm run check:injected && npm run lint && npm run typecheck && npm run test && npm run build",
     "format": "prettier --check .",
@@ -47,12 +49,19 @@
     "playwright": "^1.59.1",
     "prettier": "^3.5.3",
     "type-fest": "^5.1.0",
-    "typescript": "^5.8.2",
-    "typescript-eslint": "^8.26.0",
+    "typescript": "^6.0.3",
+    "typescript-7": "npm:typescript@^7.0.2",
+    "typescript-eslint": "^8.63.0",
     "vite": "^6.2.2",
     "vitest": "^3.0.8"
   },
   "overrides": {
+    "vite": {
+      "rollup": "^4.34.0"
+    },
+    "vitest": {
+      "rollup": "^4.34.0"
+    },
     "@crxjs/vite-plugin": {
       "rollup": "2.80.0"
     }

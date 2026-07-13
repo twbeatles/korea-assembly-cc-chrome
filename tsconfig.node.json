@@ -6,6 +6,10 @@
     "moduleResolution": "Bundler",
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "strict": true,
+    "noEmit": true,
+    "noUncheckedSideEffectImports": true,
     "types": ["node"],
     "skipLibCheck": true
   },

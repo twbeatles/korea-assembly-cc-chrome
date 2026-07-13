@@ -51,6 +51,8 @@ npm run verify:e2e
 설명:
 
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
+- `npm run typecheck` 는 TypeScript **7** 네이티브 CLI로 `tsconfig.json` / `tsconfig.node.json` 을 `--noEmit` 검사합니다 (`scripts/run-tsc.mjs`). ESLint용 `typescript@6` 과 dual-track 입니다. 비교가 필요하면 `npm run typecheck:ts6` 을 사용합니다.
+- TypeScript 버전 전환은 **개발/CI typecheck 툴체인** 변경이며, 확장 런타임 emit은 Vite/esbuild 경로를 유지합니다. 기존 설치본·저장 데이터·export 포맷 호환성 분석은 `TYPESCRIPT_7_MIGRATION_REVIEW.md` §13 을 참고하세요.
 - `npm run verify:e2e` 는 build 후 Playwright로 built extension smoke test를 실행합니다.
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
 - 전체 release gate 는 `npm run verify` 로 실행할 수 있으며, 로컬 Chrome 확장 smoke 는 `npm run test:e2e:extension` 으로 별도 실행합니다.
