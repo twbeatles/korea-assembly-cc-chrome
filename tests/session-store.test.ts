@@ -359,6 +359,74 @@ describe("session store", () => {
     expect(updated.note.length).toBe(SESSION_NOTE_MAX_LENGTH);
   });
 
+  it("keeps near-duplicate entries on save (carry-over dedupe is export-only)", async () => {
+    const baseTime = "2026-03-10T09:00:00.000Z";
+    const session = {
+      ...buildSession("session_near_duplicate_keep", "saved"),
+      entries: [
+        {
+          id: "dup_1",
+          text: "같은 문장을 반복합니다 충분히 길게",
+          timestamp: baseTime,
+          startTime: baseTime,
+          endTime: "2026-03-10T09:00:01.000Z",
+          sourceNodeKey: "row_1",
+        },
+        {
+          id: "dup_2",
+          text: "같은 문장을 반복합니다 충분히 길게",
+          timestamp: "2026-03-10T09:00:02.000Z",
+          startTime: "2026-03-10T09:00:02.000Z",
+          endTime: "2026-03-10T09:00:03.000Z",
+          sourceNodeKey: "row_1",
+        },
+      ],
+      subtitleCount: 2,
+      charCount: 36,
+    };
+
+    await saveSession(session);
+    const loaded = await loadSession(session.id);
+    expect(loaded?.entries).toHaveLength(2);
+    expect(loaded?.subtitleCount).toBe(2);
+  });
+
+  it("serializes concurrent metadata and content updates without losing either change", async () => {
+    const session = buildSession("session_concurrent_patch", "saved");
+    await saveSession(session);
+
+    const [meta, content] = await Promise.all([
+      updateSessionMetadata(session.id, {
+        starred: true,
+        note: "동시 메모",
+      }),
+      updateSessionContent(session.id, {
+        entries: [
+          {
+            id: "patched_entry",
+            text: "편집된 자막",
+            timestamp: "2026-03-10T09:00:00.000Z",
+            startTime: "2026-03-10T09:00:00.000Z",
+            endTime: "2026-03-10T09:00:01.000Z",
+          },
+        ],
+      }),
+    ]);
+
+    const loaded = await loadSession(session.id);
+    expect(loaded?.starred ?? meta.starred).toBe(true);
+    expect(loaded?.note === "동시 메모" || meta.note === "동시 메모").toBe(true);
+    expect(
+      loaded?.entries.some((entry) => entry.text === "편집된 자막") ||
+        content.entries.some((entry) => entry.text === "편집된 자막"),
+    ).toBe(true);
+    // 직렬화 후 최종 스냅샷은 두 패치가 모두 반영된 최신 load 결과
+    expect(loaded?.entries).toHaveLength(1);
+    expect(loaded?.entries[0]?.text).toBe("편집된 자막");
+    expect(loaded?.starred).toBe(true);
+    expect(loaded?.note).toBe("동시 메모");
+  });
+
   it("lists paged sessions without preloading the full library into the caller", async () => {
     await saveSession({
       ...buildSession("session_page_1", "saved"),
@@ -937,46 +1005,54 @@ describe("session store", () => {
     expect(parsed.subtitleCount).toBe(2);
   });
 
-  it("normalizes cumulative carry-over text when persisting sessions", async () => {
+  it("preserves cumulative carry-over text when persisting, but trims it on export", async () => {
+    const entries = [
+      {
+        id: "entry_1",
+        text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
+        timestamp: "2026-03-10T09:00:01.000Z",
+        startTime: "2026-03-10T09:00:01.000Z",
+        endTime: "2026-03-10T09:00:01.000Z",
+        sourceNodeKey: "row_1",
+      },
+      {
+        id: "entry_2",
+        text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다",
+        timestamp: "2026-03-10T09:00:02.000Z",
+        startTime: "2026-03-10T09:00:02.000Z",
+        endTime: "2026-03-10T09:00:02.000Z",
+        sourceNodeKey: "row_2",
+      },
+      {
+        id: "entry_3",
+        text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다 추가 설명도 드리겠습니다",
+        timestamp: "2026-03-10T09:00:03.000Z",
+        startTime: "2026-03-10T09:00:03.000Z",
+        endTime: "2026-03-10T09:00:03.000Z",
+        sourceNodeKey: "row_3",
+      },
+    ];
+
     await saveSession({
       ...buildSession("session_persist_normalized", "saved"),
       subtitleCount: 3,
       charCount: 0,
-      entries: [
-        {
-          id: "entry_1",
-          text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
-          timestamp: "2026-03-10T09:00:01.000Z",
-          startTime: "2026-03-10T09:00:01.000Z",
-          endTime: "2026-03-10T09:00:01.000Z",
-          sourceNodeKey: "row_1",
-        },
-        {
-          id: "entry_2",
-          text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다",
-          timestamp: "2026-03-10T09:00:02.000Z",
-          startTime: "2026-03-10T09:00:02.000Z",
-          endTime: "2026-03-10T09:00:02.000Z",
-          sourceNodeKey: "row_2",
-        },
-        {
-          id: "entry_3",
-          text: "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다 추가 설명도 드리겠습니다",
-          timestamp: "2026-03-10T09:00:03.000Z",
-          startTime: "2026-03-10T09:00:03.000Z",
-          endTime: "2026-03-10T09:00:03.000Z",
-          sourceNodeKey: "row_3",
-        },
-      ],
+      entries,
     });
 
     const loaded = await loadSession("session_persist_normalized");
 
+    // 저장 경로에서는 carry-over 원문을 보존한다.
     expect(loaded?.entries.map((entry) => entry.text)).toEqual([
       "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서",
-      "저희가 방법을 찾아보겠습니다",
-      "추가 설명도 드리겠습니다",
+      "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다",
+      "위원님 말씀드렸는데요 이번 내년 예산 편성 과정에서 잘 살펴서 저희가 방법을 찾아보겠습니다 추가 설명도 드리겠습니다",
     ]);
+
+    // export 직전 정규화에서만 incremental 형태로 정리한다.
+    const exported = await exportSessionData(loaded!, "txt");
+    expect(exported.content).toContain("저희가 방법을 찾아보겠습니다");
+    expect(exported.content).toContain("추가 설명도 드리겠습니다");
   });
 
   it("prefers the fresher fallback copy when IndexedDB and fallback diverge", async () => {
@@ -1429,21 +1505,22 @@ describe("session store", () => {
   });
 
   it("fails fast when a full-library backup exceeds 25 MiB", async () => {
-    const oversizedText = "a".repeat(SESSION_LIBRARY_TRANSFER_LIMIT_BYTES + 1024);
+    // 단일 entry 텍스트는 저장 sanitize 상한이 있어, 다수 entry로 25 MiB를 넘긴다.
+    const chunkText = "a".repeat(40_000);
+    const entryCount = Math.ceil((SESSION_LIBRARY_TRANSFER_LIMIT_BYTES + 1024) / chunkText.length);
+    const entries = Array.from({ length: entryCount }, (_, index) => ({
+      id: `session_backup_oversized_entry_${index}`,
+      text: chunkText,
+      timestamp: "2026-03-10T09:00:00.000Z",
+      startTime: "2026-03-10T09:00:00.000Z",
+      endTime: "2026-03-10T09:00:02.000Z",
+    }));
 
     await saveSession({
       ...buildSession("session_backup_oversized", "saved"),
-      subtitleCount: 1,
-      charCount: oversizedText.length,
-      entries: [
-        {
-          id: "session_backup_oversized_entry",
-          text: oversizedText,
-          timestamp: "2026-03-10T09:00:00.000Z",
-          startTime: "2026-03-10T09:00:00.000Z",
-          endTime: "2026-03-10T09:00:02.000Z",
-        },
-      ],
+      subtitleCount: entries.length,
+      charCount: chunkText.length * entries.length,
+      entries,
     });
 
     await expect(buildSessionLibraryBackupExport()).rejects.toThrow(

@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { createEmptySessionState } from "../src/core/subtitle-models";
 import {
+  buildSegmentCapacityWarningNotice,
   resolveRuntimeSessionSegmentationReason,
   resolveRuntimeSessionSegmentationThresholds,
+  resolveSegmentCapacityWarning,
 } from "../src/content/runtime/segmentation-policy";
 
 function buildRunningState() {
@@ -78,5 +80,27 @@ describe("runtime segmentation policy", () => {
       maxCharsPerSegment: 150000,
       maxDurationMs: 120 * 60 * 1000,
     });
+  });
+
+  it("warns before segmentation thresholds are hit", () => {
+    const state = buildRunningState();
+    // entries=2, threshold=2 → 이미 분할 대상이므로 warning null
+    expect(
+      resolveSegmentCapacityWarning(state, Date.parse("2026-03-10T09:10:00.000Z"), {
+        maxEntriesPerSegment: 2,
+        maxCharsPerSegment: 10000,
+        maxDurationMs: 1000 * 60 * 60,
+      }),
+    ).toBeNull();
+
+    expect(
+      resolveSegmentCapacityWarning(state, Date.parse("2026-03-10T09:10:00.000Z"), {
+        maxEntriesPerSegment: 3,
+        maxCharsPerSegment: 10000,
+        maxDurationMs: 1000 * 60 * 60,
+      }),
+    ).toBe("entry_limit");
+
+    expect(buildSegmentCapacityWarningNotice("char_limit")).toContain("분량");
   });
 });

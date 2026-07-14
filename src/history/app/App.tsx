@@ -55,7 +55,6 @@ import type {
 import { getSettings } from "../../storage/settings-store";
 import {
   getExportFormatLabel,
-  getPersistedStatusLabel,
 } from "../../shared/ui-labels";
 import {
   buildDeleteAllFailureMessage,
@@ -88,18 +87,26 @@ import {
   extractCancelledImportSummary,
   formatDate,
   formatTagInput,
-  getLongTaskPhaseLabel,
   getSessionSegmentLabel,
   isAbortError,
   parseLabelInput,
   parseTagInput,
   resolveSpeakerLabel,
-  type HistoryLongTaskState,
 } from "./helpers";
+import { useHistoryLongTask } from "./hooks/useHistoryLongTask";
+import { SessionListPanel } from "./sections/SessionListPanel";
+import { HistoryHero } from "./sections/HistoryHero";
 
 export default function App() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
   const longTaskAbortControllerRef = useRef<AbortController | null>(null);
+  const {
+    longTask,
+    beginLongTask,
+    updateLongTaskProgress: applyLongTaskProgress,
+    requestLongTaskCancel,
+    endLongTask,
+  } = useHistoryLongTask();
   const refreshMessageRef = useRef<string | undefined>(undefined);
   const preserveMessageOnRefreshRef = useRef(false);
   const selectedIdRef = useRef("");
@@ -149,7 +156,6 @@ export default function App() {
   );
   const [reloadKey, setReloadKey] = useState(0);
   const [busyAction, setBusyAction] = useState<string | null>(null);
-  const [longTask, setLongTask] = useState<HistoryLongTaskState | null>(null);
 
   const selectedLineageId =
     selectedLineageSummary?.lineageId ??
@@ -258,46 +264,25 @@ export default function App() {
   };
 
   const updateLongTaskProgress = (progress: SessionLongTaskProgress): void => {
-    setLongTask((current) =>
-      current && current.kind === progress.kind
-        ? {
-            ...current,
-            ...progress,
-          }
-        : {
-            ...progress,
-            cancellable: true,
-            cancelRequested: false,
-          },
-    );
+    applyLongTaskProgress(progress);
   };
 
   const clearLongTaskState = (
-    kind: SessionLongTaskKind,
+    _kind: SessionLongTaskKind,
     controller: AbortController,
   ): void => {
     if (longTaskAbortControllerRef.current === controller) {
       longTaskAbortControllerRef.current = null;
     }
-
-    setLongTask((current) => (current?.kind === kind ? null : current));
+    // longTask 클로저 스테일에 의존하지 않고 항상 종료
+    endLongTask();
   };
 
   const handleCancelLongTask = (): void => {
-    const controller = longTaskAbortControllerRef.current;
-    if (!controller || !longTask || longTask.cancelRequested) {
+    if (!longTaskAbortControllerRef.current || !longTask || longTask.cancelRequested) {
       return;
     }
-
-    setLongTask((current) =>
-      current
-        ? {
-            ...current,
-            cancelRequested: true,
-          }
-        : current,
-    );
-    controller.abort();
+    requestLongTaskCancel();
   };
 
   const requestRefresh = (
@@ -1200,17 +1185,11 @@ export default function App() {
       return;
     }
 
-    const controller = new AbortController();
+    const controller = beginLongTask(
+      "backup",
+      "전체 JSON 백업을 준비하고 있습니다.",
+    );
     longTaskAbortControllerRef.current = controller;
-    setLongTask({
-      kind: "backup",
-      phase: "prepare",
-      completed: 0,
-      total: 0,
-      message: "전체 JSON 백업을 준비하고 있습니다.",
-      cancellable: true,
-      cancelRequested: false,
-    });
 
     try {
       const backupExport = await buildSessionLibraryBackupExport({
@@ -1274,17 +1253,8 @@ export default function App() {
       return;
     }
 
-    const controller = new AbortController();
+    const controller = beginLongTask("import", "JSON 파일을 읽고 있습니다.");
     longTaskAbortControllerRef.current = controller;
-    setLongTask({
-      kind: "import",
-      phase: "read",
-      completed: 0,
-      total: 0,
-      message: "JSON 파일을 읽고 있습니다.",
-      cancellable: true,
-      cancelRequested: false,
-    });
     let invalidCount = 0;
 
     try {
@@ -1395,261 +1365,87 @@ export default function App() {
 
   return (
     <main className="history-shell">
-      <header className="hero">
-        <div>
-          <p className="eyebrow">기록 보기</p>
-          <h1>저장된 자막 기록</h1>
-        </div>
-        <div className="hero-actions">
-          <button
-            onClick={() =>
-              runBusyHistoryAction(
-                "refresh",
-                handleRefreshClick,
-                "기록 목록을 다시 읽지 못했습니다.",
-                "기록 목록을 다시 불러오고 있습니다.",
-              )
-            }
-            disabled={actionButtonsDisabled}
-          >
-            목록 새로고침
-          </button>
-          <button
-            className={`secondary ${showStarredOnly ? "active-toggle" : ""}`}
-            onClick={() => {
-              if (
-                hasUnsavedSessionDraft &&
-                !confirmDiscardUnsavedNote("필터 변경")
-              ) {
-                setMessage("필터 변경을 취소했습니다.");
-                return;
-              }
-              if (hasUnsavedSessionDraft) {
-                discardUnsavedNoteDraft();
-              }
-              setShowStarredOnly((current) => !current);
-            }}
-            disabled={actionButtonsDisabled}
-          >
-            {showStarredOnly ? "전체 보기" : "즐겨찾기만 보기"}
-          </button>
-          <button
-            className="secondary"
-            onClick={() => void handleBackupAll()}
-            disabled={jsonTaskButtonsDisabled}
-          >
-            전체 JSON 백업
-          </button>
-          <button
-            className="secondary"
-            onClick={handleImportClick}
-            disabled={jsonTaskButtonsDisabled}
-          >
-            JSON 가져오기
-          </button>
-        </div>
-        {heroMessage ? (
-          <div className={`hero-status ${longTask ? "long-task-status" : ""}`}>
-            <div className="hero-status-copy">
-              <span>{heroMessage}</span>
-              {longTask ? (
-                <div className="hero-status-meta">
-                  <span>단계: {getLongTaskPhaseLabel(longTask.phase)}</span>
-                  {longTaskProgressLabel ? (
-                    <span>진행: {longTaskProgressLabel}</span>
-                  ) : null}
-                  {longTask.cancelRequested ? (
-                    <span className="hero-status-cancel-note">
-                      취소 요청을 처리하고 있습니다.
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </div>
-            {longTask ? (
-              <button
-                className="secondary"
-                onClick={handleCancelLongTask}
-                disabled={!longTask.cancellable || longTask.cancelRequested}
-              >
-                {longTask.cancelRequested ? "취소 요청 중" : "취소"}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="search-row">
-          <input
-            className="search-input"
-            type="search"
-            value={globalSearchQuery}
-            onChange={(event) => setGlobalSearchQuery(event.target.value)}
-            placeholder="전체 기록에서 제목, 메모, 자막 찾기"
-          />
-          <input
-            className="search-input"
-            type="search"
-            value={tagFilter}
-            onChange={(event) => setTagFilter(event.target.value)}
-            placeholder="태그 필터"
-          />
-          <input
-            className="search-input"
-            type="search"
-            value={categoryFilter}
-            onChange={(event) => setCategoryFilter(event.target.value)}
-            placeholder="카테고리 필터"
-          />
-          <button
-            className={`secondary ${showHighlightedOnly ? "active-toggle" : ""}`}
-            onClick={() => setShowHighlightedOnly((current) => !current)}
-            disabled={actionButtonsDisabled}
-          >
-            {showHighlightedOnly ? "전체 자막 보기" : "중요 표시만"}
-          </button>
-        </div>
-        <input
-          ref={importInputRef}
-          className="hidden-file-input"
-          type="file"
-          accept=".json,application/json"
-          disabled={jsonTaskButtonsDisabled}
-          onChange={(event) => void handleImportChange(event)}
-        />
-      </header>
+      <HistoryHero
+        heroMessage={heroMessage}
+        longTask={longTask}
+        longTaskProgressLabel={longTaskProgressLabel}
+        showStarredOnly={showStarredOnly}
+        showHighlightedOnly={showHighlightedOnly}
+        actionButtonsDisabled={actionButtonsDisabled}
+        jsonTaskButtonsDisabled={jsonTaskButtonsDisabled}
+        hasUnsavedSessionDraft={hasUnsavedSessionDraft}
+        globalSearchQuery={globalSearchQuery}
+        tagFilter={tagFilter}
+        categoryFilter={categoryFilter}
+        importInputRef={importInputRef}
+        onRefresh={() =>
+          runBusyHistoryAction(
+            "refresh",
+            handleRefreshClick,
+            "기록 목록을 다시 읽지 못했습니다.",
+            "기록 목록을 다시 불러오고 있습니다.",
+          )
+        }
+        onToggleStarredOnly={() => {
+          if (
+            hasUnsavedSessionDraft &&
+            !confirmDiscardUnsavedNote("필터 변경")
+          ) {
+            setMessage("필터 변경을 취소했습니다.");
+            return;
+          }
+          if (hasUnsavedSessionDraft) {
+            discardUnsavedNoteDraft();
+          }
+          setShowStarredOnly((current) => !current);
+        }}
+        onBackupAll={() => void handleBackupAll()}
+        onImportClick={handleImportClick}
+        onCancelLongTask={handleCancelLongTask}
+        onGlobalSearchChange={setGlobalSearchQuery}
+        onTagFilterChange={setTagFilter}
+        onCategoryFilterChange={setCategoryFilter}
+        onToggleHighlightedOnly={() =>
+          setShowHighlightedOnly((current) => !current)
+        }
+        onImportChange={(event) => void handleImportChange(event)}
+      />
 
       <section className="layout">
-        <aside className="session-list">
-          <div className="session-list-toolbar">
-            <span>
-              현재 필터 {totalSessionCount}개 / 현재 페이지 {pageLineages.length}개 / 선택 {checkedIds.length}개
-            </span>
-            <div className="session-list-actions">
-              <button
-                className="secondary"
-                onClick={handleToggleCheckAll}
-                disabled={actionButtonsDisabled || !pageLineages.length}
-              >
-                {currentPageSessionsChecked
-                  ? "현재 페이지 선택 해제"
-                  : "현재 페이지 전체 선택"}
-              </button>
-              <button
-                className="secondary"
-                onClick={() =>
-                  runBusyHistoryAction(
-                    "delete_checked",
-                    handleDeleteChecked,
-                    "선택 삭제에 실패했습니다.",
-                    "선택한 기록을 삭제하고 있습니다.",
-                  )
-                }
-                disabled={actionButtonsDisabled || !checkedIds.length}
-              >
-                선택 삭제
-              </button>
-              <button
-                className="secondary"
-                onClick={() =>
-                  runBusyHistoryAction(
-                    "delete_all",
-                    handleDeleteAll,
-                    "전체 삭제에 실패했습니다.",
-                    "저장된 기록 전체 삭제를 진행하고 있습니다.",
-                  )
-                }
-                disabled={actionButtonsDisabled || !totalSessionCount}
-              >
-                전체 삭제
-              </button>
-            </div>
-          </div>
-          {pageLineages.length ? (
-            pageLineages.map((lineage) => (
-              <div key={lineage.lineageId} className="session-item-row">
-                <label className="session-check">
-                  <input
-                    type="checkbox"
-                    checked={checkedIdSet.has(lineage.lineageId)}
-                    onChange={() => handleToggleChecked(lineage.lineageId)}
-                    disabled={actionButtonsDisabled}
-                    aria-label={`${lineage.committeeName || lineage.title} 선택`}
-                  />
-                </label>
-                <button
-                  type="button"
-                  className={`favorite-toggle ${lineage.starred ? "active" : ""}`}
-                  onClick={() =>
-                    runBusyHistoryAction(
-                      `favorite_${lineage.lineageId}`,
-                      () => handleToggleFavorite(lineage),
-                      "즐겨찾기 저장에 실패했습니다.",
-                      lineage.starred
-                        ? "즐겨찾기 해제를 저장하고 있습니다."
-                        : "즐겨찾기를 저장하고 있습니다.",
-                    )
-                  }
-                  disabled={actionButtonsDisabled}
-                  aria-label={
-                    lineage.starred
-                      ? `${lineage.committeeName || lineage.title} 즐겨찾기 해제`
-                      : `${lineage.committeeName || lineage.title} 즐겨찾기 추가`
-                  }
-                >
-                  {lineage.starred ? "★" : "☆"}
-                </button>
-                <button
-                  className={`session-item ${selectedLineageId === lineage.lineageId ? "active" : ""}`}
-                  onClick={() => handleSelectSession(lineage.lineageId)}
-                  disabled={actionButtonsDisabled}
-                >
-                  <div className="session-item-heading">
-                    <strong>{lineage.committeeName || lineage.title}</strong>
-                    {lineage.segmentCount > 1 ? (
-                      <span className="segment-badge">세그먼트 {lineage.segmentCount}개</span>
-                    ) : null}
-                  </div>
-                  <span>{formatDate(lineage.startedAt)}</span>
-                  <span>
-                    {lineage.subtitleCount}문장 / {lineage.charCount}자
-                  </span>
-                  <small>{getPersistedStatusLabel(lineage.status)}</small>
-                  {lineage.note.trim() ? <small>메모 있음</small> : null}
-                </button>
-              </div>
-            ))
-          ) : (
-            <div className="empty-card">
-              {showStarredOnly
-                ? "즐겨찾기한 기록이 없습니다."
-                : "아직 저장해 둔 기록이 없습니다."}
-            </div>
-          )}
-          {totalSessionCount > HISTORY_PAGE_SIZE ? (
-            <div className="session-pagination">
-              <button
-                className="secondary"
-                onClick={() =>
-                  setSessionPage((current) => Math.max(1, current - 1))
-                }
-                disabled={actionButtonsDisabled || sessionPage <= 1}
-              >
-                이전 페이지
-              </button>
-              <span>
-                {sessionPage} / {pageCount}
-              </span>
-              <button
-                className="secondary"
-                onClick={() =>
-                  setSessionPage((current) => Math.min(pageCount, current + 1))
-                }
-                disabled={actionButtonsDisabled || sessionPage >= pageCount}
-              >
-                다음 페이지
-              </button>
-            </div>
-          ) : null}
-        </aside>
+        <SessionListPanel
+          pageLineages={pageLineages}
+          totalSessionCount={totalSessionCount}
+          checkedIds={checkedIds}
+          checkedIdSet={checkedIdSet}
+          selectedLineageId={selectedLineageId}
+          sessionPage={sessionPage}
+          pageCount={pageCount}
+          currentPageSessionsChecked={currentPageSessionsChecked}
+          showStarredOnly={showStarredOnly}
+          actionButtonsDisabled={actionButtonsDisabled}
+          onToggleCheckAll={handleToggleCheckAll}
+          onToggleChecked={handleToggleChecked}
+          onSelectSession={handleSelectSession}
+          onToggleFavorite={handleToggleFavorite}
+          onDeleteChecked={() =>
+            runBusyHistoryAction(
+              "delete_checked",
+              handleDeleteChecked,
+              "선택 삭제에 실패했습니다.",
+              "선택한 기록을 삭제하고 있습니다.",
+            )
+          }
+          onDeleteAll={() =>
+            runBusyHistoryAction(
+              "delete_all",
+              handleDeleteAll,
+              "전체 삭제에 실패했습니다.",
+              "저장된 기록 전체 삭제를 진행하고 있습니다.",
+            )
+          }
+          onPageChange={setSessionPage}
+          runBusy={runBusyHistoryAction}
+        />
 
         <section className="session-detail">
           {selectedSession ? (

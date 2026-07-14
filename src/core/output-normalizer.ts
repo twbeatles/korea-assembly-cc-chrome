@@ -12,8 +12,27 @@ const OUTPUT_DUPLICATE_MIN_LENGTH = 20;
 const OUTPUT_DUPLICATE_LOOKBACK = PIPELINE_DEFAULTS.recentHistoryEntries;
 const OUTPUT_MIN_COMPACT_ANCHOR = 10;
 
+/** 단일 entry note 저장 상한 (세션 note 4KB와 별개). */
+export const SESSION_ENTRY_NOTE_MAX_LENGTH = 2048;
+
+/** 단일 entry text 저장 상한 (비정상 payload 방어). */
+export const SESSION_ENTRY_TEXT_MAX_LENGTH = 50_000;
+
 export interface NormalizeOutputEntriesOptions {
   stripSpeakerMetadata?: boolean;
+}
+
+function clampOptionalText(
+  value: string | undefined,
+  maxLength: number,
+): string | undefined {
+  if (typeof value !== "string") {
+    return undefined;
+  }
+  if (!value) {
+    return undefined;
+  }
+  return value.length <= maxLength ? value : value.slice(0, maxLength);
 }
 
 function cloneOutputEntry(
@@ -22,6 +41,9 @@ function cloneOutputEntry(
 ): SubtitleEntry {
   const cloned: SubtitleEntry = {
     ...entry,
+    text: normalizeSubtitleText(entry.text).slice(0, SESSION_ENTRY_TEXT_MAX_LENGTH),
+    originalText: clampOptionalText(entry.originalText, SESSION_ENTRY_TEXT_MAX_LENGTH),
+    entryNote: clampOptionalText(entry.entryNote, SESSION_ENTRY_NOTE_MAX_LENGTH),
     sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
     labels: entry.labels ? [...entry.labels] : undefined,
     sourceEntryIds: entry.sourceEntryIds ? [...entry.sourceEntryIds] : undefined,
@@ -34,6 +56,21 @@ function cloneOutputEntry(
   }
 
   return cloned;
+}
+
+/**
+ * 영속화(저장/업데이트) 전용 structural sanitize.
+ * export/copy의 carry-over exact duplicate 제거는 수행하지 않는다.
+ */
+export function sanitizeEntriesForStorage(entries: SubtitleEntry[]): SubtitleEntry[] {
+  if (!Array.isArray(entries)) {
+    return [];
+  }
+
+  return entries
+    .filter((entry): entry is SubtitleEntry => Boolean(entry) && typeof entry === "object")
+    .map((entry) => cloneOutputEntry(entry))
+    .filter((entry) => Boolean(entry.id) && Boolean(entry.text));
 }
 
 function getEntryTimestamp(entry: SubtitleEntry): number {

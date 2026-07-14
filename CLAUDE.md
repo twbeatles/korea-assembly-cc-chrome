@@ -37,56 +37,53 @@ npm run verify:e2e
 ```text
 manifest.json
 src/
-  background/service-worker.ts
-  background/export-content.ts
+  background/ …
   content/
     content-script.ts
     app/
       context.ts
-      runtime.ts
+      runtime.ts                      # facade
       runtime/
-        implementation.ts
-    inpage-panel.ts
-    inpage-panel/
-      controller/
-      dom/
-      styles.ts
-      state.ts
-      types.ts
-    runtime/
-    injected-observer.ts
-    dom-probe.ts
-    panel-live-rows.ts
-    frame-probe.ts
-    capture-notice.ts
-    failed-stopped-session.ts
-  core/
-    live-capture.ts
-    session-lineage.ts
-    subtitle-pipeline.ts
-    noise-filter.ts
-    exporters/
-  shared/
-    capture-diagnostics.ts
+        implementation.ts            # facade → orchestrator
+        orchestrator.ts              # content runtime 본체 (상태·수집·바인딩)
+        constants.ts / types.ts
+    runtime/                         # pure helpers (lock, url-reconcile, …)
+    inpage-panel/ …
   storage/
-    session-store.ts
+    session-store.ts                 # facade → session-store/implementation
     session-store/
-      implementation.ts
-    session-backup.ts
-    settings-store.ts
-  popup/
-    app/
-  options/
-    app/
+      implementation.ts              # 공개 API 배럴
+      public-api.ts                  # save/load/import/export/…
+      normalize.ts                   # 순수 정규화·패치
+      search-helpers.ts              # 순수 검색
+      globals.ts                     # storeRuntime · memoryFallbackStore
+      utils.ts / lineage-helpers.ts / mutations-internal.ts
+      idb/
+        database.ts                  # open/transaction/tryIndexedDb
+        records.ts                   # hydrate/list/chunk write
+      fallback/
+        storage.ts                   # chrome.storage + memory fallback
+      entry-chunks.ts / export-payload.ts / backup-bundle.ts
+    session-write-queue.ts
   history/
+    App.tsx                          # facade
     app/
-    page-blob-download.ts
-tests/
-README.md
-CLAUDE.md
-GEMINI.md
-offscreen.html
+      App.tsx                        # 상태·핸들러 조립
+      helpers.ts
+      hooks/useHistoryLongTask.ts
+      sections/
+        HistoryHero.tsx
+        SessionListPanel.tsx
+  popup/ · options/ · sidepanel/
 ```
+
+### SOLID 구조 메모
+
+- **공개 facade 유지**: `content-script.ts`, `app/runtime.ts`, `session-store.ts`, `history/App.tsx`.
+- **session-store**: IDB / fallback / normalize / public API 폴더 분리, `storeRuntime` bag으로 가변 상태 공유.
+- **history**: Hero·목록 섹션 + long-task 훅 분리; detail 본문은 App 조립 유지(핸들러 결합도 높음).
+- **content runtime**: `constants`/`types` 분리 + `orchestrator` 본체; 모듈 레벨 상태 상호 호출로 추가 자동 분할은 보류.
+
 
 ## 4. 자막 추출 구조
 
@@ -165,7 +162,8 @@ offscreen.html
 - `JSON`: 세션 전체 복원 가능한 구조
 - JSON payload 와 backup/import sanitize 경로는 `lineageId`, `segmentNumber` 를 보존해야 하며, 기존 JSON 에 두 필드가 없으면 기본값 규칙을 적용해야 합니다.
 - 수동 `saveSession` / `exportSessionData` 경로는 세션의 committed `entries` 전체를 사용하며, preview-only 항목으로 내려가지 않습니다.
-- export 직전 carry-over exact duplicate 정리를 한 번 더 적용합니다.
+- **저장(`saveSession` / `updateRunningSession` / `updateSessionContent` 등) 경로**는 structural sanitize만 수행하고 carry-over exact duplicate 제거를 하지 않습니다 (`sanitizeEntriesForStorage`).
+- **export / copy 직전**에만 carry-over exact duplicate 정리를 적용합니다 (`normalizeEntriesForOutput` / `normalizeSessionForExport`).
 
 ### 7.2 Session Store
 

@@ -1,8 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { runStartupPersistenceMaintenance } from "../src/background/startup-persistence";
+import {
+  resetStartupPersistenceGuardForTests,
+  runStartupPersistenceMaintenance,
+} from "../src/background/startup-persistence";
 
 describe("startup persistence maintenance", () => {
+  beforeEach(() => {
+    resetStartupPersistenceGuardForTests();
+  });
+
   it("replays queued exit records before stale running cleanup and stores diagnostics", async () => {
     const steps: string[] = [];
     const writeDiagnostics = vi.fn(async () => {
@@ -10,6 +17,7 @@ describe("startup persistence maintenance", () => {
     });
 
     const result = await runStartupPersistenceMaintenance({
+      bypassDebounce: true,
       replay: async () => {
         steps.push("replay");
         return {
@@ -53,6 +61,7 @@ describe("startup persistence maintenance", () => {
     const writeDiagnostics = vi.fn();
 
     const result = await runStartupPersistenceMaintenance({
+      bypassDebounce: true,
       readDiagnostics: async () => ({
         lastReplayAt: null,
         lastReplayQueuedCount: 0,
@@ -94,5 +103,36 @@ describe("startup persistence maintenance", () => {
         lastReplayError: "Replay failed",
       }),
     );
+  });
+
+  it("debounces rapid successive startup maintenance calls", async () => {
+    const replay = vi.fn(async () => ({
+      queuedCount: 0,
+      replayedCount: 0,
+      skippedCount: 0,
+      failedCount: 0,
+    }));
+    const cleanup = vi.fn(async () => ({
+      detectedCount: 0,
+      closedCount: 0,
+      failedCount: 0,
+    }));
+    const writeDiagnostics = vi.fn(async () => undefined);
+
+    await runStartupPersistenceMaintenance({
+      replay,
+      cleanup,
+      writeDiagnostics,
+      now: () => "2026-03-13T09:30:00.000Z",
+    });
+    await runStartupPersistenceMaintenance({
+      replay,
+      cleanup,
+      writeDiagnostics,
+      now: () => "2026-03-13T09:30:01.000Z",
+    });
+
+    expect(replay).toHaveBeenCalledTimes(1);
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 });

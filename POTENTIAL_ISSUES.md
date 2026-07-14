@@ -2,6 +2,20 @@
 
 이 문서는 현재 저장소(`Chrome Extension MV3 + TypeScript + React + Vite`) 구현을 `CLAUDE.md` / `README.md` / 코드 본체와 대조하면서 식별한 **기능적으로 문제가 될 수 있는 부분**과 **추가 / 강화가 필요한 후보**를 정리한 검토 노트입니다. 최초 작성 기준일은 `2026-05-07` 이며, `2026-06-11` 코드 분할 리팩토링 이후 public facade 경로와 implementation 경로를 함께 봅니다.
 
+> **최신 진행 상태 (2026-07-14, `PROJECT_AUDIT.md` + 구조 리팩터링)**
+>
+> - 저장 경로 structural sanitize 분리 (`sanitizeEntriesForStorage`) — export 전용 carry-over 정리와 분리.
+> - 캡처 lifecycle 직렬 락 (`createCaptureLifecycleLock`) — start/stop/clear/save/export/reconcile.
+> - URL reconcile single-flight + 성공 시만 `lastKnownUrl` 커밋 (`createUrlReconcileController`).
+> - 세션 id 단위 write 큐 (`enqueueSessionWrite`) — metadata/content 경쟁 완화.
+> - startup persistence debounce guard 추가.
+> - frame-forward `postMessage` targetOrigin 고정.
+> - entry text/note 저장 상한, 세그먼트 용량 사전 경고 notice.
+> - History dirty draft `beforeunload` 가드(기존 구현 유지·문서화).
+> - **모듈 구조:** `session-store` idb/fallback/public-api 분리, history sections·hooks, content `orchestrator` facade.
+> - 상세 감사 결과는 `PROJECT_AUDIT.md` 를 우선한다. 아래 본문의 과거 P0 “미해결” 서술은 역사 기록이며, 현재 코드와 어긋날 수 있다.
+> - 사용자용 설치·사용법은 `README.md` 를 본다.
+>
 > **진행 상태 (2026-05-07 기준)**
 >
 > - **P0 (1-1, 1-2, 1-3) 모두 처리됨** — 회귀 테스트 + 검증 통과.

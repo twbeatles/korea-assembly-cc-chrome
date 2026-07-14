@@ -26,7 +26,12 @@ export function forwardFrameEvent(
     nonce: options.frameForwardNonce,
     event,
   };
-  window.top?.postMessage(payload, "*");
+  // 동일 출처 프레임 간 전달 — wildcard origin 대신 현재 origin 고정
+  const targetOrigin =
+    typeof window.location?.origin === "string" && window.location.origin
+      ? window.location.origin
+      : "*";
+  window.top?.postMessage(payload, targetOrigin);
 }
 
 export function isObserverBridgeEventMessage(

@@ -11,6 +11,7 @@ import {
   DUPLICATE_START_CAPTURE_NOTICE,
   shouldIgnoreStartCapture,
 } from "../src/content/runtime/capture-start";
+import { createCaptureLifecycleLock } from "../src/content/runtime/capture-lifecycle-lock";
 import {
   buildPreparedSessionRecord,
   buildVisibleSessionState,
@@ -48,6 +49,29 @@ function buildState() {
 }
 
 describe("content runtime helpers", () => {
+  it("ignores duplicate start only while already running", () => {
+    expect(shouldIgnoreStartCapture("idle")).toBe(false);
+    expect(shouldIgnoreStartCapture("running")).toBe(true);
+    expect(shouldIgnoreStartCapture("stopped")).toBe(false);
+    expect(DUPLICATE_START_CAPTURE_NOTICE).toContain("이미 실행");
+  });
+
+  it("lifecycle lock prevents interleaved start/stop work", async () => {
+    const lock = createCaptureLifecycleLock();
+    const events: string[] = [];
+    await Promise.all([
+      lock.run("start", async () => {
+        events.push("s1");
+        await new Promise((resolve) => setTimeout(resolve, 10));
+        events.push("s2");
+      }),
+      lock.run("stop", async () => {
+        events.push("t1");
+      }),
+    ]);
+    expect(events).toEqual(["s1", "s2", "t1"]);
+  });
+
   it("resolves and formats live preview text", () => {
     expect(resolveLivePreviewText("관찰 중", "기존 상태")).toBe("관찰 중");
     expect(resolveLivePreviewText("", "기존 상태")).toBe("기존 상태");

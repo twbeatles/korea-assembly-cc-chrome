@@ -12,6 +12,7 @@ import type {
   PersistReplaySummary,
   StartupCleanupSummary,
 } from "../storage/types";
+import { createStartupPersistenceGuard } from "./startup-persistence-guard";
 
 export interface StartupPersistenceResult {
   cleanupSummary: StartupCleanupSummary;
@@ -19,7 +20,9 @@ export interface StartupPersistenceResult {
   replaySummary: PersistReplaySummary;
 }
 
-export async function runStartupPersistenceMaintenance(
+const startupPersistenceGuard = createStartupPersistenceGuard<StartupPersistenceResult>();
+
+async function runStartupPersistenceMaintenanceOnce(
   dependencies: {
     replay?: typeof replayQueuedExitPersistRecords;
     cleanup?: typeof closeRunningSessionsOnStartup;
@@ -92,4 +95,29 @@ export async function runStartupPersistenceMaintenance(
     cleanupSummary,
     diagnostics,
   };
+}
+
+export async function runStartupPersistenceMaintenance(
+  dependencies: {
+    replay?: typeof replayQueuedExitPersistRecords;
+    cleanup?: typeof closeRunningSessionsOnStartup;
+    readDiagnostics?: typeof readPersistReplayDiagnostics;
+    writeDiagnostics?: typeof writePersistReplayDiagnostics;
+    now?: () => string;
+    /** 테스트에서 debounce 우회 */
+    bypassDebounce?: boolean;
+  } = {},
+): Promise<StartupPersistenceResult> {
+  if (dependencies.bypassDebounce) {
+    return runStartupPersistenceMaintenanceOnce(dependencies);
+  }
+
+  return startupPersistenceGuard.run({
+    run: () => runStartupPersistenceMaintenanceOnce(dependencies),
+  });
+}
+
+/** 테스트 전용 */
+export function resetStartupPersistenceGuardForTests(): void {
+  startupPersistenceGuard.resetForTests();
 }
