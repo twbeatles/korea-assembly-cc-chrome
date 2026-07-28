@@ -21,11 +21,33 @@ function extractErrorMessage(error: unknown): string {
   return String(error ?? "");
 }
 
-function isInvalidatedExtensionContextMessage(message: string): boolean {
+/**
+ * 확장이 언로드/업데이트되어 content script 가 더 이상 쓸 수 없는 상태.
+ * 이 경우에만 permanent invalidation 을 허용한다.
+ */
+function isPermanentInvalidatedExtensionContextMessage(message: string): boolean {
+  const normalized = message.toLowerCase();
   return (
     message.includes(INVALIDATED_EXTENSION_CONTEXT_MESSAGE) ||
-    message.includes("Could not establish connection. Receiving end does not exist.") ||
-    message.includes("Receiving end does not exist")
+    normalized.includes("extension context invalidated")
+  );
+}
+
+/**
+ * 수신자 부재·SW 미기동 등 일시적 메시징 실패.
+ * permanent invalidation 으로 취급하면 안 된다.
+ */
+export function isTransientExtensionMessagingError(error: unknown): boolean {
+  const message = extractErrorMessage(error);
+  if (!message) {
+    return false;
+  }
+  const normalized = message.toLowerCase();
+  return (
+    message.includes("Receiving end does not exist") ||
+    message.includes("Could not establish connection") ||
+    normalized.includes("the message port closed before a response was received") ||
+    normalized.includes("message port closed")
   );
 }
 
@@ -35,7 +57,7 @@ export function isExtensionContextInvalidatedError(error: unknown): boolean {
     return false;
   }
 
-  return isInvalidatedExtensionContextMessage(message);
+  return isPermanentInvalidatedExtensionContextMessage(message);
 }
 
 export function hasExtensionContextInvalidated(): boolean {

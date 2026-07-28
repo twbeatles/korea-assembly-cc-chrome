@@ -38,4 +38,26 @@ describe("capture lifecycle lock", () => {
       lock.run("stop", async () => "ok"),
     ).resolves.toBe("ok");
   });
+
+  it("queues fire-and-forget start after an in-flight reconcile without interleaving", async () => {
+    const lock = createCaptureLifecycleLock();
+    const order: string[] = [];
+
+    const reconcile = lock.run("reconcile", async () => {
+      order.push("reconcile-begin");
+      // auto-start 패턴: 잠금 안에서 unlocked 직접 호출 대신 큐에 start 예약
+      void lock.run("start", async () => {
+        order.push("start");
+      });
+      await new Promise((resolve) => setTimeout(resolve, 15));
+      order.push("reconcile-end");
+    });
+
+    await reconcile;
+    await lock.run("stop", async () => {
+      order.push("stop");
+    });
+
+    expect(order).toEqual(["reconcile-begin", "reconcile-end", "start", "stop"]);
+  });
 });

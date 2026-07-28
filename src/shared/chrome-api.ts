@@ -5,8 +5,18 @@ import type {
 } from "./message-types";
 import {
   createExtensionContextInvalidatedError,
+  isTransientExtensionMessagingError,
   markExtensionContextInvalidated,
 } from "./extension-context";
+
+const RUNTIME_MESSAGE_RETRY_COUNT = 2;
+const RUNTIME_MESSAGE_RETRY_DELAY_MS = 80;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    globalThis.setTimeout(resolve, ms);
+  });
+}
 
 function callbackPromise<T>(executor: (callback: (value: T) => void) => void): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -14,6 +24,7 @@ function callbackPromise<T>(executor: (callback: (value: T) => void) => void): P
       const lastError = chrome.runtime.lastError;
       if (lastError) {
         const error = new Error(lastError.message);
+        // permanent invalidation 만 전역 플래그로 승격. Receiving end 부재는 일시 오류.
         if (markExtensionContextInvalidated(error)) {
           reject(createExtensionContextInvalidatedError());
           return;
@@ -26,10 +37,26 @@ function callbackPromise<T>(executor: (callback: (value: T) => void) => void): P
   });
 }
 
-export function sendRuntimeMessage(
+export async function sendRuntimeMessage(
   message: BackgroundCommandMessage,
 ): Promise<BackgroundCommandResponse> {
-  return callbackPromise((callback) => chrome.runtime.sendMessage(message, callback));
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= RUNTIME_MESSAGE_RETRY_COUNT; attempt += 1) {
+    try {
+      return await callbackPromise((callback) => chrome.runtime.sendMessage(message, callback));
+    } catch (error) {
+      lastError = error;
+      if (
+        markExtensionContextInvalidated(error) ||
+        !isTransientExtensionMessagingError(error) ||
+        attempt >= RUNTIME_MESSAGE_RETRY_COUNT
+      ) {
+        throw error;
+      }
+      await sleep(RUNTIME_MESSAGE_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "runtime message failed"));
 }
 
 export function sendTabMessage<T>(tabId: number, message: PopupToContentMessage): Promise<T> {

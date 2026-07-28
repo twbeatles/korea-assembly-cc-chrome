@@ -566,7 +566,7 @@ npm run test:e2e:extension
 | export TXT/SRT/VTT/JSON/MD/CSV | 없음 | exporter 코드 미변경; typecheck만 통과 |
 | history / options / popup UI | 없음 | React 소스 미변경 |
 | 지원 URL (`assembly` / `webcast` main·player) | 없음 | 상수·매칭 로직 미변경 |
-| 확장 패키지 버전 번호 | 스토어 배포 시 `1.0.11` 로 범프 | 툴체인 전환 후 웹 스토어 제출용 릴리스 버전 |
+| 확장 패키지 버전 번호 | 스토어 배포 시 `1.0.12` 로 범프 | 툴체인 전환 후 웹 스토어 제출용 릴리스 버전 |
 | 사용자 기기 요구사항 | 없음 | 네이티브 `tsc`는 **개발/CI 머신**에만 설치 |
 
 ### 13.3 빌드 파이프라인 호환
@@ -634,7 +634,7 @@ npm run test:e2e:extension
 1. **Vite emit 경로** — `tsc` emit / `outDir` 미도입.  
 2. **확장 런타임 의존성** — production bundle에 TypeScript 런타임 없음.  
 3. **세션·export·수집 파이프라인 시맨틱** — CLAUDE.md 고정 의미론 유지.  
-4. **스토어 버전** — 웹 스토어 배포 시 `1.0.11` 로 범프 (`package.json` / `manifest.json` 동기화).
+4. **스토어 버전** — 웹 스토어 배포 시 `1.0.12` 로 범프 (`package.json` / `manifest.json` 동기화).
 
 ### 13.9 잔여 리스크 (낮음)
 

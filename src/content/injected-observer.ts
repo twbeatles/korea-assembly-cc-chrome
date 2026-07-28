@@ -327,6 +327,11 @@ function emit(
   token: string,
   payload: Record<string, unknown>,
 ): void {
+  // 동일 출처 페이지 월드 → content script. wildcard 대신 origin 고정.
+  const targetOrigin =
+    typeof window.location?.origin === "string" && window.location.origin
+      ? window.location.origin
+      : "*";
   window.postMessage(
     {
       source: OBSERVER_BRIDGE_SOURCE,
@@ -336,7 +341,7 @@ function emit(
       sourceUrl: window.location.href,
       ...payload,
     },
-    "*",
+    targetOrigin,
   );
 }
 

@@ -17,6 +17,13 @@ export interface DownloadExportDependencies {
   onBlobFallbackError?: (error: unknown) => void;
 }
 
+/** content script → SW 의 DOWNLOAD_REQUEST 본문 상한 (data URL fallback 과 동일 계열). */
+export const DOWNLOAD_REQUEST_MAX_BYTES = 2 * 1024 * 1024;
+
+export function getUtf8ContentByteLength(content: string): number {
+  return new TextEncoder().encode(content).length;
+}
+
 export async function downloadExportWithFallback(
   filename: string,
   content: string,
@@ -185,9 +192,17 @@ export async function handleBackgroundCommand(
       await dependencies.deleteSessionRecord(message.sessionId);
       return { ok: true };
     case "DOWNLOAD_REQUEST": {
+      const content = typeof message.content === "string" ? message.content : "";
+      const byteLength = getUtf8ContentByteLength(content);
+      if (byteLength > DOWNLOAD_REQUEST_MAX_BYTES) {
+        return {
+          ok: false,
+          error: `다운로드 요청 본문이 너무 큽니다 (${byteLength} bytes). 세션/라인리지 내보내기 경로를 사용하세요.`,
+        };
+      }
       const downloadId = await dependencies.downloadExport(
         message.filename,
-        message.content,
+        content,
         message.mimeType,
       );
       return { ok: true, downloadId };
@@ -208,6 +223,7 @@ export async function handleBackgroundCommand(
         txtExportEntryNotesEnabled: message.txtExportEntryNotesEnabled,
         filenameSuffix: message.filenameSuffix,
         entries: selectedEntries,
+        timeRange: message.timeRange,
       });
       const downloadId = await dependencies.downloadExport(
         payload.filename,
@@ -224,6 +240,7 @@ export async function handleBackgroundCommand(
         txtExportEntryNotesEnabled: message.txtExportEntryNotesEnabled,
         entryIds: message.entryIds,
         filenameSuffix: message.filenameSuffix,
+        timeRange: message.timeRange,
       });
       const downloadId = await dependencies.downloadExport(
         payload.filename,

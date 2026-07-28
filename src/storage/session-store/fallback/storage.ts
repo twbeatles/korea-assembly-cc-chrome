@@ -478,8 +478,19 @@ export async function saveFallbackRecord(session: SessionRecord): Promise<Sessio
   }
 
   const record = cloneSessionRecord(session);
+  const previous = memoryFallbackStore.get(record.id);
+  // chrome 영속화 성공 후에만 메모리를 최종 확정한다. 실패 시 이전 스냅샷으로 롤백.
   memoryFallbackStore.set(record.id, cloneSessionRecord(record));
-  await saveChromeFallbackRecord(record);
+  try {
+    await saveChromeFallbackRecord(record);
+  } catch (error) {
+    if (previous) {
+      memoryFallbackStore.set(record.id, cloneSessionRecord(previous));
+    } else {
+      memoryFallbackStore.delete(record.id);
+    }
+    throw error;
+  }
   return cloneSessionRecord(record);
 }
 

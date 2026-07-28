@@ -1,6 +1,9 @@
 import type { ExportPayload } from "../storage/types";
 
-const DEFAULT_REVOKE_TIMEOUT_MS = 60_000;
+/** saveAs 대화상자·대형 파일 전송을 고려한 안전망. complete 전 정상 경로에서는 사용하지 않는다. */
+export const DEFAULT_REVOKE_TIMEOUT_MS = 10 * 60 * 1000;
+/** downloads API 없는 anchor fallback 전용 최소 유지 시간 */
+export const ANCHOR_FALLBACK_REVOKE_TIMEOUT_MS = 2 * 60 * 1000;
 
 interface PageBlobDownloadDependencies {
   createObjectUrl?: (blob: Blob) => string;
@@ -11,6 +14,7 @@ interface PageBlobDownloadDependencies {
   chromeDownloads?: typeof chrome.downloads;
   chromeRuntime?: typeof chrome.runtime;
   revokeTimeoutMs?: number;
+  anchorRevokeTimeoutMs?: number;
 }
 
 function fallbackAnchorDownload(
@@ -48,6 +52,8 @@ export function downloadPageBlobExport(
     dependencies.chromeRuntime ??
     (typeof chrome !== "undefined" ? chrome.runtime : undefined);
   const revokeTimeoutMs = dependencies.revokeTimeoutMs ?? DEFAULT_REVOKE_TIMEOUT_MS;
+  const anchorRevokeTimeoutMs =
+    dependencies.anchorRevokeTimeoutMs ?? ANCHOR_FALLBACK_REVOKE_TIMEOUT_MS;
   const blob = new Blob([payload.content], { type: payload.mimeType });
   const blobUrl = createObjectUrl(blob);
 
@@ -56,8 +62,13 @@ export function downloadPageBlobExport(
     let downloadId: number | null = null;
     let timerId: number | null = null;
     let listenerAttached = false;
+    let cleaned = false;
 
     const cleanup = (): void => {
+      if (cleaned) {
+        return;
+      }
+      cleaned = true;
       if (timerId !== null) {
         clearTimeoutFn(timerId);
         timerId = null;
@@ -67,6 +78,16 @@ export function downloadPageBlobExport(
         listenerAttached = false;
       }
       revokeObjectUrl(blobUrl);
+    };
+
+    const armSafetyTimer = (timeoutMs: number): void => {
+      if (timerId !== null) {
+        clearTimeoutFn(timerId);
+      }
+      timerId = setTimeoutFn(() => {
+        timerId = null;
+        cleanup();
+      }, timeoutMs);
     };
 
     const settleResolve = (value: number | null): void => {
@@ -90,15 +111,11 @@ export function downloadPageBlobExport(
       if (downloadId === null || delta.id !== downloadId || !delta.state?.current) {
         return;
       }
+      // complete/interrupted 이전에는 Blob URL 을 유지한다.
       if (delta.state.current === "complete" || delta.state.current === "interrupted") {
         cleanup();
       }
     }
-
-    timerId = setTimeoutFn(() => {
-      timerId = null;
-      cleanup();
-    }, revokeTimeoutMs);
 
     if (!chromeDownloads?.download) {
       if (!documentRef) {
@@ -106,6 +123,7 @@ export function downloadPageBlobExport(
         return;
       }
       fallbackAnchorDownload(blobUrl, payload.filename, documentRef);
+      armSafetyTimer(anchorRevokeTimeoutMs);
       settleResolve(null);
       return;
     }
@@ -133,6 +151,8 @@ export function downloadPageBlobExport(
         }
 
         downloadId = nextDownloadId;
+        // 시작 성공 후에만 안전망 타이머를 건다. 정상 종료는 onChanged complete.
+        armSafetyTimer(revokeTimeoutMs);
         settleResolve(nextDownloadId);
       },
     );

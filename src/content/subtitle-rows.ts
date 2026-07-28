@@ -6,7 +6,8 @@ import { createRandomToken } from "../shared/random-token";
 export const PRIMARY_SPEAKER_COLOR = "rgb(35, 124, 147)";
 export const SECONDARY_SPEAKER_COLOR = "rgb(30, 30, 30)";
 const SPEAKER_COLOR_CACHE_MAX_SIZE = 128;
-const CONFIRMATION_DESCENDANT_SAMPLE_LIMIT = 48;
+/** 하위 노드 전수 검사 상한. 초과 시 텍스트 보유 노드를 우선 샘플링한다. */
+const CONFIRMATION_DESCENDANT_SAMPLE_LIMIT = 96;
 const CONTAINER_CONFIRMATION_SELECTORS = [
   "#viewSubtit .smi_word",
   "#viewSubtit .incont",
@@ -142,28 +143,67 @@ function hasMeaningfulNodeText(node: HTMLElement): boolean {
   return Boolean(compactSubtitleText(node.innerText || node.textContent || ""));
 }
 
+function sampleEvenly<T>(items: T[], maxTake: number): T[] {
+  if (maxTake <= 0 || items.length === 0) {
+    return [];
+  }
+  if (items.length <= maxTake) {
+    return [...items];
+  }
+
+  const sampled: T[] = [];
+  const seen = new Set<number>();
+  const step = items.length / maxTake;
+  for (let index = 0; index < maxTake; index += 1) {
+    const sampledIndex = Math.min(items.length - 1, Math.floor(index * step));
+    if (seen.has(sampledIndex)) {
+      continue;
+    }
+    seen.add(sampledIndex);
+    sampled.push(items[sampledIndex]!);
+  }
+  // 하이라이트가 말단에 붙는 경우를 위해 마지막 노드를 항상 포함
+  const lastIndex = items.length - 1;
+  if (!seen.has(lastIndex)) {
+    if (sampled.length >= maxTake) {
+      sampled[sampled.length - 1] = items[lastIndex]!;
+    } else {
+      sampled.push(items[lastIndex]!);
+    }
+  }
+  return sampled;
+}
+
+/**
+ * 확인(미확정 배경) 검사 대상. 전수 가능하면 전부, 아니면 텍스트 보유 노드를 우선한다.
+ */
 function collectConfirmationCheckTargets(node: HTMLElement): HTMLElement[] {
   const descendants = Array.from(node.querySelectorAll<HTMLElement>("*"));
   if (descendants.length <= CONFIRMATION_DESCENDANT_SAMPLE_LIMIT) {
     return descendants;
   }
 
-  const sampled: HTMLElement[] = [];
-  const sampledIndices = new Set<number>();
-  const step = descendants.length / CONFIRMATION_DESCENDANT_SAMPLE_LIMIT;
-  for (let index = 0; index < CONFIRMATION_DESCENDANT_SAMPLE_LIMIT; index += 1) {
-    const sampledIndex = Math.min(
-      descendants.length - 1,
-      Math.floor(index * step),
-    );
-    if (sampledIndices.has(sampledIndex)) {
-      continue;
+  const withText: HTMLElement[] = [];
+  const withoutText: HTMLElement[] = [];
+  for (const descendant of descendants) {
+    if (hasMeaningfulNodeText(descendant)) {
+      withText.push(descendant);
+    } else {
+      withoutText.push(descendant);
     }
-    sampledIndices.add(sampledIndex);
-    sampled.push(descendants[sampledIndex]);
   }
 
-  return sampled;
+  const textBudget = Math.min(
+    withText.length,
+    Math.max(
+      Math.floor(CONFIRMATION_DESCENDANT_SAMPLE_LIMIT * 0.85),
+      CONFIRMATION_DESCENDANT_SAMPLE_LIMIT - 12,
+    ),
+  );
+  const sampledText = sampleEvenly(withText, textBudget);
+  const remaining = CONFIRMATION_DESCENDANT_SAMPLE_LIMIT - sampledText.length;
+  const sampledRest = sampleEvenly(withoutText, remaining);
+  return [...sampledText, ...sampledRest];
 }
 
 function isConfirmedSubtitleNode(node: HTMLElement): boolean {

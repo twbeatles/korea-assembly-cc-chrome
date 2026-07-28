@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { downloadPageBlobExport } from "../src/history/page-blob-download";
+import {
+  DEFAULT_REVOKE_TIMEOUT_MS,
+  downloadPageBlobExport,
+} from "../src/history/page-blob-download";
 
 describe("page blob download helper", () => {
   it("downloads a page-created blob URL and revokes it when the download completes", async () => {
@@ -23,6 +26,8 @@ describe("page blob download helper", () => {
       },
     } as unknown as typeof chrome.downloads;
     const revokeObjectUrl = vi.fn();
+    const setTimeoutFn = vi.fn(() => 1);
+    const clearTimeoutFn = vi.fn();
 
     const downloadId = await downloadPageBlobExport(
       {
@@ -35,8 +40,8 @@ describe("page blob download helper", () => {
         revokeObjectUrl,
         chromeDownloads,
         chromeRuntime: {} as typeof chrome.runtime,
-        setTimeoutFn: vi.fn(() => 1),
-        clearTimeoutFn: vi.fn(),
+        setTimeoutFn,
+        clearTimeoutFn,
       },
     );
 
@@ -48,6 +53,12 @@ describe("page blob download helper", () => {
       }),
       expect.any(Function),
     );
+    // 시작 직후에는 revoke 하지 않고 안전망 타이머만 건다.
+    expect(revokeObjectUrl).not.toHaveBeenCalled();
+    expect(setTimeoutFn).toHaveBeenCalledWith(
+      expect.any(Function),
+      DEFAULT_REVOKE_TIMEOUT_MS,
+    );
 
     listeners[0]?.({
       id: 7,
@@ -58,5 +69,45 @@ describe("page blob download helper", () => {
 
     expect(revokeObjectUrl).toHaveBeenCalledWith("blob:backup");
     expect(listeners).toHaveLength(0);
+  });
+
+  it("does not revoke on in-progress download state updates", async () => {
+    const listeners: Array<(delta: chrome.downloads.DownloadDelta) => void> = [];
+    const chromeDownloads = {
+      download: vi.fn(
+        (
+          _options: chrome.downloads.DownloadOptions,
+          callback?: (downloadId?: number) => void,
+        ) => callback?.(9),
+      ),
+      onChanged: {
+        addListener: vi.fn((listener) => listeners.push(listener)),
+        removeListener: vi.fn(),
+      },
+    } as unknown as typeof chrome.downloads;
+    const revokeObjectUrl = vi.fn();
+
+    await downloadPageBlobExport(
+      {
+        filename: "large.json",
+        mimeType: "application/json;charset=utf-8",
+        content: "{}",
+      },
+      {
+        createObjectUrl: () => "blob:large",
+        revokeObjectUrl,
+        chromeDownloads,
+        chromeRuntime: {} as typeof chrome.runtime,
+        setTimeoutFn: vi.fn(() => 1),
+        clearTimeoutFn: vi.fn(),
+      },
+    );
+
+    listeners[0]?.({
+      id: 9,
+      state: { current: "in_progress" },
+    } as chrome.downloads.DownloadDelta);
+
+    expect(revokeObjectUrl).not.toHaveBeenCalled();
   });
 });

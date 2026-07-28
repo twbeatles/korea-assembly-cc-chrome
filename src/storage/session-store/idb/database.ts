@@ -97,6 +97,7 @@ import { stringifySessionBackupBundleIncrementally } from "../backup-bundle";
 import { createSessionExportPayload } from "../export-payload";
 
 import {
+  INDEXED_DB_DISABLE_TTL_MS,
   LEGACY_FALLBACK_STORAGE_KEY,
   FALLBACK_INDEX_STORAGE_KEY,
   FALLBACK_METADATA_STORAGE_KEY,
@@ -115,6 +116,25 @@ import {
 import {
   buildSessionSortKey,
 } from "./records";
+
+/**
+ * IndexedDB 사용 가능 여부. 일시 disable TTL 이 지나면 재시도를 허용한다.
+ */
+export function isIndexedDbRuntimeAvailable(now = Date.now()): boolean {
+  if (typeof indexedDB === "undefined") {
+    return false;
+  }
+  if (storeRuntime.indexedDbAvailable) {
+    return true;
+  }
+  if (now >= (storeRuntime.indexedDbDisabledUntil || 0)) {
+    storeRuntime.indexedDbAvailable = true;
+    storeRuntime.indexedDbDisabledUntil = 0;
+    storeRuntime.dbPromise = null;
+    return true;
+  }
+  return false;
+}
 
 export function withRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -276,13 +296,26 @@ export async function withSessionStoresTransaction<T>(
   });
 }
 
-export function disableIndexedDb(): void {
+export function disableIndexedDb(options?: {
+  /** true 이면 TTL 없이 재시도하지 않는다(테스트/명시적 종료). */
+  permanent?: boolean;
+  now?: number;
+  reason?: string;
+}): void {
+  const now = options?.now ?? Date.now();
   storeRuntime.indexedDbAvailable = false;
   storeRuntime.dbPromise = null;
+  storeRuntime.lastIndexedDbOpenError =
+    typeof options?.reason === "string" && options.reason
+      ? options.reason
+      : storeRuntime.lastIndexedDbOpenError;
+  storeRuntime.indexedDbDisabledUntil = options?.permanent
+    ? Number.POSITIVE_INFINITY
+    : now + INDEXED_DB_DISABLE_TTL_MS;
 }
 
 export function openDb(): Promise<IDBDatabase> {
-  if (!storeRuntime.indexedDbAvailable || typeof indexedDB === "undefined") {
+  if (!isIndexedDbRuntimeAvailable() || typeof indexedDB === "undefined") {
     return Promise.reject(new Error("IndexedDB is unavailable"));
   }
 
@@ -371,13 +404,20 @@ export function openDb(): Promise<IDBDatabase> {
         };
       };
 
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        storeRuntime.lastIndexedDbOpenError = null;
+        storeRuntime.indexedDbDisabledUntil = 0;
+        resolve(request.result);
+      };
       request.onerror = () =>
         reject(request.error ?? new Error("Failed to open session database"));
       request.onblocked = () => reject(new Error("Session database open request was blocked"));
     }).catch((error) => {
-      disableIndexedDb();
-      throw error;
+      const reason =
+        error instanceof Error ? error.message : "Failed to open session database";
+      // 일시 오류/blocked 는 TTL 후 재시도. capability 완전 부재는 typeof 검사로 이미 걸러짐.
+      disableIndexedDb({ reason, permanent: false });
+      throw error instanceof Error ? error : new Error(reason);
     });
   }
 
@@ -385,7 +425,7 @@ export function openDb(): Promise<IDBDatabase> {
 }
 
 export async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<IndexedDbAttempt<T>> {
-  if (!storeRuntime.indexedDbAvailable || typeof indexedDB === "undefined") {
+  if (!isIndexedDbRuntimeAvailable() || typeof indexedDB === "undefined") {
     return {
       ok: false,
     };

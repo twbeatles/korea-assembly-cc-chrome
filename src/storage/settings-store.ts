@@ -221,31 +221,42 @@ export async function getSettings(): Promise<ExtensionSettings> {
 
 export { sanitizeSettings };
 
+let settingsWriteQueue: Promise<unknown> = Promise.resolve();
+
 export async function saveSettings(
   partial: Partial<ExtensionSettings>,
 ): Promise<ExtensionSettings> {
-  const filenamePatternError =
-    typeof partial.filenamePattern === "string"
-      ? validateFilenamePattern(partial.filenamePattern)
-      : undefined;
-  if (filenamePatternError) {
-    throw new Error(filenamePatternError);
-  }
+  const run = async (): Promise<ExtensionSettings> => {
+    const filenamePatternError =
+      typeof partial.filenamePattern === "string"
+        ? validateFilenamePattern(partial.filenamePattern)
+        : undefined;
+    if (filenamePatternError) {
+      throw new Error(filenamePatternError);
+    }
 
-  const next = sanitizeSettings({
-    ...(await getSettings()),
-    ...partial,
-  });
-  memorySettings = next;
-
-  const localStorage = getChromeLocalStorage();
-  if (localStorage) {
-    await localStorage.set({
-      [EXTENSION_STORAGE_KEY]: next,
+    const next = sanitizeSettings({
+      ...(await getSettings()),
+      ...partial,
     });
-  }
+    memorySettings = next;
 
-  return next;
+    const localStorage = getChromeLocalStorage();
+    if (localStorage) {
+      await localStorage.set({
+        [EXTENSION_STORAGE_KEY]: next,
+      });
+    }
+
+    return next;
+  };
+
+  const queued = settingsWriteQueue.then(run, run);
+  settingsWriteQueue = queued.then(
+    () => undefined,
+    () => undefined,
+  );
+  return queued;
 }
 
 export async function resetSettings(): Promise<ExtensionSettings> {

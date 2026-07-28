@@ -77,4 +77,27 @@ describe("subtitle row helpers", () => {
     expect(rows).toHaveLength(0);
     expect(countFilteredUnconfirmedSubtitleRows(document)).toBe(1);
   });
+
+  it("still treats deep trees with terminal highlight as unconfirmed", () => {
+    const wrappers = Array.from({ length: 120 }, (_value, index) => {
+      if (index === 119) {
+        return `<span class="leaf" style="background-color: rgba(135, 206, 250, 0.8);">인식 중 깊은 자막</span>`;
+      }
+      return `<span class="nest-${index}">`;
+    }).join("");
+    const closers = Array.from({ length: 119 }, () => "</span>").join("");
+
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="smi_word row_deep">${wrappers}${closers}</div>
+      </div>
+    `;
+
+    const rows = readObservedSubtitleRows(document, "#viewSubtit .smi_word", {
+      filterUnconfirmedEnabled: true,
+    });
+
+    expect(rows).toHaveLength(0);
+    expect(countFilteredUnconfirmedSubtitleRows(document)).toBe(1);
+  });
 });

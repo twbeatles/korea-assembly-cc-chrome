@@ -33,6 +33,12 @@ function resolveSpeaker(session: SessionRecord, entry: SubtitleEntry): string {
   }
 }
 
+/**
+ * UTF-8 BOM (EF BB BF). Excel on Korean Windows opens BOM-less CSV as CP949/ANSI,
+ * which mojibakes Hangul. Other apps ignore or strip a leading BOM safely.
+ */
+const UTF8_BOM = "\uFEFF";
+
 export function exportCsv(session: SessionRecord): string {
   const rows = [
     ["startTime", "endTime", "speaker", "text", "highlighted", "note", "labels"],
@@ -47,6 +53,8 @@ export function exportCsv(session: SessionRecord): string {
     ]),
   ];
 
-  return `${rows.map((row) => row.map(escapeCsv).join(",")).join("\n")}\n`;
+  // RFC 4180 prefers CRLF; Excel also handles CRLF more reliably than LF-only.
+  const body = `${rows.map((row) => row.map(escapeCsv).join(",")).join("\r\n")}\r\n`;
+  return `${UTF8_BOM}${body}`;
 }
 

@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { SessionRecord } from "../src/core/subtitle-models";
 import {
+  DOWNLOAD_REQUEST_MAX_BYTES,
   downloadExportWithFallback,
+  getUtf8ContentByteLength,
   handleBackgroundCommand,
   isBackgroundCommandMessage,
   type BackgroundCommandDependencies,
@@ -149,6 +151,51 @@ describe("service worker command helpers", () => {
 
     expect(response).toEqual({ ok: true, ready: false, requiresReload: true });
     expect(dependencies.injectConfiguredContentScripts).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects oversized DOWNLOAD_REQUEST payloads", async () => {
+    const dependencies = createDependencies();
+    const oversized = "가".repeat(Math.ceil(DOWNLOAD_REQUEST_MAX_BYTES / 2) + 1);
+
+    expect(getUtf8ContentByteLength(oversized)).toBeGreaterThan(DOWNLOAD_REQUEST_MAX_BYTES);
+
+    const response = await handleBackgroundCommand(
+      {
+        type: "DOWNLOAD_REQUEST",
+        filename: "huge.txt",
+        content: oversized,
+        mimeType: "text/plain;charset=utf-8",
+      },
+      {},
+      dependencies,
+    );
+
+    expect(response.ok).toBe(false);
+    if (!response.ok) {
+      expect(response.error).toContain("너무 큽니다");
+    }
+    expect(dependencies.downloadExport).not.toHaveBeenCalled();
+  });
+
+  it("accepts DOWNLOAD_REQUEST under the size limit", async () => {
+    const dependencies = createDependencies();
+    const response = await handleBackgroundCommand(
+      {
+        type: "DOWNLOAD_REQUEST",
+        filename: "ok.txt",
+        content: "짧은 본문",
+        mimeType: "text/plain;charset=utf-8",
+      },
+      {},
+      dependencies,
+    );
+
+    expect(response).toEqual({ ok: true, downloadId: 11 });
+    expect(dependencies.downloadExport).toHaveBeenCalledWith(
+      "ok.txt",
+      "짧은 본문",
+      "text/plain;charset=utf-8",
+    );
   });
 
   it("normalizes diagnostics and persistence commands through injected dependencies", async () => {

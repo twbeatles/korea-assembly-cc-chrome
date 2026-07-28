@@ -1,44 +1,53 @@
 # Project Audit
 
 **대상:** `korea-assembly-cc-chrome` (국회 AI 자막 추출 Chrome Extension)  
-**감사 일자:** 2026-07-14  
-**감사 범위:** 기능 구현 관점 (잠재 결함, 예외/검증, 상태·비동기, 저장소, 보안, 테스트, 문서 정합)  
-**방법:** `README.md` / `CLAUDE.md` 정독 → CodeGraph MCP 구조·호출 관계 분석 → 필요 시 소스 교차 확인  
+**감사 일자:** 2026-07-28 (3차 · **최종 · 다른 범위**)  
+**감사 범위:** 기능 구현 관점 — **1·2차와 겹치지 않는 축**  
+**방법:** `README.md` / `CLAUDE.md` 정독 → CodeGraph MCP 구조·호출 관계 → 필요 시 소스 교차 확인  
 
-> **구현 반영 (2026-07-14)**  
-> 아래 High/Medium 권고 중 핵심 항목을 코드에 반영했습니다.  
-> - H-1 저장/export 정규화 분리 · H-2 lifecycle lock · H-3 URL reconcile single-flight  
-> - H-4 session write queue · startup debounce · postMessage origin · entry 상한 · 용량 경고 · 문서 동기화  
-> 상세 구현 위치는 `src/core/output-normalizer.ts`, `src/content/runtime/capture-lifecycle-lock.ts`, `src/content/runtime/url-reconcile.ts`, `src/storage/session-write-queue.ts` 등을 참고하세요.  
->  
-> **구조 리팩터링 (동일 일자 후속)**  
-> - `session-store`: `idb/` · `fallback/` · `normalize` · `public-api` 분리  
-> - `history`: `HistoryHero` · `SessionListPanel` · `useHistoryLongTask`  
-> - `content/runtime`: `orchestrator` · `constants` · `types` facade  
-> 본문 §3 High 항목의 “미해결” 서술은 감사 시점 기록이며, 위 반영 이후 코드가 우선입니다.
+> **3차 초점 축**  
+> 1. 자막 파이프라인 품질(merge / desync / unconfirmed 판정)  
+> 2. page-world observer 브리지·토큰 노출 표면  
+> 3. 패널 DOM 안전성 · live row 의미론  
+> 4. 대용량 다운로드 Blob 수명 · 스키마 문서 정합  
+> 5. 다중 탭·manifest 경계  
+>
+> **이미 반영·재고발하지 않는 항목 (1·2차):**  
+> lifecycle lock · session write 큐 · IDB TTL · CSV BOM · DOWNLOAD_REQUEST 한도 ·  
+> messaging permanent vs transient 분리 · 롤오버 큐 64 · timeRange export · fallback memory rollback · 무효화 한국어 안내  
+>
+> **3차 항목 구현 반영 (2026-07-28 후속):**  
+> page-world postMessage origin 고정 · unconfirmed 텍스트 우선 샘플링 · page Blob complete 전 revoke 금지(TTL 10분) · schema version 문서 `"4"` · speaker/fallback merge 경계 · multi-tab soft ownership · panel shadow closed(테스트만 open)
+>
+> **SOLID 모듈 분할 (v1.0.12):**  
+> `orchestrator/` · `subtitle-pipeline/` · `session-store/public-api/` · History `SessionDetailPanel` — 공개 facade 유지, 동작 호환.
 
-**주의:** 본 문서 본문은 감사 시점의 분석 기록입니다. 구현 후 상태는 위 구현 반영 블록과 테스트를 우선합니다.
+**주의:** 본문 High-Risk 서술은 감사 시점 분석 기록이다. 위 구현 반영 블록과 현재 코드를 우선한다. 배포 버전은 `1.0.12`.
 
 ---
 
 ## 1. Executive Summary
 
-이 프로젝트는 **Manifest V3 Chrome Extension**으로, 국회 의사중계 플레이어의 AI 자막을 DOM/observer/polling으로 수집하고 IndexedDB(+fallback)에 저장·내보내기하는 제품입니다. 아키텍처는 content runtime → subtitle pipeline → session store → background export/download 로 명확히 분리되어 있고, 단위 테스트 커버리지와 fallback 경로가 비교적 성숙합니다.
+이 제품은 국회 의사중계 AI 자막을 수집·로컬 저장·다형식 내보내기하는 Manifest V3 확장이다. 1·2차 감사에서 지적된 동시성·저장 경로·메시징 분류 등은 코드에 반영된 상태다.
 
-**전체 위험도: Medium (중간)**
+3차는 **수집 품질·브리지 보안 표면·패널/다운로드 수명·문서 스키마 드리프트**를 본다. Critical 전손 경로는 없고, 전체 위험도는 **Low–Medium**이다. 남은 이슈는 “항상 깨짐”보다 **조건 의존 품질 저하·문서 불일치·적대적 페이지 스크립트 모델** 쪽이다.
+
+**전체 위험도: Low–Medium**
 
 | 등급 | 요약 |
 |------|------|
-| Critical | 현재 코드 근거로 확정한 Critical 항목은 없음 |
-| High | 저장 경로에서 export용 carry-over 정규화가 재사용되어 확정 자막이 조용히 줄어들 수 있음; 캡처 시작/URL 전환 동시성 가드 부재 |
-| Medium | session write load-modify-write 경쟁, 런타임 통합 테스트 공백, SPA 전환 시 상태 꼬임 여지 |
-| Low | postMessage `*`, 문서 드리프트, UX 보강 후보 |
+| Critical | 없음 |
+| High | 없음 (3차 범위에서 확정 High 없음) |
+| Medium | page-world `postMessage("*")` + config 이벤트로 브리지 토큰이 페이지에 노출될 수 있음; unconfirmed 판정의 descendant 샘플링 한계; 대형 Blob URL 60초 revoke 레이스; CLAUDE `version="3"` vs 코드 `SESSION_RECORD_VERSION="4"` |
+| Low | 다중 탭 동시 수집 제품 모호성; fallback merge 시 화자 경계 약함; 패널 open shadow; chunk digest는 무결성 해시 아님 |
 
-강점:
-- 자막 commit/preview 분리, unconfirmed 필터, page-exit replay queue, lineage 분할, import allow-list sanitize 등 핵심 의미론이 코드에 실재함.
-- 과거 문서화 이슈 중 `recentDuplicateMinLength` 반영, base64 chunking + 2 MiB data URL cap, `display:block` 강제 제거, note 4KB 캡, visibility autosave gating, pageshow/visible resync 는 **현재 구현에서 해결됨**.
+**강점 (사실):**
 
-남은 핵심 위험은 “DOM 수집 자체”보다 **동시성 제어**, **저장 정규화 범위**, **런타임 통합 테스트 공백** 쪽에 집중됩니다.
+- 패널/row UI는 `textContent` + Shadow DOM — `innerHTML` 사용 없음 (XSS 삽입 표면 낮음).  
+- content script 부트스트랩 멱등 속성, host_permissions 의사중계 도메인 한정.  
+- unconfirmed 배경 하이라이트 필터, 6회 streak 후 container fallback, soft resync 임계값이 코드·테스트에 존재.  
+- offscreen Blob chunking이 code-point 단위(`for...of`)로 surrogate-safe.  
+- entry chunk store(250) + hydrate로 대형 세션 분리 저장.
 
 ---
 
@@ -46,334 +55,254 @@
 
 ### 2.1 목적
 
-- 지원 사이트: `assembly.webcast.go.kr`, `webcast.assembly.go.kr`
-- 홈(`/main`, `/main/`)에서는 패널/진단 UI, 실제 수집은 `main/player*` (및 pressplayer) 에서 수행
-- 확정 자막만 저장·export (preview-only / 인식 중 / 로딩 placeholder 제외)
-- 형식: TXT / SRT / VTT / JSON / MD / CSV
-- History: 검색, 즐겨찾기, 메모, entry 편집·병합·분할, lineage 단위 관리, JSON 백업/복원(25 MiB)
+| 항목 | 내용 |
+|------|------|
+| 제품 | 국회 의사중계 AI 자막 실시간 수집 · 저장 · History · export |
+| 호스트 | `assembly.webcast.go.kr`, `webcast.assembly.go.kr` |
+| 수집 | 플레이어 페이지; 홈은 패널만 |
+| 스택 | MV3 · TS · React · Vite · Vitest · IDB |
 
-### 2.2 기술 스택
-
-- Vite + `@crxjs/vite-plugin`, React, Vitest
-- TypeScript dual-track (typecheck TS7 / ESLint TS6)
-- 저장: IndexedDB 우선 → `chrome.storage.local` per-session fallback → 메모리 fallback
-- 다운로드: offscreen Blob URL 우선, bounded data URL fallback
-
-### 2.3 주요 엔트리포인트 (CodeGraph 기준)
+### 2.2 엔트리포인트 (CodeGraph)
 
 ```text
-content-script.ts
-  └─ createContentRuntime() → app/runtime/implementation.ts
-       ├─ bootstrap / bind* (port, settings, navigation, url, bridge)
-       ├─ startCapture / stopCapture / handleCommand
-       ├─ handleTopFrameEvent → live-capture + subtitle-pipeline
-       ├─ autosave / page-exit-persist
-       └─ inpage-panel UI
+content-script (멱등 bootstrap)
+  └─ orchestrator
+       ├─ inject page-world injected-observer (token via CustomEvent)
+       ├─ bridge message (token 검증) → live-capture + pipeline
+       ├─ unconfirmed / fallback commit / segment rollover
+       └─ in-page panel (Shadow DOM, textContent)
 
-background/service-worker.ts
-  ├─ DOWNLOAD_SESSION_EXPORT / offscreen Blob
-  ├─ frame-forward nonce lifecycle
-  └─ startup-persistence (replay → cleanup)
+background SW
+  ├─ persist / download / offscreen Blob / nonce / startup
+  └─ revoke blob on download complete (same SW generation)
 
-storage/session-store/implementation.ts
-  ├─ saveSession / updateRunningSession / upsertSessionRecord
-  ├─ updateSessionMetadata / updateSessionContent
-  ├─ importSessionRecords / backup export
-  └─ closeRunningSessionsOnStartup / replay queue
+storage
+  ├─ entry-chunks hydrate · lineage merge
+  └─ export-payload (+ timeRange filter)
 
-history / popup / options / sidepanel
-  └─ React UI → session-store / chrome messaging
+history / popup / options / sidepanel(popup surface)
 ```
 
-### 2.4 핵심 실행 흐름
+### 2.3 수집 파이프라인 의미 (3차 초점)
 
-1. **Bootstrap:** content script idempotent attribute → settings 로드 → frame-forward nonce → observer inject + polling/top fallback
-2. **Auto-start:** player 페이지 + `autoStartEnabled` + cooldown 없음 + status ≠ running 이면 `startCapture()`
-3. **수집:** injected observer / local polling / top-frame fallback → `NormalizedCaptureEvent` 합류 → live ledger reconcile → pipeline (`applyPreview` / row commit) → noise/unconfirmed 필터 → entries commit
-4. **저장:** running autosave debounce, stop 시 최종 저장, pagehide 시 stopped queue + background persist, startup replay 후 running cleanup
-5. **Export:** session store payload 조립 → background download → offscreen Blob (실패 시 2 MiB 이하 data URL)
+1. page-world MutationObserver/polling → `postMessage` (+ token)  
+2. content: token 일치 시 top 합류 / child는 frame-forward nonce  
+3. structured rows → live ledger reconcile → `commitLiveRow`  
+4. fallback raw → 안정 관측 후 materialize  
+5. unconfirmed 배경 → row 제외; 연속 차단 시 container fallback 일시 허용  
+6. desync/ambiguous 카운트 초과 → soft resync  
 
-### 2.5 문서 대비 구현 정합 (요약)
+### 2.4 문서 정합 (3차)
 
-| 항목 | 문서 | 현재 구현 | 판정 |
-|------|------|-----------|------|
-| `recentDuplicateMinLength` 설정 반영 | CLAUDE noise 규칙 | `resolveRecentDuplicateMinLength(settings)` 사용 | 정합 |
-| 자막 레이어 `display:block` 강제 | 과거 이슈 | 의도적으로 제거, 수동 클릭 notice | 정합 |
-| visibility autosave gating | 과거 이슈 | `respectAutoSaveSetting` + pagehide 예외 | 정합 |
-| pageshow / visible resync | 과거 이슈 | `resyncOnReturnToForeground` | 정합 |
-| note 길이 캡 | 과거 이슈 | `SESSION_NOTE_MAX_LENGTH = 4096` | 정합 |
-| import allow-list + invalid timestamp reject | CLAUDE | `session-backup.ts` sanitize | 정합 |
-| export 직전 carry-over 정리 | CLAUDE export 규칙 | **export뿐 아니라 저장 정규화에도 적용** | **어긋남 가능** |
-| `POTENTIAL_ISSUES.md` P0 미해결 표기 | 해당 문서 | 현재 코드상 다수 해결 | 문서 스테일 |
+| 항목 | 문서 | 구현 | 판정 |
+|------|------|------|------|
+| session record version | CLAUDE `version = "3"` | `SESSION_RECORD_VERSION = "4"` | **어긋남** |
+| liveLedgerMaxRows=300 | CLAUDE | constants + panel-live-rows | 정합 |
+| 확정 자막만 저장 | README/CLAUDE | unconfirmed 필터 + fallback 안정 관측 | 정합(샘플링 한계는 별도) |
+| timeRange export | CLAUDE | 2차에서 구현됨 | 정합 |
+| 호스트 한정 | README | manifest host_permissions | 정합 |
 
 ---
 
 ## 3. High-Risk Issues
 
-### H-1. 저장/업데이트 경로가 export용 carry-over 정규화를 재사용해 확정 entry를 조용히 삭제·수정할 수 있음
+### H-1. page-world 브리지: `postMessage("*")` + config 이벤트에 token 전달
 
-* **위치:** `src/storage/session-store/implementation.ts` — `normalizeEntries()` → `normalizeEntriesForOutput()`; 호출: `normalizeSessionRecord()`, `applySessionContentPatch()`, `stopRunningRecord()`
-* **문제:** `normalizeEntriesForOutput()`는 export/copy 직전의 carry-over exact duplicate 제거·접두 트림용 로직입니다. 이를 `saveSession` / `updateRunningSession` / `updateSessionContent` / startup `stopRunningRecord` 등 **영속화 경로**에 그대로 연결하면, 메모리上的 확정 자막과 디스크에 남는 자막 집합이 달라질 수 있습니다.
+* **위치:**  
+  * `src/content/injected-observer.ts` — `emit()` → `window.postMessage(..., "*")`  
+  * `src/content/app/runtime/orchestrator.ts` — `OBSERVER_CONFIG_EVENT` CustomEvent detail에 `token: observerBridgeToken`  
+  * 수용측: `bindBridgeMessages` — `data.token !== observerBridgeToken` 이면 drop
+* **문제:**  
+  1. 페이지 스크립트가 브리지 메시지를 origin 무관하게 관찰 가능(`*`).  
+  2. 설정 CustomEvent로 **bridge token이 page world에 전달**되므로, 동일 페이지의 임의 스크립트가 토큰을 가로채 위조 `subtitle:update` 를 보낼 수 있는 모델이 성립한다.  
+  content는 token 일치만 검증하고 payload 텍스트를 신뢰한다.
 * **영향:**
-  * 짧은 간격·동일 문장·동일 `sourceNodeKey` 재등장 시 저장 시점에 entry 감소
-  * History entry 편집/병합 후 저장 시 의도치 않은 트림·삭제
-  * 패널에 보이던 건수와 저장 후 `subtitleCount` 불일치 → 사용자 신뢰 저하
-* **근거:**
-  * `normalizeEntries`가 곧 `normalizeEntriesForOutput` 호출
-  * CLAUDE.md는 “**export 직전** carry-over exact duplicate 정리”로 범위 한정
-  * 동일 함수가 copy-utils / exporters에서도 사용되어 역할이 혼재
+  * **정상 의사중계 페이지**에서는 현실 위험이 낮음(1st-party 신뢰).  
+  * 페이지 스크립트 주입·XSS·확장 충돌 시 **가짜 자막 주입·수집 오염** 가능.  
+  * 자막 원문이 같은 페이지의 다른 스크립트에 노출(기밀성).
+* **근거:** CodeGraph emit/installBridge/config dispatch; token 검증은 존재하나 token 비밀성이 page 공유.
 * **권장 수정 방향:**
-  * 저장 경로는 structural sanitize(타입·필수 필드·길이)만 수행
-  * carry-over dedupe는 `exportSessionData` / copy / lineage export 직전으로 한정
-  * 회귀 테스트: “동일 텍스트 2 entry를 12초 내 저장해도 2건 유지” 등
-* **우선순위:** High
+  * page→content 채널을 `CustomEvent` + 확장 전용 경로 또는 `chrome.runtime` 이 가능한 구조로 재검토(제약 있음).  
+  * 최소: `postMessage` targetOrigin을 `location.origin`으로 고정(관찰은 줄이지 못해도 관례 개선).  
+  * token 회전 주기 단축·config 이벤트 가로채기 완화(document 캡처 리스너 경쟁은 완전 방어 어려움 — 문서화).  
+  * 적대적 페이지를 위협 모델에 **명시적으로 포함/제외**.
+* **우선순위:** Medium (위협 모델 의존; 정부 사이트 1st-party 가정 시 Low–Medium)
 
-### H-2. `startCapture()` 비동기 구간 동안 중복 실행 가드가 없음
+### H-2. unconfirmed 판정의 descendant 샘플링(최대 48)으로 오판 가능
 
-* **위치:** `src/content/app/runtime/implementation.ts` — `startCapture()`; 가드 헬퍼 `src/content/runtime/capture-start.ts` — `shouldIgnoreStartCapture()`
-* **문제:** 중복 시작 판정이 `state.status === "running"` 뿐이며, 그 이전의 `await ensureFailedStoppedSessionResolved` / `await ensureCurrentRunningSessionPreservedBeforeReset` 동안 status는 여전히 running이 아닙니다. 패널 더블클릭·popup 동시 명령·auto-start와 수동 시작 경쟁 시 두 흐름이 인터리브될 수 있습니다.
+* **위치:** `src/content/subtitle-rows.ts` — `CONFIRMATION_DESCENDANT_SAMPLE_LIMIT = 48`, `collectConfirmationCheckTargets`, `isConfirmedSubtitleNode`
+* **문제:**  
+  노드 하위 요소가 많을 때 일부만 샘플링해 배경 하이라이트(인식 중)를 검사한다. 하이라이트가 샘플 밖 자손에만 있으면 **미확정을 확정으로 오인**하거나, 반대로 구조에 따라 필터가 들쭉날쭉할 수 있다.
 * **영향:**
-  * 이전 세션 저장/삭제와 새 세션 reset이 교차
-  * 세션 id/entries 손실 또는 잘못된 저장 스냅샷
-  * failed-stopped guard 상태 꼬임
-* **근거:**
-  * `shouldIgnoreStartCapture`는 status 단일 조건
-  * 코드베이스에 `startCaptureInFlight` / command mutex 류 심볼 없음 (검색 결과 0)
-  * CodeGraph: `startCapture` / `stopCapture` 직접 커버 테스트 없음
+  * 인식 중 자막이 조기 commit → 이후 보정·중복 엔트리 품질 저하  
+  * 또는 과도 차단 후 streak fallback 의존
+* **근거:** 샘플 한도 상수 + step 샘플링 루프; CLAUDE는 “하늘색 등 불투명 배경 = 미확정 제외”를 요구.
 * **권장 수정 방향:**
-  * `captureLifecycleInFlight` 플래그 또는 직렬 큐로 start/stop/clear/save 직렬화
-  * 진입 즉시 “starting” 가드 또는 promise 재사용
-  * 동시 클릭 통합 테스트 추가
-* **우선순위:** High
-
-### H-3. URL 전환 reconcile의 `lastKnownUrl` 선반영 + 동시 스케줄로 캡처 파이프라인이 고착될 수 있음
-
-* **위치:** `src/content/app/runtime/implementation.ts` — `reconcileCapturePipelineForCurrentUrl()`, `bindUrlChangeDetection()`
-* **문제:**
-  1. `lastKnownUrl = currentUrl`을 stop/reset **성공 전**에 갱신한 뒤, `stopCapture()` 실패 시 early return → 이후 동일 URL에서는 `urlChanged === false`라 재시도하지 않음
-  2. `pushState` / `replaceState` / `popstate` / 500ms poll이 각각 `setTimeout(0)`으로 reconcile을 스케줄하며 **in-flight 직렬화 없음** → 병렬 stop/start 가능
-* **영향:**
-  * SPA 회의 전환 후 수집이 재개되지 않는 고착 상태
-  * 전환 중 세션 이중 종료/이중 저장
-  * auto-start가 기대대로 다시 돌지 않음
-* **근거:**
-  * 1995–2032행 근처: lastKnownUrl 선반영 + catch return
-  * 2712–2753행: 다중 이벤트 → `scheduleReconcile` 병렬 가능
-  * `reconcileInFlight` 부재
-* **권장 수정 방향:**
-  * reconcile single-flight 큐 (latest-wins)
-  * `lastKnownUrl`은 stop/reset 성공 후에만 커밋; 실패 시 이전 URL 유지 또는 “dirty reconcile” 플래그
-  * URL 전환 실패 notice를 사용자에게 노출
-* **우선순위:** High
-
-### H-4. session metadata/content 업데이트의 load-modify-write 경쟁
-
-* **위치:** `src/storage/session-store/implementation.ts` — `updateSessionMetadata()`, `updateSessionContent()`, `updateSessionLineageMetadata()`
-* **문제:** `loadSession` → patch 적용 → `writeSessionRecord` 사이에 버전/락이 없습니다. History에서 즐겨찾기 토글과 메모 저장, 또는 lineage 메타 업데이트와 entry 편집이 겹치면 나중에 끝나는 write가 이전 필드를 덮어쓸 수 있습니다.
-* **영향:**
-  * 즐겨찾기/메모/entry 편집 중 일부 변경 유실
-  * 다중 탭 History 동시 편집 시 데이터 손실
-* **근거:**
-  * 각 함수가 독립 load 후 전체 record put
-  * `preserveStoredSessionMetadata`는 save/updateRunning 경로의 starred/note 보호용이며 concurrent content patch 보호는 아님
-* **권장 수정 방향:**
-  * `updatedAt`/revision 비교 후 stale write reject
-  * 또는 필드 단위 트랜잭션(메타만 / entries만) 강화
-  * 동시 업데이트 통합 테스트
+  * 의미 있는 텍스트를 가진 leaf 우선 전수 검사, 또는 상한을 높이되 비용 측정  
+  * 오판 시 diagnostics에 `sampledConfirmation=true` 플래그  
+  * fixture HTML로 deep tree 회귀 테스트
 * **우선순위:** Medium
 
-### H-5. `startCapture` / `stopCapture` / `handleCommand` / navigation guard 통합 테스트 공백
+### H-3. 대형 page Blob 다운로드: resolve 직후·60초 타임아웃 revoke 레이스
 
-* **위치:** `src/content/app/runtime/implementation.ts` (CodeGraph blast radius: ⚠️ no covering tests found)
-* **문제:** 단위 모듈 테스트(pipeline, autosave helper, page-exit-persist, frame-coordinator 등)는 풍부하나, 실제 상태 머신을 소유하는 runtime implementation의 핵심 액션에 대한 직접 테스트가 부족합니다.
-* **영향:**
-  * H-2, H-3 같은 동시성/전환 회귀가 CI에서 잡히지 않음
-  * 리팩터링 시 facade/implementation 분리 경계에서 의미론 깨짐 위험
-* **근거:** CodeGraph blast radius 경고 + `tests/content-runtime.test.ts`는 helper 수준 위주
+* **위치:** `src/history/page-blob-download.ts` — `DEFAULT_REVOKE_TIMEOUT_MS = 60_000`, `settleResolve` 가 download **시작** 직후 resolve, cleanup은 complete/interrupted 또는 60초
+* **문제:**  
+  1. `chrome.downloads.download` 콜백에서 즉시 `settleResolve` — 호출자는 완료를 기다리지 않음(설계상 가능).  
+  2. 60초 타이머는 complete 리스너와 경합; 느린 디스크·사용자 saveAs 대화상자 지연 시 **다운로드 진행 중 URL revoke** 가능.  
+  3. downloads API 없는 환경의 anchor fallback도 resolve 후 60초 revoke.
+* **영향:** 전체 JSON 백업 등 대형 파일에서 간헐적 다운로드 실패 (**추정 빈도 낮음, 영향 큼**)
+* **근거:** page-blob-download 소스; 테스트는 단위 수준.
 * **권장 수정 방향:**
-  * runtime을 테스트 가능한 서비스 경계로 더 추출하거나, implementation 공개 훅에 대한 시나리오 테스트 추가
-  * “start 중 재진입”, “URL 변경 중 stop 실패”, “pagehide 후 pageshow resync” 시나리오
+  * complete 전에는 revoke 금지; 타임아웃을 수 분으로 연장 또는 download state 폴링  
+  * saveAs 대화상자 시간을 고려한 최소 TTL  
 * **우선순위:** Medium
 
-### H-6. frame-forward `postMessage(..., "*")` 와 메시지 표면
+### H-4. CLAUDE session record version 문서 드리프트 (`"3"` vs `"4"`)
 
-* **위치:** `src/content/frame-coordinator.ts` — `forwardFrameEvent()`
-* **문제:** child → top 전달 시 targetOrigin이 `"*"`입니다. top 수용은 storage-backed nonce로 제한되지만, 동일 페이지의 다른 스크립트가 메시지를 관찰하거나(기밀성은 낮음) 잘못된 origin 관례를 남깁니다.
-* **영향:** 보안 민감도는 낮~중간(자막 텍스트 로컬 유출 가능성, nonce 추측 어려움). 호스트 페이지 협력 공격 모델에서는 이론상 이벤트 위조 시도 가능하나 nonce 없이는 드롭됩니다.
-* **근거:** `window.top?.postMessage(payload, "*")` + top의 nonce mismatch → resync/drop
-* **권장 수정 방향:**
-  * 가능하면 `window.location.origin`으로 targetOrigin 고정
-  * sender origin 검증 강화(이미 event.source 검사 일부 존재)
-* **우선순위:** Low ~ Medium
+* **위치:**  
+  * `CLAUDE.md` §7.2 — `version = "3"`  
+  * `src/shared/constants.ts` — `SESSION_RECORD_VERSION = "4"`  
+  * 다수 테스트 fixture는 여전히 `"3"` (import 시 normalize로 덮일 수 있음)
+* **문제:** 에이전트/기여자가 스키마 기대를 잘못 잡음. 런타임은 normalize 시 현재 버전으로 맞출 가능성이 높으나 문서가 구식.
+* **영향:** 잘못된 마이그레이션 가정, 리뷰 혼선 (직접 데이터 손실은 낮음)
+* **근거:** 상수 vs CLAUDE 문구 불일치
+* **권장 수정 방향:** CLAUDE를 `"4"` 및 변경 필드로 갱신; 테스트 fixture 점진 정렬
+* **우선순위:** Medium (문서) / Low (런타임)
 
-### H-7. (해결됨) 과거 P0 항목 — 재발 방지 목적 기록
+### H-5. fallback 경로에서 화자/구조 경계 없는 merge로 문장 합침 가능
 
-아래는 `POTENTIAL_ISSUES.md`에 남아 있을 수 있으나 **현재 코드에서는 해결된 상태**입니다. 회귀 테스트 유지가 중요합니다.
+* **위치:** `src/core/subtitle-pipeline.ts` — `appendOrMergeEntry`  
+  structured boundary는 `sourceNodeKey` 가 양쪽 있을 때만 동작. merge gap 5초·max chars 조건.
+* **문제:** container fallback 엔트리는 `sourceNodeKey` 가 비는 경우가 많아, 짧은 간격의 서로 다른 발화가 **한 entry로 병합**될 수 있다.
+* **영향:** 회의록 가독성·SRT 큐 타이밍 왜곡 (데이터 “유실”보다는 품질)
+* **근거:** canMerge 조건에 speakerChannel 비교 없음; fallback commit 경로 존재
+* **권장 수정 방향:** speakerChannel/color 변경 시 forceNewEntry; fallback 전용 더 짧은 merge gap
+* **우선순위:** Low–Medium
 
-| 과거 이슈 | 현재 근거 |
-|-----------|-----------|
-| `recentDuplicateMinLength` 미반영 | `resolveRecentDuplicateMinLength` + `applyPreview` 전달 |
-| `bytesToBase64` 1바이트 누적 | chunk size `0x8000` + join |
-| data URL 대용량 | `DATA_URL_FALLBACK_MAX_BYTES = 2 MiB` |
-| `display:block` 강제 | subtitle-layer / injected-observer 모두 명시적 회피 |
-| note 무제한 | `SESSION_NOTE_MAX_LENGTH = 4096` |
-| visibility autosave 무시 | `respectAutoSaveSetting` |
-| pageshow 미처리 | `pageshow` + `visibilitychange` visible 분기 |
+### H-6. 다중 탭 동시 수집 시 세션 충돌은 “제품 미정의”
 
-* **우선순위:** (회귀 관점) Medium — 문서/테스트 동기화
+* **위치:** content runtime은 탭 단위 모듈 상태; storage는 session id 단위 큐만 존재
+* **문제:** 같은 회의를 두 탭에서 동시에 수집하면 서로 다른 session/lineage가 생기고, 저장소만 공유된다. 충돌 방지·탭 단일화 UX 없음.
+* **영향:** 사용자 혼란·중복 기록 (**추정** 사용 패턴)
+* **근거:** 탭 간 캡처 락 심볼 없음; 설계상 탭 로컬 상태
+* **권장 수정 방향:** 동시 running 세션 diagnostics 경고 또는 “이미 다른 탭에서 수집 중” 알림 (**추정 구현 비용 Medium**)
+* **우선순위:** Low
+
+### H-7. (참고) 패널 open Shadow DOM · 페이지 간섭
+
+* **위치:** `inpage-panel/dom/builders.ts` — `attachShadow({ mode: "open" })`, `textContent` 만 사용
+* **문제:** open 모드라 페이지가 `shadowRoot`에 접근 가능. 텍스트 삽입은 textContent라 XSS 위험은 낮으나 UI 변조는 가능.
+* **영향:** 낮은 보안/UX; closed mode 전환 검토 가치
+* **우선순위:** Low
+
+### H-8. 1·2차 해결 항목 (재발 방지)
+
+| 영역 | 상태 |
+|------|------|
+| lifecycle / write 큐 / IDB TTL / CSV BOM | 해결 |
+| messaging permanent vs transient | 해결 |
+| 롤오버 큐·timeRange·fallback rollback | 해결 |
 
 ---
 
 ## 4. Potential Functional Gaps
 
-확실하지 않은 항목은 **추정**으로 표기합니다.
-
-### 4.1 기능 보완 후보
-
-1. **entryNote / 단일 entry text 길이 캡**  
-   세션 note는 4KB 캡이 있으나 entryNote·text 자체 상한은 import sanitize 외 약한 편입니다. 장문 붙여넣기 시 storage 팽창 가능. (**부분 사실 + 추정 영향**)
-
-2. **History dirty note `beforeunload` 미보호**  
-   새로고침/필터 전환 시 discard 확인은 있으나, 탭 닫기에는 가드가 없습니다. (`POTENTIAL_ISSUES` 4-4와 동일, **현재도 추정 유지**)
-
-3. **`subtitle:health`만 오는 구간의 title/sourceUrl 갱신**  
-   SPA 중 health 이벤트만 오면 메타가 stale일 수 있음. (**추정**, 과거 노트 5-3)
-
-4. **autoStart 기본 ON + 자막 레이어 자동 클릭의 사용자 기대 불일치**  
-   구현은 의도적이나 README “알려진 한계”에 부수 효과 설명이 부족할 수 있음. (**UX 갭**)
-
-5. **startup maintenance 중복 실행**  
-   `onStartup` + `onInstalled` 동시 트리거 시 replay/cleanup 이중 실행 가능. 치명적이진 않으나 History revision refetch 흔들림. (**추정 Medium/Low**)
-
-6. **외국어 자막**  
-   noise filter 한글/영문 중심은 README/CLAUDE와 일치. 추가 언어 지원은 제품 확장 과제.
-
-7. **실험형 side panel**  
-   존재하나 주 UX는 in-page panel. 기능 패리티/완성도 차이는 **추정**.
-
-8. **대형 세션(24h) 운영 UX**  
-   lineage 분할은 있으나 수집 중 “곧 분할됩니다” 선제 안내·용량 경고 UI는 약할 수 있음. (**추정**)
-
-### 4.2 문서 드리프트
-
-* `POTENTIAL_ISSUES.md`의 P0 “미해결” 서술과 현재 코드 불일치 → 신규 기여자/에이전트가 잘못된 우선순위를 잡을 위험
-* `CLAUDE.md` 검증 명령 목록과 `package.json`의 `verify` / `verify:e2e` / `test:e2e:extension` 매핑이 문서마다 표현이 다름 (기능 버그는 아니나 운영 혼선)
-
-### 4.3 보안 표면 (기능 인접)
-
-* injected page-world에서 `window.smi_*` 호출: 가시성 재검사로 완화됨. 페이지 함수 위조 시 부작용 가능하나 성공 판정은 레이어 visible 기준
-* background openHistory/options 메시지는 extension 내부 메시지; 추가 sender.id 검사는 방어 심화 수준
+1. **적대적 페이지 위협 모델 문서화 부재** — H-1. **추정: 제품은 1st-party 신뢰**  
+2. **deep unconfirmed tree fixture 부족** — H-2 회귀 방지. **사실(테스트 공백 추정 포함)**  
+3. **resolvePanelLiveRows가 structuredRows를 무시** — 항상 committed entry 윈도우. CLAUDE “live ledger 누적”과 표현이 다를 수 있으나 committed 기준이면 의도적일 수 있음. **추정: 의도적 단순화**  
+4. **chunk digest 32-bit FNV류** — 충돌 시 불필요 rewrite 또는 스킵 오류 가능. **Low 추정**  
+5. **soft resync** 시 과거 문장 재추출 품질 — 임계 기반 설계. **품질 이슈, 버그 단정 아님**  
+6. **side panel = popup surface** — 패리티 양호, 독립 UX 미흡 **추정**  
+7. **E2E가 smoke 수준** — pipeline 품질·브리지 위조는 자동 검증 약함  
 
 ---
 
 ## 5. Recommended Fix Plan
 
-### 1단계 — 즉시 수정 (데이터 정확성 / 동시성)
+### 1단계 — 즉시 (품질·문서·다운로드 안정)
 
-1. **저장 경로에서 `normalizeEntriesForOutput` 분리 (H-1)**  
-   - structural sanitize 전용 함수 도입  
-   - export/copy에만 carry-over 정리 유지  
-   - 저장 전후 entry 수 불변 회귀 테스트
+1. **H-4** CLAUDE `SESSION_RECORD_VERSION` / 스키마 설명 `"4"`로 정합  
+2. **H-3** page Blob revoke 정책: complete 전 유지 · TTL 연장  
+3. **H-2** unconfirmed 검사 샘플 전략 개선 + deep fixture 테스트  
 
-2. **캡처 라이프사이클 직렬화 (H-2)**  
-   - start/stop/clear/save 공통 mutex  
-   - 중복 start는 기존 in-flight promise 반환 또는 명시적 ignore
+### 2단계 — 안정성·위협 모델
 
-3. **URL reconcile single-flight + lastKnownUrl 커밋 시점 수정 (H-3)**  
-   - 실패 시 재시도 가능 상태 유지  
-   - 사용자 notice: “페이지 전환 후 수집 재개 실패”
+4. **H-1** postMessage origin 고정 · 위협 모델 README/PRIVACY에 명시 · token 노출 완화 방안 검토  
+5. **H-5** fallback merge에 speaker 경계  
+6. 브리지 위조·deep tree 단위/통합 테스트  
 
-### 2단계 — 안정성 개선
+### 3단계 — 구조·제품
 
-4. session update optimistic concurrency (H-4)  
-5. runtime implementation 시나리오 테스트 보강 (H-5)  
-6. startup maintenance debounce/in-flight guard  
-7. entryNote 길이 상한 + History dirty beforeunload  
-8. frame postMessage origin 고정 (H-6)
-
-### 3단계 — 구조·문서·UX
-
-9. `POTENTIAL_ISSUES.md`를 현재 코드 기준으로 재작성하거나 “Resolved” 섹션 분리  
-10. CLAUDE/README 검증 명령·export 정규화 범위 문구 동기화  
-11. autoStart/자막 자동 활성화 부수 효과를 옵션 설명·알려진 한계에 명시  
-12. 장시간 세션 용량 경고·분할 예고 UI  
-13. (선택) runtime implementation 모듈을 더 작은 테스트 가능 서비스로 분할
+7. 다중 탭 running 감지 알림 (H-6)  
+8. 패널 shadow `closed` 검토 (H-7)  
+9. orchestrator에서 bridge/pipeline seam 추가 추출로 품질 테스트 용이화  
 
 ---
 
 ## 6. Test Recommendations
 
-### 6.1 최우선 추가 테스트
+### 6.1 최우선
 
 | 영역 | 시나리오 | 기대 |
 |------|----------|------|
-| session-store | 동일 텍스트·동일 sourceNodeKey·12초 이내 2 entry를 `saveSession` | **2건 모두 유지** (export 시에만 1건으로 줄어들 수 있음) |
-| session-store | `updateSessionContent`로 사용자가 의도적으로 비슷한 문장 2줄 저장 | 둘 다 유지 |
-| content-runtime | `startCapture` 중 재호출 | 두 번째 호출 no-op 또는 동일 promise, 세션 1개 |
-| content-runtime | running 중 URL 변경 + stop 실패 모킹 | lastKnownUrl/재시도, 파이프라인 고착 없음 |
-| content-runtime | pushState 연속 2회 빠른 호출 | reconcile 1회 직렬, 이중 stop 없음 |
-| session-store | 병렬 `updateSessionMetadata(starred)` + `updateSessionMetadata(note)` | 최종 레코드에 두 필드 모두 반영 또는 명시적 conflict error |
-| page-exit | autosave OFF + visibility hidden | running snapshot **미기록**; pagehide stopped는 기록 |
-| export | 2 MiB 초과 content의 data URL fallback | 명시적 거부/안내, SW OOM 없음 |
+| subtitle-rows | 자손 100+ + 샘플 밖 highlight | 미확정으로 차단 (H-2 수정 후) |
+| page-blob-download | download complete 전 61초 경과 시뮬 | URL 유지 또는 안전하게 재생성 |
+| injected-observer / bridge | 잘못된 token 메시지 | drop; 올바른 token만 수용 |
+| pipeline | fallback 연속 두 문장 다른 speakerColor 5초 이내 | 분리 entry (H-5 수정 후) |
+| docs/check | SESSION_RECORD_VERSION 상수와 CLAUDE 문구 | 일치 검사 스크립트 가능 |
 
-### 6.2 회귀 유지 (이미 있거나 강화 권장)
+### 6.2 유지 회귀
 
-* `recentDuplicateMinLength` 설정 16 vs 8 (`subtitle-pipeline.test.ts` 존재 — 유지)
-* note 4KB clamp (`session-store.test.ts` 존재 — 유지)
-* unconfirmed fallback 6회 허용
-* import invalid timestamp / unsupported wrapper version reject
-* lineage merge/export split
-* frame-forward nonce mismatch → resync
+* unconfirmed 6회 fallback 허용  
+* soft resync 임계  
+* export timeRange · CSV BOM · write queue  
+* transient messaging 비-permanent  
+* offscreen chunk surrogate-safe  
 
-### 6.3 E2E / 스모크
+### 6.3 수동 / E2E
 
-* 기존 `npm run verify` + `npm run verify:e2e` / `test:e2e:extension` 유지
-* **추가 권장 수동/반자동 시나리오:**
-  1. player A 수집 중 → SPA로 player B 전환 → 저장·재시작 확인  
-  2. 수집 중 탭 백그라운드/포그라운드 왕복 후 nonce·자막 연속성  
-  3. 저장 실패 유도 후 재시작 시 discard 확인 플로우  
-  4. History에서 lineage 즐겨찾기 + 메모 동시 편집
-
-### 6.4 테스트 인프라 메모
-
-* CodeGraph가 표시하는 “no covering tests”는 심볼 직접 참조 기준이라, helper 단위 테스트만 있는 모듈은 과소평가될 수 있습니다. 그래도 **runtime implementation 본체**는 실질적 공백으로 보는 것이 타당합니다.
-* `fake-indexeddb` 기반 store 테스트는 강점. content script DOM + chrome API mock 통합 레이어를 한 단계 올리는 편이 ROI가 큽니다.
+1. 인식 중(하이라이트) 구간 긴 회의 — 조기 commit 여부  
+2. 전체 JSON 백업 saveAs 1분 이상 대기 — 다운로드 성공 여부  
+3. 개발자 도구에서 위조 postMessage — token 없으면 무시  
+4. 같은 회의 탭 2개 동시 수집 — 기록 중복 양상 확인  
 
 ---
 
-## Appendix A. 감사 범위 체크리스트
+## Appendix A. 3차 체크리스트
 
-| 감사 항목 | 결과 요약 |
-|-----------|-----------|
-| 기능 구현 잠재 문제 | H-1 저장 정규화 범위, H-2/H-3 동시성 |
-| 누락된 예외 처리 | stopCapture는 대체로 swallow; reconcile 실패 재시도 부족 |
-| 사용자 입력 검증 | import sanitize 양호; entryNote/text 상한·session id 직접 경로 약함 |
-| 상태/데이터 흐름 | preview vs commit 분리는 양호; 저장 시 재정규화가 흐름 왜곡 가능 |
-| 비동기/race | startCapture·reconcile·session update |
-| 경로/인코딩/OS | Chrome 전용, UTF-8 TextEncoder 사용 — 큰 이슈 없음 |
-| DB/캐시/설정 | IndexedDB+fallback 설계 성숙; concurrent write·fallback 용량 한계 |
-| 보안 | 호스트 제한·nonce·token 양호; postMessage `*` 개선 여지 |
-| 테스트 | 단위 풍부 / runtime 통합 약함 |
-| 문서 정합 | 핵심 스펙 대체로 일치; POTENTIAL_ISSUES 스테일, export 정규화 문구 주의 |
-| 추가 기능 후보 | beforeunload note, 용량 경고, autoStart 설명 |
+| 항목 | 요약 |
+|------|------|
+| 기능 잠재 문제 | unconfirmed 샘플링, fallback merge, Blob revoke |
+| 예외 처리 | 대체로 양호; revoke 타이밍 개선 여지 |
+| 입력 검증 | import/settings 양호; 브리지는 token만 |
+| 상태 흐름 | pipeline 의미론 풍부; soft resync 존재 |
+| 비동기 | Blob/download 수명, 다중 탭 미정의 |
+| 인코딩/OS | 1·2차 정합 |
+| DB | chunk hydrate 양호; 문서 version 드리프트 |
+| 보안 | 패널 XSS 낮음; page-world token 표면 Medium |
+| 테스트 | 품질/위협 시나리오 보강 여지 |
+| 문서 | version 3 vs 4 |
 
-## Appendix B. 참고 문서·심볼
+## Appendix B. 1·2·3차 범위 분리
 
-* 문서: `README.md`, `CLAUDE.md`, `POTENTIAL_ISSUES.md`, `CAPTURE_RETENTION_AND_STABILITY.md`
-* CodeGraph 초점 심볼: `startCapture`, `stopCapture`, `reconcileCapturePipelineForCurrentUrl`, `applyPreview`, `normalizeSessionRecord`, `importSessionRecords`, `downloadExportWithFallback`, `persistQueuedPageExitRecord`, `runStartupPersistenceMaintenance`
-* 검증 권장 명령:
+| 회차 | 초점 |
+|------|------|
+| 1차 | lifecycle, write 큐, IDB, CSV, DOWNLOAD_REQUEST |
+| 2차 | messaging 분류, 롤오버 overflow, timeRange, fallback rollback |
+| **3차 (본 문서)** | **pipeline 품질, page-world 브리지, Blob 수명, 스키마 문서, 다중 탭** |
 
-```bash
-npm run check:version
-npm run check:injected
-npm run lint
-npm run typecheck
-npm run test
-npm run build
-# 또는
-npm run verify
-```
+## Appendix C. 주요 파일 (3차)
+
+| 경로 | 역할 |
+|------|------|
+| `src/content/injected-observer.ts` | page-world observer · postMessage |
+| `src/content/subtitle-rows.ts` | unconfirmed · row key |
+| `src/core/subtitle-pipeline.ts` | preview/row commit · merge · resync |
+| `src/content/inpage-panel/dom/builders.ts` | Shadow panel · textContent |
+| `src/history/page-blob-download.ts` | 대형 백업 Blob 수명 |
+| `src/shared/constants.ts` | SESSION_RECORD_VERSION · PIPELINE_DEFAULTS |
+| `manifest.json` | 권한 · matches · WAR |
 
 ---
 
-*본 감사는 정적 코드/문서/그래프 분석 기반이며, 실기기 국회 사이트 라이브 DOM 변경에 대한 런타임 관측은 포함하지 않습니다. 사이트 DOM 변경에 따른 selector 깨짐은 제품 본질적 외부 리스크로 README “알려진 한계”와 동일합니다.*
+*정적 분석·CodeGraph 기반. 실 Chrome 장시간 회의·적대적 페이지 스크립트 재현은 포함하지 않았다. 코드 변경 없이 리포트만 작성했다.*

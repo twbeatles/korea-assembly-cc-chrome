@@ -195,6 +195,10 @@ export type BackgroundCommandMessage =
       txtExportEntryNotesEnabled?: boolean;
       entryIds?: string[];
       filenameSuffix?: string;
+      timeRange?: {
+        from?: string;
+        to?: string;
+      };
     }
   | {
       type: "DOWNLOAD_SESSION_LINEAGE_EXPORT";
@@ -206,6 +210,10 @@ export type BackgroundCommandMessage =
       txtExportEntryNotesEnabled?: boolean;
       entryIds?: string[];
       filenameSuffix?: string;
+      timeRange?: {
+        from?: string;
+        to?: string;
+      };
     }
   | { type: "OPEN_HISTORY_PAGE" }
   | { type: "OPEN_OPTIONS_PAGE" }

@@ -5,6 +5,7 @@ import { normalizeSessionForExport } from "../../core/exporters/normalize-sessio
 import { exportSrt } from "../../core/exporters/srt";
 import { exportTxt } from "../../core/exporters/txt";
 import { exportVtt } from "../../core/exporters/vtt";
+import { filterEntriesByTimeRange } from "../../core/export-entry-filter";
 import {
   withSessionEntries,
   type ExportFormat,
@@ -39,11 +40,17 @@ export function createSessionExportPayload(
     entries,
     filenamePattern,
     filenameSuffix,
+    timeRange,
     txtExportTimestampsEnabled = false,
     txtExportSpeakerEnabled = false,
     txtExportEntryNotesEnabled = false,
   } = exportOptions;
-  const baseSession = entries ? withSessionEntries(session, entries) : session;
+  const sourceEntries = entries ?? session.entries;
+  const rangedEntries = filterEntriesByTimeRange(sourceEntries, timeRange);
+  const baseSession =
+    entries || timeRange
+      ? withSessionEntries(session, rangedEntries)
+      : session;
   const normalized = normalizeSessionForExport(
     normalizeSessionRecord(baseSession, {
       preserveTimestamps: true,

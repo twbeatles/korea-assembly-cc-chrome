@@ -4,6 +4,7 @@ import {
   createExtensionContextInvalidatedError,
   hasExtensionContextInvalidated,
   isExtensionContextInvalidatedError,
+  isTransientExtensionMessagingError,
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../src/shared/extension-context";
@@ -13,28 +14,37 @@ describe("extension context helpers", () => {
     resetExtensionContextInvalidationForTests();
   });
 
-  it("detects stale extension context errors from chrome runtime APIs", () => {
-    expect(
-      isExtensionContextInvalidatedError(
-        new Error("Could not establish connection. Receiving end does not exist."),
-      ),
-    ).toBe(true);
-    expect(isExtensionContextInvalidatedError("Extension context invalidated.")).toBe(true);
+  it("detects permanent invalidated extension context errors", () => {
+    expect(isExtensionContextInvalidatedError(new Error("Extension context invalidated."))).toBe(
+      true,
+    );
+    expect(isExtensionContextInvalidatedError("Extension context invalidated")).toBe(true);
+  });
+
+  it("treats missing receiver as transient messaging failure, not permanent invalidation", () => {
+    const missingReceiver = new Error(
+      "Could not establish connection. Receiving end does not exist.",
+    );
+    expect(isTransientExtensionMessagingError(missingReceiver)).toBe(true);
+    expect(isExtensionContextInvalidatedError(missingReceiver)).toBe(false);
+    expect(markExtensionContextInvalidated(missingReceiver)).toBe(false);
+    expect(hasExtensionContextInvalidated()).toBe(false);
   });
 
   it("does not classify unrelated runtime errors as invalidated contexts", () => {
     expect(isExtensionContextInvalidatedError(new Error("Background command failed"))).toBe(false);
+    expect(isTransientExtensionMessagingError(new Error("Background command failed"))).toBe(
+      false,
+    );
   });
 
-  it("tracks invalidated state and normalizes the public error", () => {
+  it("tracks permanent invalidated state and normalizes the public error", () => {
     expect(hasExtensionContextInvalidated()).toBe(false);
     expect(markExtensionContextInvalidated(new Error("Background command failed"))).toBe(false);
     expect(hasExtensionContextInvalidated()).toBe(false);
 
     expect(
-      markExtensionContextInvalidated(
-        new Error("Could not establish connection. Receiving end does not exist."),
-      ),
+      markExtensionContextInvalidated(new Error("Extension context invalidated.")),
     ).toBe(true);
     expect(hasExtensionContextInvalidated()).toBe(true);
     expect(createExtensionContextInvalidatedError().message).toBe("Extension context invalidated");

@@ -67,7 +67,18 @@ export function createInPagePanelElements(
 ): InPagePanelElements {
   const host = document.createElement("div");
   host.id = IN_PAGE_PANEL_HOST_ID;
-  const shadowRoot = host.attachShadow({ mode: "open" });
+  // 운영: closed 로 페이지 스크립트 변조를 어렵게 한다.
+  // Vitest 는 host.shadowRoot 로 DOM 을 검사하므로 test 모드만 open.
+  const shadowMode: ShadowRootMode =
+    typeof import.meta !== "undefined" &&
+    Boolean(
+      (import.meta as ImportMeta & { env?: { MODE?: string; VITEST?: boolean } }).env
+        ?.VITEST ||
+        (import.meta as ImportMeta & { env?: { MODE?: string } }).env?.MODE === "test",
+    )
+      ? "open"
+      : "closed";
+  const shadowRoot = host.attachShadow({ mode: shadowMode });
 
   const style = document.createElement("style");
   style.textContent = PANEL_STYLE;

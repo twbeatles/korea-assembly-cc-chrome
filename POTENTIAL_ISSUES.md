@@ -2,18 +2,15 @@
 
 이 문서는 현재 저장소(`Chrome Extension MV3 + TypeScript + React + Vite`) 구현을 `CLAUDE.md` / `README.md` / 코드 본체와 대조하면서 식별한 **기능적으로 문제가 될 수 있는 부분**과 **추가 / 강화가 필요한 후보**를 정리한 검토 노트입니다. 최초 작성 기준일은 `2026-05-07` 이며, `2026-06-11` 코드 분할 리팩토링 이후 public facade 경로와 implementation 경로를 함께 봅니다.
 
-> **최신 진행 상태 (2026-07-14, `PROJECT_AUDIT.md` + 구조 리팩터링)**
+> **최신 진행 상태 (2026-07-28 · v1.0.12)**
 >
-> - 저장 경로 structural sanitize 분리 (`sanitizeEntriesForStorage`) — export 전용 carry-over 정리와 분리.
-> - 캡처 lifecycle 직렬 락 (`createCaptureLifecycleLock`) — start/stop/clear/save/export/reconcile.
-> - URL reconcile single-flight + 성공 시만 `lastKnownUrl` 커밋 (`createUrlReconcileController`).
-> - 세션 id 단위 write 큐 (`enqueueSessionWrite`) — metadata/content 경쟁 완화.
-> - startup persistence debounce guard 추가.
-> - frame-forward `postMessage` targetOrigin 고정.
-> - entry text/note 저장 상한, 세그먼트 용량 사전 경고 notice.
-> - History dirty draft `beforeunload` 가드(기존 구현 유지·문서화).
-> - **모듈 구조:** `session-store` idb/fallback/public-api 분리, history sections·hooks, content `orchestrator` facade.
-> - 상세 감사 결과는 `PROJECT_AUDIT.md` 를 우선한다. 아래 본문의 과거 P0 “미해결” 서술은 역사 기록이며, 현재 코드와 어긋날 수 있다.
+> - **권위 있는 기능 감사 문서:** `PROJECT_AUDIT.md`. 잔존 이슈·수정 계획은 그 문서를 본다.
+> - 본 파일 본문의 P0/P1 “미해결” 서술은 **역사 기록**이다. 현재 코드와 어긋날 수 있으니 신규 작업 우선순위로 쓰지 말 것.
+> - 2026-07-28 SOLID 분할: `orchestrator/`, `subtitle-pipeline/`, `public-api/`, History `SessionDetailPanel` — facade 경로 유지.
+> - 2026-07-28 3차 감사 반영: page-world origin, unconfirmed 샘플링, Blob revoke, multi-tab ownership, speaker/fallback merge 등.
+> - 2026-07-28 2차: transient messaging vs permanent invalidation 분리, 롤오버 큐 64+overflow notice, timeRange export, fallback memory rollback, 무효화 안내 한국어.
+> - 2026-07-28 1차: 자동 시작 lifecycle 큐, save/updateRunning write 큐, IDB open TTL, DOWNLOAD_REQUEST 2 MiB, CSV UTF-8 BOM.
+> - 2026-07-14: 저장/export 정규화 분리, lifecycle lock, URL reconcile, write queue, startup debounce, postMessage origin 등.
 > - 사용자용 설치·사용법은 `README.md` 를 본다.
 >
 > **진행 상태 (2026-05-07 기준)**

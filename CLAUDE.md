@@ -45,15 +45,26 @@ src/
       runtime.ts                      # facade
       runtime/
         implementation.ts            # facade → orchestrator
-        orchestrator.ts              # content runtime 본체 (상태·수집·바인딩)
+        orchestrator.ts              # facade → orchestrator/
+        orchestrator/
+          index.ts                   # 공개 진입 (createContentRuntime)
+          helpers.ts                 # 순수 헬퍼 (capture page notice, token, committee)
+          runtime-core.ts            # content runtime 본체 (상태·수집·바인딩)
+          impl.ts                    # 하위 호환 re-export
         constants.ts / types.ts
     runtime/                         # pure helpers (lock, url-reconcile, …)
     inpage-panel/ …
+  core/
+    subtitle-pipeline.ts             # facade → subtitle-pipeline/
+    subtitle-pipeline/
+      types.ts / state-helpers.ts / history.ts / extract.ts / commit.ts / lifecycle.ts
   storage/
     session-store.ts                 # facade → session-store/implementation
     session-store/
       implementation.ts              # 공개 API 배럴
-      public-api.ts                  # save/load/import/export/…
+      public-api.ts                  # facade → public-api/
+      public-api/
+        mutations.ts / queries.ts / deletions.ts / import-export.ts / startup.ts
       normalize.ts                   # 순수 정규화·패치
       search-helpers.ts              # 순수 검색
       globals.ts                     # storeRuntime · memoryFallbackStore
@@ -74,15 +85,17 @@ src/
       sections/
         HistoryHero.tsx
         SessionListPanel.tsx
+        SessionDetailPanel.tsx       # 우측 상세 presentational
   popup/ · options/ · sidepanel/
 ```
 
 ### SOLID 구조 메모
 
-- **공개 facade 유지**: `content-script.ts`, `app/runtime.ts`, `session-store.ts`, `history/App.tsx`.
-- **session-store**: IDB / fallback / normalize / public API 폴더 분리, `storeRuntime` bag으로 가변 상태 공유.
-- **history**: Hero·목록 섹션 + long-task 훅 분리; detail 본문은 App 조립 유지(핸들러 결합도 높음).
-- **content runtime**: `constants`/`types` 분리 + `orchestrator` 본체; 모듈 레벨 상태 상호 호출로 추가 자동 분할은 보류.
+- **공개 facade 유지**: `content-script.ts`, `app/runtime.ts`, `session-store.ts`, `history/App.tsx`, `core/subtitle-pipeline.ts`, `orchestrator.ts`, `public-api.ts`.
+- **session-store**: IDB / fallback / normalize / public API 폴더 분리, `storeRuntime` bag으로 가변 상태 공유. 공개 API는 mutations·queries·deletions·import-export·startup 으로 분리.
+- **history**: Hero·목록·상세 섹션 + long-task 훅 분리; App 은 상태·핸들러 조립 루트.
+- **content runtime**: `constants`/`types` + `orchestrator/` (helpers + runtime-core). 모듈 레벨 상태 상호 호출이 강해 본체는 runtime-core 에 유지하고 순수 헬퍼만 분리.
+- **subtitle-pipeline**: 타입·히스토리·증분 추출·커밋·라이프사이클 모듈로 분리 (순수 함수, facade 경로 유지).
 
 
 ## 4. 자막 추출 구조
@@ -187,7 +200,7 @@ src/
 위 CRUD 흐름과 startup cleanup 의미론은 유지해야 합니다.
 
 - record payload version 과 IndexedDB schema version 은 분리해서 관리합니다.
-- 현재 session record schema 는 `version = "3"` 기준이며 `starred`, `pinnedAt`, `note` 필드를 포함합니다.
+- 현재 session record schema 는 `version = "4"` 기준이며 `starred`, `pinnedAt`, `note`, `tags`, `category`, `speakerLabels`, `lineageId`, `segmentNumber` 등을 포함합니다. (구 JSON `version = "3"` 도 import 시 정규화됩니다.)
 - 현재 IndexedDB schema 는 `5` 기준이며 `lineageId` index 를 포함합니다. migration 은 기존 record 에 `lineageId = id`, `segmentNumber = 1` 기본값을 채워야 합니다.
 - `loadSession`/`listSessions` 는 IndexedDB + fallback 을 함께 읽고 `updatedAt` 기준으로 더 최신 레코드를 고릅니다. 동률이면 IndexedDB 를 우선합니다.
 - 개별 IndexedDB transaction/read/write 실패는 현재 연산만 fallback 으로 우회하고, 런타임 전체 disable 은 open/capability failure 에만 허용됩니다.
@@ -483,3 +496,26 @@ When editing this repository, align with the newly implemented behavior below.
 - `pendingPreviews` must be dropped from prepared session snapshots and must never be materialized into saved/exported entries.
 - Offscreen Blob content chunking must remain surrogate-pair safe.
 - Supported home URLs include both `/main` and `/main/` for both Assembly webcast hosts.
+
+## Sync Delta (2026-07-28)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- Auto-start after pipeline start must schedule `captureLifecycleLock.run("start", startCaptureUnlocked)` (fire-and-forget on the same queue). Do not call `startCaptureUnlocked()` outside the lock.
+- `saveSession` / `updateRunningSession` run `preserveStoredSessionMetadata` + write inside the same `enqueueSessionWrite(sessionId)` critical section. Nested writes already on that queue must pass `writeSessionRecord(..., { enqueue: false })` to avoid deadlock.
+- IndexedDB open failure uses a soft disable with TTL (`INDEXED_DB_DISABLE_TTL_MS`, default 30s) and re-enables for retry; permanent disable is only for explicit/test cases.
+- `DOWNLOAD_REQUEST` rejects bodies larger than `DOWNLOAD_REQUEST_MAX_BYTES` (2 MiB). Prefer session/lineage export message types for large payloads.
+- CSV export must prefix UTF-8 BOM (`\uFEFF`) and use CRLF line endings for Excel on Korean Windows.
+- Feature-audit status of record: prefer `PROJECT_AUDIT.md` over historical open-issue wording in `POTENTIAL_ISSUES.md`.
+- Permanent extension-context invalidation is only for true `Extension context invalidated` errors. `Receiving end does not exist` / message-port closed are **transient**; `sendRuntimeMessage` retries them and must not shut down capture.
+- Segment rollover event queue default max is 64; overflow drops oldest events and surfaces a panel notice with dropped counts.
+- Export supports `SessionExportOptions.timeRange` (`from`/`to` ISO) on single-session and lineage export; History UI exposes datetime-local range controls.
+- Fallback `saveFallbackRecord` rolls memory back if `chrome.storage.local` write fails.
+- Invalidation user notice is Korean.
+- Session record schema version is `"4"` (not `"3"`).
+- Page-world observer `postMessage` uses `location.origin` (not `"*"`). Bridge token still lives in page world via config event; threat model assumes a trusted assembly host.
+- Unconfirmed confirmation checks prefer text-bearing descendants (sample limit 96, always include last).
+- History page Blob download revokes only on complete/interrupted (or a long safety TTL), not on download start.
+- Pipeline merge: speaker channel/color change forces a new entry; fallback mode uses a shorter merge gap.
+- Soft multi-tab capture ownership warns when another tab claimed capture recently; does not hard-block.
+- In-page panel shadow root uses `mode: "closed"`.

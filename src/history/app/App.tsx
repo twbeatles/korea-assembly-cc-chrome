@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { createTab, sendRuntimeMessage } from "../../shared/chrome-api";
-import { buildCopyText, copyTextToClipboard, filterEntriesByQuery } from "../../shared/copy-utils";
+import { copyTextToClipboard, filterEntriesByQuery } from "../../shared/copy-utils";
 import {
   resolveSessionLineageId,
   type ExportFormat,
@@ -42,7 +42,6 @@ import {
   listSessionLineagesPage,
   listSessionLineageSegments,
   searchSessionLineagesPage,
-  SESSION_NOTE_MAX_LENGTH,
   updateSessionContent,
   updateSessionLineageMetadata,
   updateSessionMetadata,
@@ -74,7 +73,6 @@ import {
 import { readBlobTextWithProgress } from "../blob-read";
 import { downloadPageBlobExport } from "../page-blob-download";
 import {
-  EXPORT_FORMATS,
   HISTORY_PAGE_SIZE,
   LARGE_LINEAGE_EXPORT_WARNING_BYTES,
   canReopenSourceUrl,
@@ -85,17 +83,15 @@ import {
   confirmDiscardUnsavedNote,
   estimateSessionExportBytes,
   extractCancelledImportSummary,
-  formatDate,
   formatTagInput,
-  getSessionSegmentLabel,
   isAbortError,
   parseLabelInput,
   parseTagInput,
-  resolveSpeakerLabel,
 } from "./helpers";
 import { useHistoryLongTask } from "./hooks/useHistoryLongTask";
 import { SessionListPanel } from "./sections/SessionListPanel";
 import { HistoryHero } from "./sections/HistoryHero";
+import { SessionDetailPanel } from "./sections/SessionDetailPanel";
 
 export default function App() {
   const importInputRef = useRef<HTMLInputElement | null>(null);
@@ -146,6 +142,9 @@ export default function App() {
   const [editingEntryLabels, setEditingEntryLabels] = useState("");
   const [splitEntryId, setSplitEntryId] = useState("");
   const [splitDraft, setSplitDraft] = useState("");
+  /** 시간 범위 export (datetime-local 값, 비우면 전체) */
+  const [exportTimeFrom, setExportTimeFrom] = useState("");
+  const [exportTimeTo, setExportTimeTo] = useState("");
   const [sessionPage, setSessionPage] = useState(1);
   const [recentCopyLineCount, setRecentCopyLineCount] = useState(5);
   const [filenamePattern, setFilenamePattern] = useState(
@@ -1022,6 +1021,26 @@ export default function App() {
     }
   };
 
+  const resolveExportTimeRange = ():
+    | { from?: string; to?: string }
+    | undefined => {
+    const fromLocal = exportTimeFrom.trim();
+    const toLocal = exportTimeTo.trim();
+    if (!fromLocal && !toLocal) {
+      return undefined;
+    }
+    // datetime-local 은 로컬 시각 문자열이므로 Date 로 파싱해 ISO 로 보낸다.
+    const fromIso = fromLocal ? new Date(fromLocal).toISOString() : undefined;
+    const toIso = toLocal ? new Date(toLocal).toISOString() : undefined;
+    if (fromIso && Number.isNaN(Date.parse(fromIso))) {
+      throw new Error("시작 시각 형식이 올바르지 않습니다.");
+    }
+    if (toIso && Number.isNaN(Date.parse(toIso))) {
+      throw new Error("종료 시각 형식이 올바르지 않습니다.");
+    }
+    return { from: fromIso, to: toIso };
+  };
+
   const handleExport = async (
     format: ExportFormat,
     entries?: SessionRecord["entries"],
@@ -1031,6 +1050,13 @@ export default function App() {
     }
 
     const isPartialExport = Boolean(entries?.length);
+    let timeRange: { from?: string; to?: string } | undefined;
+    try {
+      timeRange = resolveExportTimeRange();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "시간 범위가 올바르지 않습니다.");
+      return;
+    }
 
     try {
       const response = showingLineageView
@@ -1041,6 +1067,7 @@ export default function App() {
             filenamePattern,
             txtExportTimestampsEnabled,
             entryIds: entries?.map((entry) => entry.id),
+            timeRange,
           })
         : await sendRuntimeMessage({
             type: "DOWNLOAD_SESSION_EXPORT",
@@ -1049,6 +1076,7 @@ export default function App() {
             filenamePattern,
             txtExportTimestampsEnabled,
             entryIds: entries?.map((entry) => entry.id),
+            timeRange,
           });
       if (!response.ok) {
         setMessage(
@@ -1447,695 +1475,86 @@ export default function App() {
           runBusy={runBusyHistoryAction}
         />
 
-        <section className="session-detail">
-          {selectedSession ? (
-            <>
-              <div className="detail-header">
-                <div>
-                  <div className="detail-title-row">
-                    <h2>{selectedSession.committeeName || selectedSession.title}</h2>
-                    {shouldShowSelectedSegmentLabel ? (
-                      <span className="segment-badge detail-segment-badge">
-                        {getSessionSegmentLabel(selectedSession)}
-                      </span>
-                    ) : null}
-                  </div>
-                  <p>{selectedSession.sourceUrl || "원본 URL 없음"}</p>
-                </div>
-                <div className="detail-actions">
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      runBusyHistoryAction(
-                        `favorite_${selectedLineageId}`,
-                        () =>
-                          selectedLineageSummary
-                            ? handleToggleFavorite(selectedLineageSummary)
-                            : Promise.resolve(),
-                        "즐겨찾기 저장에 실패했습니다.",
-                        selectedLineageSummary?.starred
-                          ? "즐겨찾기 해제를 저장하고 있습니다."
-                          : "즐겨찾기를 저장하고 있습니다.",
-                      )
-                    }
-                    disabled={actionButtonsDisabled}
-                  >
-                    {selectedLineageSummary?.starred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
-                  </button>
-                  <button
-                    onClick={() =>
-                      runBusyHistoryAction(
-                        "reopen_source",
-                        handleReopen,
-                        "원본 페이지를 열지 못했습니다.",
-                        "원본 의사중계 페이지를 열고 있습니다.",
-                      )
-                    }
-                    disabled={
-                      actionButtonsDisabled ||
-                      !canReopenSourceUrl(selectedSession.sourceUrl)
-                    }
-                  >
-                    원본 페이지 열기
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      runBusyHistoryAction(
-                        "delete_single",
-                        handleDelete,
-                        "기록 삭제에 실패했습니다.",
-                        "선택한 기록을 삭제하고 있습니다.",
-                      )
-                    }
-                    disabled={actionButtonsDisabled}
-                  >
-                    삭제
-                  </button>
-                </div>
-              </div>
-
-              <dl className="stats-grid">
-                <div>
-                  <dt>시작</dt>
-                  <dd>{formatDate(displaySession?.startedAt ?? selectedSession.startedAt)}</dd>
-                </div>
-                <div>
-                  <dt>종료</dt>
-                  <dd>{formatDate(displaySession?.endedAt ?? selectedSession.endedAt)}</dd>
-                </div>
-                <div>
-                  <dt>자막 수</dt>
-                  <dd>{displaySession?.subtitleCount ?? selectedSession.subtitleCount}</dd>
-                </div>
-                <div>
-                  <dt>글자 수</dt>
-                  <dd>{displaySession?.charCount ?? selectedSession.charCount}</dd>
-                </div>
-                <div>
-                  <dt>연속 캡처</dt>
-                  <dd>
-                    {shouldShowSelectedSegmentLabel
-                      ? getSessionSegmentLabel(selectedSession)
-                      : "단일 세션"}
-                  </dd>
-                </div>
-                <div>
-                  <dt>추정 크기</dt>
-                  <dd>
-                    {selectedEstimatedBytes.toLocaleString("ko-KR")} bytes
-                  </dd>
-                </div>
-              </dl>
-
-              {hasLineageSegments && lineageAggregateSession ? (
-                <div className="lineage-card">
-                  <div className="section-row">
-                    <div>
-                      <strong>연속 캡처 전체 보기</strong>
-                      <p className="lineage-caption">
-                        같은 캡처 lineage의 세그먼트 {availableLineageSessions.length}개를 하나로 볼 수 있습니다.
-                      </p>
-                    </div>
-                    <button
-                      className="secondary"
-                      onClick={() => setLineageViewEnabled((current) => !current)}
-                      disabled={actionButtonsDisabled || lineageLoading}
-                    >
-                      {showingLineageView ? "현재 세그먼트 보기" : "연속 캡처 전체 보기"}
-                    </button>
-                  </div>
-
-                  <dl className="lineage-stats">
-                    <div>
-                      <dt>총 세그먼트</dt>
-                      <dd>{availableLineageSessions.length}</dd>
-                    </div>
-                    <div>
-                      <dt>전체 자막 수</dt>
-                      <dd>{lineageAggregateSession.subtitleCount}</dd>
-                    </div>
-                    <div>
-                      <dt>전체 글자 수</dt>
-                      <dd>{lineageAggregateSession.charCount}</dd>
-                    </div>
-                    <div>
-                      <dt>현재 보기</dt>
-                      <dd>{showingLineageView ? "연속 캡처 전체" : getSessionSegmentLabel(selectedSession)}</dd>
-                    </div>
-                  </dl>
-
-                  <div className="lineage-segments">
-                    {availableLineageSessions.map((session) => (
-                      <button
-                        key={session.id}
-                        className={`secondary lineage-segment-button ${
-                          selectedSession.id === session.id ? "active-toggle" : ""
-                        }`}
-                        onClick={() => handleSelectLineageSegment(session.id)}
-                        disabled={actionButtonsDisabled}
-                      >
-                        {getSessionSegmentLabel(session)}
-                      </button>
-                    ))}
-                  </div>
-
-                  <p className="lineage-caption">
-                    아래 검색, 복사, 내보내기는 현재 보기 기준으로 동작합니다.
-                  </p>
-                </div>
-              ) : null}
-
-              <div className="note-card">
-                <div className="section-row">
-                  <strong>세션 메모</strong>
-                  <div className="note-meta">
-                    <span>
-                      {noteDraft.length} / {SESSION_NOTE_MAX_LENGTH}자
-                    </span>
-                    <span
-                      className={`note-status ${hasUnsavedNote ? "dirty" : ""}`}
-                    >
-                      {hasUnsavedNote ? "저장되지 않음" : "저장됨"}
-                    </span>
-                  </div>
-                </div>
-                <textarea
-                  className="note-input"
-                  value={noteDraft}
-                  onChange={(event) =>
-                    setNoteDraft(
-                      event.target.value.slice(0, SESSION_NOTE_MAX_LENGTH),
-                    )
-                  }
-                  placeholder="이 기록에 대한 메모를 남겨두세요."
-                  rows={4}
-                  maxLength={SESSION_NOTE_MAX_LENGTH}
-                />
-                <div className="note-actions">
-                  <button
-                    onClick={() =>
-                      runBusyHistoryAction(
-                        "save_note",
-                        handleSaveNote,
-                        "메모 저장에 실패했습니다.",
-                        "메모를 저장하고 있습니다.",
-                      )
-                    }
-                    disabled={actionButtonsDisabled || noteDraft === (selectedLineageSummary?.note ?? selectedSession.note)}
-                  >
-                    메모 저장
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() => setNoteDraft("")}
-                    disabled={actionButtonsDisabled || !noteDraft}
-                  >
-                    입력 비우기
-                  </button>
-                </div>
-              </div>
-
-              <div className="note-card">
-                <div className="section-row">
-                  <strong>분류 / 발언자</strong>
-                  <div className="note-meta">
-                    <span
-                      className={`note-status ${hasUnsavedMetadata ? "dirty" : ""}`}
-                    >
-                      {hasUnsavedMetadata ? "저장되지 않음" : "저장됨"}
-                    </span>
-                  </div>
-                </div>
-                <input
-                  className="search-input"
-                  type="text"
-                  value={categoryDraft}
-                  onChange={(event) => setCategoryDraft(event.target.value)}
-                  placeholder="카테고리"
-                />
-                <input
-                  className="search-input"
-                  type="text"
-                  value={tagDraft}
-                  onChange={(event) => setTagDraft(event.target.value)}
-                  placeholder="태그를 쉼표로 구분해 입력"
-                />
-                <div className="copy-row">
-                  <input
-                    className="search-input"
-                    type="text"
-                    value={speakerPrimaryDraft}
-                    onChange={(event) =>
-                      setSpeakerPrimaryDraft(event.target.value)
-                    }
-                    placeholder="발언자 A 라벨"
-                  />
-                  <input
-                    className="search-input"
-                    type="text"
-                    value={speakerSecondaryDraft}
-                    onChange={(event) =>
-                      setSpeakerSecondaryDraft(event.target.value)
-                    }
-                    placeholder="발언자 B 라벨"
-                  />
-                  <input
-                    className="search-input"
-                    type="text"
-                    value={speakerUnknownDraft}
-                    onChange={(event) =>
-                      setSpeakerUnknownDraft(event.target.value)
-                    }
-                    placeholder="알 수 없음 라벨"
-                  />
-                </div>
-                <div className="note-actions">
-                  <button
-                    onClick={() =>
-                      runBusyHistoryAction(
-                        "save_metadata",
-                        handleSaveSessionMetadata,
-                        "세션 메타데이터 저장에 실패했습니다.",
-                        "세션 메타데이터를 저장하고 있습니다.",
-                      )
-                    }
-                    disabled={actionButtonsDisabled || !hasUnsavedSessionDraft}
-                  >
-                    메타데이터 저장
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={discardUnsavedNoteDraft}
-                    disabled={actionButtonsDisabled || !hasUnsavedSessionDraft}
-                  >
-                    변경 되돌리기
-                  </button>
-                </div>
-              </div>
-
-              <div className="search-row">
-                <input
-                  className="search-input"
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder={showingLineageView ? "연속 캡처 전체에서 내용 찾기" : "이 기록 안에서 내용 찾기"}
-                />
-                <span>
-                  {filteredEntries.length} / {displaySession?.entries.length ?? 0}개
-                </span>
-              </div>
-
-              <div className="selection-toolbar">
-                <span>
-                  보이는 항목 {filteredEntries.length}개 / 선택{" "}
-                  {selectedEntries.length}개
-                </span>
-                <div className="selection-actions">
-                  <button
-                    className="secondary"
-                    onClick={handleToggleVisibleEntries}
-                    disabled={actionButtonsDisabled || !filteredEntries.length}
-                  >
-                    {allVisibleEntriesChecked
-                      ? "보이는 항목 선택 해제"
-                      : "보이는 항목 전체 선택"}
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() => setCheckedEntryIds([])}
-                    disabled={actionButtonsDisabled || !checkedEntryIds.length}
-                  >
-                    전체 선택 해제
-                  </button>
-                  <button
-                    onClick={() =>
-                      void handleCopy(
-                        buildCopyText(displaySession?.entries ?? [], {
-                          selectedIds: checkedEntryIds,
-                        }),
-                        `${showingLineageView ? "연속 캡처 전체에서 " : ""}선택한 ${selectedEntries.length}줄을 복사했습니다.`,
-                      )
-                    }
-                    disabled={actionButtonsDisabled || !selectedEntries.length}
-                  >
-                    선택한 항목 복사
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      setCheckedEntryIds(
-                        filteredEntries
-                          .filter((entry) => entry.highlighted)
-                          .map((entry) => entry.id),
-                      )
-                    }
-                    disabled={
-                      actionButtonsDisabled ||
-                      !filteredEntries.some((entry) => entry.highlighted)
-                    }
-                  >
-                    중요 항목 선택
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      runBusyHistoryAction(
-                        "merge_entries",
-                        handleMergeSelectedEntries,
-                        "자막 병합에 실패했습니다.",
-                        "선택한 자막을 병합하고 있습니다.",
-                      )
-                    }
-                    disabled={
-                      actionButtonsDisabled || selectedEntries.length < 2
-                    }
-                  >
-                    선택 병합
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      runBusyHistoryAction(
-                        "split_entry",
-                        handleSplitSelectedEntry,
-                        "자막 분할에 실패했습니다.",
-                        "선택한 자막을 분할하고 있습니다.",
-                      )
-                    }
-                    disabled={
-                      actionButtonsDisabled || selectedEntries.length !== 1
-                    }
-                  >
-                    선택 분할
-                  </button>
-                  <button
-                    className="secondary"
-                    onClick={() =>
-                      runBusyHistoryAction(
-                        "delete_entries",
-                        handleDeleteSelectedEntries,
-                        "선택 항목 삭제에 실패했습니다.",
-                        "선택한 자막을 삭제하고 있습니다.",
-                      )
-                    }
-                    disabled={actionButtonsDisabled || !selectedEntries.length}
-                  >
-                    선택 삭제
-                  </button>
-                </div>
-              </div>
-
-              <p className="section-heading">
-                내보내기 {showingLineageView ? "(연속 캡처 전체)" : "(현재 세그먼트)"}
-              </p>
-              <div className="export-group">
-                <div className="export-row">
-                  {EXPORT_FORMATS.map((format) => (
-                    <button
-                      key={format}
-                      onClick={() =>
-                        runBusyHistoryAction(
-                          `export_${format}`,
-                          () => handleExport(format),
-                          `${getExportFormatLabel(format)} 저장을 시작하지 못했습니다.`,
-                          `${getExportFormatLabel(format)} 저장을 준비하고 있습니다.`,
-                        )
-                      }
-                      disabled={actionButtonsDisabled}
-                    >
-                      {getExportFormatLabel(format)}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="export-row partial-export-row">
-                  {EXPORT_FORMATS.map((format) => (
-                    <button
-                      key={`selected_${format}`}
-                      className="secondary"
-                      onClick={() =>
-                        runBusyHistoryAction(
-                          `export_selected_${format}`,
-                          () => handleExport(format, selectedEntries),
-                          `선택 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
-                          `선택 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
-                        )
-                      }
-                      disabled={
-                        actionButtonsDisabled || !selectedEntries.length
-                      }
-                    >
-                      선택 {format.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-
-                {shouldOfferSplitExport ? (
-                  <div className="warning-box">
-                    이 연속 캡처는 예상 내보내기 크기가 커서 브라우저 다운로드 제한에 걸릴 수 있습니다. 분할 저장을 사용하면 세그먼트별 파일로 저장합니다.
-                  </div>
-                ) : null}
-
-                {showingLineageView ? (
-                  <div className="export-row partial-export-row">
-                    {EXPORT_FORMATS.map((format) => (
-                      <button
-                        key={`split_${format}`}
-                        className="secondary"
-                        onClick={() =>
-                          runBusyHistoryAction(
-                            `split_export_${format}`,
-                            () => handleSplitLineageExport(format),
-                            `분할 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
-                            `분할 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
-                          )
-                        }
-                        disabled={actionButtonsDisabled || !hasLineageSegments}
-                      >
-                        분할 {format.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              <p className="section-heading">
-                복사 {showingLineageView ? "(연속 캡처 전체)" : "(현재 세그먼트)"}
-              </p>
-              <div className="copy-row">
-                <button
-                  onClick={() =>
-                    void handleCopy(
-                      buildCopyText(displaySession?.entries ?? [], { limit: recentCopyLineCount }),
-                      `${showingLineageView ? "연속 캡처 전체에서 " : ""}최근 ${recentCopyLineCount}줄을 복사했습니다.`,
-                    )
-                  }
-                  disabled={actionButtonsDisabled || !(displaySession?.entries.length ?? 0)}
-                >
-                  최근 {recentCopyLineCount}줄 복사
-                </button>
-                <button
-                  onClick={() =>
-                    void handleCopy(
-                      buildCopyText(displaySession?.entries ?? [], { query: searchQuery }),
-                      "찾은 내용을 복사했습니다.",
-                    )
-                  }
-                  disabled={actionButtonsDisabled || !filteredEntries.length}
-                >
-                  찾은 내용 복사
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() =>
-                    void handleCopy(
-                      buildCopyText(displaySession?.entries ?? []),
-                      showingLineageView ? "연속 캡처 전체 내용을 복사했습니다." : "전체 내용을 복사했습니다.",
-                    )
-                  }
-                  disabled={actionButtonsDisabled || !(displaySession?.entries.length ?? 0)}
-                >
-                  전체 내용 복사
-                </button>
-              </div>
-
-              <p className="section-heading">
-                자막 항목 {filteredEntries.length} / {displaySession?.entries.length ?? 0}개
-              </p>
-              <div className="entries">
-                {filteredEntries.length ? (
-                  filteredEntries.map((entry) => (
-                    <div key={entry.id} className="entry-card-row">
-                      <label className="entry-check">
-                        <input
-                          type="checkbox"
-                          checked={checkedEntryIdSet.has(entry.id)}
-                          onChange={() => handleToggleEntryChecked(entry.id)}
-                          disabled={actionButtonsDisabled}
-                          aria-label={`${entry.text.slice(0, 30)} 항목 선택`}
-                        />
-                      </label>
-                      <article className="entry-card">
-                        <time>
-                          {formatDate(entry.startTime)} ·{" "}
-                          {resolveSpeakerLabel(selectedSession, entry)}
-                          {entry.highlighted ? " · 중요" : ""}
-                        </time>
-                        {editingEntryId === entry.id ? (
-                          <>
-                            <textarea
-                              className="note-input"
-                              value={editingEntryText}
-                              onChange={(event) =>
-                                setEditingEntryText(event.target.value)
-                              }
-                              rows={3}
-                            />
-                            <div className="copy-row">
-                              <input
-                                className="search-input"
-                                type="text"
-                                value={editingEntrySpeakerLabel}
-                                onChange={(event) =>
-                                  setEditingEntrySpeakerLabel(
-                                    event.target.value,
-                                  )
-                                }
-                                placeholder="entry 발언자 라벨"
-                              />
-                              <input
-                                className="search-input"
-                                type="text"
-                                value={editingEntryLabels}
-                                onChange={(event) =>
-                                  setEditingEntryLabels(event.target.value)
-                                }
-                                placeholder="라벨을 쉼표로 구분"
-                              />
-                            </div>
-                            <textarea
-                              className="note-input"
-                              value={editingEntryNote}
-                              onChange={(event) =>
-                                setEditingEntryNote(event.target.value)
-                              }
-                              rows={2}
-                              placeholder="entry 메모"
-                            />
-                            <div className="note-actions">
-                              <button
-                                onClick={() =>
-                                  runBusyHistoryAction(
-                                    `edit_${entry.id}`,
-                                    handleSaveEntryEdit,
-                                    "자막 수정에 실패했습니다.",
-                                    "자막 수정 내용을 저장하고 있습니다.",
-                                  )
-                                }
-                                disabled={actionButtonsDisabled}
-                              >
-                                수정 저장
-                              </button>
-                              <button
-                                className="secondary"
-                                onClick={cancelEditEntry}
-                                disabled={actionButtonsDisabled}
-                              >
-                                취소
-                              </button>
-                            </div>
-                          </>
-                        ) : (
-                          <p>{entry.text}</p>
-                        )}
-                        {splitEntryId === entry.id ? (
-                          <div className="split-editor">
-                            <strong>자막 분할</strong>
-                            <textarea
-                              className="note-input"
-                              value={splitDraft}
-                              onChange={(event) =>
-                                setSplitDraft(event.target.value)
-                              }
-                              rows={4}
-                              placeholder="각 줄이 새 자막 항목이 됩니다."
-                            />
-                            <div className="note-actions">
-                              <button
-                                onClick={() =>
-                                  runBusyHistoryAction(
-                                    `split_save_${entry.id}`,
-                                    handleSaveSplitEntry,
-                                    "자막 분할에 실패했습니다.",
-                                    "자막 분할 내용을 저장하고 있습니다.",
-                                  )
-                                }
-                                disabled={actionButtonsDisabled}
-                              >
-                                분할 저장
-                              </button>
-                              <button
-                                className="secondary"
-                                onClick={handleCancelSplitEntry}
-                                disabled={actionButtonsDisabled}
-                              >
-                                분할 취소
-                              </button>
-                            </div>
-                          </div>
-                        ) : null}
-                        {entry.entryNote ? (
-                          <small>{entry.entryNote}</small>
-                        ) : null}
-                        {entry.labels?.length ? (
-                          <small>라벨: {entry.labels.join(", ")}</small>
-                        ) : null}
-                        <div className="note-actions">
-                          <button
-                            className="secondary"
-                            onClick={() =>
-                              runBusyHistoryAction(
-                                `highlight_${entry.id}`,
-                                () => handleToggleEntryHighlight(entry.id),
-                                "중요 표시 저장에 실패했습니다.",
-                              )
-                            }
-                            disabled={actionButtonsDisabled}
-                          >
-                            {entry.highlighted ? "중요 해제" : "중요 표시"}
-                          </button>
-                          <button
-                            className="secondary"
-                            onClick={() => {
-                              beginEditEntry(entry);
-                            }}
-                            disabled={actionButtonsDisabled}
-                          >
-                            수정/메타데이터
-                          </button>
-                        </div>
-                      </article>
-                    </div>
-                  ))
-                ) : (
-                  <div className="empty-card">
-                    {searchQuery
-                      ? "찾는 내용이 없습니다."
-                      : "이 기록에 자막이 없습니다."}
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <div className="empty-card">
-              {totalSessionCount > 0 && showStarredOnly
-                ? "즐겨찾기 목록에서 기록을 선택하세요."
-                : "왼쪽에서 기록을 선택하세요."}
-            </div>
-          )}
-        </section>
+        <SessionDetailPanel
+          selectedSession={selectedSession}
+          displaySession={displaySession}
+          selectedLineageId={selectedLineageId}
+          selectedLineageSummary={selectedLineageSummary}
+          availableLineageSessions={availableLineageSessions}
+          lineageAggregateSession={lineageAggregateSession}
+          hasLineageSegments={hasLineageSegments}
+          showingLineageView={showingLineageView}
+          shouldShowSelectedSegmentLabel={shouldShowSelectedSegmentLabel}
+          lineageLoading={lineageLoading}
+          selectedEstimatedBytes={selectedEstimatedBytes}
+          totalSessionCount={totalSessionCount}
+          showStarredOnly={showStarredOnly}
+          actionButtonsDisabled={actionButtonsDisabled}
+          noteDraft={noteDraft}
+          tagDraft={tagDraft}
+          categoryDraft={categoryDraft}
+          speakerPrimaryDraft={speakerPrimaryDraft}
+          speakerSecondaryDraft={speakerSecondaryDraft}
+          speakerUnknownDraft={speakerUnknownDraft}
+          hasUnsavedNote={hasUnsavedNote}
+          hasUnsavedMetadata={hasUnsavedMetadata}
+          hasUnsavedSessionDraft={hasUnsavedSessionDraft}
+          searchQuery={searchQuery}
+          filteredEntries={filteredEntries}
+          selectedEntries={selectedEntries}
+          checkedEntryIds={checkedEntryIds}
+          checkedEntryIdSet={checkedEntryIdSet}
+          allVisibleEntriesChecked={allVisibleEntriesChecked}
+          shouldOfferSplitExport={shouldOfferSplitExport}
+          exportTimeFrom={exportTimeFrom}
+          exportTimeTo={exportTimeTo}
+          editingEntryId={editingEntryId}
+          editingEntryText={editingEntryText}
+          editingEntrySpeakerLabel={editingEntrySpeakerLabel}
+          editingEntryNote={editingEntryNote}
+          editingEntryLabels={editingEntryLabels}
+          splitEntryId={splitEntryId}
+          splitDraft={splitDraft}
+          recentCopyLineCount={recentCopyLineCount}
+          runBusyHistoryAction={runBusyHistoryAction}
+          setLineageViewEnabled={setLineageViewEnabled}
+          setNoteDraft={setNoteDraft}
+          setTagDraft={setTagDraft}
+          setCategoryDraft={setCategoryDraft}
+          setSpeakerPrimaryDraft={setSpeakerPrimaryDraft}
+          setSpeakerSecondaryDraft={setSpeakerSecondaryDraft}
+          setSpeakerUnknownDraft={setSpeakerUnknownDraft}
+          setSearchQuery={setSearchQuery}
+          setCheckedEntryIds={setCheckedEntryIds}
+          setExportTimeFrom={setExportTimeFrom}
+          setExportTimeTo={setExportTimeTo}
+          setEditingEntryText={setEditingEntryText}
+          setEditingEntrySpeakerLabel={setEditingEntrySpeakerLabel}
+          setEditingEntryNote={setEditingEntryNote}
+          setEditingEntryLabels={setEditingEntryLabels}
+          setSplitDraft={setSplitDraft}
+          handleToggleFavorite={handleToggleFavorite}
+          handleReopen={handleReopen}
+          handleDelete={handleDelete}
+          handleSelectLineageSegment={handleSelectLineageSegment}
+          handleSaveNote={handleSaveNote}
+          handleSaveSessionMetadata={handleSaveSessionMetadata}
+          discardUnsavedNoteDraft={discardUnsavedNoteDraft}
+          handleToggleVisibleEntries={handleToggleVisibleEntries}
+          handleCopy={handleCopy}
+          handleExport={handleExport}
+          handleSplitLineageExport={handleSplitLineageExport}
+          handleToggleEntryChecked={handleToggleEntryChecked}
+          handleToggleEntryHighlight={handleToggleEntryHighlight}
+          handleSaveEntryEdit={handleSaveEntryEdit}
+          handleDeleteSelectedEntries={handleDeleteSelectedEntries}
+          handleMergeSelectedEntries={handleMergeSelectedEntries}
+          handleSplitSelectedEntry={handleSplitSelectedEntry}
+          handleSaveSplitEntry={handleSaveSplitEntry}
+          handleCancelSplitEntry={handleCancelSplitEntry}
+          beginEditEntry={beginEditEntry}
+          cancelEditEntry={cancelEditEntry}
+        />
       </section>
     </main>
   );

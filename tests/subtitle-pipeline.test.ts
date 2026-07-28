@@ -289,6 +289,44 @@ describe("subtitle pipeline", () => {
     expect(later.state.entries[1].text).toBe("한참 뒤 문장");
   });
 
+  it("starts a new entry when speaker channel changes even inside the merge gap", () => {
+    const base = Date.parse("2026-03-11T09:20:00.000Z");
+    let state = createEmptySessionState("http://test.com", "Test");
+
+    state = applyPreview(state, "발언자 A 문장", base, undefined, {
+      sourceCaptureMode: "fallback",
+      speakerChannel: "primary",
+      speakerColor: "rgb(35, 124, 147)",
+    }).state;
+
+    const next = applyPreview(state, "발언자 A 문장 이어서 B", base + 500, undefined, {
+      sourceCaptureMode: "fallback",
+      speakerChannel: "secondary",
+      speakerColor: "rgb(30, 30, 30)",
+    });
+
+    expect(next.state.entries).toHaveLength(2);
+    expect(next.state.entries[0].speakerChannel).toBe("primary");
+    expect(next.state.entries[1].speakerChannel).toBe("secondary");
+    expect(next.state.entries[1].text).toContain("이어서 B");
+  });
+
+  it("uses a shorter merge gap for fallback capture mode", () => {
+    const base = Date.parse("2026-03-11T09:30:00.000Z");
+    let state = createEmptySessionState("http://test.com", "Test");
+
+    state = applyPreview(state, "첫 번째 폴백", base, undefined, {
+      sourceCaptureMode: "fallback",
+    }).state;
+    // structured merge gap 은 5초, fallback 은 약 2초
+    const afterShortGap = applyPreview(state, "곧이은 폴백", base + 2500, undefined, {
+      sourceCaptureMode: "fallback",
+    });
+
+    expect(afterShortGap.state.entries).toHaveLength(2);
+    expect(afterShortGap.state.entries[1].text).toBe("곧이은 폴백");
+  });
+
   it("keeps trimming cumulative previews even when they span beyond the recent-history window", () => {
     const base = Date.parse("2026-03-11T09:10:00.000Z");
     let state = createEmptySessionState("http://test.com", "Test");

@@ -154,7 +154,7 @@ export async function preserveStoredSessionMetadata(record: SessionRecord): Prom
   return mergeEditableSessionMetadata(record, existingRecord);
 }
 
-export async function writeSessionRecord(
+async function writeSessionRecordUnlocked(
   record: SessionRecord,
   options: {
     allowFallbackOnIndexedDbError?: boolean;
@@ -206,6 +206,38 @@ export async function writeSessionRecord(
     await bumpSessionLibraryRevision();
   }
   return savedFallbackRecord;
+}
+
+export interface WriteSessionRecordOptions {
+  allowFallbackOnIndexedDbError?: boolean;
+  notifyRevision?: boolean;
+  /**
+   * false 이면 호출측이 이미 enqueueSessionWrite 로 직렬화한 것으로 보고
+   * 내부 큐를 생략한다. (중첩 큐 deadlock 방지)
+   */
+  enqueue?: boolean;
+}
+
+/**
+ * 세션 영속화 단일 진입점. 기본으로 동일 id 쓰기를 enqueueSessionWrite 로 직렬화한다.
+ * load-modify-write 는 같은 큐 안에서 enqueue:false 로 호출한다.
+ */
+export async function writeSessionRecord(
+  record: SessionRecord,
+  options: WriteSessionRecordOptions = {},
+): Promise<SessionRecord> {
+  if (hasExtensionContextInvalidated()) {
+    throw createExtensionContextInvalidatedError();
+  }
+
+  const { enqueue = true, ...writeOptions } = options;
+  if (!enqueue) {
+    return writeSessionRecordUnlocked(record, writeOptions);
+  }
+
+  return enqueueSessionWrite(record.id, () =>
+    writeSessionRecordUnlocked(record, writeOptions),
+  );
 }
 
 export async function bumpSessionLibraryRevision(): Promise<void> {

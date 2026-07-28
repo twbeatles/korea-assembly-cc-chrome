@@ -787,9 +787,7 @@ describe("session store", () => {
         },
       },
     });
-    markExtensionContextInvalidated(
-      new Error("Could not establish connection. Receiving end does not exist."),
-    );
+    markExtensionContextInvalidated(new Error("Extension context invalidated."));
 
     try {
       await expect(saveSession(buildSession("session_known_invalidated", "saved"))).rejects.toThrow(
@@ -1678,6 +1676,42 @@ describe("session store", () => {
     expect(updated.charCount).toBe("수정한 자막".length);
   });
 
+  it("keeps note and starred when running autosave races with metadata updates", async () => {
+    const base = buildSession("session_race_meta", "running");
+    await updateRunningSession(base);
+
+    const runningWrites = Array.from({ length: 8 }, (_, index) =>
+      updateRunningSession({
+        ...base,
+        entries: [
+          ...base.entries,
+          {
+            id: `session_race_meta_entry_${index}`,
+            text: `추가 자막 ${index}`,
+            timestamp: "2026-03-10T09:00:03.000Z",
+            startTime: "2026-03-10T09:00:03.000Z",
+            endTime: "2026-03-10T09:00:04.000Z",
+          },
+        ],
+        subtitleCount: base.entries.length + 1,
+        charCount: base.charCount + `추가 자막 ${index}`.length,
+        updatedAt: new Date(Date.now() + index).toISOString(),
+      }),
+    );
+
+    const metaWrites = [
+      updateSessionMetadata("session_race_meta", { note: "동시 메모" }),
+      updateSessionMetadata("session_race_meta", { starred: true }),
+    ];
+
+    await Promise.all([...runningWrites, ...metaWrites]);
+
+    const loaded = await loadSession("session_race_meta");
+    expect(loaded?.note).toBe("동시 메모");
+    expect(loaded?.starred).toBe(true);
+    expect((loaded?.entries.length ?? 0) >= 1).toBe(true);
+  });
+
   it("exports Markdown and CSV session files with meeting metadata", async () => {
     const session = {
       ...buildSession("session_export_new", "saved"),
@@ -1704,6 +1738,7 @@ describe("session store", () => {
     expect(markdown.content).toContain("#회의록");
     expect(markdown.content).toContain("위원장");
     expect(csv.filename.endsWith(".csv")).toBe(true);
+    expect(csv.content.startsWith("\uFEFF")).toBe(true);
     expect(csv.content).toContain("startTime,endTime,speaker,text,highlighted,note,labels");
     expect(csv.content).toContain("위원장");
   });

@@ -585,6 +585,32 @@ button.secondary:hover:not(:disabled) {
   margin-bottom: 10px;
 }
 
+.export-time-range {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  align-items: flex-end;
+  margin-bottom: 10px;
+}
+
+.export-time-range label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.88rem;
+  color: var(--ink-500);
+}
+
+.export-time-range input[type="datetime-local"] {
+  min-width: 11.5rem;
+  padding: 7px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  font: inherit;
+  background: #fff;
+  color: var(--ink-900);
+}
+
 .export-row {
   display: flex;
   gap: 7px;

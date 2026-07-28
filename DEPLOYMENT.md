@@ -31,7 +31,7 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
-현재 스토어 제출 준비 기준 버전은 `1.0.11` 입니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.12` 입니다.
 
 ## 3. 배포 전 검증
 
@@ -146,7 +146,7 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.11-cws.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.12-cws.zip -Force
 ```
 
 ## 6. Chrome Web Store 배포
@@ -284,3 +284,28 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.11-c
 - 배포 빌드는 항상 새 `dist/` 를 생성
 - 스토어 제출용 zip 은 매번 새로 생성
 - 릴리스 태그나 커밋 메시지에 manifest 버전을 같이 남김
+
+## 11. 릴리스 노트
+
+### 1.0.12 (2026-07-28)
+
+**안정성·품질**
+
+- CSV 내보내기 UTF-8 BOM + CRLF (Excel 한글 호환)
+- messaging permanent invalidation 과 transient 실패 재시도 분리
+- 세션 write 큐 / segment rollover 큐 상한·진단 보강
+- History 시간 범위 export, page Blob 다운로드 revoke 타이밍 보강
+- 다중 탭 soft ownership 안내, capture ownership heartbeat
+- subtitle row unconfirmed 샘플링·pipeline speaker/fallback merge 경계 보강
+
+**구조 (동작 호환)**
+
+- content `orchestrator/` 폴더 분리 (helpers + runtime-core, 공개 facade 유지)
+- `subtitle-pipeline/` 타입·history·extract·commit·lifecycle 분리
+- `session-store/public-api/` mutations·queries·deletions·import-export·startup 분리
+- History `SessionDetailPanel` presentational 분리
+- 공개 import 경로(`session-store`, `subtitle-pipeline`, `orchestrator` facade) 유지
+
+**검증 게이트**
+
+- `npm run verify` (version · injected · lint · typecheck · test · build)

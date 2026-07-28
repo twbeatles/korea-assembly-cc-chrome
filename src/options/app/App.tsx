@@ -654,7 +654,10 @@ export default function App() {
             <label className="setting-card">
               <div>
                 <strong>페이지 접속 시 자동 시작</strong>
-                <span>국회 의사/생중계 페이지를 열 때 바로 수집을 시작합니다.</span>
+                <span>
+                  플레이어 페이지에 들어오면 수집을 바로 시작합니다. 자막 레이어를 켜려는 시도도 함께 할 수
+                  있습니다.
+                </span>
               </div>
               <input
                 type="checkbox"
@@ -664,7 +667,8 @@ export default function App() {
             </label>
 
             <div className="warning-box full-width">
-              국회 중계 페이지를 열 때 자동으로 시작됩니다. 직접 시작하고 싶다면 이 옵션을 꺼두세요.
+              켜 두면 플레이어 진입·페이지 전환 후에도 다시 자동으로 시작할 수 있습니다. 멈춘 뒤에도 다른
+              회의로 이동하면 새 수집이 시작될 수 있으니, 직접 시작만 원하면 이 옵션을 끄세요.
             </div>
 
             <label className="setting-card">
