@@ -48,6 +48,9 @@ e2e-screenshots/
 .idea/
 *.code-workspace
 .claude/
+.agents/
+.grok/
+.specify/
 .codegraph/
 .DS_Store
 Thumbs.db
