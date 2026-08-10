@@ -62,6 +62,7 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   txtExportTimestampsEnabled: false,
   txtExportSpeakerEnabled: false,
   txtExportEntryNotesEnabled: false,
+  panelSpeakerHighlightEnabled: false,
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,

@@ -153,6 +153,16 @@ function appendOrMergeEntry(
     }
   }
 
+  const speakerChanged = Boolean(
+    lastEntry &&
+      ((meta?.speakerChannel &&
+        lastEntry.speakerChannel &&
+        meta.speakerChannel !== lastEntry.speakerChannel) ||
+        (meta?.speakerColor &&
+          lastEntry.speakerColor &&
+          meta.speakerColor !== lastEntry.speakerColor)),
+  );
+
   const entry: SubtitleEntry = {
     id: createId("subtitle"),
     text,
@@ -161,6 +171,9 @@ function appendOrMergeEntry(
     endTime: nowIso,
   };
   applySourceMeta(entry, meta);
+  if (speakerChanged) {
+    entry.speakerChanged = true;
+  }
   state.entries.push(entry);
   return entry;
 }

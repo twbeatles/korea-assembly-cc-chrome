@@ -520,6 +520,20 @@ When editing this repository, align with the newly implemented behavior below.
 - Soft multi-tab capture ownership warns when another tab claimed capture recently; does not hard-block.
 - In-page panel shadow root uses `mode: "closed"`.
 
+## Sync Delta (2026-08-10)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- Settings: `panelSpeakerHighlightEnabled` (default `false`) controls speaker color strip + A/B badge on in-page panel live rows and History entry cards. In-page panel exposes a compact 「발언자 보기」 toggle that persists via `saveSettings`.
+- Settings: `txtExportSpeakerEnabled` (default `false`) includes speaker in TXT / SRT / VTT / clipboard copy prefixes as `[발언자 A] `, and fills MD/CSV speaker cells when enabled. In-page panel exposes 「내보내기·복사」 toggle. JSON single-session export always keeps `speakerColor` / `speakerChannel` for restore.
+- TXT / copy / SRT / VTT share `formatSpeakerPrefix` bracket style for speaker text.
+- `estimateSessionExportBytes(session, timestamps, speaker)` must account for the speaker option (JSON estimate keeps speaker metadata).
+- `readObservedSubtitleRows` splits one `.smi_word` into multiple rows when child spans use different speaker colors (`nodeKey` suffix `#spanId`).
+- New entries created after a speaker channel/color boundary set `speakerChanged: true`.
+- Panel accent colors pass through `sanitizeSpeakerColorForCss` (hex/rgb/rgba whitelist only).
+- Shared speaker label helper: `src/core/exporters/speaker-label.ts`.
+- Options tab UI groups: 수집 → 화면·발언자 → 복사·파일 이름 → 내보내기 내용 → 고급 → 프리셋. MD/CSV omit speaker column when export speaker option is off.
+
 <!-- SPECKIT-AGENT-GUIDE:START -->
 
 ## Spec Kit / Spec-Driven Development (AI 에이전트 필독)

@@ -308,6 +308,7 @@ describe("subtitle pipeline", () => {
     expect(next.state.entries).toHaveLength(2);
     expect(next.state.entries[0].speakerChannel).toBe("primary");
     expect(next.state.entries[1].speakerChannel).toBe("secondary");
+    expect(next.state.entries[1].speakerChanged).toBe(true);
     expect(next.state.entries[1].text).toContain("이어서 B");
   });
 

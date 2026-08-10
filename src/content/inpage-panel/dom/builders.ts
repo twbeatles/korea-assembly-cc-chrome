@@ -1,4 +1,9 @@
 import type { LivePanelRow } from "../../../core/live-capture";
+import {
+  formatSpeakerBadge,
+  resolveSpeakerAccentColor,
+  resolveSpeakerLabelForOutput,
+} from "../../../core/exporters/speaker-label";
 import type { ExportFormat } from "../../../core/subtitle-models";
 import { getExportFormatLabel, UI_TEXT } from "../../../shared/ui-labels";
 import { formatDate } from "../formatters";
@@ -28,10 +33,64 @@ export interface InPagePanelElements {
   highlightLatestButton: HTMLButtonElement;
   rolloverButton: HTMLButtonElement;
   exportButtons: HTMLButtonElement[];
+  speakerHighlightToggle: HTMLInputElement;
+  exportSpeakerToggle: HTMLInputElement;
   notice: HTMLDivElement;
 }
 
-export function createLiveRowCard(row: LivePanelRow): HTMLElement {
+export function applyLiveRowSpeakerPresentation(
+  article: HTMLElement,
+  row: LivePanelRow,
+  showSpeakerHighlight: boolean,
+): void {
+  article.classList.remove(
+    "speaker-highlight",
+    "speaker-primary",
+    "speaker-secondary",
+    "speaker-unknown",
+  );
+  article.style.removeProperty("border-left-color");
+
+  const existingBadge = article.querySelector<HTMLElement>(".speaker-badge");
+  if (!showSpeakerHighlight) {
+    existingBadge?.remove();
+    return;
+  }
+
+  const channel = row.speakerChannel || "unknown";
+  article.classList.add("speaker-highlight", `speaker-${channel}`);
+  const accent = resolveSpeakerAccentColor(row.speakerColor, channel);
+  if (accent) {
+    article.style.borderLeftColor = accent;
+  }
+
+  let badge = existingBadge;
+  if (!badge) {
+    badge = document.createElement("span");
+    badge.className = "speaker-badge";
+    const time = article.querySelector("time");
+    if (time) {
+      time.insertAdjacentElement("afterend", badge);
+    } else {
+      article.prepend(badge);
+    }
+  }
+
+  badge.textContent = formatSpeakerBadge(channel);
+  badge.setAttribute(
+    "aria-label",
+    resolveSpeakerLabelForOutput(
+      { speakerChannel: channel },
+      null,
+      { unknownLabel: "알 수 없음" },
+    ),
+  );
+}
+
+export function createLiveRowCard(
+  row: LivePanelRow,
+  showSpeakerHighlight = false,
+): HTMLElement {
   const article = document.createElement("article");
   article.className = "live-row";
   article.dataset.rowKey = row.key;
@@ -43,6 +102,7 @@ export function createLiveRowCard(row: LivePanelRow): HTMLElement {
   text.textContent = row.text;
 
   article.append(time, text);
+  applyLiveRowSpeakerPresentation(article, row, showSpeakerHighlight);
   return article;
 }
 
@@ -169,6 +229,39 @@ export function createInPagePanelElements(
   liveRowMeta.append(modeBadge, liveRowCount);
   liveRowHeader.append(liveRowCopy, liveRowMeta);
 
+  const speakerToggleBar = document.createElement("div");
+  speakerToggleBar.className = "speaker-toggle-bar";
+  speakerToggleBar.setAttribute("role", "group");
+  speakerToggleBar.setAttribute("aria-label", "발언자 표시 및 내보내기");
+
+  const speakerHighlightLabel = document.createElement("label");
+  speakerHighlightLabel.className = "speaker-toggle";
+  const speakerHighlightToggle = document.createElement("input");
+  speakerHighlightToggle.type = "checkbox";
+  speakerHighlightToggle.className = "speaker-toggle-input";
+  speakerHighlightToggle.setAttribute("aria-label", "패널에 발언자 색 표시");
+  speakerHighlightToggle.addEventListener("change", () => {
+    actions.onSetSpeakerHighlight(speakerHighlightToggle.checked);
+  });
+  const speakerHighlightText = document.createElement("span");
+  speakerHighlightText.textContent = "발언자 보기";
+  speakerHighlightLabel.append(speakerHighlightToggle, speakerHighlightText);
+
+  const exportSpeakerLabel = document.createElement("label");
+  exportSpeakerLabel.className = "speaker-toggle";
+  const exportSpeakerToggle = document.createElement("input");
+  exportSpeakerToggle.type = "checkbox";
+  exportSpeakerToggle.className = "speaker-toggle-input";
+  exportSpeakerToggle.setAttribute("aria-label", "내보내기·복사에 발언자 포함");
+  exportSpeakerToggle.addEventListener("change", () => {
+    actions.onSetExportSpeaker(exportSpeakerToggle.checked);
+  });
+  const exportSpeakerText = document.createElement("span");
+  exportSpeakerText.textContent = "내보내기·복사";
+  exportSpeakerLabel.append(exportSpeakerToggle, exportSpeakerText);
+
+  speakerToggleBar.append(speakerHighlightLabel, exportSpeakerLabel);
+
   const liveRowList = document.createElement("div");
   liveRowList.className = "live-row-list";
   liveRowList.setAttribute("role", "log");
@@ -222,7 +315,7 @@ export function createInPagePanelElements(
   previewBox.append(previewScroll);
   previewSection.append(previewHeader, previewBox);
 
-  heroCard.append(liveRowHeader, liveRowShell, previewSection);
+  heroCard.append(liveRowHeader, speakerToggleBar, liveRowShell, previewSection);
 
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
@@ -348,6 +441,8 @@ export function createInPagePanelElements(
     highlightLatestButton,
     rolloverButton,
     exportButtons,
+    speakerHighlightToggle,
+    exportSpeakerToggle,
     notice,
   };
 }

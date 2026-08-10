@@ -86,6 +86,35 @@ describe("copy utils", () => {
     expect(buildCopyText(entries, { query: "없는 문장" })).toBe("");
   });
 
+  it("prefixes speaker labels when includeSpeaker is enabled", () => {
+    const withSpeaker: SubtitleEntry[] = [
+      {
+        ...buildEntry("s1", "본회의 개의", "2026-03-10T09:00:00.000"),
+        speakerChannel: "primary",
+      },
+      {
+        ...buildEntry("s2", "의사일정 말씀드리겠습니다", "2026-03-10T09:00:01.000"),
+        speakerChannel: "secondary",
+        speakerLabel: "위원장",
+      },
+    ];
+
+    expect(
+      buildCopyText(withSpeaker, {
+        includeSpeaker: true,
+      }),
+    ).toBe(
+      [
+        "[09:00:00] [발언자 A] 본회의 개의",
+        "[09:00:01] [위원장] 의사일정 말씀드리겠습니다",
+      ].join("\n"),
+    );
+
+    expect(buildCopyText(withSpeaker)).toBe(
+      ["[09:00:00] 본회의 개의", "[09:00:01] 의사일정 말씀드리겠습니다"].join("\n"),
+    );
+  });
+
   it("selects only the most recent matched entries before formatting", () => {
     expect(
       selectCopyEntries(entries, {

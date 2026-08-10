@@ -153,6 +153,12 @@ export default function App() {
   const [txtExportTimestampsEnabled, setTxtExportTimestampsEnabled] = useState(
     DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
   );
+  const [txtExportSpeakerEnabled, setTxtExportSpeakerEnabled] = useState(
+    DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
+  );
+  const [panelSpeakerHighlightEnabled, setPanelSpeakerHighlightEnabled] = useState(
+    DEFAULT_EXTENSION_SETTINGS.panelSpeakerHighlightEnabled,
+  );
   const [reloadKey, setReloadKey] = useState(0);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
@@ -181,9 +187,13 @@ export default function App() {
   const displayExportEstimateBytes = useMemo(
     () =>
       displaySession
-        ? estimateSessionExportBytes(displaySession, txtExportTimestampsEnabled)
+        ? estimateSessionExportBytes(
+            displaySession,
+            txtExportTimestampsEnabled,
+            txtExportSpeakerEnabled,
+          )
         : 0,
-    [displaySession, txtExportTimestampsEnabled],
+    [displaySession, txtExportTimestampsEnabled, txtExportSpeakerEnabled],
   );
   const filteredEntries = useMemo(
     () => filterEntriesByQuery(displaySession?.entries ?? [], searchQuery),
@@ -541,6 +551,8 @@ export default function App() {
         setRecentCopyLineCount(nextSettings.recentCopyLineCount);
         setFilenamePattern(nextSettings.filenamePattern);
         setTxtExportTimestampsEnabled(nextSettings.txtExportTimestampsEnabled);
+        setTxtExportSpeakerEnabled(nextSettings.txtExportSpeakerEnabled);
+        setPanelSpeakerHighlightEnabled(nextSettings.panelSpeakerHighlightEnabled);
       })
       .catch(() => {
         // Keep defaults if settings cannot be loaded from a standalone history page.
@@ -567,6 +579,8 @@ export default function App() {
         setRecentCopyLineCount(nextSettings.recentCopyLineCount);
         setFilenamePattern(nextSettings.filenamePattern);
         setTxtExportTimestampsEnabled(nextSettings.txtExportTimestampsEnabled);
+        setTxtExportSpeakerEnabled(nextSettings.txtExportSpeakerEnabled);
+        setPanelSpeakerHighlightEnabled(nextSettings.panelSpeakerHighlightEnabled);
       }
 
       if (changes[SESSION_LIBRARY_REVISION_STORAGE_KEY]) {
@@ -1066,6 +1080,7 @@ export default function App() {
             format,
             filenamePattern,
             txtExportTimestampsEnabled,
+            txtExportSpeakerEnabled,
             entryIds: entries?.map((entry) => entry.id),
             timeRange,
           })
@@ -1075,6 +1090,7 @@ export default function App() {
             format,
             filenamePattern,
             txtExportTimestampsEnabled,
+            txtExportSpeakerEnabled,
             entryIds: entries?.map((entry) => entry.id),
             timeRange,
           });
@@ -1127,6 +1143,7 @@ export default function App() {
           format,
           filenamePattern,
           txtExportTimestampsEnabled,
+          txtExportSpeakerEnabled,
           filenameSuffix: `segment-${String(index + 1).padStart(3, "0")}`,
         });
         if (!response.ok) {
@@ -1516,6 +1533,8 @@ export default function App() {
           splitEntryId={splitEntryId}
           splitDraft={splitDraft}
           recentCopyLineCount={recentCopyLineCount}
+          txtExportSpeakerEnabled={txtExportSpeakerEnabled}
+          panelSpeakerHighlightEnabled={panelSpeakerHighlightEnabled}
           runBusyHistoryAction={runBusyHistoryAction}
           setLineageViewEnabled={setLineageViewEnabled}
           setNoteDraft={setNoteDraft}

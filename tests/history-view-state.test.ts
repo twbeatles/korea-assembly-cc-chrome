@@ -42,6 +42,7 @@ describe("history view state helpers", () => {
       txtExportTimestampsEnabled: true,
       txtExportSpeakerEnabled: true,
       txtExportEntryNotesEnabled: true,
+      panelSpeakerHighlightEnabled: false,
     });
 
     expect(
@@ -55,6 +56,8 @@ describe("history view state helpers", () => {
       txtExportTimestampsEnabled: DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
       txtExportSpeakerEnabled: DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
       txtExportEntryNotesEnabled: DEFAULT_EXTENSION_SETTINGS.txtExportEntryNotesEnabled,
+      panelSpeakerHighlightEnabled:
+        DEFAULT_EXTENSION_SETTINGS.panelSpeakerHighlightEnabled,
     });
   });
 

@@ -32,6 +32,8 @@ export interface ExtensionSettings {
   txtExportTimestampsEnabled: boolean;
   txtExportSpeakerEnabled: boolean;
   txtExportEntryNotesEnabled: boolean;
+  /** 우측 패널 수집된 자막에 발언자 색·뱃지 표시 */
+  panelSpeakerHighlightEnabled: boolean;
   runningAutoSaveEnabled: boolean;
   runningAutoSaveDebounceMs: number;
   recentCopyLineCount: number;

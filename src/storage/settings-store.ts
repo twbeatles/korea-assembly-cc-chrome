@@ -174,6 +174,10 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
       typeof settings.txtExportEntryNotesEnabled === "boolean"
         ? settings.txtExportEntryNotesEnabled
         : DEFAULT_EXTENSION_SETTINGS.txtExportEntryNotesEnabled,
+    panelSpeakerHighlightEnabled:
+      typeof settings.panelSpeakerHighlightEnabled === "boolean"
+        ? settings.panelSpeakerHighlightEnabled
+        : DEFAULT_EXTENSION_SETTINGS.panelSpeakerHighlightEnabled,
     runningAutoSaveEnabled:
       typeof settings.runningAutoSaveEnabled === "boolean"
         ? settings.runningAutoSaveEnabled

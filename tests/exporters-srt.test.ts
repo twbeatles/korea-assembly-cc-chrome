@@ -36,4 +36,20 @@ describe("SRT exporter", () => {
       "1\n00:00:01,200 --> 00:00:04,000\n안녕하세요",
     );
   });
+
+  it("prefixes speaker labels when includeSpeaker is enabled", () => {
+    const withSpeaker: SessionRecord = {
+      ...session,
+      entries: [
+        {
+          ...session.entries[0],
+          speakerChannel: "primary",
+        },
+      ],
+    };
+
+    expect(exportSrt(withSpeaker, { includeSpeaker: true })).toBe(
+      "1\n00:00:01,200 --> 00:00:04,000\n[발언자 A] 안녕하세요",
+    );
+  });
 });

@@ -59,6 +59,31 @@ describe("subtitle row helpers", () => {
     expect(buildObservedSubtitlePreview(rows)).toBe("둘째 줄 셋째 줄 넷째 줄");
   });
 
+  it("splits a single smi_word into multiple rows when nested spans use different speaker colors", () => {
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="smi_word stxt1">
+          <span id="segarr_1_0" style="color: #1e1e1e">위원장 발언입니다.</span>
+          <span id="segarr_1_1" style="color: #237c93">의원 발언입니다.</span>
+        </div>
+      </div>
+    `;
+
+    const rows = readObservedSubtitleRows(document);
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({
+      nodeKey: "class:stxt1#segarr_1_0",
+      text: "위원장 발언입니다.",
+      speakerChannel: "secondary",
+    });
+    expect(rows[1]).toMatchObject({
+      nodeKey: "class:stxt1#segarr_1_1",
+      text: "의원 발언입니다.",
+      speakerChannel: "primary",
+    });
+  });
+
   it("filters rows whose in-progress highlight is expressed as a background image", () => {
     document.body.innerHTML = `
       <div id="viewSubtit">

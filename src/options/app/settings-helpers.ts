@@ -57,12 +57,89 @@ export const SEGMENT_PRESET_OPTIONS: Array<{
   },
 ];
 
+export type SettingsToggleKey =
+  | "autoScroll"
+  | "runningAutoSaveEnabled"
+  | "autoStartEnabled"
+  | "filterUnconfirmedEnabled"
+  | "panelSpeakerHighlightEnabled"
+  | "txtExportTimestampsEnabled"
+  | "txtExportSpeakerEnabled"
+  | "txtExportEntryNotesEnabled"
+  | "noiseFilterEnabled"
+  | "debugLogging";
+
+export const SETTINGS_DEFAULT_MESSAGE = "바꾼 뒤 아래 저장을 누르세요.";
+
+export function getToggleCopy(field: SettingsToggleKey): {
+  title: string;
+  description: string;
+  caution?: string;
+} {
+  switch (field) {
+    case "autoStartEnabled":
+      return {
+        title: "플레이어 열면 바로 수집",
+        description: "플레이어 페이지에 들어오면 수집을 시작합니다. 직접 시작만 원하면 끄세요.",
+        caution: "다른 회의로 이동해도 다시 시작할 수 있습니다.",
+      };
+    case "runningAutoSaveEnabled":
+      return {
+        title: "수집 중 자동 저장",
+        description: "모으는 동안 중간 결과를 저장해 둡니다.",
+      };
+    case "autoScroll":
+      return {
+        title: "새 자막으로 화면 따라가기",
+        description: "패널의 실시간·수집 목록을 맨 아래로 맞춥니다.",
+      };
+    case "filterUnconfirmedEnabled":
+      return {
+        title: "확정된 자막만 저장",
+        description: "아직 바뀌는 중인 자막은 잠시 기다린 뒤 넣습니다.",
+      };
+    case "panelSpeakerHighlightEnabled":
+      return {
+        title: "발언자 색으로 구분 표시",
+        description:
+          "패널·기록에서 화자별 색 띠와 A/B 표시. 중계 페이지 패널에서도 켤 수 있습니다.",
+      };
+    case "txtExportTimestampsEnabled":
+      return {
+        title: "내보내기에 시간 넣기",
+        description: "TXT 내보내기에서 각 자막 앞에 시간을 붙입니다.",
+      };
+    case "txtExportSpeakerEnabled":
+      return {
+        title: "내보내기·복사에 발언자 넣기",
+        description:
+          "켜면 파일·복사에 [발언자 A] 등을 넣습니다. MD/CSV에는 발언자 열이 생깁니다.",
+      };
+    case "txtExportEntryNotesEnabled":
+      return {
+        title: "내보내기에 메모·중요 표시",
+        description: "TXT에 중요 표시와 메모를 함께 넣습니다.",
+      };
+    case "noiseFilterEnabled":
+      return {
+        title: "잡음·기호만 있는 줄 제외",
+        description:
+          "숫자·기호·안내 문구 위주 줄은 저장하지 않습니다. 필요한 문장이 빠진다면 이 옵션을 끄세요.",
+      };
+    case "debugLogging":
+      return {
+        title: "자세한 로그 (문제 해결용)",
+        description: "이상 확인 시 브라우저 콘솔에 상세 로그를 남깁니다.",
+      };
+  }
+}
+
 export function getFieldLabel(field: keyof ExtensionSettings): string {
   switch (field) {
     case "runningAutoSaveDebounceMs":
       return "자동 저장 간격";
     case "recentCopyLineCount":
-      return "최근 복사 줄 수";
+      return "한 번에 복사할 줄 수";
     case "keepaliveIntervalMs":
       return "같은 자막 확인 간격";
     case "pollingFallbackIntervalMs":
@@ -70,13 +147,15 @@ export function getFieldLabel(field: keyof ExtensionSettings): string {
     case "maxBufferLength":
       return "중복 확인용 기억 길이";
     case "maxEntriesPerSegment":
-      return "한 번에 저장할 최대 문장 수";
+      return "한 파일 최대 문장 수";
     case "maxCharsPerSegment":
-      return "한 번에 저장할 최대 글자 수";
+      return "한 파일 최대 글자 수";
     case "maxSegmentDurationMinutes":
-      return "한 번에 저장할 최대 시간";
+      return "한 파일 최대 시간";
     case "recentDuplicateMinLength":
       return "중복으로 볼 최소 글자 수";
+    case "filenamePattern":
+      return "저장 파일 이름";
     default:
       return field;
   }
@@ -85,11 +164,11 @@ export function getFieldLabel(field: keyof ExtensionSettings): string {
 export function getFieldDescription(field: keyof ExtensionSettings): string {
   switch (field) {
     case "runningAutoSaveDebounceMs":
-      return "값이 작을수록 더 자주 저장합니다. 보통은 기본값을 그대로 두면 됩니다.";
+      return "값이 작을수록 자주 저장합니다. 보통은 기본값이면 됩니다.";
     case "recentCopyLineCount":
-      return "최근 복사 버튼에 포함할 최신 문장 수입니다.";
+      return "「최근 N줄 복사」에 넣을 문장 수입니다.";
     case "keepaliveIntervalMs":
-      return "같은 자막이 계속 보일 때 시간을 갱신하는 간격입니다.";
+      return "같은 자막이 계속 보일 때 시간을 갱신하는 간격입니다. 보통은 기본값이면 됩니다.";
     case "pollingFallbackIntervalMs":
       return "자막 변화를 놓치지 않도록 화면을 다시 확인하는 간격입니다.";
     case "maxBufferLength":
@@ -101,7 +180,9 @@ export function getFieldDescription(field: keyof ExtensionSettings): string {
     case "maxSegmentDurationMinutes":
       return "이 시간을 넘기면 파일을 나누어 저장합니다.";
     case "recentDuplicateMinLength":
-      return "짧은 글자는 중복으로 잘못 판단하지 않도록 제외합니다.";
+      return "짧은 글자는 중복으로 잘못 보지 않도록 제외합니다.";
+    case "filenamePattern":
+      return "{date}, {time}, {committee} 를 넣을 수 있습니다.";
     default:
       return "";
   }

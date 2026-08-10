@@ -175,6 +175,7 @@ describe("history app", () => {
       txtExportTimestampsEnabled: false,
       txtExportSpeakerEnabled: false,
       txtExportEntryNotesEnabled: false,
+      panelSpeakerHighlightEnabled: false,
       runningAutoSaveEnabled: true,
       runningAutoSaveDebounceMs: 800,
       recentCopyLineCount: 5,

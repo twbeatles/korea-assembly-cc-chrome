@@ -6,6 +6,7 @@ import {
 } from "../../core/subtitle-models";
 import { exportJson } from "../../core/exporters/json";
 import { normalizeSessionForExport } from "../../core/exporters/normalize-session";
+import { resolveSpeakerLabelForOutput } from "../../core/exporters/speaker-label";
 import { exportSrt } from "../../core/exporters/srt";
 import { exportTxt } from "../../core/exporters/txt";
 import { exportVtt } from "../../core/exporters/vtt";
@@ -57,22 +58,9 @@ export function resolveSpeakerLabel(
   session: SessionRecord,
   entry: SubtitleEntry,
 ): string {
-  if (entry.speakerLabel?.trim()) {
-    return entry.speakerLabel.trim();
-  }
-  const channel = entry.speakerChannel ?? "unknown";
-  const label = session.speakerLabels?.[channel]?.trim();
-  if (label) {
-    return label;
-  }
-  switch (channel) {
-    case "primary":
-      return "발언자 A";
-    case "secondary":
-      return "발언자 B";
-    default:
-      return "알 수 없음";
-  }
+  return resolveSpeakerLabelForOutput(entry, session, {
+    unknownLabel: "알 수 없음",
+  });
 }
 
 export function computeSplitTime(
@@ -161,13 +149,23 @@ export function canReopenSourceUrl(sourceUrl: string | null | undefined): source
 export function estimateSessionExportBytes(
   session: SessionRecord,
   txtExportTimestampsEnabled: boolean,
+  txtExportSpeakerEnabled = false,
 ): number {
-  const normalized = normalizeSessionForExport(session);
+  const includeSpeaker = txtExportSpeakerEnabled === true;
+  const normalized = normalizeSessionForExport(session, {
+    stripSpeakerMetadata: !includeSpeaker,
+  });
   return Math.max(
-    getUtf8ByteLength(exportTxt(normalized, { includeTimestamps: txtExportTimestampsEnabled })),
-    getUtf8ByteLength(exportSrt(normalized)),
-    getUtf8ByteLength(exportVtt(normalized)),
-    getUtf8ByteLength(exportJson(normalized)),
+    getUtf8ByteLength(
+      exportTxt(normalized, {
+        includeTimestamps: txtExportTimestampsEnabled,
+        includeSpeaker,
+      }),
+    ),
+    getUtf8ByteLength(exportSrt(normalized, { includeSpeaker })),
+    getUtf8ByteLength(exportVtt(normalized, { includeSpeaker })),
+    // JSON 은 항상 발언자 메타를 포함하므로 원본 세션 기준
+    getUtf8ByteLength(exportJson(normalizeSessionForExport(session, { stripSpeakerMetadata: false }))),
   );
 }
 

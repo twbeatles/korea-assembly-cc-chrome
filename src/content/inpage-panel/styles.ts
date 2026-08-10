@@ -300,6 +300,44 @@
     gap: 12px;
   }
 
+  .speaker-toggle-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 2px;
+  }
+
+  .speaker-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin: 0;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid var(--line-soft);
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--navy-600, #35536e);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.3;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .speaker-toggle:has(input:checked) {
+    border-color: rgba(35, 124, 147, 0.45);
+    background: rgba(35, 124, 147, 0.1);
+    color: #17657a;
+  }
+
+  .speaker-toggle-input {
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    accent-color: #237c93;
+    cursor: pointer;
+  }
+
   .section-copy,
   .preview-copy {
     min-width: 0;
@@ -449,12 +487,55 @@
     box-shadow: 0 10px 18px rgba(20, 54, 90, 0.06);
   }
 
+  .live-row.speaker-highlight {
+    border-left-width: 4px;
+    border-left-style: solid;
+  }
+
+  .live-row.speaker-primary {
+    border-left-color: #237c93;
+  }
+
+  .live-row.speaker-secondary {
+    border-left-color: #1e1e1e;
+  }
+
+  .live-row.speaker-unknown {
+    border-left-color: var(--line-soft);
+  }
+
   .live-row time {
     display: block;
     margin-bottom: 4px;
     color: var(--navy-400);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
+  }
+
+  .live-row .speaker-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.4em;
+    margin: 0 0 6px;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgba(20, 54, 90, 0.08);
+    color: var(--navy-700, #1f3b57);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    line-height: 1.4;
+  }
+
+  .live-row.speaker-primary .speaker-badge {
+    background: rgba(35, 124, 147, 0.14);
+    color: #17657a;
+  }
+
+  .live-row.speaker-secondary .speaker-badge {
+    background: rgba(30, 30, 30, 0.1);
+    color: #2a2a2a;
   }
 
   .live-row p {

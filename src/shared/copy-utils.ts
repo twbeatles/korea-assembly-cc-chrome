@@ -1,4 +1,9 @@
 import { normalizeEntriesForOutput } from "../core/output-normalizer";
+import {
+  formatSpeakerPrefix,
+  resolveSpeakerLabelForOutput,
+  type SpeakerLabelsSource,
+} from "../core/exporters/speaker-label";
 import type { SubtitleEntry } from "../core/subtitle-models";
 import { formatClockTime } from "../core/timeline";
 
@@ -6,6 +11,9 @@ export interface BuildCopyTextOptions {
   limit?: number;
   query?: string;
   selectedIds?: string[];
+  /** true 이면 `[시간] [발언자 A] 본문` 형태 */
+  includeSpeaker?: boolean;
+  session?: SpeakerLabelsSource | null;
 }
 
 function normalizeQuery(query: string): string {
@@ -35,16 +43,25 @@ export function filterEntriesByIds(
   return entries.filter((entry) => selectedIdSet.has(entry.id));
 }
 
-function formatCopyLine(entry: SubtitleEntry): string {
+function formatCopyLine(
+  entry: SubtitleEntry,
+  options: Pick<BuildCopyTextOptions, "includeSpeaker" | "session"> = {},
+): string {
   const timestamp = formatClockTime(entry.startTime || entry.timestamp);
-  return `[${timestamp}] ${entry.text}`;
+  const speakerPrefix =
+    options.includeSpeaker === true
+      ? formatSpeakerPrefix(resolveSpeakerLabelForOutput(entry, options.session))
+      : "";
+  return `[${timestamp}] ${speakerPrefix}${entry.text}`;
 }
 
 export function selectCopyEntries(
   entries: SubtitleEntry[],
   options: BuildCopyTextOptions = {},
 ): SubtitleEntry[] {
-  const normalizedEntries = normalizeEntriesForOutput(entries);
+  const normalizedEntries = normalizeEntriesForOutput(entries, {
+    stripSpeakerMetadata: options.includeSpeaker !== true,
+  });
   const selectedEntries = filterEntriesByIds(normalizedEntries, options.selectedIds);
   const filteredEntries = filterEntriesByQuery(selectedEntries, options.query);
   return typeof options.limit === "number" && options.limit > 0
@@ -56,7 +73,10 @@ export function buildCopyText(
   entries: SubtitleEntry[],
   options: BuildCopyTextOptions = {},
 ): string {
-  return selectCopyEntries(entries, options).map(formatCopyLine).join("\n").trim();
+  return selectCopyEntries(entries, options)
+    .map((entry) => formatCopyLine(entry, options))
+    .join("\n")
+    .trim();
 }
 
 export async function copyTextToClipboard(text: string): Promise<void> {

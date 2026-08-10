@@ -12,6 +12,8 @@ export function buildInPagePanelState(
     showNotice: boolean;
     autoScroll: boolean;
     recentCopyLineCount: number;
+    showSpeakerHighlight?: boolean;
+    exportSpeakerEnabled?: boolean;
     livePreviewText: string;
     liveRows: LivePanelRow[];
     canClearSession: boolean;
@@ -34,6 +36,8 @@ export function buildInPagePanelState(
     subtitleCount: snapshot.subtitleCount,
     charCount: snapshot.charCount,
     recentCopyLineCount: options.recentCopyLineCount,
+    showSpeakerHighlight: options.showSpeakerHighlight === true,
+    exportSpeakerEnabled: options.exportSpeakerEnabled === true,
     notice: options.notice,
     hasPersistableContent: snapshot.hasPersistableContent,
     canClearSession: options.canClearSession,

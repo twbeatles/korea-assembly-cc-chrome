@@ -36,4 +36,20 @@ describe("VTT exporter", () => {
       "WEBVTT\n\n00:00:01.200 --> 00:00:04.000\n안녕하세요",
     );
   });
+
+  it("prefixes speaker labels when includeSpeaker is enabled", () => {
+    const withSpeaker: SessionRecord = {
+      ...session,
+      entries: [
+        {
+          ...session.entries[0],
+          speakerChannel: "secondary",
+        },
+      ],
+    };
+
+    expect(exportVtt(withSpeaker, { includeSpeaker: true })).toBe(
+      "WEBVTT\n\n00:00:01.200 --> 00:00:04.000\n[발언자 B] 안녕하세요",
+    );
+  });
 });

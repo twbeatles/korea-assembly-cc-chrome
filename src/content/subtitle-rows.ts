@@ -120,6 +120,65 @@ export function readSpeakerColor(node: HTMLElement): string {
   return normalizeSpeakerColor(window.getComputedStyle(speakerNode).color);
 }
 
+interface SpeakerSegment {
+  element: HTMLElement;
+  text: string;
+  speakerColor: string;
+  keySuffix: string;
+}
+
+/**
+ * 한 smi_word 안에 서로 다른 색 span 이 여러 개면 화자 단위로 분할한다.
+ * 동일 색·단일 span 이면 빈 배열(노드 단위 1 row 유지).
+ */
+function collectMultiSpeakerSegments(node: HTMLElement): SpeakerSegment[] {
+  if (typeof window === "undefined" || !window.getComputedStyle) {
+    return [];
+  }
+
+  const directSpans = Array.from(node.children).filter(
+    (child): child is HTMLElement =>
+      child instanceof HTMLElement && child.tagName === "SPAN",
+  );
+  const spans =
+    directSpans.length > 0
+      ? directSpans
+      : Array.from(node.querySelectorAll<HTMLElement>("span")).filter((span) => {
+          // 중첩 span 의 조상이 같은 노드 아래 다른 span 이면 leaf 만
+          const parentSpan = span.parentElement?.closest("span");
+          return !parentSpan || parentSpan === node || !node.contains(parentSpan);
+        });
+
+  const segments: SpeakerSegment[] = [];
+  spans.forEach((span, index) => {
+    const text = normalizeSubtitleText(span.innerText || span.textContent || "");
+    if (!compactSubtitleText(text)) {
+      return;
+    }
+    const speakerColor = normalizeSpeakerColor(
+      window.getComputedStyle(span).color,
+    );
+    const id = String(span.id || "").trim();
+    segments.push({
+      element: span,
+      text,
+      speakerColor,
+      keySuffix: id || `span${index}`,
+    });
+  });
+
+  if (segments.length <= 1) {
+    return [];
+  }
+
+  const colors = new Set(segments.map((segment) => segment.speakerColor));
+  if (colors.size <= 1) {
+    return [];
+  }
+
+  return segments;
+}
+
 function hasOpaqueBackground(backgroundColor: string): boolean {
   const normalized = String(backgroundColor || "")
     .replace(/\s+/g, "")
@@ -263,40 +322,11 @@ export function readObservedSubtitleRows(
     classKeyCounts.set(classKey, (classKeyCounts.get(classKey) ?? 0) + 1);
   });
 
-  nodes.forEach((node) => {
-    if (options?.filterUnconfirmedEnabled && !isConfirmedSubtitleNode(node)) {
-      return;
-    }
-
-    const text = normalizeSubtitleText(node.innerText || node.textContent || "");
-    const compact = compactSubtitleText(text);
+  const pushRow = (nextRow: ObservedSubtitleRow): void => {
+    const compact = compactSubtitleText(nextRow.text);
     if (!compact) {
       return;
     }
-
-    const classNodeKey = extractClassNodeKey(node);
-    const attrNodeKey = extractAttributeNodeKey(node);
-    const hasUniqueClassNodeKey =
-      Boolean(classNodeKey) && classKeyCounts.get(classNodeKey) === 1;
-    const nodeKey = hasUniqueClassNodeKey
-      ? `class:${classNodeKey}`
-      : attrNodeKey
-        ? `attr:${attrNodeKey}`
-        : ensureGeneratedNodeKey(node);
-    const nodeKeySource: RowKeySource = hasUniqueClassNodeKey
-      ? "class"
-      : attrNodeKey
-        ? "attribute"
-        : "generated";
-    const speakerColor = readSpeakerColor(node);
-    const nextRow: ObservedSubtitleRow = {
-      nodeKey,
-      text,
-      speakerColor,
-      speakerChannel: classifySpeakerChannel(speakerColor),
-      unstableKey: !hasUniqueClassNodeKey && !attrNodeKey,
-      nodeKeySource,
-    };
 
     const previousRow = rows.at(-1);
     if (
@@ -310,6 +340,60 @@ export function readObservedSubtitleRows(
     }
 
     rows.push(nextRow);
+  };
+
+  nodes.forEach((node) => {
+    const classNodeKey = extractClassNodeKey(node);
+    const attrNodeKey = extractAttributeNodeKey(node);
+    const hasUniqueClassNodeKey =
+      Boolean(classNodeKey) && classKeyCounts.get(classNodeKey) === 1;
+    const baseNodeKey = hasUniqueClassNodeKey
+      ? `class:${classNodeKey}`
+      : attrNodeKey
+        ? `attr:${attrNodeKey}`
+        : ensureGeneratedNodeKey(node);
+    const nodeKeySource: RowKeySource = hasUniqueClassNodeKey
+      ? "class"
+      : attrNodeKey
+        ? "attribute"
+        : "generated";
+    const unstableKey = !hasUniqueClassNodeKey && !attrNodeKey;
+
+    const multiSegments = collectMultiSpeakerSegments(node);
+    if (multiSegments.length > 0) {
+      multiSegments.forEach((segment) => {
+        if (
+          options?.filterUnconfirmedEnabled &&
+          !isConfirmedSubtitleNode(segment.element)
+        ) {
+          return;
+        }
+        pushRow({
+          nodeKey: `${baseNodeKey}#${segment.keySuffix}`,
+          text: segment.text,
+          speakerColor: segment.speakerColor,
+          speakerChannel: classifySpeakerChannel(segment.speakerColor),
+          unstableKey,
+          nodeKeySource,
+        });
+      });
+      return;
+    }
+
+    if (options?.filterUnconfirmedEnabled && !isConfirmedSubtitleNode(node)) {
+      return;
+    }
+
+    const text = normalizeSubtitleText(node.innerText || node.textContent || "");
+    const speakerColor = readSpeakerColor(node);
+    pushRow({
+      nodeKey: baseNodeKey,
+      text,
+      speakerColor,
+      speakerChannel: classifySpeakerChannel(speakerColor),
+      unstableKey,
+      nodeKeySource,
+    });
   });
 
   return rows;

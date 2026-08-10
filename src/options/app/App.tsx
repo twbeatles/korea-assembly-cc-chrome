@@ -5,7 +5,6 @@ import {
   SESSION_SEGMENT_PRESETS,
   isSupportedAssemblyUrl,
 } from "../../shared/constants";
-import { validateFilenamePattern } from "../../shared/filename-pattern";
 import {
   addTabActivatedListener,
   addTabRemovedListener,
@@ -21,7 +20,7 @@ import type {
   PopupToContentMessage,
   StatusSnapshot,
 } from "../../shared/message-types";
-import { getCaptureStatusLabel, UI_TEXT } from "../../shared/ui-labels";
+import { getCaptureStatusLabel } from "../../shared/ui-labels";
 import {
   createEmptyPersistReplayDiagnostics,
   readPersistReplayDiagnostics,
@@ -34,16 +33,11 @@ import type {
   SegmentPreset,
 } from "../../storage/types";
 import { createPrefixedRandomToken } from "../../shared/random-token";
-import { ADVANCED_NUMBER_FIELDS, BASIC_NUMBER_FIELDS } from "../settings-fields";
 import {
   EMPTY_PRESET_DRAFT,
-  SEGMENT_PRESET_OPTIONS,
+  SETTINGS_DEFAULT_MESSAGE,
   buildNumberDraftState,
   getCaptureModeSummary,
-  getFieldDescription,
-  getFieldLabel,
-  getFieldMin,
-  getFieldUnit,
   getInitialDiagnosticsTabId,
   getInitialView,
   mergeSnapshot,
@@ -55,6 +49,7 @@ import {
   type NumberFieldErrorState,
   type OptionsView,
 } from "./settings-helpers";
+import { SettingsView } from "./SettingsView";
 
 export default function App() {
   const [settings, setSettings] = useState<ExtensionSettings | null>(null);
@@ -108,7 +103,7 @@ export default function App() {
         setNumberDrafts(buildNumberDraftState(data));
         setNumberFieldErrors({});
         setFilenamePatternError(undefined);
-        setMessage("필요한 값을 바꾼 뒤 저장하세요.");
+        setMessage(SETTINGS_DEFAULT_MESSAGE);
       })
       .catch((error: unknown) => {
         setMessage(error instanceof Error ? error.message : "설정을 읽지 못했습니다.");
@@ -590,14 +585,11 @@ export default function App() {
     return <main className="options-shell">설정을 불러오는 중입니다.</main>;
   }
 
-  const presets = settings.presets ?? [];
-
   return (
     <main className="options-shell">
       <header className="hero">
         <div>
-          <p className="eyebrow">{view === "diagnostics" ? "상태 확인" : "쉽게 설정"}</p>
-          <h1>{view === "diagnostics" ? "자막 도우미 상태 확인" : "자막 도우미 환경 설정"}</h1>
+          <h1>{view === "diagnostics" ? "수집 진단" : "환경 설정"}</h1>
           <p className="hero-message">{view === "diagnostics" ? diagnosticsMessage : message}</p>
         </div>
         <div className="view-toggle" role="tablist" aria-label="환경 설정 메뉴">
@@ -608,7 +600,7 @@ export default function App() {
             className={view === "settings" ? "view-button" : "view-button secondary"}
             onClick={() => handleViewChange("settings")}
           >
-            {UI_TEXT.openOptions}
+            설정
           </button>
           <button
             type="button"
@@ -617,411 +609,40 @@ export default function App() {
             className={view === "diagnostics" ? "view-button" : "view-button secondary"}
             onClick={() => handleViewChange("diagnostics")}
           >
-            {UI_TEXT.openDiagnostics}
+            수집 진단
           </button>
         </div>
       </header>
 
       {view === "settings" ? (
-        <>
-          <section className="settings-grid">
-            <p className="settings-section-heading">수집 동작</p>
-
-            <label className="setting-card">
-              <div>
-                <strong>자동으로 따라가기</strong>
-                <span>페이지 패널의 실시간 내용과 수집된 자막을 자동으로 맨 아래로 맞춥니다.</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.autoScroll}
-                onChange={(event) => updateField("autoScroll", event.target.checked)}
-              />
-            </label>
-
-            <label className="setting-card">
-              <div>
-                <strong>수집 중 자동 저장</strong>
-                <span>모으는 동안 중간 결과를 자동으로 저장해 둡니다.</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.runningAutoSaveEnabled}
-                onChange={(event) => updateField("runningAutoSaveEnabled", event.target.checked)}
-              />
-            </label>
-
-            <label className="setting-card">
-              <div>
-                <strong>페이지 접속 시 자동 시작</strong>
-                <span>
-                  플레이어 페이지에 들어오면 수집을 바로 시작합니다. 자막 레이어를 켜려는 시도도 함께 할 수
-                  있습니다.
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.autoStartEnabled}
-                onChange={(event) => updateField("autoStartEnabled", event.target.checked)}
-              />
-            </label>
-
-            <div className="warning-box full-width">
-              켜 두면 플레이어 진입·페이지 전환 후에도 다시 자동으로 시작할 수 있습니다. 멈춘 뒤에도 다른
-              회의로 이동하면 새 수집이 시작될 수 있으니, 직접 시작만 원하면 이 옵션을 끄세요.
-            </div>
-
-            <label className="setting-card">
-              <div>
-                <strong>바뀌는 중인 자막 제외</strong>
-                <span>화면에서 아직 바뀌고 있는 자막은 잠시 기다렸다가 확정된 뒤 저장합니다.</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.filterUnconfirmedEnabled}
-                onChange={(event) => updateField("filterUnconfirmedEnabled", event.target.checked)}
-              />
-            </label>
-
-            <p className="settings-section-heading">복사 / 저장</p>
-            <p className="settings-section-note">
-              최근 복사 줄 수, 텍스트 파일 저장 방식, 자동 저장 간격을 조정합니다.
-            </p>
-
-            {BASIC_NUMBER_FIELDS.map((field) => {
-              const fieldUnit = getFieldUnit(field);
-              return (
-                <label
-                  className={`setting-card input-card ${numberFieldErrors[field] ? "has-error" : ""}`}
-                  key={field}
-                >
-                  <div>
-                    <strong>{getFieldLabel(field)}</strong>
-                    <span>{getFieldDescription(field)}</span>
-                  </div>
-                  <div className="number-input-group">
-                    <div className="number-input-row">
-                      <input
-                        type="number"
-                        min={getFieldMin(field)}
-                        step={1}
-                        aria-label={getFieldLabel(field)}
-                        value={numberDrafts[field]}
-                        aria-invalid={Boolean(numberFieldErrors[field])}
-                        onChange={(event) => handleNumberDraftChange(field, event.target.value)}
-                      />
-                      {fieldUnit ? <span className="input-suffix">{fieldUnit}</span> : null}
-                    </div>
-                    {numberFieldErrors[field] ? (
-                      <span className="field-error">{numberFieldErrors[field]}</span>
-                    ) : null}
-                  </div>
-                </label>
-              );
-            })}
-
-            <label
-              className={`setting-card input-card full-width ${filenamePatternError ? "has-error" : ""}`}
-            >
-              <div>
-                <strong>저장 파일 이름 규칙</strong>
-                <span>{`파일 이름에 날짜, 회의 이름, 시간을 넣을 수 있습니다: {date}, {committee}, {time}`}</span>
-              </div>
-              <div className="number-input-group">
-                <input
-                  type="text"
-                  aria-label="저장 파일 이름 규칙"
-                  aria-invalid={Boolean(filenamePatternError)}
-                  value={settings.filenamePattern}
-                  onChange={(event) => {
-                    const nextValue = event.target.value;
-                    updateField("filenamePattern", nextValue);
-                    setFilenamePatternError(validateFilenamePattern(nextValue));
-                  }}
-                />
-                {filenamePatternError ? (
-                  <span className="field-error">{filenamePatternError}</span>
-                ) : null}
-              </div>
-            </label>
-
-            <label className="setting-card full-width">
-              <div>
-                <strong>텍스트 파일에 시간 함께 저장</strong>
-                <span>켜면 각 자막 앞에 시간이 함께 들어갑니다.</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={settings.txtExportTimestampsEnabled}
-                onChange={(event) =>
-                  updateField("txtExportTimestampsEnabled", event.target.checked)
-                }
-              />
-            </label>
-
-            <label className="setting-card">
-              <div>
-                <strong>텍스트 파일에 발언자 함께 저장</strong>
-                <span>발언자 이름을 적어 둔 경우 자막 앞에 함께 넣습니다.</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={Boolean(settings.txtExportSpeakerEnabled)}
-                onChange={(event) => updateField("txtExportSpeakerEnabled", event.target.checked)}
-              />
-            </label>
-
-            <label className="setting-card">
-              <div>
-                <strong>텍스트 파일에 메모 함께 저장</strong>
-                <span>중요 표시와 메모를 자막 아래에 함께 넣습니다.</span>
-              </div>
-              <input
-                type="checkbox"
-                checked={Boolean(settings.txtExportEntryNotesEnabled)}
-                onChange={(event) =>
-                  updateField("txtExportEntryNotesEnabled", event.target.checked)
-                }
-              />
-            </label>
-
-            <details className="advanced-card full-width">
-              <summary>
-                <span className="advanced-summary-title">고급 설정</span>
-                <span className="advanced-summary-description">
-                  자막 제외 기준과 확인 간격을 바꿉니다. 특별한 이유가 없다면 기본값을 유지하세요.
-                </span>
-              </summary>
-              <div className="advanced-grid">
-                <label className="setting-card">
-                  <div>
-                    <strong>불필요한 자막 자동 제외</strong>
-                    <span>
-                      자막이 아닌 숫자, 기호, 안내 문구를 자동으로 빼고 저장합니다.
-                      필요한 문장이 빠진다면 이 옵션을 끄세요.
-                    </span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={settings.noiseFilterEnabled}
-                    onChange={(event) => updateField("noiseFilterEnabled", event.target.checked)}
-                  />
-                </label>
-
-                <label className="setting-card">
-                  <div>
-                    <strong>문제 해결용 자세한 기록</strong>
-                    <span>이상 현상을 확인할 때 브라우저 콘솔에 더 자세한 로그를 남깁니다.</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={settings.debugLogging}
-                    onChange={(event) => updateField("debugLogging", event.target.checked)}
-                  />
-                </label>
-
-                <div className="setting-card input-card full-width">
-                  <div>
-                    <strong>긴 회의 자동 나누기</strong>
-                    <span>회의가 길어질 때 파일을 어느 정도 크기로 나눌지 선택합니다.</span>
-                  </div>
-                  <div className="preset-grid" role="radiogroup" aria-label="긴 회의 자동 나누기">
-                    {SEGMENT_PRESET_OPTIONS.map((preset) => (
-                      <button
-                        type="button"
-                        key={preset.value}
-                        className={
-                          settings.segmentPreset === preset.value
-                            ? "preset-option active"
-                            : "preset-option"
-                        }
-                        onClick={() => handleSegmentPresetChange(preset.value)}
-                        aria-pressed={settings.segmentPreset === preset.value}
-                      >
-                        <strong>{preset.label}</strong>
-                        <span>{preset.description}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {ADVANCED_NUMBER_FIELDS.map((field) => {
-                  const fieldUnit = getFieldUnit(field);
-                  return (
-                    <label
-                      className={`setting-card input-card ${numberFieldErrors[field] ? "has-error" : ""}`}
-                      key={field}
-                    >
-                      <div>
-                        <strong>{getFieldLabel(field)}</strong>
-                        <span>{getFieldDescription(field)}</span>
-                      </div>
-                      <div className="number-input-group">
-                        <div className="number-input-row">
-                          <input
-                            type="number"
-                            min={getFieldMin(field)}
-                            step={1}
-                            aria-label={getFieldLabel(field)}
-                            value={numberDrafts[field]}
-                            aria-invalid={Boolean(numberFieldErrors[field])}
-                            onChange={(event) => handleNumberDraftChange(field, event.target.value)}
-                          />
-                          {fieldUnit ? <span className="input-suffix">{fieldUnit}</span> : null}
-                        </div>
-                        {numberFieldErrors[field] ? (
-                          <span className="field-error">{numberFieldErrors[field]}</span>
-                        ) : null}
-                      </div>
-                    </label>
-                  );
-                })}
-              </div>
-            </details>
-
-            <div className="note-card full-width">
-              <div className="section-row">
-                <strong>회의 프리셋</strong>
-                <span>자주 여는 국회 중계 페이지를 확장 팝업에서 바로 열 수 있습니다.</span>
-              </div>
-              {presets.length ? (
-                <div className="meta-grid">
-                  {presets.map((preset) => (
-                    <div className="meta-row" key={preset.id}>
-                      <input
-                        type="text"
-                        value={preset.name}
-                        onChange={(event) =>
-                          handleUpdatePreset(preset.id, "name", event.target.value)
-                        }
-                        aria-label="프리셋 이름"
-                      />
-                      <input
-                        type="url"
-                        value={preset.url}
-                        onChange={(event) =>
-                          handleUpdatePreset(preset.id, "url", event.target.value)
-                        }
-                        aria-label="프리셋 URL"
-                      />
-                      <input
-                        type="text"
-                        value={preset.committeeName}
-                        onChange={(event) =>
-                          handleUpdatePreset(preset.id, "committeeName", event.target.value)
-                        }
-                        aria-label="프리셋 위원회명"
-                      />
-                      <label>
-                        자동 시작
-                        <input
-                          type="checkbox"
-                          checked={preset.autoStartEnabled}
-                          onChange={(event) =>
-                            handleUpdatePreset(
-                              preset.id,
-                              "autoStartEnabled",
-                              event.target.checked,
-                            )
-                          }
-                        />
-                      </label>
-                      <label>
-                        필터
-                        <input
-                          type="checkbox"
-                          checked={preset.noiseFilterEnabled}
-                          onChange={(event) =>
-                            handleUpdatePreset(
-                              preset.id,
-                              "noiseFilterEnabled",
-                              event.target.checked,
-                            )
-                          }
-                        />
-                      </label>
-                      <button
-                        className="secondary"
-                        type="button"
-                        onClick={() => handleRemovePreset(preset.id)}
-                      >
-                        삭제
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="warning-box">저장된 프리셋이 없습니다.</div>
-              )}
-              <div className="advanced-grid">
-                <input
-                  type="text"
-                  value={presetDraft.name}
-                  onChange={(event) => handlePresetDraftChange("name", event.target.value)}
-                  placeholder="프리셋 이름"
-                />
-                <input
-                  type="url"
-                  value={presetDraft.url}
-                  onChange={(event) => handlePresetDraftChange("url", event.target.value)}
-                  placeholder="https://assembly.webcast.go.kr/main/player..."
-                />
-                <input
-                  type="text"
-                  value={presetDraft.committeeName}
-                  onChange={(event) =>
-                    handlePresetDraftChange("committeeName", event.target.value)
-                  }
-                  placeholder="위원회명"
-                />
-                <label className="setting-card">
-                  <div>
-                    <strong>자동 시작</strong>
-                    <span>이 페이지를 열 때 바로 자막 모으기를 시작합니다.</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={presetDraft.autoStartEnabled}
-                    onChange={(event) =>
-                      handlePresetDraftChange("autoStartEnabled", event.target.checked)
-                    }
-                  />
-                </label>
-                <label className="setting-card">
-                  <div>
-                    <strong>불필요한 자막 제외</strong>
-                    <span>이 페이지에서 숫자, 기호, 안내 문구를 자동으로 뺍니다.</span>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={presetDraft.noiseFilterEnabled}
-                    onChange={(event) =>
-                      handlePresetDraftChange("noiseFilterEnabled", event.target.checked)
-                    }
-                  />
-                </label>
-                <button type="button" onClick={handleAddPreset}>
-                  프리셋 추가
-                </button>
-              </div>
-            </div>
-          </section>
-
-          <footer className="actions">
-            <button onClick={handleSave} disabled={hasFieldErrors}>
-              저장
-            </button>
-            <button className="secondary" onClick={handleReset}>
-              기본값으로 되돌리기
-            </button>
-          </footer>
-        </>
+        <SettingsView
+          settings={settings}
+          numberDrafts={numberDrafts}
+          numberFieldErrors={numberFieldErrors}
+          filenamePatternError={filenamePatternError}
+          presetDraft={presetDraft}
+          hasFieldErrors={hasFieldErrors}
+          updateField={updateField}
+          handleNumberDraftChange={handleNumberDraftChange}
+          handleSegmentPresetChange={handleSegmentPresetChange}
+          setFilenamePatternError={setFilenamePatternError}
+          handlePresetDraftChange={handlePresetDraftChange}
+          handleAddPreset={handleAddPreset}
+          handleUpdatePreset={handleUpdatePreset}
+          handleRemovePreset={handleRemovePreset}
+          handleSave={() => {
+            void handleSave();
+          }}
+          handleReset={() => {
+            void handleReset();
+          }}
+        />
       ) : (
         <section className="diagnostics-panel">
           <div className="diagnostics-header">
             <div>
               <p className="eyebrow">선택한 탭 기준</p>
-              <h2>{UI_TEXT.openDiagnostics}</h2>
+              <h2>수집 진단</h2>
             </div>
             <span className={`status-badge ${snapshot?.status ?? "idle"}`}>
               {snapshot ? getCaptureStatusLabel(snapshot.status) : "연결 전"}
@@ -1117,7 +738,7 @@ export default function App() {
           <footer className="actions">
             <button onClick={handleDiagnosticsRefresh}>다시 확인</button>
             <button className="secondary" onClick={() => handleViewChange("settings")}>
-              {UI_TEXT.openOptions}
+              설정으로
             </button>
           </footer>
         </section>

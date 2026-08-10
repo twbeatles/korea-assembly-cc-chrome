@@ -20,6 +20,10 @@ export interface InPagePanelState {
   subtitleCount: number;
   charCount: number;
   recentCopyLineCount: number;
+  /** 수집된 자막 카드에 발언자 색·뱃지 표시 */
+  showSpeakerHighlight: boolean;
+  /** 내보내기·복사에 발언자 접두 포함 */
+  exportSpeakerEnabled: boolean;
   notice: string;
   hasPersistableContent: boolean;
   canClearSession: boolean;
@@ -42,6 +46,10 @@ export interface InPagePanelActions {
   onExpand: () => void;
   onCollapse: () => void;
   onTogglePreviewCollapsed: () => void;
+  /** 패널 발언자 색 표시 on/off (설정 저장) */
+  onSetSpeakerHighlight: (enabled: boolean) => void;
+  /** 내보내기·복사 발언자 포함 on/off (설정 저장) */
+  onSetExportSpeaker: (enabled: boolean) => void;
 }
 
 export interface InPagePanelController {

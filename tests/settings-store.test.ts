@@ -14,6 +14,7 @@ describe("settings store", () => {
       txtExportTimestampsEnabled: true,
       txtExportSpeakerEnabled: true,
       txtExportEntryNotesEnabled: true,
+      panelSpeakerHighlightEnabled: false,
       filterUnconfirmedEnabled: false,
     });
 
@@ -27,6 +28,7 @@ describe("settings store", () => {
     expect(sanitized.txtExportTimestampsEnabled).toBe(true);
     expect(sanitized.txtExportSpeakerEnabled).toBe(true);
     expect(sanitized.txtExportEntryNotesEnabled).toBe(true);
+    expect(sanitized.panelSpeakerHighlightEnabled).toBe(false);
     expect(sanitized.filterUnconfirmedEnabled).toBe(false);
   });
 
@@ -71,6 +73,9 @@ describe("settings store", () => {
     );
     expect(sanitized.txtExportEntryNotesEnabled).toBe(
       DEFAULT_EXTENSION_SETTINGS.txtExportEntryNotesEnabled,
+    );
+    expect(sanitized.panelSpeakerHighlightEnabled).toBe(
+      DEFAULT_EXTENSION_SETTINGS.panelSpeakerHighlightEnabled,
     );
     expect(sanitized.filterUnconfirmedEnabled).toBe(
       DEFAULT_EXTENSION_SETTINGS.filterUnconfirmedEnabled,

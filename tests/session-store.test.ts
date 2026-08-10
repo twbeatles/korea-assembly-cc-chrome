@@ -813,7 +813,7 @@ describe("session store", () => {
     }
   });
 
-  it("deduplicates carry-over entries and strips speaker metadata during export", async () => {
+  it("deduplicates carry-over entries and keeps speaker metadata in JSON export", async () => {
     const session: SessionRecord = {
       ...buildSession("session_export_cleanup", "saved"),
       subtitleCount: 4,
@@ -870,8 +870,10 @@ describe("session store", () => {
       "알고 있습니다 그러면",
       "예 알고 있습니다 그러면 이것에 대해서 답을 해야 되는 것 같습니다",
     ]);
-    expect(parsed.entries[0].speakerColor).toBeUndefined();
-    expect(parsed.entries[2].speakerChannel).toBeUndefined();
+    // JSON 단일 세션 export 는 복원 가능하도록 발언자 메타를 유지한다.
+    expect(parsed.entries[0].speakerColor).toBe("rgb(35, 124, 147)");
+    expect(parsed.entries[0].speakerChannel).toBe("primary");
+    expect(parsed.entries[2].speakerChannel).toBe("secondary");
   });
 
   it("trims cumulative carry-over text in TXT export by default without timestamps", async () => {
@@ -1729,8 +1731,12 @@ describe("session store", () => {
       ],
     };
 
-    const markdown = await exportSessionData(session, "md");
-    const csv = await exportSessionData(session, "csv");
+    const markdown = await exportSessionData(session, "md", {
+      txtExportSpeakerEnabled: true,
+    });
+    const csv = await exportSessionData(session, "csv", {
+      txtExportSpeakerEnabled: true,
+    });
 
     expect(markdown.filename.endsWith(".md")).toBe(true);
     expect(markdown.content).toContain("# 법사위");
@@ -1739,7 +1745,9 @@ describe("session store", () => {
     expect(markdown.content).toContain("위원장");
     expect(csv.filename.endsWith(".csv")).toBe(true);
     expect(csv.content.startsWith("\uFEFF")).toBe(true);
-    expect(csv.content).toContain("startTime,endTime,speaker,text,highlighted,note,labels");
+    expect(csv.content).toContain(
+      "startTime,endTime,speaker,text,highlighted,note,labels",
+    );
     expect(csv.content).toContain("위원장");
   });
 

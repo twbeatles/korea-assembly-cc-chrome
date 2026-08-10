@@ -133,6 +133,8 @@ function createActions() {
     onExpand: vi.fn(),
     onCollapse: vi.fn(),
     onTogglePreviewCollapsed: vi.fn(),
+    onSetSpeakerHighlight: vi.fn(),
+    onSetExportSpeaker: vi.fn(),
   };
 }
 
@@ -759,6 +761,94 @@ describe("in-page panel", () => {
     const updatedLiveRow = liveRowList?.querySelector(".live-row");
     expect(updatedLiveRow).toBe(firstLiveRow);
     expect(updatedLiveRow?.textContent).toContain("안녕하세요 수정");
+
+    controller.destroy();
+  });
+
+  it("shows speaker accent and badge when showSpeakerHighlight is enabled", () => {
+    const controller = createInPagePanel(createActions());
+
+    controller.update(
+      buildPanelState({
+        options: {
+          showSpeakerHighlight: true,
+          liveRows: createLiveRows(1),
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const liveRow = shadowRoot?.querySelector(".live-row") as HTMLElement | null;
+    const badge = liveRow?.querySelector(".speaker-badge");
+
+    expect(liveRow?.classList.contains("speaker-highlight")).toBe(true);
+    expect(liveRow?.classList.contains("speaker-primary")).toBe(true);
+    expect(badge?.textContent).toBe("A");
+    expect(liveRow?.style.borderLeftColor).toBe("rgb(35, 124, 147)");
+
+    controller.update(
+      buildPanelState({
+        options: {
+          showSpeakerHighlight: false,
+          liveRows: createLiveRows(1),
+        },
+      }),
+    );
+
+    const hiddenBadge = shadowRoot?.querySelector(".live-row .speaker-badge");
+    const plainRow = shadowRoot?.querySelector(".live-row") as HTMLElement | null;
+    expect(plainRow?.classList.contains("speaker-highlight")).toBe(false);
+    expect(hiddenBadge).toBeNull();
+
+    controller.destroy();
+  });
+
+  it("exposes compact speaker toggles and forwards changes to actions", () => {
+    const actions = createActions();
+    const controller = createInPagePanel(actions);
+
+    controller.update(
+      buildPanelState({
+        options: {
+          showSpeakerHighlight: false,
+          exportSpeakerEnabled: false,
+        },
+      }),
+    );
+
+    const shadowRoot = document.getElementById(
+      IN_PAGE_PANEL_HOST_ID,
+    )?.shadowRoot;
+    const highlightToggle = shadowRoot?.querySelector(
+      'input[aria-label="패널에 발언자 색 표시"]',
+    ) as HTMLInputElement | null;
+    const exportToggle = shadowRoot?.querySelector(
+      'input[aria-label="내보내기·복사에 발언자 포함"]',
+    ) as HTMLInputElement | null;
+
+    expect(highlightToggle?.checked).toBe(false);
+    expect(exportToggle?.checked).toBe(false);
+
+    highlightToggle!.checked = true;
+    highlightToggle!.dispatchEvent(new Event("change"));
+    exportToggle!.checked = true;
+    exportToggle!.dispatchEvent(new Event("change"));
+
+    expect(actions.onSetSpeakerHighlight).toHaveBeenCalledWith(true);
+    expect(actions.onSetExportSpeaker).toHaveBeenCalledWith(true);
+
+    controller.update(
+      buildPanelState({
+        options: {
+          showSpeakerHighlight: true,
+          exportSpeakerEnabled: true,
+        },
+      }),
+    );
+    expect(highlightToggle?.checked).toBe(true);
+    expect(exportToggle?.checked).toBe(true);
 
     controller.destroy();
   });

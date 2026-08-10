@@ -13,6 +13,10 @@ import {
   getSessionSegmentLabel,
   resolveSpeakerLabel,
 } from "../helpers";
+import {
+  formatSpeakerBadge,
+  resolveSpeakerAccentColor,
+} from "../../../core/exporters/speaker-label";
 import { buildCopyText } from "../../../shared/copy-utils";
 
 export interface SessionDetailPanelProps {
@@ -56,6 +60,8 @@ export interface SessionDetailPanelProps {
   splitEntryId: string;
   splitDraft: string;
   recentCopyLineCount: number;
+  txtExportSpeakerEnabled: boolean;
+  panelSpeakerHighlightEnabled: boolean;
   runBusyHistoryAction: (
     actionLabel: string,
     action: () => Promise<void>,
@@ -143,6 +149,8 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
     splitEntryId,
     splitDraft,
     recentCopyLineCount,
+    txtExportSpeakerEnabled,
+    panelSpeakerHighlightEnabled,
     runBusyHistoryAction,
     setLineageViewEnabled,
     setNoteDraft,
@@ -511,6 +519,8 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                       void handleCopy(
                         buildCopyText(displaySession?.entries ?? [], {
                           selectedIds: checkedEntryIds,
+                          includeSpeaker: txtExportSpeakerEnabled,
+                          session: displaySession,
                         }),
                         `${showingLineageView ? "연속 캡처 전체에서 " : ""}선택한 ${selectedEntries.length}줄을 복사했습니다.`,
                       )
@@ -704,7 +714,11 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                 <button
                   onClick={() =>
                     void handleCopy(
-                      buildCopyText(displaySession?.entries ?? [], { limit: recentCopyLineCount }),
+                      buildCopyText(displaySession?.entries ?? [], {
+                        limit: recentCopyLineCount,
+                        includeSpeaker: txtExportSpeakerEnabled,
+                        session: displaySession,
+                      }),
                       `${showingLineageView ? "연속 캡처 전체에서 " : ""}최근 ${recentCopyLineCount}줄을 복사했습니다.`,
                     )
                   }
@@ -715,7 +729,11 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                 <button
                   onClick={() =>
                     void handleCopy(
-                      buildCopyText(displaySession?.entries ?? [], { query: searchQuery }),
+                      buildCopyText(displaySession?.entries ?? [], {
+                        query: searchQuery,
+                        includeSpeaker: txtExportSpeakerEnabled,
+                        session: displaySession,
+                      }),
                       "찾은 내용을 복사했습니다.",
                     )
                   }
@@ -727,7 +745,10 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                   className="secondary"
                   onClick={() =>
                     void handleCopy(
-                      buildCopyText(displaySession?.entries ?? []),
+                      buildCopyText(displaySession?.entries ?? [], {
+                        includeSpeaker: txtExportSpeakerEnabled,
+                        session: displaySession,
+                      }),
                       showingLineageView ? "연속 캡처 전체 내용을 복사했습니다." : "전체 내용을 복사했습니다.",
                     )
                   }
@@ -753,8 +774,36 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                           aria-label={`${entry.text.slice(0, 30)} 항목 선택`}
                         />
                       </label>
-                      <article className="entry-card">
+                      <article
+                        className={[
+                          "entry-card",
+                          panelSpeakerHighlightEnabled
+                            ? `speaker-highlight speaker-${entry.speakerChannel ?? "unknown"}`
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                        style={
+                          panelSpeakerHighlightEnabled
+                            ? {
+                                borderLeftColor:
+                                  resolveSpeakerAccentColor(
+                                    entry.speakerColor,
+                                    entry.speakerChannel,
+                                  ) || undefined,
+                              }
+                            : undefined
+                        }
+                      >
                         <time>
+                          {panelSpeakerHighlightEnabled ? (
+                            <span
+                              className="speaker-badge"
+                              aria-hidden="true"
+                            >
+                              {formatSpeakerBadge(entry.speakerChannel)}
+                            </span>
+                          ) : null}
                           {formatDate(entry.startTime)} ·{" "}
                           {resolveSpeakerLabel(selectedSession, entry)}
                           {entry.highlighted ? " · 중요" : ""}

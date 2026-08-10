@@ -38,7 +38,7 @@ function buildSession(overrides?: Partial<SessionRecord>): SessionRecord {
 
 describe("CSV exporter", () => {
   it("neutralizes spreadsheet formula prefixes in user-controlled cells", () => {
-    const csv = exportCsv(buildSession());
+    const csv = exportCsv(buildSession(), { includeSpeaker: true });
 
     expect(csv).toContain("'+speaker");
     expect(csv).toContain(`"'=HYPERLINK(""https://example.com"")"`);
@@ -60,6 +60,7 @@ describe("CSV exporter", () => {
           },
         ],
       }),
+      { includeSpeaker: true },
     );
 
     expect(csv.startsWith("\uFEFF")).toBe(true);
@@ -82,5 +83,12 @@ describe("CSV exporter", () => {
     expect(withoutBom.includes("\n") && !withoutBom.replaceAll("\r\n", "").includes("\n")).toBe(
       true,
     );
+  });
+
+  it("omits the speaker column when includeSpeaker is off (default)", () => {
+    const csv = exportCsv(buildSession());
+    expect(csv).toContain("startTime,endTime,text,highlighted,note,labels");
+    expect(csv).not.toContain("startTime,endTime,speaker,text");
+    expect(csv).not.toContain("'+speaker");
   });
 });

@@ -17,6 +17,7 @@ describe("options settings field registry", () => {
       "noiseFilterEnabled",
       "recentDuplicateMinLength",
       "filenamePattern",
+      "panelSpeakerHighlightEnabled",
       "txtExportTimestampsEnabled",
       "txtExportSpeakerEnabled",
       "txtExportEntryNotesEnabled",

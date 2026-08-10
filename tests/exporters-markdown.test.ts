@@ -38,7 +38,7 @@ function buildSession(): SessionRecord {
 
 describe("Markdown exporter", () => {
   it("escapes table and metadata-breaking characters", () => {
-    const markdown = exportMarkdown(buildSession());
+    const markdown = exportMarkdown(buildSession(), { includeSpeaker: true });
 
     expect(markdown).toContain("# 정무위 \\| &lt;script&gt;");
     expect(markdown).toContain("- 위원회: 정무위원회 본회의");
@@ -48,5 +48,14 @@ describe("Markdown exporter", () => {
     expect(markdown).toContain("발언자 \\| &lt;A&gt;");
     expect(markdown).toContain("첫 줄 둘째 \\| &lt;b&gt;");
     expect(markdown).toContain("비고 다음 \\| &lt;x&gt;");
+  });
+
+  it("omits the speaker column when includeSpeaker is off (default)", () => {
+    const markdown = exportMarkdown(buildSession());
+
+    expect(markdown).toContain("| 시간 | 내용 | 비고 |");
+    expect(markdown).not.toContain("| 시간 | 발언자 | 내용 | 비고 |");
+    expect(markdown).not.toContain("발언자 \\| &lt;A&gt;");
+    expect(markdown).toContain("첫 줄 둘째 \\| &lt;b&gt;");
   });
 });

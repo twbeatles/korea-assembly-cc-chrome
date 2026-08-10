@@ -69,6 +69,7 @@ const defaultSettings = {
   txtExportTimestampsEnabled: false,
   txtExportSpeakerEnabled: false,
   txtExportEntryNotesEnabled: false,
+  panelSpeakerHighlightEnabled: false,
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
@@ -109,7 +110,7 @@ describe("options app", () => {
 
   it("blocks save and shows a field error for an invalid numeric draft", async () => {
     render(<App />);
-    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
     const debounceInput = screen.getByRole("spinbutton", {
       name: "자동 저장 간격",
@@ -127,10 +128,10 @@ describe("options app", () => {
 
   it("blocks save and shows a field error for a fractional numeric draft", async () => {
     render(<App />);
-    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
     const recentCopyInput = screen.getByRole("spinbutton", {
-      name: "최근 복사 줄 수",
+      name: "한 번에 복사할 줄 수",
     }) as HTMLInputElement;
 
     fireEvent.change(recentCopyInput, { target: { value: "2.5" } });
@@ -145,7 +146,7 @@ describe("options app", () => {
 
   it("resets numeric drafts and clears field errors after reset", async () => {
     render(<App />);
-    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
     const debounceInput = screen.getByRole("spinbutton", {
       name: "자동 저장 간격",
@@ -166,10 +167,10 @@ describe("options app", () => {
 
   it("enforces a minimum of one line for recent-copy settings", async () => {
     render(<App />);
-    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
     const recentCopyInput = screen.getByRole("spinbutton", {
-      name: "최근 복사 줄 수",
+      name: "한 번에 복사할 줄 수",
     }) as HTMLInputElement;
 
     fireEvent.change(recentCopyInput, { target: { value: "0" } });
@@ -184,10 +185,10 @@ describe("options app", () => {
 
   it("blocks save and shows a field error for an invalid filename pattern", async () => {
     render(<App />);
-    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
     const filenameInput = screen.getByRole("textbox", {
-      name: "저장 파일 이름 규칙",
+      name: "저장 파일 이름",
     });
     fireEvent.change(filenameInput, { target: { value: "{date}/invalid" } });
 
@@ -222,28 +223,36 @@ describe("options app", () => {
 
   it("renders the foreign-language noise filter guidance", async () => {
     render(<App />);
-    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
     expect(screen.getByText(/필요한 문장이 빠진다면 이 옵션을 끄세요/)).toBeTruthy();
   });
 
-  it("saves TXT speaker and entry note export options", async () => {
+  it("saves speaker export/copy, panel highlight, and entry note options", async () => {
     render(<App />);
-    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
     const speakerToggle = screen
-      .getByText("텍스트 파일에 발언자 함께 저장")
+      .getByText("내보내기·복사에 발언자 넣기")
+      .closest("label")
+      ?.querySelector("input");
+    const panelSpeakerToggle = screen
+      .getByText("발언자 색으로 구분 표시")
       .closest("label")
       ?.querySelector("input");
     const noteToggle = screen
-      .getByText("텍스트 파일에 메모 함께 저장")
+      .getByText("내보내기에 메모·중요 표시")
       .closest("label")
       ?.querySelector("input");
 
     expect(speakerToggle).not.toBeNull();
+    expect(panelSpeakerToggle).not.toBeNull();
     expect(noteToggle).not.toBeNull();
+    expect((panelSpeakerToggle as HTMLInputElement).checked).toBe(false);
+    expect((speakerToggle as HTMLInputElement).checked).toBe(false);
 
     fireEvent.click(speakerToggle!);
+    fireEvent.click(panelSpeakerToggle!);
     fireEvent.click(noteToggle!);
     fireEvent.click(screen.getByRole("button", { name: "저장" }));
 
@@ -251,6 +260,7 @@ describe("options app", () => {
       expect(settingsStoreMocks.saveSettings).toHaveBeenCalledWith(
         expect.objectContaining({
           txtExportSpeakerEnabled: true,
+          panelSpeakerHighlightEnabled: true,
           txtExportEntryNotesEnabled: true,
         }),
       );
@@ -259,7 +269,7 @@ describe("options app", () => {
 
   it("adds editable presets and blocks duplicate preset URLs", async () => {
     render(<App />);
-    await screen.findByText("필요한 값을 바꾼 뒤 저장하세요.");
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
     const presetUrl = "https://assembly.webcast.go.kr/main/player.asp?xcode=10";
     fireEvent.change(screen.getByPlaceholderText("프리셋 이름"), {

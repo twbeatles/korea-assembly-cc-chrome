@@ -51,16 +51,17 @@ export function createSessionExportPayload(
     entries || timeRange
       ? withSessionEntries(session, rangedEntries)
       : session;
+  // json: 복원용으로 발언자 메타 항상 유지.
+  // 그 외 형식: 옵션 off 시 channel/color 메타 strip (본문 접두·표 칸은 includeSpeaker 로 제어).
+  const stripSpeakerMetadata =
+    format === "json" ? false : !txtExportSpeakerEnabled;
   const normalized = normalizeSessionForExport(
     normalizeSessionRecord(baseSession, {
       preserveTimestamps: true,
       forceStatus: baseSession.status,
     }),
     {
-      stripSpeakerMetadata:
-        format === "txt"
-          ? !txtExportSpeakerEnabled
-          : format !== "md" && format !== "csv",
+      stripSpeakerMetadata,
     },
   );
 
@@ -94,14 +95,18 @@ export function createSessionExportPayload(
         filename: buildFilename(),
         format,
         mimeType: "application/x-subrip;charset=utf-8",
-        content: exportSrt(normalized),
+        content: exportSrt(normalized, {
+          includeSpeaker: txtExportSpeakerEnabled,
+        }),
       };
     case "vtt":
       return {
         filename: buildFilename(),
         format,
         mimeType: "text/vtt;charset=utf-8",
-        content: exportVtt(normalized),
+        content: exportVtt(normalized, {
+          includeSpeaker: txtExportSpeakerEnabled,
+        }),
       };
     case "json":
       return {
@@ -115,14 +120,18 @@ export function createSessionExportPayload(
         filename: buildFilename(),
         format,
         mimeType: "text/markdown;charset=utf-8",
-        content: exportMarkdown(normalized),
+        content: exportMarkdown(normalized, {
+          includeSpeaker: txtExportSpeakerEnabled,
+        }),
       };
     case "csv":
       return {
         filename: buildFilename(),
         format,
         mimeType: "text/csv;charset=utf-8",
-        content: exportCsv(normalized),
+        content: exportCsv(normalized, {
+          includeSpeaker: txtExportSpeakerEnabled,
+        }),
       };
   }
 }

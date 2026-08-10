@@ -1,5 +1,9 @@
 import type { LivePanelRow } from "../../../core/live-capture";
-import { createInPagePanelElements, createLiveRowCard } from "../dom/builders";
+import {
+  applyLiveRowSpeakerPresentation,
+  createInPagePanelElements,
+  createLiveRowCard,
+} from "../dom/builders";
 import {
   formatCaptureMode,
   formatDate,
@@ -16,10 +20,16 @@ function buildPreviewSignature(previewText: string): string {
   return previewText;
 }
 
-function buildLiveRowsSignature(rows: LivePanelRow[]): string {
-  return rows
-    .map((row) => `${row.key}|${row.text}|${row.updatedAt}`)
-    .join("||");
+function buildLiveRowsSignature(
+  rows: LivePanelRow[],
+  showSpeakerHighlight: boolean,
+): string {
+  return `${showSpeakerHighlight ? "1" : "0"}|${rows
+    .map(
+      (row) =>
+        `${row.key}|${row.text}|${row.updatedAt}|${row.speakerChannel}|${row.speakerColor}`,
+    )
+    .join("||")}`;
 }
 
 export function createInPagePanel(
@@ -52,6 +62,8 @@ export function createInPagePanel(
     highlightLatestButton,
     rolloverButton,
     exportButtons,
+    speakerHighlightToggle,
+    exportSpeakerToggle,
     notice,
   } = createInPagePanelElements(actions, (container) => {
     scrollToBottom(container);
@@ -116,6 +128,13 @@ export function createInPagePanel(
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
 
+      if (speakerHighlightToggle.checked !== nextState.showSpeakerHighlight) {
+        speakerHighlightToggle.checked = nextState.showSpeakerHighlight;
+      }
+      if (exportSpeakerToggle.checked !== nextState.exportSpeakerEnabled) {
+        exportSpeakerToggle.checked = nextState.exportSpeakerEnabled;
+      }
+
       statSubtitlesValue.textContent = `${nextState.subtitleCount.toLocaleString("ko-KR")}줄`;
       statCharsValue.textContent = `${nextState.charCount.toLocaleString("ko-KR")}자`;
       statElapsedValue.textContent = formatElapsedTime(
@@ -134,7 +153,10 @@ export function createInPagePanel(
         renderedPreviewSignature = nextPreviewSignature;
       }
 
-      const nextLiveRowsSignature = buildLiveRowsSignature(nextState.liveRows);
+      const nextLiveRowsSignature = buildLiveRowsSignature(
+        nextState.liveRows,
+        nextState.showSpeakerHighlight,
+      );
       const liveRowsChanged =
         renderedLiveRowsSignature !== nextLiveRowsSignature;
       if (liveRowsChanged) {
@@ -150,7 +172,7 @@ export function createInPagePanel(
           nextState.liveRows.forEach((row) => {
             let node = liveRowNodes.get(row.key);
             if (!node) {
-              node = createLiveRowCard(row);
+              node = createLiveRowCard(row, nextState.showSpeakerHighlight);
               liveRowNodes.set(row.key, node);
             }
 
@@ -163,6 +185,11 @@ export function createInPagePanel(
             if (textNode && textNode.textContent !== row.text) {
               textNode.textContent = row.text;
             }
+            applyLiveRowSpeakerPresentation(
+              node,
+              row,
+              nextState.showSpeakerHighlight,
+            );
 
             liveRowList.appendChild(node);
           });

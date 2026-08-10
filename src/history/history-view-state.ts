@@ -8,6 +8,7 @@ export interface HistoryViewSettings {
   txtExportTimestampsEnabled: boolean;
   txtExportSpeakerEnabled: boolean;
   txtExportEntryNotesEnabled: boolean;
+  panelSpeakerHighlightEnabled: boolean;
 }
 
 export function buildHistoryRefreshMessage(sessionCount: number): string {
@@ -65,6 +66,7 @@ export function selectHistoryViewSettings(
     | "txtExportTimestampsEnabled"
     | "txtExportSpeakerEnabled"
     | "txtExportEntryNotesEnabled"
+    | "panelSpeakerHighlightEnabled"
   >,
 ): HistoryViewSettings {
   return {
@@ -73,6 +75,7 @@ export function selectHistoryViewSettings(
     txtExportTimestampsEnabled: settings.txtExportTimestampsEnabled,
     txtExportSpeakerEnabled: settings.txtExportSpeakerEnabled ?? false,
     txtExportEntryNotesEnabled: settings.txtExportEntryNotesEnabled ?? false,
+    panelSpeakerHighlightEnabled: settings.panelSpeakerHighlightEnabled ?? false,
   };
 }
 

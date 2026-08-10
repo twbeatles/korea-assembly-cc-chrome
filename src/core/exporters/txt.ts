@@ -1,26 +1,9 @@
-import type { SessionRecord, SubtitleEntry } from "../subtitle-models";
+import type { SessionRecord } from "../subtitle-models";
 import { formatClockTime } from "../timeline";
-
-function resolveSpeaker(session: SessionRecord, entry: SubtitleEntry): string {
-  if (entry.speakerLabel?.trim()) {
-    return entry.speakerLabel.trim();
-  }
-
-  const channel = entry.speakerChannel ?? "unknown";
-  const label = session.speakerLabels?.[channel]?.trim();
-  if (label) {
-    return label;
-  }
-
-  switch (channel) {
-    case "primary":
-      return "발언자 A";
-    case "secondary":
-      return "발언자 B";
-    default:
-      return "";
-  }
-}
+import {
+  formatSpeakerPrefix,
+  resolveSpeakerLabelForOutput,
+} from "./speaker-label";
 
 export function exportTxt(
   session: SessionRecord,
@@ -35,11 +18,13 @@ export function exportTxt(
   const includeEntryNotes = options.includeEntryNotes === true;
   return session.entries
     .map((entry) => {
-      const prefix = [
-        includeTimestamps ? `[${formatClockTime(entry.timestamp)}]` : "",
-        includeSpeaker ? resolveSpeaker(session, entry) : "",
-      ].filter(Boolean);
-      const body = prefix.length ? `${prefix.join(" ")} ${entry.text}` : entry.text;
+      const speakerPrefix = includeSpeaker
+        ? formatSpeakerPrefix(resolveSpeakerLabelForOutput(entry, session))
+        : "";
+      const timePrefix = includeTimestamps
+        ? `[${formatClockTime(entry.timestamp)}] `
+        : "";
+      const body = `${timePrefix}${speakerPrefix}${entry.text}`;
       const notes = includeEntryNotes
         ? [entry.highlighted ? "중요" : "", entry.entryNote ?? "", entry.labels?.join(", ") ?? ""]
             .filter((part) => part.trim())

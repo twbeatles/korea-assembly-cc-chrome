@@ -31,7 +31,7 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
-현재 스토어 제출 준비 기준 버전은 `1.0.12` 입니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.13` 입니다.
 
 ## 3. 배포 전 검증
 
@@ -146,7 +146,7 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.12-cws.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.13-cws.zip -Force
 ```
 
 ## 6. Chrome Web Store 배포
@@ -286,6 +286,28 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.12-c
 - 릴리스 태그나 커밋 메시지에 manifest 버전을 같이 남김
 
 ## 11. 릴리스 노트
+
+### 1.0.13 (2026-08-10)
+
+**발언자 · 내보내기**
+
+- 패널 「발언자 보기」 / 「내보내기·복사」 토글 (기본 꺼짐, 설정과 동기화)
+- 내보내기·복사에 발언자 포함 옵션: TXT·SRT·VTT·복사 접두 `[발언자 A]`, MD/CSV는 옵션 on 시 발언자 열
+- 옵션 off 시 MD/CSV에서 발언자 열 생략 (기본은 본문만)
+- JSON 단일 세션 export는 복원용 발언자 메타 유지
+- 한 `.smi_word` 안 서로 다른 색 span 화자 분할, 화자 전환 시 `speakerChanged`
+- 발언자 accent 색 CSS 화이트리스트
+
+**환경 설정 UI**
+
+- 탭 환경설정 IA 재구성: 수집 → 화면·발언자 → 복사·파일 이름 → 내보내기 → 고급 → 프리셋
+- 문구 단축·섹션 lead, sticky 저장 바, 카드 밀도 조정
+- 탭 라벨 「설정」 / 「수집 진단」
+
+**문서 · 검증**
+
+- 사이트 호환성 검토 문서, PROJECT_AUDIT 4차, CLAUDE Sync Delta
+- `npm run verify` 게이트 유지
 
 ### 1.0.12 (2026-07-28)
 

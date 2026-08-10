@@ -20,6 +20,7 @@ export const TOGGLE_FIELDS: Array<keyof ExtensionSettings> = [
   "runningAutoSaveEnabled",
   "autoStartEnabled",
   "filterUnconfirmedEnabled",
+  "panelSpeakerHighlightEnabled",
   "txtExportTimestampsEnabled",
   "txtExportSpeakerEnabled",
   "txtExportEntryNotesEnabled",

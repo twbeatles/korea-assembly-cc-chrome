@@ -1,5 +1,6 @@
-import type { SessionRecord, SubtitleEntry } from "../subtitle-models";
+import type { SessionRecord } from "../subtitle-models";
 import { formatClockTime } from "../timeline";
+import { resolveSpeakerLabelForOutput } from "./speaker-label";
 
 function escapeMarkdownInline(value: string): string {
   return String(value ?? "")
@@ -17,26 +18,12 @@ function escapeMarkdownBlock(value: string): string {
     .trim();
 }
 
-function resolveSpeaker(session: SessionRecord, entry: SubtitleEntry): string {
-  if (entry.speakerLabel?.trim()) {
-    return entry.speakerLabel.trim();
-  }
-  const channel = entry.speakerChannel ?? "unknown";
-  const label = session.speakerLabels?.[channel]?.trim();
-  if (label) {
-    return label;
-  }
-  switch (channel) {
-    case "primary":
-      return "발언자 A";
-    case "secondary":
-      return "발언자 B";
-    default:
-      return "";
-  }
-}
-
-export function exportMarkdown(session: SessionRecord): string {
+export function exportMarkdown(
+  session: SessionRecord,
+  options: { includeSpeaker?: boolean } = {},
+): string {
+  // 기본 off — 사용자가 옵션/패널 토글로 켠 경우만 발언자 열 포함
+  const includeSpeaker = options.includeSpeaker === true;
   const lines = [
     `# ${escapeMarkdownInline(session.title || session.committeeName || "국회 자막 기록")}`,
     "",
@@ -56,16 +43,35 @@ export function exportMarkdown(session: SessionRecord): string {
     lines.push("", "## 메모", "", escapeMarkdownBlock(session.note));
   }
 
-  lines.push("", "## 자막", "", "| 시간 | 발언자 | 내용 | 비고 |", "| --- | --- | --- | --- |");
+  if (includeSpeaker) {
+    lines.push(
+      "",
+      "## 자막",
+      "",
+      "| 시간 | 발언자 | 내용 | 비고 |",
+      "| --- | --- | --- | --- |",
+    );
+  } else {
+    lines.push("", "## 자막", "", "| 시간 | 내용 | 비고 |", "| --- | --- | --- |");
+  }
+
   session.entries.forEach((entry) => {
     const flags = [
       entry.highlighted ? "중요" : "",
       entry.entryNote?.trim() ? entry.entryNote.trim() : "",
       entry.labels?.length ? entry.labels.map((label) => `#${label}`).join(" ") : "",
     ].filter(Boolean);
-    lines.push(
-      `| ${formatClockTime(entry.startTime || entry.timestamp)} | ${escapeMarkdownInline(resolveSpeaker(session, entry))} | ${escapeMarkdownInline(entry.text)} | ${escapeMarkdownInline(flags.join(" / "))} |`,
-    );
+    const time = formatClockTime(entry.startTime || entry.timestamp);
+    const text = escapeMarkdownInline(entry.text);
+    const note = escapeMarkdownInline(flags.join(" / "));
+    if (includeSpeaker) {
+      const speaker = escapeMarkdownInline(
+        resolveSpeakerLabelForOutput(entry, session),
+      );
+      lines.push(`| ${time} | ${speaker} | ${text} | ${note} |`);
+    } else {
+      lines.push(`| ${time} | ${text} | ${note} |`);
+    }
   });
 
   return `${lines.join("\n").trim()}\n`;

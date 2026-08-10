@@ -120,7 +120,11 @@ import {
   queueExitPersistRecord,
   recordPageExitPersistAttempt,
 } from "../../../../storage/persist-recovery";
-import { getSettings, sanitizeSettings } from "../../../../storage/settings-store";
+import {
+  getSettings,
+  sanitizeSettings,
+  saveSettings,
+} from "../../../../storage/settings-store";
 import type { ExtensionSettings } from "../../../../storage/types";
 import {
   tryDomSubtitleActivation,
@@ -214,6 +218,7 @@ let settings: ExtensionSettings = {
   txtExportTimestampsEnabled: false,
   txtExportSpeakerEnabled: false,
   txtExportEntryNotesEnabled: false,
+  panelSpeakerHighlightEnabled: false,
   runningAutoSaveEnabled: true,
   runningAutoSaveDebounceMs: 800,
   recentCopyLineCount: 5,
@@ -722,6 +727,8 @@ function updateInPagePanel(): void {
       showNotice,
       autoScroll: settings.autoScroll,
       recentCopyLineCount: settings.recentCopyLineCount,
+      showSpeakerHighlight: settings.panelSpeakerHighlightEnabled,
+      exportSpeakerEnabled: settings.txtExportSpeakerEnabled,
       livePreviewText: getLivePreviewTextForDisplay(),
       liveRows: getPanelLiveRows(),
       canClearSession: canClearCurrentSession(showNotice),
@@ -2391,12 +2398,13 @@ async function exportCurrentSessionUnlocked(format: ExportFormat): Promise<void>
 
 async function copyRecentSessionLines(): Promise<void> {
   const prepared = buildPreparedSessionState();
-  const copiedEntries = selectCopyEntries(prepared.entries, {
+  // 실시간 세션에는 speakerLabels 맵이 없으므로 entry channel/label 만 사용
+  const copyOptions = {
     limit: settings.recentCopyLineCount,
-  });
-  const copyText = buildCopyText(prepared.entries, {
-    limit: settings.recentCopyLineCount,
-  });
+    includeSpeaker: settings.txtExportSpeakerEnabled,
+  };
+  const copiedEntries = selectCopyEntries(prepared.entries, copyOptions);
+  const copyText = buildCopyText(prepared.entries, copyOptions);
 
   if (!copyText) {
     setPanelNotice("복사할 자막이 아직 없습니다.");
@@ -2553,6 +2561,46 @@ function mountInPagePanel(): void {
           error,
         );
       });
+    },
+    onSetSpeakerHighlight: (enabled) => {
+      void saveSettings({ panelSpeakerHighlightEnabled: enabled })
+        .then((next) => {
+          settings = next;
+          setPanelNotice(
+            enabled
+              ? "패널에 발언자 색 표시를 켰습니다."
+              : "패널 발언자 색 표시를 껐습니다.",
+          );
+          syncUserInterfaces();
+        })
+        .catch((error: unknown) => {
+          reportRuntimeError(
+            error instanceof Error
+              ? error.message
+              : "발언자 보기 설정을 저장하지 못했습니다.",
+            error,
+          );
+        });
+    },
+    onSetExportSpeaker: (enabled) => {
+      void saveSettings({ txtExportSpeakerEnabled: enabled })
+        .then((next) => {
+          settings = next;
+          setPanelNotice(
+            enabled
+              ? "내보내기·복사에 발언자를 포함합니다."
+              : "내보내기·복사에서 발언자를 빼 둡니다.",
+          );
+          syncUserInterfaces();
+        })
+        .catch((error: unknown) => {
+          reportRuntimeError(
+            error instanceof Error
+              ? error.message
+              : "발언자 내보내기 설정을 저장하지 못했습니다.",
+            error,
+          );
+        });
     },
     onOpenHistory: () => {
       void openHistoryPage().catch((error: unknown) => {
