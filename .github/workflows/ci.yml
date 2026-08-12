@@ -10,6 +10,9 @@ jobs:
     name: verify
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # 테스트·포맷터의 로컬 타임존 의존을 줄이기 위해 UTC 고정
+    env:
+      TZ: UTC
     steps:
       - name: Checkout
         uses: actions/checkout@v4

@@ -1,4 +1,5 @@
 import type { SessionRecord } from "../src/core/subtitle-models";
+import { formatClockTime } from "../src/core/timeline";
 import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
@@ -947,8 +948,12 @@ describe("session store", () => {
       txtExportTimestampsEnabled: true,
     });
 
+    // formatClockTime 은 로컬 타임존을 쓰므로 CI(UTC)와 로컬(KST) 기댓값을 고정 문자열로 두지 않는다.
     expect(payload.content).toBe(
-      ["[18:00:01] 첫 번째 줄", "[18:00:02] 완전히 다른 두 번째 줄"].join("\n"),
+      [
+        `[${formatClockTime("2026-03-10T09:00:01.000Z")}] 첫 번째 줄`,
+        `[${formatClockTime("2026-03-10T09:00:02.000Z")}] 완전히 다른 두 번째 줄`,
+      ].join("\n"),
     );
   });
 
