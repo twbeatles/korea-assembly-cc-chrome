@@ -155,7 +155,7 @@ import {
   deleteFallbackRecord,
 } from "../fallback/storage";
 
-import { loadSession } from "./queries";
+import { loadSession } from "../load-session";
 import { saveSession } from "./mutations";
 
 export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySummary> {

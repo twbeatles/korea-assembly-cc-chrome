@@ -155,7 +155,7 @@ import {
   deleteFallbackRecord,
 } from "../fallback/storage";
 
-import { loadSession } from "./queries";
+import { loadSession } from "../load-session";
 import { listSessionLineageSegments } from "./queries";
 
 export async function saveSession(session: SessionRecord): Promise<SessionRecord> {

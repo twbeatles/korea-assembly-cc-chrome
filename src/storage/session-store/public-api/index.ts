@@ -8,9 +8,8 @@ export {
   updateSessionLineageMetadata,
   updateSessionContent,
 } from "./mutations";
+export { loadSession, loadSessionsByIds } from "../load-session";
 export {
-  loadSession,
-  loadSessionsByIds,
   getSessionLibraryOverview,
   buildSessionLibraryBackupExport,
   listSessions,

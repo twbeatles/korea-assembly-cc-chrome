@@ -125,9 +125,7 @@ import {
   bestEffortDeleteFallbackRecord,
   saveFallbackRecord,
 } from "./fallback/storage";
-import {
-  loadSession,
-} from "./public-api";
+import { loadSession } from "./load-session";
 
 export function stopRunningRecord(record: SessionRecord): SessionRecord {
   const stoppedAt = record.updatedAt || new Date().toISOString();

@@ -155,7 +155,8 @@ import {
   deleteFallbackRecord,
 } from "../fallback/storage";
 
-import { loadSessionsByIds, listSessionLineageSegments } from "./queries";
+import { loadSessionsByIds } from "../load-session";
+import { listSessionLineageSegments } from "./queries";
 
 export async function importSessionRecords(
   sessions: StoredSessionRecord[],
