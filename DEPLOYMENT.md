@@ -39,6 +39,9 @@
 
 ```bash
 npm install
+npm run verify          # version → inject 생성 → inject 검사 → lint → typecheck → test → build
+# 또는 단계별:
+npm run build:inject    # public/injected-observer.js 생성 (gitignore · CI 필수)
 npm run check:version
 npm run check:injected
 npm run lint
@@ -50,6 +53,7 @@ npm run verify:e2e
 
 설명:
 
+- `public/injected-observer.js` 는 git 추적하지 않는다. 클린 클론·CI 에서는 `build:inject` 또는 `verify` 가 생성한다.
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
 - `npm run typecheck` 는 TypeScript **7** 네이티브 CLI로 `tsconfig.json` / `tsconfig.node.json` 을 `--noEmit` 검사합니다 (`scripts/run-tsc.mjs`). ESLint용 `typescript@6` 과 dual-track 입니다. 비교가 필요하면 `npm run typecheck:ts6` 을 사용합니다.
 - TypeScript 버전 전환은 **개발/CI typecheck 툴체인** 변경이며, 확장 런타임 emit은 Vite/esbuild 경로를 유지합니다. 기존 설치본·저장 데이터·export 포맷 호환성 분석은 `TYPESCRIPT_7_MIGRATION_REVIEW.md` §13 을 참고하세요.
@@ -57,7 +61,7 @@ npm run verify:e2e
 - `npm run test:e2e:extension` 는 build 후 **의사중계 fixture + in-page 패널** smoke 를 실행합니다. production 패널은 closed Shadow DOM 이며, 스모크는 host light DOM `data-assembly-*` 미러와 `assembly-subtitle-panel-command` 이벤트를 사용합니다 (`SECURITY.md` §5).
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
 - 전체 release gate 는 `npm run verify` 로 실행할 수 있습니다.
-- GitHub Actions (`.github/workflows/ci.yml`)가 푸시/PR 시 `npm run verify` 를 자동 실행합니다.
+- GitHub Actions (`.github/workflows/ci.yml`)가 푸시/PR 시 inject 생성 → version/injected 검사 → lint → typecheck → test → build 를 단계별로 실행합니다 (`npm run verify` 와 동일 게이트).
 
 추가 확인 권장:
 

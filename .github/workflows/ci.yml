@@ -23,5 +23,24 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify (version, injected, lint, typecheck, test, build)
-        run: npm run verify
+      # public/injected-observer.js 는 gitignore — 클린 클론에서 먼저 생성해야 한다.
+      - name: Build injected observer
+        run: npm run build:inject
+
+      - name: Check version sync
+        run: npm run check:version
+
+      - name: Check injected observer up to date
+        run: npm run check:injected
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck (TypeScript 7)
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test
+
+      - name: Production build
+        run: npm run build

@@ -18,7 +18,7 @@
     "typecheck:ts6": "node scripts/run-tsc.mjs 6",
     "typecheck:ts7": "node scripts/run-tsc.mjs 7",
     "lint": "eslint .",
-    "verify": "npm run check:version && npm run check:injected && npm run lint && npm run typecheck && npm run test && npm run build",
+    "verify": "npm run check:version && npm run build:inject && npm run check:injected && npm run lint && npm run typecheck && npm run test && npm run build",
     "format": "prettier --check .",
     "format:write": "prettier --write ."
   },

@@ -210,9 +210,10 @@ npm run verify       # version · injected · lint · typecheck · test · build
 | `npm run test` | Vitest 단위 테스트 |
 | `npm run test:e2e:extension` | 빌드 후 Playwright 확장 smoke (closed shadow · light DOM 미러) |
 | `npm run verify:e2e` | 빌드 후 확장 페이지 smoke (`history`/`options`/`sidepanel`) |
-| `npm run verify` | version · injected · lint · typecheck · test · build |
+| `npm run build:inject` | `public/injected-observer.js` 생성 (gitignore · 클린 클론/CI에서 필요) |
+| `npm run verify` | version · **inject 생성** · inject 검사 · lint · typecheck · test · build |
 
-CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 `npm run verify` 를 실행합니다.
+CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 inject 생성 후 lint/typecheck/test/build 를 실행합니다.
 
 자세한 배포 절차·툴체인·안정성·보안 문서는 아래를 참고하세요.
 
