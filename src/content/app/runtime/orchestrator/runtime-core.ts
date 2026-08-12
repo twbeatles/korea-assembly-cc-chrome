@@ -152,11 +152,16 @@ import {
   buildRolledOverRunningSessionState,
   buildSegmentRolloverNotice,
 } from "../../../runtime/segment-rollover";
+import { buildSegmentRolloverDiagnostics } from "../../../runtime/segment-rollover-diagnostics";
 import {
   DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX,
   drainSegmentEventQueue,
   enqueueBoundedSegmentEvent,
 } from "../../../runtime/segment-event-queue";
+import {
+  readDocumentVisibilityState,
+  resolvePollingIntervalMs,
+} from "../../../runtime/visibility-polling";
 import {
   buildPreparedSessionRecord as buildPreparedSessionRecordFromState,
   buildPreparedSessionState as buildPreparedSessionStateFromState,
@@ -263,7 +268,6 @@ let latestRowDiagnostics = createEmptyRowDiagnostics();
 let latestFallbackCommitState: FallbackCommitState = "idle";
 let segmentRolloverInFlight = false;
 let queuedSegmentRolloverEvents: ObserverBridgeEvent[] = [];
-let flushingSegmentRolloverEvents = false;
 let segmentRolloverToken = 0;
 let fallbackCommitCandidate: FallbackCommitCandidate | null = null;
 let fallbackCommitTimer: number | null = null;
@@ -327,18 +331,13 @@ function flushQueuedSegmentRolloverEvent(): void {
     return;
   }
 
-  flushingSegmentRolloverEvents = true;
-  try {
-    queuedSegmentRolloverEvents = drainSegmentEventQueue(
-      queuedSegmentRolloverEvents,
-      (queuedEvent) => {
-        handleTopFrameEvent(queuedEvent);
-        return !segmentRolloverInFlight;
-      },
-    );
-  } finally {
-    flushingSegmentRolloverEvents = false;
-  }
+  queuedSegmentRolloverEvents = drainSegmentEventQueue(
+    queuedSegmentRolloverEvents,
+    (queuedEvent) => {
+      handleTopFrameEvent(queuedEvent);
+      return !segmentRolloverInFlight;
+    },
+  );
 }
 
 function clearLocalPolling(): void {
@@ -560,6 +559,12 @@ function buildStatusSnapshot(
     fallbackCommitState: latestFallbackCommitState,
     includeExportEstimates,
     requiresReload,
+    segmentRollover: buildSegmentRolloverDiagnostics({
+      inFlight: segmentRolloverInFlight,
+      queueSize: queuedSegmentRolloverEvents.length,
+      queueMax: DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX,
+      droppedTotal: segmentRolloverEventsDroppedTotal,
+    }),
   });
 }
 
@@ -958,10 +963,8 @@ function commitFallbackCandidate(token: number, now = Date.now()): boolean {
     );
     if (segmentationReason) {
       lastSegmentCapacityWarningReason = null;
+      // 큐를 비우지 않는다 — 이전 잔여·경합 이벤트는 롤오버 후 flush 로 재생한다.
       segmentRolloverInFlight = true;
-      if (!flushingSegmentRolloverEvents) {
-        queuedSegmentRolloverEvents = [];
-      }
       const rolloverToken = ++segmentRolloverToken;
       setPanelNotice(
         "현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.",
@@ -1536,7 +1539,7 @@ function dispatchObserverConfig(): void {
     new CustomEvent(OBSERVER_CONFIG_EVENT, {
       detail: {
         selectors: SUBTITLE_SELECTOR_CANDIDATES,
-        pollingIntervalMs: settings.pollingFallbackIntervalMs,
+        pollingIntervalMs: getEffectivePollingIntervalMs(),
         filterUnconfirmedEnabled: settings.filterUnconfirmedEnabled,
         token: observerBridgeToken,
       },
@@ -1553,8 +1556,8 @@ function requestSubtitleLayerActivation(): void {
 async function ensureSubtitleLayerActive(): Promise<boolean> {
   requestSubtitleLayerActivation();
   const layer = await waitForSubtitleLayer({
-    timeoutMs: Math.max(1200, settings.pollingFallbackIntervalMs * 10),
-    intervalMs: Math.max(80, settings.pollingFallbackIntervalMs),
+    timeoutMs: Math.max(1200, getEffectivePollingIntervalMs() * 10),
+    intervalMs: Math.max(80, getEffectivePollingIntervalMs()),
   });
   return layer.visible && (layer.hasText || layer.controlActive);
 }
@@ -1706,10 +1709,8 @@ function handleTopFrameEvent(event: ObserverBridgeEvent): void {
         );
         if (segmentationReason) {
           lastSegmentCapacityWarningReason = null;
+          // 큐를 비우지 않는다 — 이전 잔여·경합 이벤트는 롤오버 후 flush 로 재생한다.
           segmentRolloverInFlight = true;
-          if (!flushingSegmentRolloverEvents) {
-            queuedSegmentRolloverEvents = [];
-          }
           const rolloverToken = ++segmentRolloverToken;
           setPanelNotice(
             "현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.",
@@ -1815,6 +1816,32 @@ function emitLocalProbeEvent(
   });
 }
 
+function getEffectivePollingIntervalMs(): number {
+  return resolvePollingIntervalMs(
+    settings.pollingFallbackIntervalMs,
+    readDocumentVisibilityState(),
+  );
+}
+
+function refreshPollingAfterVisibilityChange(): void {
+  if (extensionContextInvalidated) {
+    return;
+  }
+  if (state.status === "running" && isCapturePage()) {
+    startLocalPolling();
+    dispatchObserverConfig();
+    if (isTopFrame) {
+      scheduleTopFrameFallbackTick(getEffectivePollingIntervalMs());
+    }
+  }
+}
+
+function bindVisibilityPollingAdjust(): void {
+  document.addEventListener("visibilitychange", () => {
+    refreshPollingAfterVisibilityChange();
+  });
+}
+
 function startLocalPolling(): void {
   if (extensionContextInvalidated || !isCapturePage()) {
     clearLocalPolling();
@@ -1822,6 +1849,7 @@ function startLocalPolling(): void {
   }
 
   clearLocalPolling();
+  const pollingIntervalMs = getEffectivePollingIntervalMs();
   localPollingTimer = window.setInterval(() => {
     try {
       const allowUnconfirmedContainerFallback =
@@ -1879,7 +1907,7 @@ function startLocalPolling(): void {
     } catch (error) {
       reportRuntimeError("로컬 자막 감지 중 오류가 발생했습니다.", error);
     }
-  }, settings.pollingFallbackIntervalMs);
+  }, pollingIntervalMs);
 }
 
 function scheduleTopFrameFallbackTick(delayMs: number): void {
@@ -1905,7 +1933,7 @@ function runTopFrameFallbackTick(): void {
     scheduleTopFrameFallbackTick(
       resolveTopFallbackDelayMs(
         topFallbackMissStreak,
-        settings.pollingFallbackIntervalMs,
+        getEffectivePollingIntervalMs(),
       ),
     );
     return;
@@ -1915,12 +1943,12 @@ function runTopFrameFallbackTick(): void {
   const staleFor = state.lastObserverEventAt
     ? now - state.lastObserverEventAt
     : Number.MAX_SAFE_INTEGER;
-  if (staleFor < settings.pollingFallbackIntervalMs * 2) {
+  if (staleFor < getEffectivePollingIntervalMs() * 2) {
     topFallbackMissStreak = 0;
     scheduleTopFrameFallbackTick(
       resolveTopFallbackDelayMs(
         topFallbackMissStreak,
-        settings.pollingFallbackIntervalMs,
+        getEffectivePollingIntervalMs(),
       ),
     );
     return;
@@ -1964,7 +1992,7 @@ function runTopFrameFallbackTick(): void {
       scheduleTopFrameFallbackTick(
         resolveTopFallbackDelayMs(
           topFallbackMissStreak,
-          settings.pollingFallbackIntervalMs,
+          getEffectivePollingIntervalMs(),
         ),
       );
       return;
@@ -1996,7 +2024,7 @@ function runTopFrameFallbackTick(): void {
   scheduleTopFrameFallbackTick(
     resolveTopFallbackDelayMs(
       topFallbackMissStreak,
-      settings.pollingFallbackIntervalMs,
+      getEffectivePollingIntervalMs(),
     ),
   );
 }
@@ -2011,7 +2039,7 @@ function startTopFrameFallback(): void {
   scheduleTopFrameFallbackTick(
     resolveTopFallbackDelayMs(
       topFallbackMissStreak,
-      settings.pollingFallbackIntervalMs,
+      getEffectivePollingIntervalMs(),
     ),
   );
 }
@@ -2996,6 +3024,7 @@ async function bootstrap(): Promise<void> {
   bindBridgeMessages();
   bindSettingsChanges();
   bindNavigationGuards();
+  bindVisibilityPollingAdjust();
   bindUrlChangeDetection();
   mountInPagePanel();
   updateInPagePanel();

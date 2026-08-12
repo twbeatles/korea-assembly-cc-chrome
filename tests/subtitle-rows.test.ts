@@ -44,6 +44,60 @@ describe("subtitle row helpers", () => {
     expect(rows[0].nodeKey).toContain("row_");
   });
 
+  it("splits one smi_word into multiple rows when child spans use different speaker colors", () => {
+    document.body.innerHTML = `
+      <div id="viewSubtit">
+        <div class="smi_word row_multi">
+          <span id="spk_a">발언자 A 구간</span>
+          <span id="spk_b">발언자 B 구간</span>
+        </div>
+      </div>
+    `;
+
+    // jsdom 은 getComputedStyle color 를 비울 수 있어 span id / style 기준으로 mock 한다.
+    const originalGetComputedStyle = window.getComputedStyle.bind(window);
+    const resolveMockColor = (element: Element): string => {
+      const id = (element as HTMLElement).id;
+      if (id === "spk_a") {
+        return "rgb(35, 124, 147)";
+      }
+      if (id === "spk_b") {
+        return "rgb(30, 30, 30)";
+      }
+      const inline = String((element as HTMLElement).style?.color || "").toLowerCase();
+      if (inline.includes("35, 124, 147") || inline.includes("#237c93")) {
+        return "rgb(35, 124, 147)";
+      }
+      if (inline.includes("30, 30, 30") || inline.includes("#1e1e1e")) {
+        return "rgb(30, 30, 30)";
+      }
+      return originalGetComputedStyle(element).color;
+    };
+    window.getComputedStyle = ((element: Element) => {
+      const style = originalGetComputedStyle(element);
+      const color = resolveMockColor(element);
+      return new Proxy(style, {
+        get(target, prop, receiver) {
+          if (prop === "color") {
+            return color;
+          }
+          return Reflect.get(target, prop, receiver);
+        },
+      }) as CSSStyleDeclaration;
+    }) as typeof window.getComputedStyle;
+
+    try {
+      const rows = readObservedSubtitleRows(document);
+      expect(rows).toHaveLength(2);
+      expect(rows[0].nodeKey).toBe("class:row_multi#spk_a");
+      expect(rows[1].nodeKey).toBe("class:row_multi#spk_b");
+      expect(rows[0].speakerChannel).toBe("primary");
+      expect(rows[1].speakerChannel).toBe("secondary");
+    } finally {
+      window.getComputedStyle = originalGetComputedStyle;
+    }
+  });
+
   it("builds a preview string from the latest visible rows", () => {
     document.body.innerHTML = `
       <div id="viewSubtit">

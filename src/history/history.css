@@ -28,6 +28,52 @@ body {
   margin: 0;
 }
 
+/* accessible confirm dialog (파괴적 확인) */
+.confirm-dialog-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(15, 42, 74, 0.45);
+}
+
+.confirm-dialog {
+  width: min(420px, 100%);
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 24px 64px rgba(15, 42, 74, 0.28);
+  padding: 20px 22px 16px;
+  color: var(--ink-900);
+}
+
+.confirm-dialog-title {
+  margin: 0 0 10px;
+  font-size: 1.1rem;
+}
+
+.confirm-dialog-message {
+  margin: 0 0 18px;
+  white-space: pre-wrap;
+  line-height: 1.5;
+  color: var(--ink-700);
+  font-size: 0.95rem;
+}
+
+.confirm-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-dialog-actions .secondary {
+  background: #eef2f8;
+  color: var(--ink-900);
+  box-shadow: none;
+}
+
 button {
   border: 0;
   border-radius: 10px;

@@ -15,7 +15,7 @@
 
 | | |
 |---|---|
-| **지원 사이트** | `assembly.webcast.go.kr`, `webcast.assembly.go.kr` |
+| **지원 사이트** | 주: `assembly.webcast.go.kr` · 보조: `webcast.assembly.go.kr` (네트워크/DNS에 따라 보조 호스트는 연결되지 않을 수 있음) |
 | **내보내기** | TXT · SRT · VTT · JSON · MD · CSV |
 | **저장 위치** | 로컬 (IndexedDB / 확장 저장소) |
 | **현재 버전** | 1.0.13 |
@@ -94,8 +94,8 @@ npm run build
 
 다음 중 하나의 **플레이어** 페이지로 이동합니다.
 
-- https://assembly.webcast.go.kr  
-- https://webcast.assembly.go.kr  
+- https://assembly.webcast.go.kr （권장 주 호스트）
+- https://webcast.assembly.go.kr （보조 호스트 — 기관 네트워크·DNS 상태에 따라 열리지 않을 수 있음）
 
 홈(`/main`)에서도 패널은 보이지만, **실제 수집은 플레이어**(`main/player*` 등)에서만 됩니다.
 
@@ -208,19 +208,30 @@ npm run verify       # version · injected · lint · typecheck · test · build
 |------|------|
 | `npm run typecheck` | TypeScript 7 typecheck |
 | `npm run test` | Vitest 단위 테스트 |
-| `npm run verify:e2e` | 빌드 후 확장 smoke |
+| `npm run test:e2e:extension` | 빌드 후 Playwright 확장 smoke (closed shadow · light DOM 미러) |
+| `npm run verify:e2e` | 빌드 후 확장 페이지 smoke (`history`/`options`/`sidepanel`) |
+| `npm run verify` | version · injected · lint · typecheck · test · build |
 
-자세한 배포 절차·툴체인·안정성 문서는 아래를 참고하세요.
+CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 `npm run verify` 를 실행합니다.
 
-- [배포 가이드](DEPLOYMENT.md)  
-- [TypeScript 7 전환 검토](TYPESCRIPT_7_MIGRATION_REVIEW.md)  
-- [장시간 세션 보존·안정성](CAPTURE_RETENTION_AND_STABILITY.md)  
-- [개인정보처리방침 초안](PRIVACY_POLICY_DRAFT_KO.md)  
-- AI/기여자용 컨텍스트: `CLAUDE.md`  
+자세한 배포 절차·툴체인·안정성·보안 문서는 아래를 참고하세요.
+
+| 문서 | 내용 |
+|------|------|
+| [DEPLOYMENT.md](DEPLOYMENT.md) | 배포·릴리스 노트 |
+| [SECURITY.md](SECURITY.md) | 위협 모델·권한 경계·e2e 훅 |
+| [PRIVACY_POLICY_DRAFT_KO.md](PRIVACY_POLICY_DRAFT_KO.md) | 개인정보처리방침 초안 (스토어 게시 전 운영자 정보 필수) |
+| [CAPTURE_RETENTION_AND_STABILITY.md](CAPTURE_RETENTION_AND_STABILITY.md) | 장시간 세션 보존·안정성 |
+| [LIVE_CAPTURE_SMOKE_CHECKLIST.md](LIVE_CAPTURE_SMOKE_CHECKLIST.md) | 실중계 수동 스모크 체크리스트 |
+| [PROJECT_AUDIT.md](PROJECT_AUDIT.md) | 기능 구현 감사 (5차 + 반영 메모) |
+| [PROJECT_AUDIT_NONFUNCTIONAL.md](PROJECT_AUDIT_NONFUNCTIONAL.md) | 비기능 감사 (보안·a11y·CI 등) |
+| [TYPESCRIPT_7_MIGRATION_REVIEW.md](TYPESCRIPT_7_MIGRATION_REVIEW.md) | TS 7 typecheck 전환 |
+| [CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md](CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md) | 스토어 권한 문안 |
+| `CLAUDE.md` | AI/기여자용 컨텍스트·Sync Delta |
 
 ---
 
 ## 라이선스·기여
 
 이슈와 PR은 저장소에서 환영합니다.  
-기능 변경 시 `npm run verify` 통과를 권장합니다.
+기능 변경 시 `npm run verify` 통과를 권장합니다 (CI와 동일 게이트).

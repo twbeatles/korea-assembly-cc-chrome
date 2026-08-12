@@ -41,6 +41,12 @@ describe("capture diagnostics helpers", () => {
         jsonBytes: 420,
         txtIncludesTimestamps: false,
       },
+      segmentRollover: {
+        inFlight: true,
+        queueSize: 3,
+        queueMax: 128,
+        droppedTotal: 2,
+      },
     });
 
     expect(formatCaptureDiagnosticsFramePath([])).toBe("top");
@@ -82,6 +88,12 @@ describe("capture diagnostics helpers", () => {
         vttBytes: 240,
         jsonBytes: 420,
         txtIncludesTimestamps: false,
+      },
+      segmentRollover: {
+        inFlight: true,
+        queueSize: 3,
+        queueMax: 128,
+        droppedTotal: 2,
       },
     });
   });

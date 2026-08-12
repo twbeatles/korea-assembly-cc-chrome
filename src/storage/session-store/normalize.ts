@@ -63,6 +63,54 @@ export function sanitizeSpeakerLabels(value: unknown): SpeakerLabels {
   return labels;
 }
 
+function isValidIsoDateString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+/** qualityStats 구조 검증. 비정상이면 undefined. */
+export function sanitizeQualityStats(
+  value: unknown,
+): SessionRecord["qualityStats"] | undefined {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  const stats = value as Partial<NonNullable<SessionRecord["qualityStats"]>>;
+  const health = stats.health;
+  const lastComputedAt = stats.lastComputedAt;
+  if (health !== "good" && health !== "warning" && health !== "unstable") {
+    return undefined;
+  }
+  if (!isValidIsoDateString(lastComputedAt)) {
+    return undefined;
+  }
+
+  const entryCount = Number(stats.entryCount);
+  const charCount = Number(stats.charCount);
+  const estimatedBytes = Number(stats.estimatedBytes);
+  if (
+    !Number.isFinite(entryCount) ||
+    !Number.isFinite(charCount) ||
+    !Number.isFinite(estimatedBytes)
+  ) {
+    return undefined;
+  }
+
+  return {
+    health,
+    entryCount: Math.max(0, Math.floor(entryCount)),
+    charCount: Math.max(0, Math.floor(charCount)),
+    estimatedBytes: Math.max(0, Math.floor(estimatedBytes)),
+    fallbackOnly: typeof stats.fallbackOnly === "boolean" ? stats.fallbackOnly : undefined,
+    lastComputedAt,
+  };
+}
+
+/** 세션 id 정규화. 비어 있으면 빈 문자열. */
+export function sanitizeSessionId(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export function normalizeEntries(entries: SubtitleEntry[]): SubtitleEntry[] {
   // 저장 경로는 carry-over dedupe를 적용하지 않는다. export/copy 직전 정규화만 사용.
   return sanitizeEntriesForStorage(entries);
@@ -76,6 +124,7 @@ export function normalizeSessionRecord(
   } = {},
 ): SessionRecord {
   const now = new Date().toISOString();
+  const sessionId = sanitizeSessionId(session.id);
   const entries = normalizeEntries(session.entries);
   const status = options.forceStatus ?? session.status ?? "saved";
   const createdAt =
@@ -106,16 +155,13 @@ export function normalizeSessionRecord(
   const category =
     typeof session.category === "string" ? session.category.trim().slice(0, 120) : "";
   const speakerLabels = sanitizeSpeakerLabels(session.speakerLabels);
-  const qualityStats =
-    session.qualityStats && typeof session.qualityStats === "object"
-      ? { ...session.qualityStats }
-      : undefined;
-  const lineageId = resolveSessionLineageId(session.id, session.lineageId);
+  const qualityStats = sanitizeQualityStats(session.qualityStats);
+  const lineageId = resolveSessionLineageId(sessionId, session.lineageId);
   const segmentNumber = resolveSessionSegmentNumber(session.segmentNumber);
   const endedAt = status === "running" ? null : (session.endedAt ?? updatedAt);
 
   return {
-    id: session.id,
+    id: sessionId,
     version: SESSION_RECORD_VERSION,
     title: session.title || "국회 자막 세션",
     committeeName: session.committeeName || "",

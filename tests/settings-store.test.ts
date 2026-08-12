@@ -122,6 +122,19 @@ describe("settings store", () => {
     expect(sanitized.recentDuplicateMinLength).toBe(15);
   });
 
+  it("accepts exportSpeakerEnabled as an alias for txtExportSpeakerEnabled", () => {
+    const fromAlias = sanitizeSettings({
+      exportSpeakerEnabled: true,
+    } as Parameters<typeof sanitizeSettings>[0]);
+    expect(fromAlias.txtExportSpeakerEnabled).toBe(true);
+
+    const explicitWins = sanitizeSettings({
+      txtExportSpeakerEnabled: false,
+      exportSpeakerEnabled: true,
+    } as Parameters<typeof sanitizeSettings>[0]);
+    expect(explicitWins.txtExportSpeakerEnabled).toBe(false);
+  });
+
   it("sanitizes presets and drops duplicate urls", () => {
     const sanitized = sanitizeSettings({
       presets: [

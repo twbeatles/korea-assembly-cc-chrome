@@ -49,6 +49,14 @@ export interface ExportEstimateDiagnostics {
   txtIncludesTimestamps: boolean;
 }
 
+/** 세그먼트 롤오버 중 이벤트 버퍼·드롭 진단 */
+export interface SegmentRolloverDiagnostics {
+  inFlight: boolean;
+  queueSize: number;
+  queueMax: number;
+  droppedTotal: number;
+}
+
 export interface CaptureDiagnostics {
   captureMode: CaptureMode;
   observerActive: boolean;
@@ -69,6 +77,7 @@ export interface CaptureDiagnostics {
   fallbackCommitState: FallbackCommitState;
   segment?: SegmentDiagnostics;
   exportEstimates?: ExportEstimateDiagnostics;
+  segmentRollover?: SegmentRolloverDiagnostics;
 }
 
 export interface ObservedSubtitleRow {

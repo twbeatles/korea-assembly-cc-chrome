@@ -674,6 +674,41 @@ export default function App() {
               <span>최근 저장</span>
               <strong>{snapshot?.lastPersistedAt ? new Date(snapshot.lastPersistedAt).toLocaleString("ko-KR") : "-"}</strong>
             </div>
+            <div className="meta-row">
+              <span>세그먼트 전환</span>
+              <strong>
+                {snapshot?.diagnostics.segmentRollover
+                  ? snapshot.diagnostics.segmentRollover.inFlight
+                    ? "전환 중"
+                    : "대기"
+                  : "-"}
+              </strong>
+            </div>
+            <div className="meta-row">
+              <span>롤오버 이벤트 버퍼</span>
+              <strong>
+                {snapshot?.diagnostics.segmentRollover
+                  ? `${snapshot.diagnostics.segmentRollover.queueSize} / ${snapshot.diagnostics.segmentRollover.queueMax}`
+                  : "-"}
+              </strong>
+            </div>
+            <div className="meta-row">
+              <span>롤오버 중 버린 이벤트(누적)</span>
+              <strong>
+                {snapshot?.diagnostics.segmentRollover
+                  ? `${snapshot.diagnostics.segmentRollover.droppedTotal}건`
+                  : "-"}
+              </strong>
+            </div>
+            <div className="meta-row">
+              <span>저장 가능 상태</span>
+              <strong>
+                {snapshot?.diagnostics.persistabilityState ?? "-"}
+                {snapshot?.diagnostics.persistabilityHint
+                  ? ` · ${snapshot.diagnostics.persistabilityHint}`
+                  : ""}
+              </strong>
+            </div>
           </div>
 
           <section className="diagnostics-subsection">

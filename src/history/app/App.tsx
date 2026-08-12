@@ -88,6 +88,7 @@ import {
   parseLabelInput,
   parseTagInput,
 } from "./helpers";
+import { confirmDestructiveAction } from "./confirm-dialog";
 import { useHistoryLongTask } from "./hooks/useHistoryLongTask";
 import { SessionListPanel } from "./sections/SessionListPanel";
 import { HistoryHero } from "./sections/HistoryHero";
@@ -597,7 +598,7 @@ export default function App() {
   }, []);
 
   const handleRefreshClick = async (): Promise<void> => {
-    if (hasUnsavedSessionDraft && !confirmDiscardUnsavedNote("목록 새로고침")) {
+    if (hasUnsavedSessionDraft && !(await confirmDiscardUnsavedNote("목록 새로고침"))) {
       setMessage("새로고침을 취소했습니다.");
       return;
     }
@@ -613,7 +614,7 @@ export default function App() {
     if (!selectedLineageId || !selectedSession) {
       return;
     }
-    if (!confirmDeleteSession(selectedSession)) {
+    if (!(await confirmDeleteSession(selectedSession))) {
       setMessage("기록 삭제를 취소했습니다.");
       return;
     }
@@ -666,10 +667,10 @@ export default function App() {
     }
 
     if (
-      !confirmDeleteSessions(
+      !(await confirmDeleteSessions(
         targetLineages.map((lineage) => lineage.representativeSession),
         "선택한 회의",
-      )
+      ))
     ) {
       setMessage("선택 삭제를 취소했습니다.");
       return;
@@ -700,10 +701,10 @@ export default function App() {
         return;
       }
       if (
-        !confirmDeleteSessionLibrary(
+        !(await confirmDeleteSessionLibrary(
           overview,
           "이 확인 이후에 새로 저장된 기록도 함께 삭제될 수 있습니다.",
-        )
+        ))
       ) {
         setMessage("전체 삭제를 취소했습니다.");
         return;
@@ -882,7 +883,10 @@ export default function App() {
       return;
     }
     if (
-      !window.confirm(`선택한 자막 ${selectedEntries.length}개를 삭제할까요?`)
+      !(await confirmDestructiveAction(
+        `선택한 자막 ${selectedEntries.length}개를 삭제할까요?`,
+        { title: "자막 삭제", confirmLabel: "삭제" },
+      ))
     ) {
       setMessage("선택 항목 삭제를 취소했습니다.");
       return;
@@ -1194,31 +1198,46 @@ export default function App() {
   };
 
   const handleSelectSession = (lineageId: string): void => {
-    if (lineageId !== selectedLineageId && hasUnsavedNote && !confirmDiscardUnsavedNote("세션 전환")) {
-      setMessage("세션 전환을 취소했습니다.");
-      return;
-    }
+    void (async () => {
+      if (
+        lineageId !== selectedLineageId &&
+        hasUnsavedNote &&
+        !(await confirmDiscardUnsavedNote("세션 전환"))
+      ) {
+        setMessage("세션 전환을 취소했습니다.");
+        return;
+      }
 
-    const nextSelectedLineage = pageLineages.find((lineage) => lineage.lineageId === lineageId) ?? null;
-    setSelectedId(lineageId);
-    setSelectedLineageSummary(nextSelectedLineage);
-    setSelectedSession(nextSelectedLineage?.representativeSession ?? null);
+      const nextSelectedLineage =
+        pageLineages.find((lineage) => lineage.lineageId === lineageId) ?? null;
+      setSelectedId(lineageId);
+      setSelectedLineageSummary(nextSelectedLineage);
+      setSelectedSession(nextSelectedLineage?.representativeSession ?? null);
+    })();
   };
 
   const handleSelectLineageSegment = (sessionId: string): void => {
-    if (sessionId !== selectedSession?.id && hasUnsavedNote && !confirmDiscardUnsavedNote("세그먼트 전환")) {
-      setMessage("세그먼트 전환을 취소했습니다.");
-      return;
-    }
+    void (async () => {
+      if (
+        sessionId !== selectedSession?.id &&
+        hasUnsavedNote &&
+        !(await confirmDiscardUnsavedNote("세그먼트 전환"))
+      ) {
+        setMessage("세그먼트 전환을 취소했습니다.");
+        return;
+      }
 
-    const nextSelectedSession =
-      availableLineageSessions.find((session) => session.id === sessionId) ?? null;
-    if (!nextSelectedSession) {
-      return;
-    }
+      const nextSelectedSession =
+        availableLineageSessions.find((session) => session.id === sessionId) ?? null;
+      if (!nextSelectedSession) {
+        return;
+      }
 
-    setSelectedId(resolveSessionLineageId(nextSelectedSession.id, nextSelectedSession.lineageId));
-    setSelectedSession(nextSelectedSession);
+      setSelectedId(
+        resolveSessionLineageId(nextSelectedSession.id, nextSelectedSession.lineageId),
+      );
+      setSelectedSession(nextSelectedSession);
+    })();
   };
 
   const handleToggleEntryChecked = (entryId: string): void => {
@@ -1432,17 +1451,19 @@ export default function App() {
           )
         }
         onToggleStarredOnly={() => {
-          if (
-            hasUnsavedSessionDraft &&
-            !confirmDiscardUnsavedNote("필터 변경")
-          ) {
-            setMessage("필터 변경을 취소했습니다.");
-            return;
-          }
-          if (hasUnsavedSessionDraft) {
-            discardUnsavedNoteDraft();
-          }
-          setShowStarredOnly((current) => !current);
+          void (async () => {
+            if (
+              hasUnsavedSessionDraft &&
+              !(await confirmDiscardUnsavedNote("필터 변경"))
+            ) {
+              setMessage("필터 변경을 취소했습니다.");
+              return;
+            }
+            if (hasUnsavedSessionDraft) {
+              discardUnsavedNoteDraft();
+            }
+            setShowStarredOnly((current) => !current);
+          })();
         }}
         onBackupAll={() => void handleBackupAll()}
         onImportClick={handleImportClick}

@@ -12,8 +12,10 @@ import {
 import { isScrollNearBottom, scrollToBottom } from "../scroll";
 import {
   IN_PAGE_PANEL_HOST_ID,
+  PANEL_HOST_COMMAND_EVENT,
   type InPagePanelActions,
   type InPagePanelController,
+  type PanelHostCommandDetail,
 } from "../types";
 
 function buildPreviewSignature(previewText: string): string {
@@ -71,6 +73,7 @@ export function createInPagePanel(
   });
 
   (document.body || document.documentElement).appendChild(host);
+  host.dataset.assemblyPanel = "1";
 
   const emptyPreviewText = "자막이 잡히면 이곳에 실시간으로 표시됩니다.";
   const liveRowNodes = new Map<string, HTMLElement>();
@@ -80,6 +83,57 @@ export function createInPagePanel(
   let renderedPreviewCollapsed: boolean | null = null;
   let renderedPreviewSignature = "";
   let renderedLiveRowsSignature = "";
+
+  const clickPanelButtonByLabel = (label: string): boolean => {
+    const buttons = Array.from(wrapper.querySelectorAll("button"));
+    const button = buttons.find((candidate) => {
+      const style = window.getComputedStyle(candidate);
+      return (
+        Boolean(candidate.textContent?.includes(label)) &&
+        !candidate.disabled &&
+        !candidate.hidden &&
+        style.display !== "none" &&
+        style.visibility !== "hidden"
+      );
+    });
+    if (!button) {
+      return false;
+    }
+    button.click();
+    return true;
+  };
+
+  const handleHostCommand = (event: Event): void => {
+    if (!(event instanceof CustomEvent)) {
+      return;
+    }
+    const detail = event.detail as PanelHostCommandDetail | undefined;
+    if (!detail || typeof detail !== "object" || !("type" in detail)) {
+      return;
+    }
+    switch (detail.type) {
+      case "click-button":
+        if (typeof detail.label === "string" && detail.label) {
+          clickPanelButtonByLabel(detail.label);
+        }
+        break;
+      case "start":
+        actions.onStartCapture();
+        break;
+      case "stop":
+        actions.onStopCapture();
+        break;
+      case "save":
+        actions.onSaveSession();
+        break;
+      case "clear":
+        actions.onClearSession();
+        break;
+      default:
+        break;
+    }
+  };
+  host.addEventListener(PANEL_HOST_COMMAND_EVENT, handleHostCommand);
 
   syncLiveRowJumpButton = (hasRows = liveRowNodes.size > 0): void => {
     const shouldShow = hasRows && !isScrollNearBottom(liveRowList);
@@ -128,6 +182,14 @@ export function createInPagePanel(
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
 
+      // closed shadow 에서도 페이지 e2e 가 읽을 수 있도록 light DOM 에 상태 미러
+      host.dataset.assemblyStatus = nextState.status;
+      host.dataset.assemblyStatusLabel = nextState.statusLabel;
+      host.dataset.assemblyNotice = (nextState.notice || "").slice(0, 400);
+      host.dataset.assemblySubtitleCount = String(nextState.subtitleCount);
+      host.dataset.assemblyCaptureMode = nextState.captureMode;
+      host.dataset.assemblyCollapsed = nextState.collapsed ? "1" : "0";
+
       if (speakerHighlightToggle.checked !== nextState.showSpeakerHighlight) {
         speakerHighlightToggle.checked = nextState.showSpeakerHighlight;
       }
@@ -152,6 +214,10 @@ export function createInPagePanel(
         previewScroll.textContent = nextPreviewText;
         renderedPreviewSignature = nextPreviewSignature;
       }
+      host.dataset.assemblyPreview = nextPreviewText.slice(0, 400);
+      host.dataset.assemblyLiveText = (
+        nextState.liveRows.at(-1)?.text || ""
+      ).slice(0, 400);
 
       const nextLiveRowsSignature = buildLiveRowsSignature(
         nextState.liveRows,
@@ -242,6 +308,7 @@ export function createInPagePanel(
       syncLiveRowJumpButton(nextState.liveRows.length > 0);
     },
     destroy() {
+      host.removeEventListener(PANEL_HOST_COMMAND_EVENT, handleHostCommand);
       host.remove();
     },
   };

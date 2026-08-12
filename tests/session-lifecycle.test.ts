@@ -17,11 +17,14 @@ describe("session lifecycle helpers", () => {
       "정무위원회",
     );
     state.previewText = "첫 번째 미리보기 자막";
+    state.pendingPreviews = ["아직 확정되지 않은 미리보기 A", "미리보기 B"];
 
     const prepared = buildPreparedSessionState(state, DEFAULT_EXTENSION_SETTINGS, Date.parse("2026-03-10T09:00:00.000Z"));
 
     expect(prepared.entries).toHaveLength(0);
     expect(prepared.pendingPreviews).toEqual([]);
+    // 원본 state 는 변경하지 않는다
+    expect(state.pendingPreviews).toHaveLength(2);
   });
 
   it("builds a persisted session record without materializing pending previews", () => {
@@ -31,6 +34,7 @@ describe("session lifecycle helpers", () => {
       "정무위원회",
     );
     state.previewText = "종료 전 자막";
+    state.pendingPreviews = ["preview-only 텍스트는 저장되면 안 됨"];
 
     const record = buildPreparedSessionRecord(
       state,
@@ -42,6 +46,36 @@ describe("session lifecycle helpers", () => {
     expect(record.status).toBe("saved");
     expect(record.subtitleCount).toBe(0);
     expect(record.entries).toEqual([]);
+    expect(record.entries.some((entry) => entry.text.includes("preview-only"))).toBe(false);
+  });
+
+  it("keeps already committed entries while still clearing pending previews", () => {
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+      "국회 본회의",
+      "정무위원회",
+    );
+    state.entries = [
+      {
+        id: "entry_committed",
+        text: "이미 확정된 자막",
+        timestamp: "2026-03-10T09:00:01.000Z",
+        startTime: "2026-03-10T09:00:01.000Z",
+        endTime: "2026-03-10T09:00:02.000Z",
+      },
+    ];
+    state.pendingPreviews = ["미확정 미리보기"];
+
+    const record = buildPreparedSessionRecord(
+      state,
+      DEFAULT_EXTENSION_SETTINGS,
+      "stopped",
+      Date.parse("2026-03-10T09:00:05.000Z"),
+    );
+
+    expect(record.entries).toHaveLength(1);
+    expect(record.entries[0].text).toBe("이미 확정된 자막");
+    expect(record.subtitleCount).toBe(1);
   });
 
   it("creates a fresh reset session state for the current page", () => {

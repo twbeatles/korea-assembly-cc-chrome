@@ -2,15 +2,14 @@
 
 이 문서는 현재 저장소(`Chrome Extension MV3 + TypeScript + React + Vite`) 구현을 `CLAUDE.md` / `README.md` / 코드 본체와 대조하면서 식별한 **기능적으로 문제가 될 수 있는 부분**과 **추가 / 강화가 필요한 후보**를 정리한 검토 노트입니다. 최초 작성 기준일은 `2026-05-07` 이며, `2026-06-11` 코드 분할 리팩토링 이후 public facade 경로와 implementation 경로를 함께 봅니다.
 
-> **최신 진행 상태 (2026-07-28 · v1.0.12)**
+> **최신 진행 상태 (2026-08-12 · v1.0.13 + 감사 후속)**
 >
-> - **권위 있는 기능 감사 문서:** `PROJECT_AUDIT.md`. 잔존 이슈·수정 계획은 그 문서를 본다.
+> - **권위 있는 기능 감사:** `PROJECT_AUDIT.md` (5차 + 구현 반영).
+> - **권위 있는 비기능 감사:** `PROJECT_AUDIT_NONFUNCTIONAL.md` (보안·a11y·CI·성능 등 + 구현 반영).
+> - **위협 모델:** `SECURITY.md`. 실중계 체크리스트: `LIVE_CAPTURE_SMOKE_CHECKLIST.md`.
 > - 본 파일 본문의 P0/P1 “미해결” 서술은 **역사 기록**이다. 현재 코드와 어긋날 수 있으니 신규 작업 우선순위로 쓰지 말 것.
-> - 2026-07-28 SOLID 분할: `orchestrator/`, `subtitle-pipeline/`, `public-api/`, History `SessionDetailPanel` — facade 경로 유지.
-> - 2026-07-28 3차 감사 반영: page-world origin, unconfirmed 샘플링, Blob revoke, multi-tab ownership, speaker/fallback merge 등.
-> - 2026-07-28 2차: transient messaging vs permanent invalidation 분리, 롤오버 큐 64+overflow notice, timeRange export, fallback memory rollback, 무효화 안내 한국어.
-> - 2026-07-28 1차: 자동 시작 lifecycle 큐, save/updateRunning write 큐, IDB open TTL, DOWNLOAD_REQUEST 2 MiB, CSV UTF-8 BOM.
-> - 2026-07-14: 저장/export 정규화 분리, lifecycle lock, URL reconcile, write queue, startup debounce, postMessage origin 등.
+> - 2026-08-12: 롤오버 진단·persist index·SW 스키마·closed-shadow smoke·CI·History dialog·hidden 폴링 등 감사 권고 반영.
+> - 2026-07-28 SOLID 분할 및 1–3차 안정화는 유지 (lifecycle lock, write 큐, IDB TTL, CSV BOM 등).
 > - 사용자용 설치·사용법은 `README.md` 를 본다.
 >
 > **진행 상태 (2026-05-07 기준)**

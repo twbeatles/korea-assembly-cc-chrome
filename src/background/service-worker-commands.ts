@@ -20,8 +20,44 @@ export interface DownloadExportDependencies {
 /** content script → SW 의 DOWNLOAD_REQUEST 본문 상한 (data URL fallback 과 동일 계열). */
 export const DOWNLOAD_REQUEST_MAX_BYTES = 2 * 1024 * 1024;
 
+/** PERSIST/QUEUE 메시지 세션 페이로드 방어 상한 (entry 개수). */
+export const PERSIST_SESSION_RECORD_MAX_ENTRIES = 50_000;
+
 export function getUtf8ContentByteLength(content: string): number {
   return new TextEncoder().encode(content).length;
+}
+
+/**
+ * background persist 경계 최소 스키마 검증.
+ * 상세 정규화는 saveSession/normalizeSessionRecord 가 수행한다.
+ */
+export function isValidPersistSessionRecordPayload(
+  value: unknown,
+): value is SessionRecord {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const record = value as Partial<SessionRecord>;
+  if (typeof record.id !== "string" || !record.id.trim()) {
+    return false;
+  }
+  if (
+    record.status !== "running" &&
+    record.status !== "stopped" &&
+    record.status !== "saved"
+  ) {
+    return false;
+  }
+  if (typeof record.updatedAt !== "string" || !record.updatedAt) {
+    return false;
+  }
+  if (!Array.isArray(record.entries)) {
+    return false;
+  }
+  if (record.entries.length > PERSIST_SESSION_RECORD_MAX_ENTRIES) {
+    return false;
+  }
+  return true;
 }
 
 export async function downloadExportWithFallback(
@@ -182,13 +218,25 @@ export async function handleBackgroundCommand(
       return { ok: true, nonce: await dependencies.getOrCreateStoredFrameForwardNonce(tabId) };
     }
     case "QUEUE_EXIT_PERSIST_RECORD":
+      if (!isValidPersistSessionRecordPayload(message.record)) {
+        return { ok: false, error: "종료 저장 큐 페이로드가 올바르지 않습니다." };
+      }
+      if (message.record.status !== "stopped") {
+        return { ok: false, error: "종료 저장 큐는 stopped 세션만 허용합니다." };
+      }
       await dependencies.queueExitPersistRecord(message.record);
       return { ok: true };
     case "PERSIST_SESSION_RECORD": {
+      if (!isValidPersistSessionRecordPayload(message.record)) {
+        return { ok: false, error: "세션 저장 페이로드가 올바르지 않습니다." };
+      }
       const saved = await dependencies.persistSessionRecord(message.record);
       return { ok: true, updatedAt: saved.updatedAt };
     }
     case "DELETE_SESSION_RECORD":
+      if (typeof message.sessionId !== "string" || !message.sessionId.trim()) {
+        return { ok: false, error: "삭제할 세션 id가 올바르지 않습니다." };
+      }
       await dependencies.deleteSessionRecord(message.sessionId);
       return { ok: true };
     case "DOWNLOAD_REQUEST": {

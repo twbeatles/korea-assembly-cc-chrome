@@ -135,6 +135,22 @@ describe("persist recovery", () => {
     expect(listed[0]?.record.title).toBe("newer");
   });
 
+  it("lists queue records via index without requiring a full storage dump after queue", async () => {
+    const storageGet = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    await queueExitPersistRecord(buildSession("session_indexed", "2026-03-10T09:00:02.000Z"));
+
+    storageGet.mockClear();
+    const listed = await listQueuedExitPersistRecords();
+    expect(listed.map((item) => item.sessionId)).toContain("session_indexed");
+
+    // index + keyed get 경로: get(null) 전체 스냅샷을 쓰지 않는다
+    const usedFullDump = storageGet.mock.calls.some((call) => {
+      const arg = call[0];
+      return arg === null || arg === undefined;
+    });
+    expect(usedFullDump).toBe(false);
+  });
+
   it("keeps a queue record inserted during storage snapshot reconciliation", async () => {
     const storageGet = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
     const deferred = createDeferred<Record<string, unknown>>();

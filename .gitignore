@@ -4,12 +4,12 @@
 build/
 dist/
 coverage/
-playwright-report/
-test-results/
+.nyc_output/
 blob-report/
 node_modules/
 .vite/
 .cache/
+.turbo/
 .eslintcache
 *.tsbuildinfo
 npm-debug.log*
@@ -19,16 +19,20 @@ pnpm-debug.log*
 .pnp.*
 .yarn/cache/
 .yarn/install-state.gz
+
+# Generated at build time (scripts/build-injected.mjs → Vite public)
 public/injected-observer.js
 public/injected-observer.js.map
 
 # -----------------------------------------------------------------------------
-# Test / E2E artifacts (defensive — `playwright` is a devDependency)
+# Test / E2E artifacts
 # -----------------------------------------------------------------------------
 playwright-report/
 test-results/
 .playwright/
 e2e-screenshots/
+/tmp_extension_unpacked/
+tmp_extension.crx
 
 # -----------------------------------------------------------------------------
 # Local secrets / signing material
@@ -40,9 +44,11 @@ e2e-screenshots/
 *.pem
 *.key
 *.p12
+*.pfx
+*.crx
 
 # -----------------------------------------------------------------------------
-# Local IDE / OS / AI tooling
+# Local IDE / OS / AI tooling (session-local, not product source)
 # -----------------------------------------------------------------------------
 .vscode/
 .idea/
@@ -61,25 +67,14 @@ desktop.ini
 .history/
 
 # -----------------------------------------------------------------------------
-# Local override files (Vite / Vitest / generic)
+# Local override files
 # -----------------------------------------------------------------------------
 *.local
 vite.config.local.*
 vitest.config.local.*
 
 # -----------------------------------------------------------------------------
-# Local secrets / signing material
-# -----------------------------------------------------------------------------
-.env
-.env.*
-!.env.example
-*.pem
-*.key
-*.p12
-*.pfx
-
-# -----------------------------------------------------------------------------
-# Virtual environments (guard against accidental creation)
+# Virtual environments
 # -----------------------------------------------------------------------------
 .venv/
 venv/
@@ -87,7 +82,7 @@ env/
 ENV/
 
 # -----------------------------------------------------------------------------
-# Project runtime outputs (do not upload)
+# Project runtime / local outputs (do not upload)
 # -----------------------------------------------------------------------------
 logs/
 sessions/
@@ -99,38 +94,42 @@ legacy/
 /.tmp/
 /.tmp-*/
 /output/
-tmp_extension_unpacked/
-tmp_extension.crx
+store_assets/
+iiadnfahoocbannfpgfgbommblpagacl/
+
+# Root packaging / CWS zips (dist is the source of truth)
 korea-assembly-cc-chrome.zip
 /dist.zip
 /korea-assembly-cc-chrome-*-cws.zip
-iiadnfahoocbannfpgfgbommblpagacl/
-*.tmp
-*.orig
 /*.zip
 /*.7z
 /*.crx
-/화면 캡처 *.png
-/스크린샷 *.png
-/확장프로그램 화면 캡처*.png
-/__tmp_*.txt
+
+# Ad-hoc temp scripts / captures (root only)
+*.tmp
+*.orig
 /tmp-*.js
 /tmp-*.cjs
+/__tmp_*.txt
+/test.html
 /marquee.jpg
 /scripts/resize-marquee.js
 /scripts/generate-promo.mjs
-/store_assets/
-/test.html
+
+# Korean screenshot filenames occasionally left in repo root
+/*캡처*.png
+/*스크린샷*.png
+/*화면*.png
 
 # -----------------------------------------------------------------------------
-# Local database/state files
+# Local database / state files
 # -----------------------------------------------------------------------------
 *.db
 *.db-shm
 *.db-wal
 
 # -----------------------------------------------------------------------------
-# User-exported result files (root-level exports only)
+# User-exported result files (root-level only)
 # -----------------------------------------------------------------------------
 /*.txt
 /*.log

@@ -40,6 +40,7 @@ interface BuildContentStatusSnapshotOptions {
   fallbackCommitState?: FallbackCommitState;
   includeExportEstimates?: boolean;
   requiresReload?: boolean;
+  segmentRollover?: CaptureDiagnostics["segmentRollover"];
 }
 
 interface CanClearCurrentSessionStateOptions {
@@ -93,6 +94,7 @@ export function buildContentStatusSnapshot(
     fallbackCommitState,
     includeExportEstimates = false,
     requiresReload = false,
+    segmentRollover,
   } = options;
   const persistability = resolveContentPersistabilityDiagnostics({
     status: sessionState.status,
@@ -143,6 +145,7 @@ export function buildContentStatusSnapshot(
       fallbackCommitState,
       segment: buildSegmentDiagnostics(sessionState, settings),
       exportEstimates: includeExportEstimates ? exportEstimates : undefined,
+      segmentRollover,
     }),
     hasPersistableContent: sessionState.entries.length > 0,
   };

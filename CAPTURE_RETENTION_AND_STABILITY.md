@@ -121,7 +121,10 @@
 - history 기본 목록은 lineage summary 단위로 전환됐고, lineage 수준 즐겨찾기/메모/삭제/export 는 각 segment record 에 동일 patch 를 적용하는 v1 정책이다.
 - 단일 세션 / lineage export 는 background 조립과 offscreen Blob chunk 경로, lineage 분할 저장으로 개선됐지만, 최종 다운로드 단계는 여전히 브라우저 download/Blob 정책의 영향을 받는다.
 - DOM selector profile 은 계속 실제 사이트 변화에 맞춰 보정이 필요할 수 있다.
-- browser E2E smoke 는 `npm run test:e2e:extension` 로 제공하지만, 실제 국회 사이트 운영 DOM 과 완전히 같은 보장은 아니므로 fixture 보강 여지는 남아 있다.
+- browser E2E smoke 는 `npm run test:e2e:extension` 로 제공하지만, 실제 국회 사이트 운영 DOM 과 완전히 같은 보장은 아니므로 fixture 보강 여지는 남아 있다. 패널은 production closed Shadow DOM 이며, smoke 는 host `data-assembly-*` 미러와 `assembly-subtitle-panel-command` 를 사용한다 (`SECURITY.md`).
+- 탭이 숨겨진 동안 local polling / observer 폴링 간격은 기본의 4배로 늘어난다 (`resolvePollingIntervalMs`).
+- 세그먼트 롤오버 중 이벤트 버퍼 상한은 128이며, 드롭 누적은 수집 진단 `segmentRollover` 로 노출된다.
+- page-exit 저장 큐 목록은 storage 전체 `get(null)` 대신 index 키 + 개별 레코드 조회를 우선한다 (구버전 데이터는 1회 재구성).
 
 ## 8. 운영 권장안
 

@@ -3,6 +3,16 @@ import type { CaptureStatus, ExportFormat } from "../../core/subtitle-models";
 
 export const IN_PAGE_PANEL_HOST_ID = "assembly-subtitle-panel-host";
 
+/** 페이지 컨텍스트 e2e/스모크가 closed shadow 를 우회해 명령을 보낼 때 사용 */
+export const PANEL_HOST_COMMAND_EVENT = "assembly-subtitle-panel-command";
+
+export type PanelHostCommandDetail =
+  | { type: "click-button"; label: string }
+  | { type: "start" }
+  | { type: "stop" }
+  | { type: "save" }
+  | { type: "clear" };
+
 export interface InPagePanelState {
   visible: boolean;
   collapsed: boolean;

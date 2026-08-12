@@ -1,4 +1,9 @@
-/* global document, window */
+/* global document */
+/**
+ * production closed Shadow DOM 과 호환되는 확장 스모크.
+ * 패널 상태는 host light DOM data-* 미러로 읽고,
+ * 버튼은 assembly-subtitle-panel-command CustomEvent 로 전달한다.
+ */
 
 import { mkdtemp, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -18,6 +23,7 @@ const userDataDir = await mkdtemp(join(tmpdir(), "assembly-cc-extension-"));
 const playerUrl =
   "https://assembly.webcast.go.kr/main/player.asp?xcode=10&xcgcd=DCM000010224330202";
 const panelHostId = "assembly-subtitle-panel-host";
+const panelCommandEvent = "assembly-subtitle-panel-command";
 
 const fixtureHtml = String.raw`<!doctype html>
 <html lang="ko">
@@ -104,7 +110,26 @@ async function waitForPanelText(page, text, timeout = 10_000) {
   await page.waitForFunction(
     ({ hostId, expectedText }) => {
       const host = document.getElementById(hostId);
-      return Boolean(host?.shadowRoot?.textContent?.includes(expectedText));
+      if (!host) {
+        return false;
+      }
+      const lightMirror = [
+        host.dataset.assemblyStatusLabel,
+        host.dataset.assemblyNotice,
+        host.dataset.assemblyPreview,
+        host.dataset.assemblyLiveText,
+        host.dataset.assemblyStatus,
+        host.dataset.assemblyCaptureMode,
+      ]
+        .filter(Boolean)
+        .join("\n");
+      const shadowText = host.shadowRoot?.textContent ?? "";
+      const surface = `${lightMirror}\n${shadowText}`;
+      // 앱 이름 등은 light mirror 에 없을 수 있어 호스트 존재 + 일부 텍스트는 status 로 판별
+      if (expectedText === "국회 자막 도우미") {
+        return host.dataset.assemblyPanel === "1" || Boolean(shadowText.includes(expectedText));
+      }
+      return surface.includes(expectedText);
     },
     { hostId: panelHostId, expectedText: text },
     { timeout },
@@ -113,26 +138,23 @@ async function waitForPanelText(page, text, timeout = 10_000) {
 
 async function clickPanelButton(page, label) {
   const clicked = await page.evaluate(
-    ({ hostId, buttonLabel }) => {
+    ({ hostId, buttonLabel, commandEvent }) => {
       const host = document.getElementById(hostId);
-      const buttons = Array.from(host?.shadowRoot?.querySelectorAll("button") ?? []);
-      const button = buttons.find((candidate) => {
-        const style = window.getComputedStyle(candidate);
-        return (
-          candidate.textContent?.includes(buttonLabel) &&
-          !candidate.disabled &&
-          !candidate.hidden &&
-          style.display !== "none" &&
-          style.visibility !== "hidden"
-        );
-      });
-      button?.click();
-      return Boolean(button);
+      if (!host) {
+        return false;
+      }
+      // closed shadow: content script 가 수신하는 명령 이벤트
+      host.dispatchEvent(
+        new CustomEvent(commandEvent, {
+          detail: { type: "click-button", label: buttonLabel },
+        }),
+      );
+      return true;
     },
-    { hostId: panelHostId, buttonLabel: label },
+    { hostId: panelHostId, buttonLabel: label, commandEvent: panelCommandEvent },
   );
   if (!clicked) {
-    throw new Error(`Panel button not found or not clickable: ${label}`);
+    throw new Error(`Panel host not found for command: ${label}`);
   }
 }
 
@@ -148,3 +170,4 @@ async function resolveExtensionId(browserContext) {
   }
   return extensionId;
 }
+

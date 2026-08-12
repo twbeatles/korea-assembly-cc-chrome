@@ -534,6 +534,28 @@ When editing this repository, align with the newly implemented behavior below.
 - Shared speaker label helper: `src/core/exporters/speaker-label.ts`.
 - Options tab UI groups: 수집 → 화면·발언자 → 복사·파일 이름 → 내보내기 내용 → 고급 → 프리셋. MD/CSV omit speaker column when export speaker option is off.
 
+## Sync Delta (2026-08-12)
+
+When editing this repository, align with the audit follow-up behavior below. Details: `PROJECT_AUDIT.md` (5차 + 구현 반영).
+
+- Capture diagnostics include `segmentRollover` (`inFlight`, `queueSize`, `queueMax`, `droppedTotal`). Options 수집 진단 UI exposes these fields.
+- Segment rollover event queue max default is **128**. Starting a rollover must **not** clear the pending queue (events flush after persist).
+- `listQueuedExitPersistRecords` uses `EXIT_PERSIST_INDEX_STORAGE_KEY` and keyed reads; full `get(null)` only for index rebuild/migration.
+- Background `PERSIST_SESSION_RECORD` / `QUEUE_EXIT_PERSIST_RECORD` reject invalid payloads via `isValidPersistSessionRecordPayload` (id, status, updatedAt, entries array, max entries).
+- `normalizeSessionRecord` uses `sanitizeSessionId` + `sanitizeQualityStats` (not shallow qualityStats copy).
+- Settings sanitize accepts alias `exportSpeakerEnabled` → `txtExportSpeakerEnabled` when the canonical key is absent.
+- Prepared snapshots still drop `pendingPreviews` without materializing them (`session-lifecycle` tests cover committed + pending mix).
+- Live mid-stream smoke checklist: `LIVE_CAPTURE_SMOKE_CHECKLIST.md`.
+
+## Sync Delta (2026-08-12 · non-functional)
+
+- In-page panel production shadow remains **closed**. E2E uses host light DOM `data-assembly-*` mirrors and `assembly-subtitle-panel-command` CustomEvent (`PANEL_HOST_COMMAND_EVENT`).
+- Tab hidden: polling/observer interval uses `resolvePollingIntervalMs` (×4 when `document.visibilityState === "hidden"`).
+- History destructive confirms: accessible dialog in production; Vitest keeps `window.confirm` for spies.
+- CI: `.github/workflows/ci.yml` runs `npm run verify`.
+- Threat model: `SECURITY.md`. `sharp` is a **devDependency** only.
+- Coverage thresholds include `src/core/subtitle-pipeline/**` and `extension-context.ts`.
+
 <!-- SPECKIT-AGENT-GUIDE:START -->
 
 ## Spec Kit / Spec-Driven Development (AI 에이전트 필독)

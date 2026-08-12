@@ -16,6 +16,8 @@ let memorySettings: ExtensionSettings = { ...DEFAULT_EXTENSION_SETTINGS };
 
 type StoredSettings = Partial<ExtensionSettings> & {
   noiseMinLength?: number;
+  /** 레거시/별칭: txtExportSpeakerEnabled 와 동일 의미 */
+  exportSpeakerEnabled?: boolean;
 };
 
 function sanitizePresetList(value: unknown): ExtensionSettings["presets"] {
@@ -169,7 +171,9 @@ function sanitizeSettings(settings: StoredSettings): ExtensionSettings {
     txtExportSpeakerEnabled:
       typeof settings.txtExportSpeakerEnabled === "boolean"
         ? settings.txtExportSpeakerEnabled
-        : DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
+        : typeof settings.exportSpeakerEnabled === "boolean"
+          ? settings.exportSpeakerEnabled
+          : DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
     txtExportEntryNotesEnabled:
       typeof settings.txtExportEntryNotesEnabled === "boolean"
         ? settings.txtExportEntryNotesEnabled

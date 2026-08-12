@@ -7,6 +7,7 @@ import {
   getUtf8ContentByteLength,
   handleBackgroundCommand,
   isBackgroundCommandMessage,
+  isValidPersistSessionRecordPayload,
   type BackgroundCommandDependencies,
 } from "../src/background/service-worker-commands";
 import type { BackgroundCommandMessage } from "../src/shared/message-types";
@@ -75,6 +76,39 @@ describe("service worker command helpers", () => {
     expect(isBackgroundCommandMessage({ type: "OPEN_HISTORY_PAGE" })).toBe(true);
     expect(isBackgroundCommandMessage({ type: "UNKNOWN" })).toBe(false);
     expect(isBackgroundCommandMessage(null)).toBe(false);
+  });
+
+  it("validates persist session record payloads at the SW boundary", () => {
+    expect(isValidPersistSessionRecordPayload(buildSession("stopped"))).toBe(true);
+    expect(isValidPersistSessionRecordPayload(null)).toBe(false);
+    expect(isValidPersistSessionRecordPayload({ id: "", status: "stopped", entries: [] })).toBe(
+      false,
+    );
+    expect(
+      isValidPersistSessionRecordPayload({
+        id: "x",
+        status: "stopped",
+        updatedAt: "2026-03-10T09:00:00.000Z",
+        entries: "nope",
+      }),
+    ).toBe(false);
+  });
+
+  it("rejects malformed PERSIST_SESSION_RECORD messages", async () => {
+    const dependencies = createDependencies();
+    const response = await handleBackgroundCommand(
+      {
+        type: "PERSIST_SESSION_RECORD",
+        record: { id: "" } as SessionRecord,
+      },
+      { id: "extension-id" } as chrome.runtime.MessageSender,
+      dependencies,
+    );
+    expect(response).toEqual({
+      ok: false,
+      error: "세션 저장 페이로드가 올바르지 않습니다.",
+    });
+    expect(dependencies.persistSessionRecord).not.toHaveBeenCalled();
   });
 
   it("injects content scripts only after an initial readiness miss", async () => {

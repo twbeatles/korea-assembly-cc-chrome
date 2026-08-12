@@ -46,6 +46,7 @@ export function buildCaptureDiagnostics(input: {
   fallbackCommitState?: FallbackCommitState;
   segment?: CaptureDiagnostics["segment"];
   exportEstimates?: CaptureDiagnostics["exportEstimates"];
+  segmentRollover?: CaptureDiagnostics["segmentRollover"];
 }): CaptureDiagnostics {
   const health = resolveCaptureHealth({
     persistabilityState: input.persistabilityState ?? "idle",
@@ -86,6 +87,13 @@ export function buildCaptureDiagnostics(input: {
       ? {
           exportEstimates: {
             ...input.exportEstimates,
+          },
+        }
+      : {}),
+    ...(input.segmentRollover
+      ? {
+          segmentRollover: {
+            ...input.segmentRollover,
           },
         }
       : {}),

@@ -17,6 +17,7 @@ import type {
   SessionLibraryPreview,
   SessionLongTaskProgress,
 } from "../../storage/types";
+import { confirmDestructiveAction } from "./confirm-dialog";
 
 export const EXPORT_FORMATS: ExportFormat[] = [
   "txt",
@@ -169,26 +170,21 @@ export function estimateSessionExportBytes(
   );
 }
 
-export function confirmDeleteSession(target: SessionRecord): boolean {
-  if (typeof window === "undefined" || typeof window.confirm !== "function") {
-    return true;
-  }
-
+export async function confirmDeleteSession(target: SessionRecord): Promise<boolean> {
   const title = target.committeeName || target.title;
-  return window.confirm(`선택한 기록을 삭제할까요?\n${title}`);
+  return confirmDestructiveAction(`선택한 기록을 삭제할까요?\n${title}`, {
+    title: "기록 삭제",
+    confirmLabel: "삭제",
+  });
 }
 
-export function confirmDeleteSessions(
+export async function confirmDeleteSessions(
   targets: SessionRecord[],
   scopeLabel: string,
   extraNotice?: string,
-): boolean {
+): Promise<boolean> {
   if (!targets.length) {
     return false;
-  }
-
-  if (typeof window === "undefined" || typeof window.confirm !== "function") {
-    return true;
   }
 
   const previewTitles = targets
@@ -197,24 +193,24 @@ export function confirmDeleteSessions(
     .join("\n");
   const moreLabel = targets.length > 3 ? `\n외 ${targets.length - 3}건` : "";
 
-  return window.confirm(
+  return confirmDestructiveAction(
     `${scopeLabel} 기록 ${targets.length}건을 삭제할까요?\n\n${previewTitles}${moreLabel}${extraNotice ? `\n\n${extraNotice}` : ""}`,
+    {
+      title: "기록 삭제",
+      confirmLabel: "삭제",
+    },
   );
 }
 
-export function confirmDeleteSessionLibrary(
+export async function confirmDeleteSessionLibrary(
   overview: {
     totalCount: number;
     previewSessions: SessionLibraryPreview[];
   },
   extraNotice?: string,
-): boolean {
+): Promise<boolean> {
   if (!overview.totalCount) {
     return false;
-  }
-
-  if (typeof window === "undefined" || typeof window.confirm !== "function") {
-    return true;
   }
 
   const previewTitles = overview.previewSessions
@@ -225,17 +221,21 @@ export function confirmDeleteSessionLibrary(
       ? `\n외 ${overview.totalCount - overview.previewSessions.length}건`
       : "";
 
-  return window.confirm(
+  return confirmDestructiveAction(
     `전체 기록 ${overview.totalCount}건을 삭제할까요?\n\n${previewTitles}${moreLabel}${extraNotice ? `\n\n${extraNotice}` : ""}`,
+    {
+      title: "전체 기록 삭제",
+      confirmLabel: "전체 삭제",
+    },
   );
 }
 
-export function confirmDiscardUnsavedNote(actionLabel: string): boolean {
-  if (typeof window === "undefined" || typeof window.confirm !== "function") {
-    return true;
-  }
-
-  return window.confirm(
+export async function confirmDiscardUnsavedNote(actionLabel: string): Promise<boolean> {
+  return confirmDestructiveAction(
     `저장하지 않은 메모가 있습니다. ${actionLabel} 전에 변경 내용을 버릴까요?`,
+    {
+      title: "저장하지 않은 메모",
+      confirmLabel: "버리고 계속",
+    },
   );
 }

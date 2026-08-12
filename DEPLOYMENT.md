@@ -53,9 +53,11 @@ npm run verify:e2e
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
 - `npm run typecheck` 는 TypeScript **7** 네이티브 CLI로 `tsconfig.json` / `tsconfig.node.json` 을 `--noEmit` 검사합니다 (`scripts/run-tsc.mjs`). ESLint용 `typescript@6` 과 dual-track 입니다. 비교가 필요하면 `npm run typecheck:ts6` 을 사용합니다.
 - TypeScript 버전 전환은 **개발/CI typecheck 툴체인** 변경이며, 확장 런타임 emit은 Vite/esbuild 경로를 유지합니다. 기존 설치본·저장 데이터·export 포맷 호환성 분석은 `TYPESCRIPT_7_MIGRATION_REVIEW.md` §13 을 참고하세요.
-- `npm run verify:e2e` 는 build 후 Playwright로 built extension smoke test를 실행합니다.
+- `npm run verify:e2e` 는 build 후 Playwright로 확장 **페이지**(history/options/sidepanel) smoke 를 실행합니다.
+- `npm run test:e2e:extension` 는 build 후 **의사중계 fixture + in-page 패널** smoke 를 실행합니다. production 패널은 closed Shadow DOM 이며, 스모크는 host light DOM `data-assembly-*` 미러와 `assembly-subtitle-panel-command` 이벤트를 사용합니다 (`SECURITY.md` §5).
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
-- 전체 release gate 는 `npm run verify` 로 실행할 수 있으며, 로컬 Chrome 확장 smoke 는 `npm run test:e2e:extension` 으로 별도 실행합니다.
+- 전체 release gate 는 `npm run verify` 로 실행할 수 있습니다.
+- GitHub Actions (`.github/workflows/ci.yml`)가 푸시/PR 시 `npm run verify` 를 자동 실행합니다.
 
 추가 확인 권장:
 
@@ -286,6 +288,16 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.13-c
 - 릴리스 태그나 커밋 메시지에 manifest 버전을 같이 남김
 
 ## 11. 릴리스 노트
+
+### 1.0.13 후속 (2026-08-12 · 감사 반영, 버전 번호)
+
+기능·비기능 감사 후속 (코드 + 문서, store 버전 번호 `1.0.13`):
+
+- 롤오버 큐 128·진단 `segmentRollover`, exit-persist index, SW persist 스키마 검증
+- normalize id/qualityStats, pendingPreviews 회귀 테스트
+- closed-shadow 호환 확장 smoke, History accessible confirm, 탭 hidden 폴링 백오프
+- CI workflow, `SECURITY.md`, 감사 문서 5차·비기능 축
+- `sharp` devDependency 이동
 
 ### 1.0.13 (2026-08-10)
 
