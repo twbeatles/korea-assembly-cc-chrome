@@ -42,8 +42,14 @@ jobs:
       - name: Typecheck (TypeScript 7)
         run: npm run typecheck
 
-      - name: Unit tests
-        run: npm run test
+      - name: Unit tests with coverage
+        run: npm run test:coverage
+
+      - name: Typecheck (TypeScript 6 parity)
+        run: npm run typecheck:ts6
+
+      - name: Production dependency audit
+        run: npm audit --omit=dev --audit-level=high
 
       - name: Production build
         run: npm run build

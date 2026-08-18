@@ -11,6 +11,17 @@ const PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY = "assembly-subtitle-persist-replay
 
 const memoryQueuedRecords = new Map<string, QueuedExitPersistRecord>();
 let memoryDiagnostics = createEmptyPersistReplayDiagnostics();
+/** 인덱스 read-modify-write 를 탭/호출 간에 직렬화한다. */
+let exitPersistIndexMutationQueue: Promise<unknown> = Promise.resolve();
+
+function enqueueExitPersistIndexMutation<T>(task: () => Promise<T>): Promise<T> {
+  const next = exitPersistIndexMutationQueue.then(task, task);
+  exitPersistIndexMutationQueue = next.then(
+    () => undefined,
+    () => undefined,
+  );
+  return next;
+}
 
 function hasChromeStorageLocal(): boolean {
   return typeof chrome !== "undefined" && Boolean(chrome.storage?.local);
@@ -45,19 +56,58 @@ async function writeExitPersistIndex(sessionIds: string[]): Promise<void> {
 }
 
 async function addSessionIdToExitPersistIndex(sessionId: string): Promise<void> {
-  const current = await readExitPersistIndex();
-  if (current.includes(sessionId)) {
-    return;
-  }
-  await writeExitPersistIndex([...current, sessionId]);
+  return enqueueExitPersistIndexMutation(async () => {
+    const current = await readExitPersistIndex();
+    if (current.includes(sessionId)) {
+      return;
+    }
+    await writeExitPersistIndex([...current, sessionId]);
+  });
 }
 
 async function removeSessionIdFromExitPersistIndex(sessionId: string): Promise<void> {
-  const current = await readExitPersistIndex();
-  if (!current.includes(sessionId)) {
-    return;
+  return enqueueExitPersistIndexMutation(async () => {
+    const current = await readExitPersistIndex();
+    if (!current.includes(sessionId)) {
+      return;
+    }
+    await writeExitPersistIndex(current.filter((id) => id !== sessionId));
+  });
+}
+
+function collectExitPersistSessionIdsFromSnapshot(snapshot: Record<string, unknown>): string[] {
+  return [
+    ...new Set(
+      Object.keys(snapshot)
+        .filter(
+          (key) =>
+            key.startsWith(EXIT_PERSIST_RECORD_PREFIX) && key !== EXIT_PERSIST_INDEX_STORAGE_KEY,
+        )
+        .map((key) => key.slice(EXIT_PERSIST_RECORD_PREFIX.length))
+        .filter((id) => id.length > 0),
+    ),
+  ];
+}
+
+/**
+ * storage 에 레코드가 있으나 인덱스에서 빠진 고아 id 를 병합한다.
+ * startup replay 직전에 1회 호출한다.
+ */
+export async function recoverOrphanedExitPersistRecords(): Promise<string[]> {
+  if (!hasChromeStorageLocal()) {
+    return [...memoryQueuedRecords.keys()];
   }
-  await writeExitPersistIndex(current.filter((id) => id !== sessionId));
+
+  return enqueueExitPersistIndexMutation(async () => {
+    const snapshot = await chrome.storage.local.get(null);
+    const scannedIds = collectExitPersistSessionIdsFromSnapshot(snapshot);
+    const current = sanitizeExitPersistIndex(snapshot[EXIT_PERSIST_INDEX_STORAGE_KEY]);
+    const merged = sanitizeExitPersistIndex([...current, ...scannedIds]);
+    if (merged.length !== current.length || merged.some((id) => !current.includes(id))) {
+      await writeExitPersistIndex(merged);
+    }
+    return merged;
+  });
 }
 
 /**
@@ -69,14 +119,7 @@ async function rebuildExitPersistIndexFromStorage(): Promise<string[]> {
     return [];
   }
   const snapshot = await chrome.storage.local.get(null);
-  const sessionIds = Object.keys(snapshot)
-    .filter(
-      (key) =>
-        key.startsWith(EXIT_PERSIST_RECORD_PREFIX) && key !== EXIT_PERSIST_INDEX_STORAGE_KEY,
-    )
-    .map((key) => key.slice(EXIT_PERSIST_RECORD_PREFIX.length))
-    .filter((id) => id.length > 0);
-  const uniqueIds = [...new Set(sessionIds)];
+  const uniqueIds = collectExitPersistSessionIdsFromSnapshot(snapshot);
   await writeExitPersistIndex(uniqueIds);
   return uniqueIds;
 }
@@ -348,7 +391,7 @@ export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistR
     const liveIds = new Set(storageRecords.map((record) => record.sessionId));
     const nextIndex = index.filter((id) => liveIds.has(id));
     if (nextIndex.length !== index.length) {
-      await writeExitPersistIndex(nextIndex).catch(() => {
+      await enqueueExitPersistIndexMutation(() => writeExitPersistIndex(nextIndex)).catch(() => {
         // best-effort
       });
     }
@@ -375,7 +418,7 @@ export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistR
     }
   }
   if (indexNeedsUpdate) {
-    await writeExitPersistIndex([...indexSet]).catch(() => {
+    await enqueueExitPersistIndexMutation(() => writeExitPersistIndex([...indexSet])).catch(() => {
       // best-effort
     });
   }
@@ -465,6 +508,7 @@ export async function writePersistReplayDiagnostics(
 export async function resetPersistRecoveryStateForTests(): Promise<void> {
   memoryQueuedRecords.clear();
   memoryDiagnostics = createEmptyPersistReplayDiagnostics();
+  exitPersistIndexMutationQueue = Promise.resolve();
   if (!hasChromeStorageLocal()) {
     return;
   }

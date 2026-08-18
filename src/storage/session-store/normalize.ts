@@ -106,9 +106,15 @@ export function sanitizeQualityStats(
   };
 }
 
+/** 세션 id 최대 길이. persist/저장 키 비대화 방지. */
+export const SESSION_ID_MAX_LENGTH = 128;
+
 /** 세션 id 정규화. 비어 있으면 빈 문자열. */
 export function sanitizeSessionId(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
+  if (typeof value !== "string") {
+    return "";
+  }
+  return value.trim().slice(0, SESSION_ID_MAX_LENGTH);
 }
 
 export function normalizeEntries(entries: SubtitleEntry[]): SubtitleEntry[] {

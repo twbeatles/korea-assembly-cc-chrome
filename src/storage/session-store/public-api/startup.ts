@@ -35,6 +35,7 @@ import {
   clearQueuedExitPersistRecord,
   clearQueuedExitPersistRecordsUpTo,
   listQueuedExitPersistRecords,
+  recoverOrphanedExitPersistRecords,
   resetPersistRecoveryStateForTests,
 } from "../../persist-recovery";
 import {
@@ -123,6 +124,7 @@ import {
   listIndexedDbLineageSessions,
   listAllIndexedDbSessions,
   listIndexedDbSessionIds,
+  listIndexedDbSessionsByStatus,
 } from "../idb/records";
 import {
   withRequest,
@@ -159,6 +161,9 @@ import { loadSession } from "../load-session";
 import { saveSession } from "./mutations";
 
 export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySummary> {
+  await recoverOrphanedExitPersistRecords().catch(() => {
+    // 고아 복구 실패해도 기존 인덱스 기준으로 replay 를 시도한다.
+  });
   const queuedRecords = (await listQueuedExitPersistRecords()).sort((left, right) =>
     left.record.updatedAt.localeCompare(right.record.updatedAt),
   );
@@ -197,7 +202,7 @@ export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySum
 
 export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSummary> {
   const [indexedDbRecords, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () => listAllIndexedDbSessions()),
+    tryIndexedDb(async () => listIndexedDbSessionsByStatus("running")),
     listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
 

@@ -163,6 +163,10 @@ async function writeSessionRecordUnlocked(
     throw createExtensionContextInvalidatedError();
   }
 
+  if (!record.id) {
+    throw new Error("세션 id가 올바르지 않습니다.");
+  }
+
   const allowFallbackOnIndexedDbError = options.allowFallbackOnIndexedDbError !== false;
   const notifyRevision = options.notifyRevision !== false;
   const indexedDbResult = await tryIndexedDb(async () => {

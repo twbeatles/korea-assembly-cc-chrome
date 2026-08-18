@@ -10,7 +10,7 @@ export function enqueueSessionWrite<T>(
   task: () => Promise<T>,
 ): Promise<T> {
   if (!sessionId) {
-    return task();
+    return Promise.reject(new Error("세션 id가 올바르지 않습니다."));
   }
 
   const previous = queues.get(sessionId) ?? Promise.resolve();

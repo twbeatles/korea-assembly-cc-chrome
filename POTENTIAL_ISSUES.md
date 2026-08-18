@@ -2,12 +2,13 @@
 
 이 문서는 현재 저장소(`Chrome Extension MV3 + TypeScript + React + Vite`) 구현을 `CLAUDE.md` / `README.md` / 코드 본체와 대조하면서 식별한 **기능적으로 문제가 될 수 있는 부분**과 **추가 / 강화가 필요한 후보**를 정리한 검토 노트입니다. 최초 작성 기준일은 `2026-05-07` 이며, `2026-06-11` 코드 분할 리팩토링 이후 public facade 경로와 implementation 경로를 함께 봅니다.
 
-> **최신 진행 상태 (2026-08-12 · v1.0.13 + 감사 후속)**
+> **최신 진행 상태 (2026-08-18 · v1.0.13 + 6차/비기능 2차 구현)**
 >
-> - **권위 있는 기능 감사:** `PROJECT_AUDIT.md` (5차 + 구현 반영).
-> - **권위 있는 비기능 감사:** `PROJECT_AUDIT_NONFUNCTIONAL.md` (보안·a11y·CI·성능 등 + 구현 반영).
-> - **위협 모델:** `SECURITY.md`. 실중계 체크리스트: `LIVE_CAPTURE_SMOKE_CHECKLIST.md`.
+> - **권위 있는 기능 감사:** `PROJECT_AUDIT.md` (6차 + 구현 반영).
+> - **권위 있는 비기능 감사:** `PROJECT_AUDIT_NONFUNCTIONAL.md` (2차 + 구현 반영).
+> - **위협 모델:** `SECURITY.md`. 실중계: `LIVE_CAPTURE_SMOKE_CHECKLIST.md`. a11y: `A11Y_CHECKLIST.md`.
 > - 본 파일 본문의 P0/P1 “미해결” 서술은 **역사 기록**이다. 현재 코드와 어긋날 수 있으니 신규 작업 우선순위로 쓰지 말 것.
+> - 2026-08-18: persist 인덱스 직렬화·고아 복구, 롤오버 2048, persist 8 MiB, e2e 미러 게이트, accessible confirm, CI coverage/audit.
 > - 2026-08-12: 롤오버 진단·persist index·SW 스키마·closed-shadow smoke·CI·History dialog·hidden 폴링 등 감사 권고 반영.
 > - 2026-07-28 SOLID 분할 및 1–3차 안정화는 유지 (lifecycle lock, write 큐, IDB TTL, CSV BOM 등).
 > - 사용자용 설치·사용법은 `README.md` 를 본다.

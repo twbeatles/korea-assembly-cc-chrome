@@ -1,8 +1,10 @@
 /**
  * 롤오버 persist 지연 중 이벤트를 버퍼링하는 상한.
- * 초과 시 가장 오래된 이벤트부터 버린다. (감사 M1: 64 → 128로 상향해 장시간 persist 중 드롭 여유 확보)
+ * 진단/경고 기준은 128, 실제 폐기는 안전 상한에서만 한다.
  */
 export const DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX = 128;
+/** persist 중 드롭을 줄이기 위한 안전 상한. 이 값을 넘을 때만 가장 오래된 이벤트를 버린다. */
+export const SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX = 2048;
 
 export interface SegmentEventEnqueueResult<T> {
   queue: T[];

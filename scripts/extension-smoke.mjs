@@ -85,6 +85,12 @@ try {
 
   await page.goto(playerUrl, { waitUntil: "domcontentloaded" });
   await page.locator(`#${panelHostId}`).waitFor({ state: "attached", timeout: 10_000 });
+  await page.evaluate((hostId) => {
+    const host = document.getElementById(hostId);
+    if (host) {
+      host.dataset.assemblyE2e = "1";
+    }
+  }, panelHostId);
   await waitForPanelText(page, "국회 자막 도우미");
   await waitForPanelText(page, "수집 중");
   await waitForPanelText(page, "안정 자막 첫 줄입니다.");
@@ -143,6 +149,7 @@ async function clickPanelButton(page, label) {
       if (!host) {
         return false;
       }
+      host.dataset.assemblyE2e = "1";
       // closed shadow: content script 가 수신하는 명령 이벤트
       host.dispatchEvent(
         new CustomEvent(commandEvent, {

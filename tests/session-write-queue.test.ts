@@ -25,6 +25,13 @@ describe("session write queue", () => {
     expect(order).toEqual([1, 2, 3]);
   });
 
+  it("rejects empty session ids instead of skipping the queue", async () => {
+    resetSessionWriteQueuesForTests();
+    await expect(enqueueSessionWrite("", async () => "nope")).rejects.toThrow(
+      "세션 id가 올바르지 않습니다.",
+    );
+  });
+
   it("allows different session ids to proceed independently", async () => {
     resetSessionWriteQueuesForTests();
     const order: string[] = [];

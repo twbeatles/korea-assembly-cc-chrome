@@ -9,6 +9,7 @@ import {
   queueExitPersistRecord,
   recordPageExitPersistAttempt,
   readPersistReplayDiagnostics,
+  recoverOrphanedExitPersistRecords,
   resetPersistRecoveryStateForTests,
 } from "../src/storage/persist-recovery";
 
@@ -185,6 +186,44 @@ describe("persist recovery", () => {
     expect(await readPersistReplayDiagnostics()).toEqual(
       expect.objectContaining(createEmptyPersistReplayDiagnostics()),
     );
+  });
+
+  it("keeps both session ids when two queues write the index concurrently", async () => {
+    await Promise.all([
+      queueExitPersistRecord(buildSession("session_race_a", "2026-03-10T09:00:02.000Z")),
+      queueExitPersistRecord(buildSession("session_race_b", "2026-03-10T09:00:03.000Z")),
+    ]);
+
+    const listed = await listQueuedExitPersistRecords();
+    expect(listed.map((record) => record.sessionId).sort()).toEqual([
+      "session_race_a",
+      "session_race_b",
+    ]);
+  });
+
+  it("recovers an orphaned storage record that is missing from the index", async () => {
+    await queueExitPersistRecord(buildSession("session_indexed_live", "2026-03-10T09:00:02.000Z"));
+
+    const orphan = buildSession("session_orphan", "2026-03-10T09:00:04.000Z", "orphan");
+    await chrome.storage.local.set({
+      "assembly-subtitle-exit-persist:session_orphan": {
+        sessionId: "session_orphan",
+        queuedAt: "2026-03-10T09:00:04.000Z",
+        record: orphan,
+      },
+    });
+
+    const beforeRecover = await listQueuedExitPersistRecords();
+    expect(beforeRecover.map((record) => record.sessionId)).not.toContain("session_orphan");
+
+    const recoveredIds = await recoverOrphanedExitPersistRecords();
+    expect(recoveredIds.sort()).toEqual(["session_indexed_live", "session_orphan"]);
+
+    const afterRecover = await listQueuedExitPersistRecords();
+    expect(afterRecover.map((record) => record.sessionId).sort()).toEqual([
+      "session_indexed_live",
+      "session_orphan",
+    ]);
   });
 
   it("records the last page-exit persist attempt and error detail", async () => {

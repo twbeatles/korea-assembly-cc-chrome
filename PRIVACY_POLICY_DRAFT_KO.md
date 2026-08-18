@@ -82,10 +82,12 @@
 확장프로그램은 아래 목적을 위해 최소한의 권한만 사용합니다.
 
 - `storage`: 설정, 저장된 자막 세션 기록, 저장 복구용 임시 대기 기록, 내부 진단/동기화 상태 보관
+- `unlimitedStorage`: 긴 회의의 종료 직전 복구 큐가 브라우저 기본 저장 한도(약 10MB)에 잘리지 않도록 로컬 한도를 완화. 외부 전송에는 사용하지 않음
 - `downloads`: 사용자가 요청한 자막 파일 저장
 - `activeTab`: 현재 활성 탭 상태 확인
 - `scripting`: 기존 탭에 확장 기능 재연결 또는 재주입
 - `offscreen`: 파일 내보내기용 Blob 처리
+- `sidePanel`: 브라우저 측면의 실험용 보조 패널(팝업과 같은 로컬 상태). 추가 사이트 접근·외부 전송 없음
 - `https://assembly.webcast.go.kr/*`, `https://webcast.assembly.go.kr/*`: 해당 호스트 안에서도 `main` / `main/` 홈과 `main/player*` 플레이어에서만 자막 표시 및 수집
 
 ### 8. 이용자 권리

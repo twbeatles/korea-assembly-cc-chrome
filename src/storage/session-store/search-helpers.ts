@@ -52,6 +52,35 @@ export function buildSearchHits(session: SessionRecord, token: string): SessionS
   return hits;
 }
 
+/** tag/category/starred 만 검사. entry hydrate 없이 후보를 줄일 때 사용. */
+export function sessionMatchesMetadataFilters(
+  session: Pick<SessionRecord, "starred" | "tags" | "category">,
+  options: SessionSearchOptions,
+): boolean {
+  if (options.starredOnly && !session.starred) {
+    return false;
+  }
+
+  const tag = normalizeSearchToken(options.tag);
+  if (tag && !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)) {
+    return false;
+  }
+
+  const category = normalizeSearchToken(options.category);
+  if (category && normalizeSearchToken(session.category) !== category) {
+    return false;
+  }
+
+  return true;
+}
+
+export function searchRequiresEntryHydration(
+  options: Pick<SessionSearchOptions, "highlightedOnly">,
+  token: string,
+): boolean {
+  return Boolean(token) || Boolean(options.highlightedOnly);
+}
+
 export function sessionMatchesSearchFilters(
   session: SessionRecord,
   options: SessionSearchOptions,

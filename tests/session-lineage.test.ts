@@ -135,6 +135,54 @@ describe("session lineage helpers", () => {
     expect(merged.endedAt).toBe("2026-03-10T09:12:00.000Z");
     expect(merged.starred).toBe(true);
     expect(merged.entries.map((entry) => entry.id)).toEqual(["entry_1", "entry_2"]);
+    expect(merged.note).toBe("segment 1");
+  });
+
+  it("keeps a shared lineage note when every segment has the same memo", () => {
+    const merged = mergeSessionSegments([
+      {
+        id: "segment_2",
+        version: "3",
+        title: "국회 본회의",
+        committeeName: "정무위원회",
+        sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+        startedAt: "2026-03-10T09:10:00.000Z",
+        endedAt: "2026-03-10T09:12:00.000Z",
+        createdAt: "2026-03-10T09:10:00.000Z",
+        updatedAt: "2026-03-10T09:12:00.000Z",
+        subtitleCount: 0,
+        charCount: 0,
+        status: "saved",
+        starred: false,
+        pinnedAt: null,
+        note: "공유 메모",
+        lineageId: "lineage_note",
+        segmentNumber: 2,
+        entries: [],
+      },
+      {
+        id: "segment_1",
+        version: "3",
+        title: "국회 본회의",
+        committeeName: "정무위원회",
+        sourceUrl: "https://assembly.webcast.go.kr/main/player.asp",
+        startedAt: "2026-03-10T09:00:00.000Z",
+        endedAt: "2026-03-10T09:05:00.000Z",
+        createdAt: "2026-03-10T09:00:00.000Z",
+        updatedAt: "2026-03-10T09:05:00.000Z",
+        subtitleCount: 0,
+        charCount: 0,
+        status: "saved",
+        starred: false,
+        pinnedAt: null,
+        note: "공유 메모",
+        lineageId: "lineage_note",
+        segmentNumber: 1,
+        entries: [],
+      },
+    ]);
+
+    expect(merged.note).toBe("공유 메모");
   });
 
   it("creates the next running state with incremented segment number", () => {

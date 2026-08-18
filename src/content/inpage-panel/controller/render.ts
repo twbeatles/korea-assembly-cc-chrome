@@ -11,11 +11,15 @@ import {
 } from "../formatters";
 import { isScrollNearBottom, scrollToBottom } from "../scroll";
 import {
+  applyPanelHostCommandDetail,
+  applyPanelHostStateMirror,
+  isPanelHostCommandEnabled,
+} from "../panel-host-command";
+import {
   IN_PAGE_PANEL_HOST_ID,
   PANEL_HOST_COMMAND_EVENT,
   type InPagePanelActions,
   type InPagePanelController,
-  type PanelHostCommandDetail,
 } from "../types";
 
 function buildPreviewSignature(previewText: string): string {
@@ -104,34 +108,14 @@ export function createInPagePanel(
   };
 
   const handleHostCommand = (event: Event): void => {
-    if (!(event instanceof CustomEvent)) {
+    if (!isPanelHostCommandEnabled(host)) {
       return;
     }
-    const detail = event.detail as PanelHostCommandDetail | undefined;
-    if (!detail || typeof detail !== "object" || !("type" in detail)) {
-      return;
-    }
-    switch (detail.type) {
-      case "click-button":
-        if (typeof detail.label === "string" && detail.label) {
-          clickPanelButtonByLabel(detail.label);
-        }
-        break;
-      case "start":
-        actions.onStartCapture();
-        break;
-      case "stop":
-        actions.onStopCapture();
-        break;
-      case "save":
-        actions.onSaveSession();
-        break;
-      case "clear":
-        actions.onClearSession();
-        break;
-      default:
-        break;
-    }
+    applyPanelHostCommandDetail(
+      (event as CustomEvent).detail,
+      actions,
+      clickPanelButtonByLabel,
+    );
   };
   host.addEventListener(PANEL_HOST_COMMAND_EVENT, handleHostCommand);
 
@@ -182,14 +166,6 @@ export function createInPagePanel(
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
 
-      // closed shadow 에서도 페이지 e2e 가 읽을 수 있도록 light DOM 에 상태 미러
-      host.dataset.assemblyStatus = nextState.status;
-      host.dataset.assemblyStatusLabel = nextState.statusLabel;
-      host.dataset.assemblyNotice = (nextState.notice || "").slice(0, 400);
-      host.dataset.assemblySubtitleCount = String(nextState.subtitleCount);
-      host.dataset.assemblyCaptureMode = nextState.captureMode;
-      host.dataset.assemblyCollapsed = nextState.collapsed ? "1" : "0";
-
       if (speakerHighlightToggle.checked !== nextState.showSpeakerHighlight) {
         speakerHighlightToggle.checked = nextState.showSpeakerHighlight;
       }
@@ -214,10 +190,16 @@ export function createInPagePanel(
         previewScroll.textContent = nextPreviewText;
         renderedPreviewSignature = nextPreviewSignature;
       }
-      host.dataset.assemblyPreview = nextPreviewText.slice(0, 400);
-      host.dataset.assemblyLiveText = (
-        nextState.liveRows.at(-1)?.text || ""
-      ).slice(0, 400);
+      applyPanelHostStateMirror(host, {
+        status: nextState.status,
+        statusLabel: nextState.statusLabel,
+        notice: nextState.notice || "",
+        subtitleCount: nextState.subtitleCount,
+        captureMode: nextState.captureMode,
+        collapsed: nextState.collapsed,
+        previewText: nextPreviewText,
+        liveText: nextState.liveRows.at(-1)?.text || "",
+      });
 
       const nextLiveRowsSignature = buildLiveRowsSignature(
         nextState.liveRows,

@@ -58,10 +58,10 @@ npm run verify:e2e
 - `npm run typecheck` 는 TypeScript **7** 네이티브 CLI로 `tsconfig.json` / `tsconfig.node.json` 을 `--noEmit` 검사합니다 (`scripts/run-tsc.mjs`). ESLint용 `typescript@6` 과 dual-track 입니다. 비교가 필요하면 `npm run typecheck:ts6` 을 사용합니다.
 - TypeScript 버전 전환은 **개발/CI typecheck 툴체인** 변경이며, 확장 런타임 emit은 Vite/esbuild 경로를 유지합니다. 기존 설치본·저장 데이터·export 포맷 호환성 분석은 `TYPESCRIPT_7_MIGRATION_REVIEW.md` §13 을 참고하세요.
 - `npm run verify:e2e` 는 build 후 Playwright로 확장 **페이지**(history/options/sidepanel) smoke 를 실행합니다.
-- `npm run test:e2e:extension` 는 build 후 **의사중계 fixture + in-page 패널** smoke 를 실행합니다. production 패널은 closed Shadow DOM 이며, 스모크는 host light DOM `data-assembly-*` 미러와 `assembly-subtitle-panel-command` 이벤트를 사용합니다 (`SECURITY.md` §5).
+- `npm run test:e2e:extension` 는 build 후 **의사중계 fixture + in-page 패널** smoke 를 실행합니다. production 패널은 closed Shadow DOM 이며, 스모크는 host 에 `data-assembly-e2e="1"` 을 켠 뒤 light DOM 미러와 `assembly-subtitle-panel-command` 를 사용합니다 (`SECURITY.md` §5).
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
 - 전체 release gate 는 `npm run verify` 로 실행할 수 있습니다.
-- GitHub Actions (`.github/workflows/ci.yml`)가 푸시/PR 시 inject 생성 → version/injected 검사 → lint → typecheck → test → build 를 단계별로 실행합니다 (`npm run verify` 와 동일 게이트).
+- GitHub Actions (`.github/workflows/ci.yml`)가 푸시/PR 시 inject 생성 → version/injected 검사 → lint → typecheck(TS7·TS6) → coverage → prod `npm audit` → build 를 실행합니다.
 
 추가 확인 권장:
 
@@ -292,6 +292,17 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.13-c
 - 릴리스 태그나 커밋 메시지에 manifest 버전을 같이 남김
 
 ## 11. 릴리스 노트
+
+### 1.0.13 후속 (2026-08-18 · 6차·비기능 감사 구현)
+
+기능 6차 + 비기능 2차 권고 반영 (스토어 버전 번호 `1.0.13` 유지):
+
+- persist 인덱스 직렬화·고아 복구, 롤오버 안전 상한 2048, persist 8 MiB / id 128자, `unlimitedStorage`
+- URL 전환 후 stale auto-start 가드, lineage note 보존, search metadata-first
+- light DOM 자막 미러·host command 는 `data-assembly-e2e` 일 때만
+- 패널 파괴 확인 accessible dialog, SW `sender.id` 필수
+- CI coverage 임계 · TS6 typecheck · prod audit
+- `A11Y_CHECKLIST.md`, 개인정보 권한 표·`SECURITY.md` §5 정합
 
 ### 1.0.13 후속 (2026-08-12 · 감사 반영, 버전 번호)
 

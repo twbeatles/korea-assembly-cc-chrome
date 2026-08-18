@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  SESSION_ID_MAX_LENGTH,
   normalizeSessionRecord,
   sanitizeQualityStats,
   sanitizeSessionId,
@@ -11,6 +12,9 @@ describe("normalizeSessionRecord hardening", () => {
     expect(sanitizeSessionId("  session_1  ")).toBe("session_1");
     expect(sanitizeSessionId(123)).toBe("");
     expect(sanitizeSessionId(null)).toBe("");
+    expect(sanitizeSessionId("x".repeat(SESSION_ID_MAX_LENGTH + 20))).toHaveLength(
+      SESSION_ID_MAX_LENGTH,
+    );
   });
 
   it("drops invalid qualityStats shapes", () => {

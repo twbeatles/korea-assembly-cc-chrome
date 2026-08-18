@@ -9,13 +9,10 @@
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON / MD / CSV 내보내기`, `history 검색/정리/편집` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정 / 수집 진단` 중심의 보조 화면입니다.
 - 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 전체 기록 검색/기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모/태그/카테고리`, `entry 체크박스 기반 부분 복사/부분 export`, `중요 표시만 export`, `시간 범위 export`, `entry 텍스트/발언자/중요 표시/entry note/labels inline 편집`, `entry 병합/분할/삭제`, `preset CRUD`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`, `실험형 side panel`이 포함됩니다.
-- 현재 기준 기본 검증 명령은 아래 5개입니다.
+- 현재 기준 기본 검증 명령은 `npm run verify` 와 같다 (`check:version` · inject 생성/검사 · lint · typecheck · test · build). 확장 페이지 스모크는 `npm run verify:e2e` 를 추가로 쓴다.
 
 ```bash
-npm run lint
-npm run typecheck
-npm run test
-npm run build
+npm run verify
 npm run verify:e2e
 ```
 
@@ -508,7 +505,7 @@ When editing this repository, align with the newly implemented behavior below.
 - CSV export must prefix UTF-8 BOM (`\uFEFF`) and use CRLF line endings for Excel on Korean Windows.
 - Feature-audit status of record: prefer `PROJECT_AUDIT.md` over historical open-issue wording in `POTENTIAL_ISSUES.md`.
 - Permanent extension-context invalidation is only for true `Extension context invalidated` errors. `Receiving end does not exist` / message-port closed are **transient**; `sendRuntimeMessage` retries them and must not shut down capture.
-- Segment rollover event queue default max is 64; overflow drops oldest events and surfaces a panel notice with dropped counts.
+- Segment rollover event queue diagnostic threshold is 128; persist 중 실제 폐기는 `SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX` (2048) 에서만 일어난다. Overflow drops oldest events and surfaces a panel notice with dropped counts.
 - Export supports `SessionExportOptions.timeRange` (`from`/`to` ISO) on single-session and lineage export; History UI exposes datetime-local range controls.
 - Fallback `saveFallbackRecord` rolls memory back if `chrome.storage.local` write fails.
 - Invalidation user notice is Korean.
@@ -536,7 +533,7 @@ When editing this repository, align with the newly implemented behavior below.
 
 ## Sync Delta (2026-08-12)
 
-When editing this repository, align with the audit follow-up behavior below. Details: `PROJECT_AUDIT.md` (5차 + 구현 반영).
+When editing this repository, align with the audit follow-up behavior below. Details: `PROJECT_AUDIT.md` (6차 + 구현 반영). 롤오버 persist 중 실제 폐기는 2048(`SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX`).
 
 - Capture diagnostics include `segmentRollover` (`inFlight`, `queueSize`, `queueMax`, `droppedTotal`). Options 수집 진단 UI exposes these fields.
 - Segment rollover event queue max default is **128**. Starting a rollover must **not** clear the pending queue (events flush after persist).
@@ -555,6 +552,27 @@ When editing this repository, align with the audit follow-up behavior below. Det
 - CI: `.github/workflows/ci.yml` runs `npm run verify`.
 - Threat model: `SECURITY.md`. `sharp` is a **devDependency** only.
 - Coverage thresholds include `src/core/subtitle-pipeline/**` and `extension-context.ts`.
+
+## Sync Delta (2026-08-18)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- Exit-persist 인덱스는 mutate 큐로 직렬화한다. startup replay 전에 `recoverOrphanedExitPersistRecords()` 로 고아 레코드를 인덱스에 병합한다.
+- Auto-start 예약 시 시작 URL 을 캡처하고, lock 턴에서 `shouldRunDeferredCaptureStart` 가 현재 URL·수집 페이지와 다를 때 start 를 건너뛴다.
+- 롤오버 이벤트 큐는 persist 중 `SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX` (2048) 까지 유지한다. 128은 진단 기준이다.
+- Persist/QUEUE 페이로드는 id 128자, 8 MiB, entry 5만 개 상한. 빈 세션 id write 큐는 거부한다.
+- `searchSessions` 는 metadata-first 후 필요할 때만 hydrate. startup running cleanup 은 `status` 인덱스를 사용한다.
+- lineage `mergeSessionSegments` 는 공통 note 를 보존하고, 다르면 가장 앞 세그먼트 note 를 쓴다.
+- Host command 는 `data-assembly-e2e="1"` 일 때만 처리한다.
+- `unlimitedStorage` 는 page-exit 복구 큐용 로컬 한도 완화이다.
+
+## Sync Delta (2026-08-18 · 비기능)
+
+- light DOM 자막/상태 미러(`data-assembly-preview` 등)는 `data-assembly-e2e="1"` 일 때만 기록한다. 스모크는 host attach 직후 마커를 켠다.
+- SW 명령은 `sender.id === chrome.runtime.id` 만 허용한다. sender.id 부재는 거부.
+- in-page 파괴 확인은 History 와 같은 accessible dialog (`src/shared/accessible-confirm.ts`). Vitest 는 `window.confirm`.
+- invalidation 타이머 정리는 `runInvalidationTimerCleanup` 고정 목록.
+- CI: `test:coverage` 임계, `typecheck:ts6`, `npm audit --omit=dev --audit-level=high`.
 
 <!-- SPECKIT-AGENT-GUIDE:START -->
 

@@ -9,7 +9,7 @@ export interface ResolveFailedStoppedSessionGuardOptions {
   actionLabel: string;
   guard: FailedStoppedSessionGuard;
   persistRecord: (record: SessionRecord) => Promise<SessionRecord>;
-  confirmDiscard: (message: string) => boolean;
+  confirmDiscard: (message: string) => boolean | Promise<boolean>;
 }
 
 export interface ResolveFailedStoppedSessionGuardResult {
@@ -95,7 +95,7 @@ export async function resolveFailedStoppedSessionGuard(
     };
   } catch (error) {
     const retryErrorMessage = errorMessageOf(error);
-    const discardConfirmed = options.confirmDiscard(
+    const discardConfirmed = await options.confirmDiscard(
       buildDiscardConfirmMessage(options.actionLabel, retryErrorMessage),
     );
 

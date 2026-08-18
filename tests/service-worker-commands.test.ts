@@ -1,16 +1,26 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { SessionRecord } from "../src/core/subtitle-models";
 import {
   DOWNLOAD_REQUEST_MAX_BYTES,
+  PERSIST_SESSION_RECORD_MAX_BYTES,
   downloadExportWithFallback,
   getUtf8ContentByteLength,
   handleBackgroundCommand,
   isBackgroundCommandMessage,
+  isMessageFromOwnExtension,
   isValidPersistSessionRecordPayload,
   type BackgroundCommandDependencies,
 } from "../src/background/service-worker-commands";
 import type { BackgroundCommandMessage } from "../src/shared/message-types";
+
+const TEST_EXTENSION_ID = "test-extension-id";
+
+function ownSender(
+  extra: Partial<chrome.runtime.MessageSender> = {},
+): chrome.runtime.MessageSender {
+  return { id: TEST_EXTENSION_ID, ...extra };
+}
 
 function buildSession(status: SessionRecord["status"] = "saved"): SessionRecord {
   return {
@@ -72,6 +82,22 @@ function createDependencies(): BackgroundCommandDependencies {
 }
 
 describe("service worker command helpers", () => {
+  beforeEach(() => {
+    vi.stubGlobal("chrome", {
+      runtime: { id: TEST_EXTENSION_ID },
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("requires a matching sender extension id", () => {
+    expect(isMessageFromOwnExtension(ownSender())).toBe(true);
+    expect(isMessageFromOwnExtension({} as chrome.runtime.MessageSender)).toBe(false);
+    expect(isMessageFromOwnExtension({ id: "other-extension" })).toBe(false);
+  });
+
   it("recognizes supported background command messages", () => {
     expect(isBackgroundCommandMessage({ type: "OPEN_HISTORY_PAGE" })).toBe(true);
     expect(isBackgroundCommandMessage({ type: "UNKNOWN" })).toBe(false);
@@ -92,6 +118,13 @@ describe("service worker command helpers", () => {
         entries: "nope",
       }),
     ).toBe(false);
+    expect(
+      isValidPersistSessionRecordPayload({
+        ...buildSession("stopped"),
+        id: "i".repeat(200),
+      }),
+    ).toBe(false);
+    expect(PERSIST_SESSION_RECORD_MAX_BYTES).toBeGreaterThan(1024 * 1024);
   });
 
   it("rejects malformed PERSIST_SESSION_RECORD messages", async () => {
@@ -101,7 +134,7 @@ describe("service worker command helpers", () => {
         type: "PERSIST_SESSION_RECORD",
         record: { id: "" } as SessionRecord,
       },
-      { id: "extension-id" } as chrome.runtime.MessageSender,
+      ownSender(),
       dependencies,
     );
     expect(response).toEqual({
@@ -123,7 +156,7 @@ describe("service worker command helpers", () => {
         tabId: 9,
         url: "https://assembly.webcast.go.kr/main/player.asp",
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -140,7 +173,7 @@ describe("service worker command helpers", () => {
         tabId: 9,
         url: "https://assembly.webcast.go.kr/main/",
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -158,7 +191,7 @@ describe("service worker command helpers", () => {
         tabId: 9,
         url: "https://example.com/",
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -179,7 +212,7 @@ describe("service worker command helpers", () => {
         tabId: 9,
         url: "https://assembly.webcast.go.kr/main/player.asp",
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -200,7 +233,7 @@ describe("service worker command helpers", () => {
         content: oversized,
         mimeType: "text/plain;charset=utf-8",
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -220,7 +253,7 @@ describe("service worker command helpers", () => {
         content: "짧은 본문",
         mimeType: "text/plain;charset=utf-8",
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -240,7 +273,7 @@ describe("service worker command helpers", () => {
         type: "QUEUE_EXIT_PERSIST_RECORD",
         record: buildSession("stopped"),
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -249,18 +282,18 @@ describe("service worker command helpers", () => {
         type: "PERSIST_SESSION_RECORD",
         record,
       },
-      {},
+      ownSender(),
       dependencies,
     );
     const diagnostics = await handleBackgroundCommand(
       {
         type: "OPEN_DIAGNOSTICS_PAGE",
       },
-      {
+      ownSender({
         tab: {
           id: 77,
         } as chrome.tabs.Tab,
-      },
+      }),
       dependencies,
     );
 
@@ -286,7 +319,7 @@ describe("service worker command helpers", () => {
         txtExportTimestampsEnabled: true,
         entryIds: ["entry_background_1"],
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -315,7 +348,7 @@ describe("service worker command helpers", () => {
         txtExportTimestampsEnabled: true,
         entryIds: ["entry_background_1"],
       },
-      {},
+      ownSender(),
       dependencies,
     );
 
@@ -336,7 +369,7 @@ describe("service worker command helpers", () => {
       {
         type: "GET_FRAME_FORWARD_NONCE",
       },
-      {},
+      ownSender(),
       createDependencies(),
     );
 

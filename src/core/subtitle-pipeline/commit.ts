@@ -178,6 +178,11 @@ function appendOrMergeEntry(
   return entry;
 }
 
+/**
+ * pending preview 를 entry 로 승격한다.
+ * persist / export / page-exit 경로에서는 호출하지 않는다.
+ * 확정 저장은 buildPreparedSessionState 가 pendingPreviews 만 비운다.
+ */
 export function flushPendingPreviews(
   state: SessionState,
   now: number,

@@ -10,6 +10,7 @@ import {
 import {
   DUPLICATE_START_CAPTURE_NOTICE,
   shouldIgnoreStartCapture,
+  shouldRunDeferredCaptureStart,
 } from "../src/content/runtime/capture-start";
 import { createCaptureLifecycleLock } from "../src/content/runtime/capture-lifecycle-lock";
 import {
@@ -54,6 +55,66 @@ describe("content runtime helpers", () => {
     expect(shouldIgnoreStartCapture("running")).toBe(true);
     expect(shouldIgnoreStartCapture("stopped")).toBe(false);
     expect(DUPLICATE_START_CAPTURE_NOTICE).toContain("이미 실행");
+  });
+
+  it("skips a deferred auto-start when the page URL changed before the lock turn", () => {
+    const playerA = "https://assembly.webcast.go.kr/main/player.asp?xcode=10";
+    const playerB = "https://assembly.webcast.go.kr/main/player.asp?xcode=20";
+    expect(
+      shouldRunDeferredCaptureStart({
+        requestedUrl: playerA,
+        currentUrl: playerA,
+        isCapturePage: true,
+      }),
+    ).toBe(true);
+    expect(
+      shouldRunDeferredCaptureStart({
+        requestedUrl: playerA,
+        currentUrl: playerB,
+        isCapturePage: true,
+      }),
+    ).toBe(false);
+    expect(
+      shouldRunDeferredCaptureStart({
+        requestedUrl: playerA,
+        currentUrl: playerA,
+        isCapturePage: false,
+      }),
+    ).toBe(false);
+  });
+
+  it("runs reconcile then deferred start in lock order, skipping stale start", async () => {
+    const lock = createCaptureLifecycleLock();
+    const events: string[] = [];
+    const playerA = "https://assembly.webcast.go.kr/main/player.asp?xcode=10";
+    let currentUrl = playerA;
+
+    const startFor = (requestedUrl: string): Promise<void> =>
+      lock.run("start", async () => {
+        if (
+          !shouldRunDeferredCaptureStart({
+            requestedUrl,
+            currentUrl,
+            isCapturePage: true,
+          })
+        ) {
+          events.push(`skip:${requestedUrl.slice(-2)}`);
+          return;
+        }
+        events.push(`start:${requestedUrl.slice(-2)}`);
+      });
+
+    await lock.run("reconcile", async () => {
+      events.push("reconcile-a");
+      void startFor(playerA);
+      // reconcile 도중 URL 이 바뀌면, 예약된 start 는 이후 턴에서 건너뛴다.
+      currentUrl = "https://assembly.webcast.go.kr/main/player.asp?xcode=20";
+    });
+    await lock.run("reconcile", async () => {
+      events.push("reconcile-b");
+    });
+
+    expect(events).toEqual(["reconcile-a", "skip:10", "reconcile-b"]);
   });
 
   it("lifecycle lock prevents interleaved start/stop work", async () => {

@@ -22,6 +22,9 @@ export const DOWNLOAD_REQUEST_MAX_BYTES = 2 * 1024 * 1024;
 
 /** PERSIST/QUEUE 메시지 세션 페이로드 방어 상한 (entry 개수). */
 export const PERSIST_SESSION_RECORD_MAX_ENTRIES = 50_000;
+/** persist 메시지 본문 바이트 상한. SW 메모리와 storage.local 을 보호한다. */
+export const PERSIST_SESSION_RECORD_MAX_BYTES = 8 * 1024 * 1024;
+const PERSIST_SESSION_ID_MAX_LENGTH = 128;
 
 export function getUtf8ContentByteLength(content: string): number {
   return new TextEncoder().encode(content).length;
@@ -41,6 +44,9 @@ export function isValidPersistSessionRecordPayload(
   if (typeof record.id !== "string" || !record.id.trim()) {
     return false;
   }
+  if (record.id.trim().length > PERSIST_SESSION_ID_MAX_LENGTH) {
+    return false;
+  }
   if (
     record.status !== "running" &&
     record.status !== "stopped" &&
@@ -55,6 +61,14 @@ export function isValidPersistSessionRecordPayload(
     return false;
   }
   if (record.entries.length > PERSIST_SESSION_RECORD_MAX_ENTRIES) {
+    return false;
+  }
+  try {
+    const encoded = JSON.stringify(record);
+    if (getUtf8ContentByteLength(encoded) > PERSIST_SESSION_RECORD_MAX_BYTES) {
+      return false;
+    }
+  } catch {
     return false;
   }
   return true;
@@ -164,15 +178,13 @@ export function isBackgroundCommandMessage(message: unknown): message is Backgro
   );
 }
 
-function isMessageFromOwnExtension(sender: chrome.runtime.MessageSender): boolean {
-  // Reject messages whose sender id does not match our own extension. This is
-  // a defense-in-depth check — Chrome already routes externally_connectable
-  // messages through a separate event listener — but it costs nothing to
-  // verify and makes the boundary explicit for security review.
-  if (typeof chrome === "undefined" || !chrome.runtime?.id) {
-    return true;
+export function isMessageFromOwnExtension(sender: chrome.runtime.MessageSender): boolean {
+  // 운영 빌드에서는 확장 id 가 반드시 있다. sender.id 가 없거나 다르면 거부.
+  const ownId = typeof chrome !== "undefined" ? chrome.runtime?.id : undefined;
+  if (!ownId) {
+    return false;
   }
-  return !sender.id || sender.id === chrome.runtime.id;
+  return sender.id === ownId;
 }
 
 export async function handleBackgroundCommand(

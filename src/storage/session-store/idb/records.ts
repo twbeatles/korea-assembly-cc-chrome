@@ -388,6 +388,32 @@ export async function listAllIndexedDbSessions(): Promise<SessionRecord[]> {
   });
 }
 
+export async function listIndexedDbSessionMetadataRecords(): Promise<SessionRecord[]> {
+  return withTransaction("readonly", async (store) => {
+    const all = (await withRequest(store.getAll())) as IndexedDbSessionRecord[];
+    return all.map((record) => normalizeIndexedDbSessionMetadataRecord(record));
+  });
+}
+
+export async function listIndexedDbSessionsByStatus(
+  status: SessionRecord["status"],
+): Promise<SessionRecord[]> {
+  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
+    const metadataRecords = sessionStore.indexNames.contains("status")
+      ? ((await readCursorRecords(sessionStore.index("status"), {
+          direction: "next",
+          query: status,
+        })) as IndexedDbSessionRecord[])
+      : ((await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[]).filter(
+          (record) => record.status === status,
+        );
+
+    return Promise.all(
+      metadataRecords.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
+    );
+  });
+}
+
 export async function listIndexedDbSessionIds(): Promise<string[]> {
   return withTransaction("readonly", async (store) => {
     const storeWithGetAllKeys = store as IDBObjectStore & {

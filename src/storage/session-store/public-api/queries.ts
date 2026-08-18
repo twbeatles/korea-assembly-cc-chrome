@@ -13,6 +13,8 @@ import {
 } from "../normalize";
 import {
   normalizeSearchToken,
+  searchRequiresEntryHydration,
+  sessionMatchesMetadataFilters,
   sessionMatchesSearchFilters,
 } from "../search-helpers";
 
@@ -123,6 +125,7 @@ import {
   listIndexedDbLineageSessions,
   listAllIndexedDbSessions,
   listIndexedDbSessionIds,
+  listIndexedDbSessionMetadataRecords,
 } from "../idb/records";
 import {
   withRequest,
@@ -377,16 +380,21 @@ export async function searchSessions(
   const requestedPage = Math.max(1, options.page);
   const token = normalizeSearchToken(options.query);
   const [indexedDbResult, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () => listAllIndexedDbSessions()),
+    tryIndexedDb(async () => listIndexedDbSessionMetadataRecords()),
     listFallbackRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
+  const metadataSessions =
+    indexedDbResult.ok && indexedDbResult.value
+      ? indexedDbResult.value.filter((session) => sessionMatchesMetadataFilters(session, options))
+      : [];
+  const indexedDbSessions = searchRequiresEntryHydration(options, token)
+    ? await loadSessionsByIds(metadataSessions.map((session) => session.id))
+    : metadataSessions;
   const allSessions = sortSessions(
     mergeSessionCollections(
-      indexedDbResult.ok && indexedDbResult.value
-        ? indexedDbResult.value.map((record) =>
-            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
-          )
-        : [],
+      indexedDbSessions.map((record) =>
+        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+      ),
       fallbackRecords.map((record) =>
         normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
       ),

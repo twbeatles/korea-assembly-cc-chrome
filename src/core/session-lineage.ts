@@ -64,6 +64,21 @@ function resolvePreferredString(
   return fallback;
 }
 
+/** 공통 메모면 유지하고, 다르면 가장 앞 세그먼트 메모를 쓴다. */
+export function resolveMergedSessionNote(sessions: Array<Pick<SessionRecord, "note">>): string {
+  const notes = sessions.map((session) =>
+    typeof session.note === "string" ? session.note : "",
+  );
+  const nonEmpty = notes.filter((note) => note.trim().length > 0);
+  if (!nonEmpty.length) {
+    return "";
+  }
+  if (new Set(nonEmpty).size === 1) {
+    return nonEmpty[0] ?? "";
+  }
+  return nonEmpty[0] ?? "";
+}
+
 export function mergeSessionSegments(sessions: SessionRecord[]): SessionRecord {
   const sorted = sortSessionSegments(sessions);
   if (!sorted.length) {
@@ -90,7 +105,7 @@ export function mergeSessionSegments(sessions: SessionRecord[]): SessionRecord {
     status: last.status,
     starred: sorted.some((session) => session.starred),
     pinnedAt: last.pinnedAt,
-    note: "",
+    note: resolveMergedSessionNote(sorted),
     lineageId,
     segmentNumber: 1,
     entries,

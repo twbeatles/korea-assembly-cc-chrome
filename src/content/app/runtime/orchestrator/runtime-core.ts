@@ -53,6 +53,7 @@ import {
   shouldWarnBeforeUnload,
   type RunningPersistTrigger,
 } from "../../../autosave";
+import { confirmDestructiveAction } from "../../../../shared/accessible-confirm";
 import { sendRuntimeMessage } from "../../../../shared/chrome-api";
 import {
   buildCopyText,
@@ -62,8 +63,10 @@ import {
 import {
   DUPLICATE_START_CAPTURE_NOTICE,
   shouldIgnoreStartCapture,
+  shouldRunDeferredCaptureStart,
 } from "../../../runtime/capture-start";
 import { createCaptureLifecycleLock } from "../../../runtime/capture-lifecycle-lock";
+import { runInvalidationTimerCleanup } from "../../../runtime/invalidation-shutdown";
 import { createUrlReconcileController } from "../../../runtime/url-reconcile";
 import {
   clearAutoStartCooldown,
@@ -154,7 +157,7 @@ import {
 } from "../../../runtime/segment-rollover";
 import { buildSegmentRolloverDiagnostics } from "../../../runtime/segment-rollover-diagnostics";
 import {
-  DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX,
+  SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX,
   drainSegmentEventQueue,
   enqueueBoundedSegmentEvent,
 } from "../../../runtime/segment-event-queue";
@@ -288,20 +291,20 @@ function setPanelNotice(message: string): boolean {
   return true;
 }
 
-function confirmSessionClear(): boolean {
-  if (typeof window === "undefined" || typeof window.confirm !== "function") {
-    return true;
-  }
-
-  return window.confirm("현재 세션 기록을 비우고 다시 시작할까요?");
+async function confirmSessionClear(): Promise<boolean> {
+  return confirmDestructiveAction("현재 세션 기록을 비우고 다시 시작할까요?", {
+    title: "화면 비우기",
+    confirmLabel: "비우기",
+    cancelLabel: "취소",
+  });
 }
 
-function confirmFailedStoppedSessionDiscard(message: string): boolean {
-  if (typeof window === "undefined" || typeof window.confirm !== "function") {
-    return false;
-  }
-
-  return window.confirm(message);
+async function confirmFailedStoppedSessionDiscard(message: string): Promise<boolean> {
+  return confirmDestructiveAction(message, {
+    title: "저장 실패 세션",
+    confirmLabel: "버리고 계속",
+    cancelLabel: "유지",
+  });
 }
 
 let segmentRolloverEventsDroppedTotal = 0;
@@ -310,7 +313,7 @@ function queueSegmentRolloverEvent(event: ObserverBridgeEvent): void {
   const enqueued = enqueueBoundedSegmentEvent(
     queuedSegmentRolloverEvents,
     cloneObserverBridgeEventForReplay(event),
-    DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX,
+    SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX,
   );
   queuedSegmentRolloverEvents = enqueued.queue;
   if (enqueued.droppedCount > 0) {
@@ -390,15 +393,17 @@ function shutdownForInvalidatedContext(): void {
 
   extensionContextInvalidated = true;
   invalidateExtensionContext();
-  clearLocalPolling();
-  clearTopFallbackTimer();
-  clearFallbackCommitTimer();
-  clearFrameForwardNonceRefresh();
-  clearUrlChangePolling();
-  clearRunningPersistTimer();
-  clearCaptureOwnershipHeartbeat();
+  runInvalidationTimerCleanup({
+    localPolling: clearLocalPolling,
+    topFallback: clearTopFallbackTimer,
+    fallbackCommit: clearFallbackCommitTimer,
+    nonceRefresh: clearFrameForwardNonceRefresh,
+    urlPolling: clearUrlChangePolling,
+    runningPersist: clearRunningPersistTimer,
+    ownershipHeartbeat: clearCaptureOwnershipHeartbeat,
+    pendingReset: clearPendingReset,
+  });
   void releaseCaptureOwnershipForStop();
-  clearPendingReset();
   state.observerActive = false;
 
   try {
@@ -562,7 +567,7 @@ function buildStatusSnapshot(
     segmentRollover: buildSegmentRolloverDiagnostics({
       inFlight: segmentRolloverInFlight,
       queueSize: queuedSegmentRolloverEvents.length,
-      queueMax: DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX,
+      queueMax: SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX,
       droppedTotal: segmentRolloverEventsDroppedTotal,
     }),
   });
@@ -2093,7 +2098,21 @@ async function startCapturePipelineForCurrentPage(): Promise<void> {
     // reconcile 등 상위 lifecycle lock 안에서도 호출될 수 있다.
     // unlocked 직접 호출은 await 양보 구간에서 stop/clear와 인터리브되므로,
     // 동일 큐에 "start"를 예약만 하고 await 하지 않는다(중첩 deadlock 방지).
-    void captureLifecycleLock.run("start", () => startCaptureUnlocked()).catch(
+    const startUrl = window.location.href;
+    void captureLifecycleLock
+      .run("start", () => {
+        if (
+          !shouldRunDeferredCaptureStart({
+            requestedUrl: startUrl,
+            currentUrl: window.location.href,
+            isCapturePage: isCapturePage(),
+          })
+        ) {
+          return Promise.resolve();
+        }
+        return startCaptureUnlocked();
+      })
+      .catch(
       (error: unknown) => {
         reportRuntimeError(
           "자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.",
@@ -2524,12 +2543,16 @@ function mountInPagePanel(): void {
       });
     },
     onClearSession: () => {
-      if (!confirmSessionClear()) {
-        setPanelNotice("세션 비우기를 취소했습니다.");
-        syncUserInterfaces();
-        return;
-      }
-      void clearSessionAndReset().catch((error: unknown) => {
+      void confirmSessionClear()
+        .then((confirmed) => {
+          if (!confirmed) {
+            setPanelNotice("세션 비우기를 취소했습니다.");
+            syncUserInterfaces();
+            return;
+          }
+          return clearSessionAndReset();
+        })
+        .catch((error: unknown) => {
         reportRuntimeError(
           error instanceof Error
             ? error.message
@@ -2702,7 +2725,7 @@ async function handleCommand(
       syncPortState(port);
       return;
     case "CLEAR_SESSION":
-      if (!confirmSessionClear()) {
+      if (!(await confirmSessionClear())) {
         setPanelNotice("세션 비우기를 취소했습니다.");
         syncUserInterfaces();
         syncPortState(port);

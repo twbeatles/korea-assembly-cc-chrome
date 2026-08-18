@@ -7,6 +7,11 @@ import {
   createInPagePanel,
   IN_PAGE_PANEL_HOST_ID,
 } from "../src/content/inpage-panel";
+import {
+  applyPanelHostCommandDetail,
+  applyPanelHostStateMirror,
+  isPanelHostCommandEnabled,
+} from "../src/content/inpage-panel/panel-host-command";
 import type { StatusSnapshot } from "../src/shared/message-types";
 import { PIPELINE_DEFAULTS } from "../src/shared/constants";
 
@@ -1046,5 +1051,51 @@ describe("in-page panel", () => {
     expect(notice?.textContent).toBe("AI 자막보기 버튼을 눌러주세요.");
 
     controller.destroy();
+  });
+
+  it("ignores host commands unless the e2e marker is set", () => {
+    const actions = createActions();
+    const host = document.createElement("div");
+
+    expect(isPanelHostCommandEnabled(host)).toBe(false);
+    applyPanelHostCommandDetail({ type: "save" }, actions, () => false);
+    expect(actions.onSaveSession).toHaveBeenCalledTimes(1);
+
+    host.setAttribute("data-assembly-e2e", "1");
+    expect(isPanelHostCommandEnabled(host)).toBe(true);
+
+    actions.onSaveSession.mockClear();
+    applyPanelHostCommandDetail(undefined, actions, () => false);
+    expect(actions.onSaveSession).not.toHaveBeenCalled();
+  });
+
+  it("writes light-DOM state mirrors only when the e2e marker is set", () => {
+    const host = document.createElement("div");
+    const snapshot = {
+      status: "running",
+      statusLabel: "수집 중",
+      notice: "안내",
+      subtitleCount: 3,
+      captureMode: "structured",
+      collapsed: false,
+      previewText: "미리보기 자막",
+      liveText: "최신 줄",
+    };
+
+    applyPanelHostStateMirror(host, snapshot);
+    expect(host.dataset.assemblyPreview).toBeUndefined();
+    expect(host.dataset.assemblyLiveText).toBeUndefined();
+    expect(host.dataset.assemblyStatus).toBeUndefined();
+
+    host.setAttribute("data-assembly-e2e", "1");
+    applyPanelHostStateMirror(host, snapshot);
+    expect(host.dataset.assemblyPreview).toBe("미리보기 자막");
+    expect(host.dataset.assemblyLiveText).toBe("최신 줄");
+    expect(host.dataset.assemblyStatus).toBe("running");
+
+    host.removeAttribute("data-assembly-e2e");
+    applyPanelHostStateMirror(host, snapshot);
+    expect(host.dataset.assemblyPreview).toBeUndefined();
+    expect(host.dataset.assemblyLiveText).toBeUndefined();
   });
 });

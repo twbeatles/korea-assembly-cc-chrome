@@ -22,6 +22,9 @@
 - `scripting` 재주입: manifest 에 선언된 content script 파일만.
 - Background 명령: `isMessageFromOwnExtension` 으로 타 확장 메시지 거부.
 - `DOWNLOAD_REQUEST` 본문 상한 2 MiB; 대형 export 는 세션/라인리지 경로.
+- `unlimitedStorage`: page-exit 복구 큐·fallback 세션이 `chrome.storage.local` 10MB 한도에 잘리지 않도록 한다. 외부 전송에는 쓰지 않는다.
+- Persist 메시지: entry 5만 개 · 8 MiB · 세션 id 128자 상한.
+- Host command (`assembly-subtitle-panel-command`) 는 `data-assembly-e2e="1"` 일 때만 받는다.
 
 ## 3. DOM XSS 완화
 
@@ -40,8 +43,9 @@
 ## 5. E2E / 테스트 훅
 
 - production closed shadow 를 유지한다.
-- 스모크/e2e 는 host **light DOM** `data-assembly-*` 미러와 `assembly-subtitle-panel-command` CustomEvent 로 상태를 읽고 버튼을 누른다.
-- 이 명령 채널은 **지원 호스트 페이지**에서 호출 가능하다. 호스트 XSS 가 있으면 시작/중지/저장을 원격 조작할 수 있다 → §1 전제와 동일. 민감 원격 명령·외부 origin 은 받지 않는다.
+- 스모크/e2e 는 host 에 `data-assembly-e2e="1"` 을 켠 뒤에만 light DOM `data-assembly-*` 미러를 읽고, `assembly-subtitle-panel-command` CustomEvent 로 버튼을 누른다.
+- **명령과 자막 미러 모두 e2e 마커가 있을 때만** 동작한다. 마커가 없으면 start/stop/save 를 받지 않고, preview/notice 미러도 쓰지 않는다.
+- 호스트 XSS 가 마커를 켜면 조작이 가능하다 → §1 신뢰 호스트 전제와 동일. 민감 원격 명령·외부 origin 은 받지 않는다.
 
 ## 6. 데이터 보호
 

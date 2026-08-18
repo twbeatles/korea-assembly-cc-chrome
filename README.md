@@ -172,7 +172,7 @@ npm run build
 
 | 권한 | 이유 |
 |------|------|
-| storage | 설정·기록·메모 로컬 저장 |
+| storage / unlimitedStorage | 설정·기록·메모·종료 복구 큐 로컬 저장 (할당 한도 완화) |
 | downloads | 파일 내보내기 |
 | offscreen | 큰 파일 Blob 처리 |
 | activeTab / scripting | 탭 연결·재주입 |
@@ -208,12 +208,12 @@ npm run verify       # version · injected · lint · typecheck · test · build
 |------|------|
 | `npm run typecheck` | TypeScript 7 typecheck |
 | `npm run test` | Vitest 단위 테스트 |
-| `npm run test:e2e:extension` | 빌드 후 Playwright 확장 smoke (closed shadow · light DOM 미러) |
+| `npm run test:e2e:extension` | 빌드 후 Playwright 확장 smoke (closed shadow · `data-assembly-e2e` 미러) |
 | `npm run verify:e2e` | 빌드 후 확장 페이지 smoke (`history`/`options`/`sidepanel`) |
 | `npm run build:inject` | `public/injected-observer.js` 생성 (gitignore · 클린 클론/CI에서 필요) |
 | `npm run verify` | version · **inject 생성** · inject 검사 · lint · typecheck · test · build |
 
-CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 inject 생성 후 lint/typecheck/test/build 를 실행합니다.
+CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 inject 생성 후 lint · typecheck(TS7/TS6) · coverage · prod audit · build 를 실행합니다.
 
 자세한 배포 절차·툴체인·안정성·보안 문서는 아래를 참고하세요.
 
@@ -224,8 +224,9 @@ CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR �
 | [PRIVACY_POLICY_DRAFT_KO.md](PRIVACY_POLICY_DRAFT_KO.md) | 개인정보처리방침 초안 (스토어 게시 전 운영자 정보 필수) |
 | [CAPTURE_RETENTION_AND_STABILITY.md](CAPTURE_RETENTION_AND_STABILITY.md) | 장시간 세션 보존·안정성 |
 | [LIVE_CAPTURE_SMOKE_CHECKLIST.md](LIVE_CAPTURE_SMOKE_CHECKLIST.md) | 실중계 수동 스모크 체크리스트 |
-| [PROJECT_AUDIT.md](PROJECT_AUDIT.md) | 기능 구현 감사 (5차 + 반영 메모) |
+| [PROJECT_AUDIT.md](PROJECT_AUDIT.md) | 기능 구현 감사 (6차 + 구현 반영) |
 | [PROJECT_AUDIT_NONFUNCTIONAL.md](PROJECT_AUDIT_NONFUNCTIONAL.md) | 비기능 감사 (보안·a11y·CI 등) |
+| [A11Y_CHECKLIST.md](A11Y_CHECKLIST.md) | 키보드·스크린 리더 수동 점검 |
 | [TYPESCRIPT_7_MIGRATION_REVIEW.md](TYPESCRIPT_7_MIGRATION_REVIEW.md) | TS 7 typecheck 전환 |
 | [CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md](CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md) | 스토어 권한 문안 |
 | `CLAUDE.md` | AI/기여자용 컨텍스트·Sync Delta |
