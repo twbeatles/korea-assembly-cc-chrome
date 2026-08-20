@@ -27,7 +27,6 @@ npm run verify:e2e
 - 테스트: `Vitest`
 - 확장 런타임: `Manifest V3`
 - 세션 저장: `IndexedDB` 우선, open/capability 실패 시 `chrome.storage.local` per-session fallback, 최후에는 메모리 fallback
-- 툴체인 상세·호환성: `TYPESCRIPT_7_MIGRATION_REVIEW.md`
 
 ## 3. 주요 파일 구조
 
@@ -263,8 +262,6 @@ src/
 
 - 메인 설명: `README.md`
 - 배포 절차: `DEPLOYMENT.md`
-- TypeScript 7 전환·호환성: `TYPESCRIPT_7_MIGRATION_REVIEW.md`
-- 장시간 세션 보존/안정성: `CAPTURE_RETENTION_AND_STABILITY.md`
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
 
@@ -278,7 +275,7 @@ When editing this repository, align with the TypeScript toolchain below.
 - `tsc` is typecheck-only (`noEmit`); Vite/esbuild remain the emit/bundle path. Do not switch production emit to `tsc`.
 - Keep `src/css-modules.d.ts` and `noUncheckedSideEffectImports: true` for CSS side-effect imports.
 - `package.json` overrides: `vite`/`vitest` → `rollup@^4.34`, `@crxjs/vite-plugin` → `rollup@2.80.0` (avoid rollup 2 dedupe breaking Vite `parseAst`).
-- Runtime/extension compatibility: tooling-only change; session storage, export formats, and Manifest permissions are unchanged. See `TYPESCRIPT_7_MIGRATION_REVIEW.md` §13.
+- Runtime/extension compatibility: tooling-only change; session storage, export formats, and Manifest permissions are unchanged.
 
 ## Sync Delta (2026-04-13)
 
@@ -507,7 +504,6 @@ When editing this repository, align with the newly implemented behavior below.
 - IndexedDB open failure uses a soft disable with TTL (`INDEXED_DB_DISABLE_TTL_MS`, default 30s) and re-enables for retry; permanent disable is only for explicit/test cases.
 - `DOWNLOAD_REQUEST` rejects bodies larger than `DOWNLOAD_REQUEST_MAX_BYTES` (2 MiB). Prefer session/lineage export message types for large payloads.
 - CSV export must prefix UTF-8 BOM (`\uFEFF`) and use CRLF line endings for Excel on Korean Windows.
-- Feature-audit status of record: prefer `PROJECT_AUDIT.md` over historical open-issue wording in `POTENTIAL_ISSUES.md`.
 - Permanent extension-context invalidation is only for true `Extension context invalidated` errors. `Receiving end does not exist` / message-port closed are **transient**; `sendRuntimeMessage` retries them and must not shut down capture.
 - Segment rollover event queue diagnostic threshold is 128; persist 중 실제 폐기는 `SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX` (2048) 에서만 일어난다. Overflow drops oldest events and surfaces a panel notice with dropped counts.
 - Export supports `SessionExportOptions.timeRange` (`from`/`to` ISO) on single-session and lineage export; History UI exposes datetime-local range controls.
@@ -537,7 +533,7 @@ When editing this repository, align with the newly implemented behavior below.
 
 ## Sync Delta (2026-08-12)
 
-When editing this repository, align with the audit follow-up behavior below. Details: `PROJECT_AUDIT.md` (6차 + 구현 반영). 롤오버 persist 중 실제 폐기는 2048(`SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX`).
+When editing this repository, align with the implementation behavior below. 롤오버 persist 중 실제 폐기는 2048(`SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX`).
 
 - Capture diagnostics include `segmentRollover` (`inFlight`, `queueSize`, `queueMax`, `droppedTotal`). Options 수집 진단 UI exposes these fields.
 - Segment rollover event queue max default is **128**. Starting a rollover must **not** clear the pending queue (events flush after persist).

@@ -222,12 +222,8 @@ CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR �
 | [DEPLOYMENT.md](DEPLOYMENT.md) | 배포·릴리스 노트 |
 | [SECURITY.md](SECURITY.md) | 위협 모델·권한 경계·e2e 훅 |
 | [PRIVACY_POLICY_DRAFT_KO.md](PRIVACY_POLICY_DRAFT_KO.md) | 개인정보처리방침 초안 (스토어 게시 전 운영자 정보 필수) |
-| [CAPTURE_RETENTION_AND_STABILITY.md](CAPTURE_RETENTION_AND_STABILITY.md) | 장시간 세션 보존·안정성 |
 | [LIVE_CAPTURE_SMOKE_CHECKLIST.md](LIVE_CAPTURE_SMOKE_CHECKLIST.md) | 실중계 수동 스모크 체크리스트 |
-| [PROJECT_AUDIT.md](PROJECT_AUDIT.md) | 기능 구현 감사 (6차 + 구현 반영) |
-| [PROJECT_AUDIT_NONFUNCTIONAL.md](PROJECT_AUDIT_NONFUNCTIONAL.md) | 비기능 감사 (보안·a11y·CI 등) |
 | [A11Y_CHECKLIST.md](A11Y_CHECKLIST.md) | 키보드·스크린 리더 수동 점검 |
-| [TYPESCRIPT_7_MIGRATION_REVIEW.md](TYPESCRIPT_7_MIGRATION_REVIEW.md) | TS 7 typecheck 전환 |
 | [CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md](CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md) | 스토어 권한 문안 |
 | `CLAUDE.md` | AI/기여자용 컨텍스트·Sync Delta |
 

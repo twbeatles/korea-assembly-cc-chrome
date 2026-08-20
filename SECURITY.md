@@ -1,7 +1,7 @@
 # Security & Threat Model
 
 국회 AI 자막 추출기(Chrome Extension MV3)의 보안 경계와 전제를 고정한다.  
-관련 감사: `PROJECT_AUDIT_NONFUNCTIONAL.md` · 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
+권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 
 ## 1. 신뢰 경계
 

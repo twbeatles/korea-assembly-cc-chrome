@@ -56,7 +56,7 @@ npm run verify:e2e
 - `public/injected-observer.js` 는 git 추적하지 않는다. 클린 클론·CI 에서는 `build:inject` 또는 `verify` 가 생성한다.
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
 - `npm run typecheck` 는 TypeScript **7** 네이티브 CLI로 `tsconfig.json` / `tsconfig.node.json` 을 `--noEmit` 검사합니다 (`scripts/run-tsc.mjs`). ESLint용 `typescript@6` 과 dual-track 입니다. 비교가 필요하면 `npm run typecheck:ts6` 을 사용합니다.
-- TypeScript 버전 전환은 **개발/CI typecheck 툴체인** 변경이며, 확장 런타임 emit은 Vite/esbuild 경로를 유지합니다. 기존 설치본·저장 데이터·export 포맷 호환성 분석은 `TYPESCRIPT_7_MIGRATION_REVIEW.md` §13 을 참고하세요.
+- TypeScript 버전 전환은 **개발/CI typecheck 툴체인** 변경이며, 확장 런타임 emit은 Vite/esbuild 경로를 유지합니다.
 - `npm run verify:e2e` 는 build 후 Playwright로 확장 **페이지**(history/options/sidepanel) smoke 를 실행합니다.
 - `npm run test:e2e:extension` 는 build 후 **의사중계 fixture + in-page 패널** smoke 를 실행합니다. production 패널은 closed Shadow DOM 이며, 스모크는 host 에 `data-assembly-e2e="1"` 을 켠 뒤 light DOM 미러와 `assembly-subtitle-panel-command` 를 사용합니다 (`SECURITY.md` §5).
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
@@ -301,7 +301,6 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.14-c
 - 패널 내보내기는 `TXT 저장`을 기본 행동으로 두고, SRT/VTT/JSON/MD/CSV는 접을 수 있는 선택 영역으로 정리
 - 팝업의 지속 연결 상태와 일회성 성공·정보·오류 피드백을 분리
 - 옵션 화면에서 저장되지 않은 변경, 저장 중, 저장 완료 상태를 표시하고 저장 가능 조건을 명확화
-- 상세 설계와 검증 기준은 `UX_IMPROVEMENTS.md` 참고
 
 ### 1.0.13 후속 (2026-08-18 · 6차·비기능 감사 구현)
 
@@ -343,7 +342,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.14-c
 
 **문서 · 검증**
 
-- 사이트 호환성 검토 문서, PROJECT_AUDIT 4차, CLAUDE Sync Delta
+- 사이트 호환성 검토와 구현 점검 반영
 - `npm run verify` 게이트 유지
 
 ### 1.0.12 (2026-07-28)
