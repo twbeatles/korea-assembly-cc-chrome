@@ -62,8 +62,11 @@ export function createInPagePanel(
     statSubtitlesValue,
     statCharsValue,
     statElapsedValue,
+    startCaptureButton,
+    stopCaptureButton,
     saveButton,
     copyRecentButton,
+    txtExportButton,
     clearButton,
     highlightLatestButton,
     rolloverButton,
@@ -269,11 +272,16 @@ export function createInPagePanel(
       }
 
       clearButton.disabled = !nextState.canClearSession;
+      startCaptureButton.hidden = nextState.status === "running";
+      startCaptureButton.disabled = nextState.status === "running";
+      stopCaptureButton.hidden = nextState.status !== "running";
+      stopCaptureButton.disabled = nextState.status !== "running";
       saveButton.disabled = !nextState.hasPersistableContent;
       highlightLatestButton.disabled = !nextState.canHighlightLatestEntry;
       rolloverButton.disabled =
         nextState.status !== "running" || !nextState.hasPersistableContent;
       copyRecentButton.disabled = !nextState.hasPersistableContent;
+      txtExportButton.disabled = !nextState.hasPersistableContent;
       exportButtons.forEach((button) => {
         button.disabled = !nextState.hasPersistableContent;
       });

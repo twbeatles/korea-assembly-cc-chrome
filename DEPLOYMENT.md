@@ -31,7 +31,7 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
-현재 스토어 제출 준비 기준 버전은 `1.0.13` 입니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.14` 입니다.
 
 ## 3. 배포 전 검증
 
@@ -152,7 +152,7 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.13-cws.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.14-cws.zip -Force
 ```
 
 ## 6. Chrome Web Store 배포
@@ -292,6 +292,16 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.13-c
 - 릴리스 태그나 커밋 메시지에 manifest 버전을 같이 남김
 
 ## 11. 릴리스 노트
+
+### 1.0.14 (2026-08-20)
+
+**수집·설정 UX 정리**
+
+- 페이지 패널에서 상태에 맞는 `수집 시작` 또는 `수집 종료`를 직접 제어
+- 패널 내보내기는 `TXT 저장`을 기본 행동으로 두고, SRT/VTT/JSON/MD/CSV는 접을 수 있는 선택 영역으로 정리
+- 팝업의 지속 연결 상태와 일회성 성공·정보·오류 피드백을 분리
+- 옵션 화면에서 저장되지 않은 변경, 저장 중, 저장 완료 상태를 표시하고 저장 가능 조건을 명확화
+- 상세 설계와 검증 기준은 `UX_IMPROVEMENTS.md` 참고
 
 ### 1.0.13 후속 (2026-08-18 · 6차·비기능 감사 구현)
 

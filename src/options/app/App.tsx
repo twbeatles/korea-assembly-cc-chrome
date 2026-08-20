@@ -53,7 +53,9 @@ import { SettingsView } from "./SettingsView";
 
 export default function App() {
   const [settings, setSettings] = useState<ExtensionSettings | null>(null);
+  const [savedSettings, setSavedSettings] = useState<ExtensionSettings | null>(null);
   const [numberDrafts, setNumberDrafts] = useState<NumberDraftState | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
   const [numberFieldErrors, setNumberFieldErrors] = useState<NumberFieldErrorState>({});
   const [filenamePatternError, setFilenamePatternError] = useState<string | undefined>(undefined);
   const [message, setMessage] = useState("설정을 불러오는 중입니다.");
@@ -100,6 +102,7 @@ export default function App() {
     void getSettings()
       .then((data) => {
         setSettings(data);
+        setSavedSettings(data);
         setNumberDrafts(buildNumberDraftState(data));
         setNumberFieldErrors({});
         setFilenamePatternError(undefined);
@@ -381,6 +384,9 @@ export default function App() {
 
   const hasNumberFieldErrors = Object.values(numberFieldErrors).some(Boolean);
   const hasFieldErrors = hasNumberFieldErrors || Boolean(filenamePatternError);
+  const isDirty = Boolean(
+    settings && savedSettings && JSON.stringify(settings) !== JSON.stringify(savedSettings),
+  );
 
   const updateField = <K extends keyof ExtensionSettings>(key: K, value: ExtensionSettings[K]): void => {
     setSettings((current) => (current ? { ...current, [key]: value } : current));
@@ -521,10 +527,14 @@ export default function App() {
   };
 
   const handleSave = async (): Promise<void> => {
-    if (!settings || hasFieldErrors) {
+    if (!settings || hasFieldErrors || isSaving) {
       if (hasFieldErrors) {
         setMessage("잘못된 입력을 먼저 고쳐주세요.");
       }
+      return;
+    }
+    if (!isDirty) {
+      setMessage("저장할 변경사항이 없습니다.");
       return;
     }
     const presetUrls = new Set<string>();
@@ -542,15 +552,19 @@ export default function App() {
       presetUrls.add(url);
     }
 
+    setIsSaving(true);
     try {
       const next = await saveSettings(settings);
       setSettings(next);
+      setSavedSettings(next);
       setNumberDrafts(buildNumberDraftState(next));
       setNumberFieldErrors({});
       setFilenamePatternError(undefined);
       setMessage("설정을 저장했습니다.");
     } catch (error: unknown) {
       setMessage(error instanceof Error ? error.message : "설정을 저장하지 못했습니다.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -558,6 +572,7 @@ export default function App() {
     try {
       const next = await resetSettings();
       setSettings(next);
+      setSavedSettings(next);
       setNumberDrafts(buildNumberDraftState(next));
       setNumberFieldErrors({});
       setFilenamePatternError(undefined);
@@ -622,6 +637,8 @@ export default function App() {
           filenamePatternError={filenamePatternError}
           presetDraft={presetDraft}
           hasFieldErrors={hasFieldErrors}
+          isDirty={isDirty}
+          isSaving={isSaving}
           updateField={updateField}
           handleNumberDraftChange={handleNumberDraftChange}
           handleSegmentPresetChange={handleSegmentPresetChange}

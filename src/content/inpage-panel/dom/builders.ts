@@ -27,8 +27,11 @@ export interface InPagePanelElements {
   statSubtitlesValue: HTMLSpanElement;
   statCharsValue: HTMLSpanElement;
   statElapsedValue: HTMLSpanElement;
+  startCaptureButton: HTMLButtonElement;
+  stopCaptureButton: HTMLButtonElement;
   saveButton: HTMLButtonElement;
   copyRecentButton: HTMLButtonElement;
+  txtExportButton: HTMLButtonElement;
   clearButton: HTMLButtonElement;
   highlightLatestButton: HTMLButtonElement;
   rolloverButton: HTMLButtonElement;
@@ -320,6 +323,18 @@ export function createInPagePanelElements(
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
 
+  const captureGroup = document.createElement("div");
+  captureGroup.className = "group capture-group";
+  const captureGroupLabel = document.createElement("span");
+  captureGroupLabel.className = "group-label";
+  captureGroupLabel.textContent = "자막 수집";
+  const captureRow = document.createElement("div");
+  captureRow.className = "capture-row";
+  const startCaptureButton = createButton("수집 시작", actions.onStartCapture);
+  const stopCaptureButton = createButton("수집 종료", actions.onStopCapture, "stop-action");
+  captureRow.append(startCaptureButton, stopCaptureButton);
+  captureGroup.append(captureGroupLabel, captureRow);
+
   const saveGroup = document.createElement("div");
   saveGroup.className = "group";
   const saveGroupLabel = document.createElement("span");
@@ -340,10 +355,16 @@ export function createInPagePanelElements(
   exportGroup.className = "group";
   const exportGroupLabel = document.createElement("span");
   exportGroupLabel.className = "group-label";
-  exportGroupLabel.textContent = "다른 형식으로 저장";
+  exportGroupLabel.textContent = "파일로 내보내기";
+  const txtExportButton = createButton("TXT 저장", () => actions.onExport("txt"));
+  txtExportButton.classList.add("txt-export-button");
+  const exportDetails = document.createElement("details");
+  exportDetails.className = "export-details";
+  const exportSummary = document.createElement("summary");
+  exportSummary.textContent = "다른 형식 선택";
   const exportRow = document.createElement("div");
   exportRow.className = "export-row";
-  const exportButtons = (["txt", "srt", "vtt", "json", "md", "csv"] as ExportFormat[]).map(
+  const exportButtons = (["srt", "vtt", "json", "md", "csv"] as ExportFormat[]).map(
     (format) => {
       const button = createButton(getExportFormatLabel(format), () =>
         actions.onExport(format),
@@ -352,7 +373,8 @@ export function createInPagePanelElements(
       return button;
     },
   );
-  exportGroup.append(exportGroupLabel, exportRow);
+  exportDetails.append(exportSummary, exportRow);
+  exportGroup.append(exportGroupLabel, txtExportButton, exportDetails);
 
   const advancedGroup = document.createElement("div");
   advancedGroup.className = "group";
@@ -381,7 +403,7 @@ export function createInPagePanelElements(
   advancedDetails.append(advancedSummary, advancedBody);
   advancedGroup.append(advancedDetails);
 
-  controlsCard.append(saveGroup, exportGroup, advancedGroup);
+  controlsCard.append(captureGroup, saveGroup, exportGroup, advancedGroup);
 
   const notice = document.createElement("div");
   notice.className = "notice";
@@ -435,8 +457,11 @@ export function createInPagePanelElements(
     statSubtitlesValue,
     statCharsValue,
     statElapsedValue,
+    startCaptureButton,
+    stopCaptureButton,
     saveButton,
     copyRecentButton,
+    txtExportButton,
     clearButton,
     highlightLatestButton,
     rolloverButton,

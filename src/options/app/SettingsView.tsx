@@ -1,6 +1,13 @@
 import { validateFilenamePattern } from "../../shared/filename-pattern";
-import type { AssemblyPreset, ExtensionSettings, SegmentPreset } from "../../storage/types";
-import { ADVANCED_NUMBER_FIELDS, BASIC_NUMBER_FIELDS } from "../settings-fields";
+import type {
+  AssemblyPreset,
+  ExtensionSettings,
+  SegmentPreset,
+} from "../../storage/types";
+import {
+  ADVANCED_NUMBER_FIELDS,
+  BASIC_NUMBER_FIELDS,
+} from "../settings-fields";
 import { SettingInputCard } from "./SettingInputCard";
 import { SettingToggleCard } from "./SettingToggleCard";
 import { SettingsSection } from "./SettingsSection";
@@ -24,6 +31,8 @@ export function SettingsView(props: {
   filenamePatternError?: string;
   presetDraft: typeof EMPTY_PRESET_DRAFT;
   hasFieldErrors: boolean;
+  isDirty: boolean;
+  isSaving: boolean;
   updateField: <K extends keyof ExtensionSettings>(
     key: K,
     value: ExtensionSettings[K],
@@ -52,6 +61,8 @@ export function SettingsView(props: {
     filenamePatternError,
     presetDraft,
     hasFieldErrors,
+    isDirty,
+    isSaving,
     updateField,
     handleNumberDraftChange,
     handleSegmentPresetChange,
@@ -94,7 +105,9 @@ export function SettingsView(props: {
             aria-label={getFieldLabel(field)}
             value={numberDrafts[field]}
             aria-invalid={Boolean(numberFieldErrors[field])}
-            onChange={(event) => handleNumberDraftChange(field, event.target.value)}
+            onChange={(event) =>
+              handleNumberDraftChange(field, event.target.value)
+            }
           />
           {fieldUnit ? <span className="input-suffix">{fieldUnit}</span> : null}
         </div>
@@ -117,7 +130,9 @@ export function SettingsView(props: {
             title={autoSaveCopy.title}
             description={autoSaveCopy.description}
             checked={settings.runningAutoSaveEnabled}
-            onChange={(checked) => updateField("runningAutoSaveEnabled", checked)}
+            onChange={(checked) =>
+              updateField("runningAutoSaveEnabled", checked)
+            }
           />
           <SettingToggleCard
             title={autoScrollCopy.title}
@@ -129,7 +144,9 @@ export function SettingsView(props: {
             title={unconfirmedCopy.title}
             description={unconfirmedCopy.description}
             checked={settings.filterUnconfirmedEnabled}
-            onChange={(checked) => updateField("filterUnconfirmedEnabled", checked)}
+            onChange={(checked) =>
+              updateField("filterUnconfirmedEnabled", checked)
+            }
           />
         </SettingsSection>
 
@@ -141,7 +158,9 @@ export function SettingsView(props: {
             title={speakerPanelCopy.title}
             description={speakerPanelCopy.description}
             checked={Boolean(settings.panelSpeakerHighlightEnabled)}
-            onChange={(checked) => updateField("panelSpeakerHighlightEnabled", checked)}
+            onChange={(checked) =>
+              updateField("panelSpeakerHighlightEnabled", checked)
+            }
             fullWidth
           />
           <p className="settings-section-note full-width">
@@ -149,7 +168,10 @@ export function SettingsView(props: {
           </p>
         </SettingsSection>
 
-        <SettingsSection title="복사 · 파일 이름" lead="복사 버튼과 저장 파일 이름">
+        <SettingsSection
+          title="복사 · 파일 이름"
+          lead="복사 버튼과 저장 파일 이름"
+        >
           {BASIC_NUMBER_FIELDS.map((field) => renderNumberField(field))}
           <SettingInputCard
             title={getFieldLabel("filenamePattern")}
@@ -179,23 +201,29 @@ export function SettingsView(props: {
             title={exportTimeCopy.title}
             description={exportTimeCopy.description}
             checked={settings.txtExportTimestampsEnabled}
-            onChange={(checked) => updateField("txtExportTimestampsEnabled", checked)}
+            onChange={(checked) =>
+              updateField("txtExportTimestampsEnabled", checked)
+            }
           />
           <SettingToggleCard
             title={exportSpeakerCopy.title}
             description={exportSpeakerCopy.description}
             checked={Boolean(settings.txtExportSpeakerEnabled)}
-            onChange={(checked) => updateField("txtExportSpeakerEnabled", checked)}
+            onChange={(checked) =>
+              updateField("txtExportSpeakerEnabled", checked)
+            }
           />
           <SettingToggleCard
             title={exportNotesCopy.title}
             description={exportNotesCopy.description}
             checked={Boolean(settings.txtExportEntryNotesEnabled)}
-            onChange={(checked) => updateField("txtExportEntryNotesEnabled", checked)}
+            onChange={(checked) =>
+              updateField("txtExportEntryNotesEnabled", checked)
+            }
           />
           <p className="settings-section-note full-width">
-            기록 백업(JSON)에는 발언자 정보가 복원용으로 항상 들어갑니다. 중계 페이지 패널의
-            「내보내기·복사」 토글과 같은 설정입니다.
+            기록 백업(JSON)에는 발언자 정보가 복원용으로 항상 들어갑니다. 중계
+            페이지 패널의 「내보내기·복사」 토글과 같은 설정입니다.
           </p>
         </SettingsSection>
 
@@ -204,7 +232,8 @@ export function SettingsView(props: {
             <summary>
               <span className="advanced-summary-title">고급</span>
               <span className="advanced-summary-description">
-                대부분 기본값으로 충분합니다. 자막 제외·로그·긴 회의 나누기를 조정합니다.
+                대부분 기본값으로 충분합니다. 자막 제외·로그·긴 회의 나누기를
+                조정합니다.
               </span>
             </summary>
             <div className="advanced-grid">
@@ -212,7 +241,9 @@ export function SettingsView(props: {
                 title={noiseCopy.title}
                 description={noiseCopy.description}
                 checked={settings.noiseFilterEnabled}
-                onChange={(checked) => updateField("noiseFilterEnabled", checked)}
+                onChange={(checked) =>
+                  updateField("noiseFilterEnabled", checked)
+                }
               />
               <SettingToggleCard
                 title={debugCopy.title}
@@ -225,7 +256,11 @@ export function SettingsView(props: {
                   <strong>긴 회의 나누기</strong>
                   <span>회의가 길면 파일을 나누어 저장합니다.</span>
                 </div>
-                <div className="preset-grid" role="radiogroup" aria-label="긴 회의 나누기">
+                <div
+                  className="preset-grid"
+                  role="radiogroup"
+                  aria-label="긴 회의 나누기"
+                >
                   {SEGMENT_PRESET_OPTIONS.map((preset) => (
                     <button
                       type="button"
@@ -258,69 +293,95 @@ export function SettingsView(props: {
         >
           <div className="note-card full-width">
             {presets.length ? (
-              <div className="meta-grid">
+              <div className="preset-list">
                 {presets.map((preset) => (
-                  <div className="meta-row preset-edit-row" key={preset.id}>
-                    <input
-                      type="text"
-                      value={preset.name}
-                      onChange={(event) =>
-                        handleUpdatePreset(preset.id, "name", event.target.value)
-                      }
-                      aria-label="프리셋 이름"
-                    />
-                    <input
-                      type="url"
-                      value={preset.url}
-                      onChange={(event) =>
-                        handleUpdatePreset(preset.id, "url", event.target.value)
-                      }
-                      aria-label="프리셋 URL"
-                    />
-                    <input
-                      type="text"
-                      value={preset.committeeName}
-                      onChange={(event) =>
-                        handleUpdatePreset(preset.id, "committeeName", event.target.value)
-                      }
-                      aria-label="프리셋 위원회명"
-                    />
-                    <label className="preset-mini-toggle">
-                      자동 시작
-                      <input
-                        type="checkbox"
-                        checked={preset.autoStartEnabled}
-                        onChange={(event) =>
-                          handleUpdatePreset(
-                            preset.id,
-                            "autoStartEnabled",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                    </label>
-                    <label className="preset-mini-toggle">
-                      필터
-                      <input
-                        type="checkbox"
-                        checked={preset.noiseFilterEnabled}
-                        onChange={(event) =>
-                          handleUpdatePreset(
-                            preset.id,
-                            "noiseFilterEnabled",
-                            event.target.checked,
-                          )
-                        }
-                      />
-                    </label>
-                    <button
-                      className="secondary"
-                      type="button"
-                      onClick={() => handleRemovePreset(preset.id)}
-                    >
-                      삭제
-                    </button>
-                  </div>
+                  <fieldset className="preset-edit-row" key={preset.id}>
+                    <legend>{preset.name || "새 프리셋"}</legend>
+                    <div className="preset-fields">
+                      <label>
+                        <span>이름</span>
+                        <input
+                          type="text"
+                          value={preset.name}
+                          onChange={(event) =>
+                            handleUpdatePreset(
+                              preset.id,
+                              "name",
+                              event.target.value,
+                            )
+                          }
+                          aria-label="프리셋 이름"
+                        />
+                      </label>
+                      <label>
+                        <span>중계 주소</span>
+                        <input
+                          type="url"
+                          value={preset.url}
+                          onChange={(event) =>
+                            handleUpdatePreset(
+                              preset.id,
+                              "url",
+                              event.target.value,
+                            )
+                          }
+                          aria-label="프리셋 URL"
+                        />
+                      </label>
+                      <label>
+                        <span>위원회명</span>
+                        <input
+                          type="text"
+                          value={preset.committeeName}
+                          onChange={(event) =>
+                            handleUpdatePreset(
+                              preset.id,
+                              "committeeName",
+                              event.target.value,
+                            )
+                          }
+                          aria-label="프리셋 위원회명"
+                        />
+                      </label>
+                    </div>
+                    <div className="preset-actions">
+                      <label className="preset-mini-toggle">
+                        <input
+                          type="checkbox"
+                          checked={preset.autoStartEnabled}
+                          onChange={(event) =>
+                            handleUpdatePreset(
+                              preset.id,
+                              "autoStartEnabled",
+                              event.target.checked,
+                            )
+                          }
+                        />
+                        자동 시작
+                      </label>
+                      <label className="preset-mini-toggle">
+                        <input
+                          type="checkbox"
+                          checked={preset.noiseFilterEnabled}
+                          onChange={(event) =>
+                            handleUpdatePreset(
+                              preset.id,
+                              "noiseFilterEnabled",
+                              event.target.checked,
+                            )
+                          }
+                        />
+                        잡음 줄 제외
+                      </label>
+                      <button
+                        className="secondary preset-delete"
+                        type="button"
+                        onClick={() => handleRemovePreset(preset.id)}
+                      >
+                        삭제
+                      </button>
+                    </div>
+                  </fieldset>
                 ))}
               </div>
             ) : (
@@ -330,13 +391,17 @@ export function SettingsView(props: {
               <input
                 type="text"
                 value={presetDraft.name}
-                onChange={(event) => handlePresetDraftChange("name", event.target.value)}
+                onChange={(event) =>
+                  handlePresetDraftChange("name", event.target.value)
+                }
                 placeholder="프리셋 이름"
               />
               <input
                 type="url"
                 value={presetDraft.url}
-                onChange={(event) => handlePresetDraftChange("url", event.target.value)}
+                onChange={(event) =>
+                  handlePresetDraftChange("url", event.target.value)
+                }
                 placeholder="https://assembly.webcast.go.kr/main/player..."
               />
               <input
@@ -351,13 +416,17 @@ export function SettingsView(props: {
                 title="자동 시작"
                 description="이 페이지를 열 때 바로 자막 모으기를 시작합니다."
                 checked={presetDraft.autoStartEnabled}
-                onChange={(checked) => handlePresetDraftChange("autoStartEnabled", checked)}
+                onChange={(checked) =>
+                  handlePresetDraftChange("autoStartEnabled", checked)
+                }
               />
               <SettingToggleCard
                 title="잡음 줄 제외"
                 description="이 페이지에서 숫자·기호·안내 문구를 자동으로 뺍니다."
                 checked={presetDraft.noiseFilterEnabled}
-                onChange={(checked) => handlePresetDraftChange("noiseFilterEnabled", checked)}
+                onChange={(checked) =>
+                  handlePresetDraftChange("noiseFilterEnabled", checked)
+                }
               />
               <button type="button" onClick={handleAddPreset}>
                 프리셋 추가
@@ -368,8 +437,11 @@ export function SettingsView(props: {
       </div>
 
       <footer className="actions settings-actions">
-        <button type="button" onClick={handleSave} disabled={hasFieldErrors}>
-          저장
+        <p className="settings-save-status" role="status" aria-live="polite">
+          {isSaving ? "설정을 저장하고 있습니다." : isDirty ? "저장하지 않은 변경사항이 있습니다." : "모든 변경사항이 저장되었습니다."}
+        </p>
+        <button type="button" onClick={handleSave} disabled={hasFieldErrors || isSaving || !isDirty}>
+          {isSaving ? "저장 중…" : "저장"}
         </button>
         <button className="secondary" type="button" onClick={handleReset}>
           기본값으로 되돌리기

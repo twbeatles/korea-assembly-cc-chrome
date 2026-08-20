@@ -33,13 +33,13 @@
   }
 
   .panel {
-    width: min(640px, calc(100vw - 24px));
+    width: min(520px, calc(100vw - 24px));
     height: calc(100vh - 24px);
     display: flex;
     flex-direction: column;
     gap: 12px;
     box-sizing: border-box;
-    padding: 16px 16px 14px;
+    padding: 14px;
     overflow: hidden;
     border-radius: var(--radius-lg);
     border: 1px solid rgba(255, 255, 255, 0.6);
@@ -261,8 +261,8 @@
     display: flex;
     flex-direction: column;
     flex: 1 0 auto;
-    min-height: min(520px, calc(100vh - 300px));
-    gap: 14px;
+    min-height: min(420px, calc(100vh - 286px));
+    gap: 10px;
     overflow: hidden;
   }
 
@@ -401,7 +401,7 @@
   .live-row-shell {
     position: relative;
     flex: 1 1 auto;
-    min-height: 320px;
+    min-height: 250px;
     display: flex;
   }
 
@@ -446,11 +446,11 @@
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: 12px;
-    padding: 14px;
+    gap: 8px;
+    padding: 10px;
     overflow: auto;
     scrollbar-gutter: stable both-edges;
-    min-height: 320px;
+    min-height: 250px;
     background: linear-gradient(180deg, #f8fbff, #edf4fb);
   }
 
@@ -480,7 +480,7 @@
   }
 
   .live-row {
-    padding: 17px 18px;
+    padding: 12px 14px;
     border-radius: 14px;
     background: #ffffff;
     border: 1px solid var(--line-soft);
@@ -541,21 +541,21 @@
   .live-row p {
     margin: 0;
     color: var(--ink-900);
-    font-size: 21px;
+    font-size: 17px;
     font-weight: 600;
     line-height: 1.7;
   }
 
   .empty-text {
     margin: 0;
-    min-height: 240px;
+    min-height: 180px;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 0 10px;
     text-align: center;
     color: #35536e;
-    font-size: 20px;
+    font-size: 16px;
     font-weight: 700;
     line-height: 1.7;
   }
@@ -612,6 +612,45 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+  }
+
+  .capture-row {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .capture-row button {
+    width: 100%;
+  }
+
+  .capture-row .stop-action {
+    background: #8c5200;
+  }
+
+  .capture-row .stop-action:hover:not(:disabled) {
+    background: #713f00;
+  }
+
+  .txt-export-button {
+    width: 100%;
+  }
+
+  .export-details {
+    border: 1px solid var(--line-soft);
+    border-radius: 10px;
+    background: rgba(247, 250, 253, 0.72);
+  }
+
+  .export-details summary {
+    cursor: pointer;
+    padding: 9px 10px;
+    color: var(--navy-600);
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .export-details .export-row {
+    padding: 0 8px 8px;
   }
 
   .export-row {

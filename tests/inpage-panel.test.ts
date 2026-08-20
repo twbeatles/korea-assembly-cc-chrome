@@ -269,7 +269,7 @@ describe("in-page panel", () => {
     controller.destroy();
   });
 
-  it("prioritizes the collected subtitle layout and removes the manual capture button", () => {
+  it("prioritizes the collected subtitle layout and keeps capture control nearby", () => {
     const controller = createInPagePanel(createActions());
 
     controller.update(buildPanelState());
@@ -295,12 +295,8 @@ describe("in-page panel", () => {
       heroCard!.compareDocumentPosition(statRow!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(
-      buttons.some((button) => button.textContent === "자막 모으기"),
-    ).toBe(false);
-    expect(buttons.some((button) => button.textContent === "멈추기")).toBe(
-      false,
-    );
+    expect(buttons.some((button) => button.textContent === "수집 시작")).toBe(true);
+    expect(buttons.some((button) => button.textContent === "수집 종료")).toBe(true);
 
     controller.destroy();
   });

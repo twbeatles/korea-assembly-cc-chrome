@@ -217,6 +217,8 @@ src/
 - popup 의 `OPEN_INPAGE_PANEL` 명령은 접힌 패널을 다시 엽니다.
 - popup 은 기존 탭에서 content script 수신자가 없으면 재주입을 시도하고, 실패 시 새로고침 안내로 내려갑니다.
 - 패널은 `실시간 내용`과 `수집된 자막` 2단으로 보입니다.
+- 패널은 상태에 따라 `수집 시작` 또는 `수집 종료` 중 하나를 직접 제어할 수 있어야 합니다.
+- 패널의 기본 파일 내보내기는 `TXT 저장`이며, SRT/VTT/JSON/MD/CSV는 접을 수 있는 선택 영역에 둡니다.
 - `수집된 자막` 목록은 현재 active row만 번쩍 보여 주는 뷰가 아니라, live ledger 기준 최근 row가 누적되는 뷰를 유지합니다.
 - 본회의 fallback capture에서는 structured row가 비어 있어도 이미 commit된 entry를 `수집된 자막` 목록으로 재구성해 누적 표시합니다.
 - 같은 row key 의 갱신은 라이브 목록 DOM 노드를 재사용해 제자리 수정합니다.
@@ -355,6 +357,8 @@ When editing this repository, align with the newly implemented behavior below.
 - session import now sanitizes allow-listed fields and rejects unsupported wrapper versions or invalid timestamps.
 - history full-delete confirmation now uses count + preview, and full-library JSON backup uses store-level export helpers.
 - popup / history async actions must always leave a user-facing error message when they fail.
+- popup의 지속 연결 상태는 상태 안내 줄에, 일회성 성공·정보·오류 결과는 별도 피드백으로 표시합니다.
+- options는 저장 기준 상태와 현재 값을 비교해 변경됨·저장 중·저장 완료를 표시하며, 변경이 없을 때 저장을 비활성화합니다.
 - options numeric settings now use draft-string validation rather than mutating canonical numbers on every keystroke.
 
 ## Sync Delta (2026-03-11)

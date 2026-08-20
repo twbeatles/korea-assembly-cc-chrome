@@ -250,6 +250,29 @@ button:disabled {
   line-height: 1.5;
 }
 
+.feedback-toast {
+  padding: 9px 11px;
+  border-radius: 10px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.feedback-toast.success {
+  background: #dff4e2;
+  color: #185f2a;
+}
+
+.feedback-toast.error {
+  background: #ffe0df;
+  color: #9b211b;
+}
+
+.feedback-toast.info {
+  background: #dfe8f4;
+  color: #214568;
+}
+
 .warning-box {
   margin-top: 9px;
   border-radius: var(--radius-sm);

@@ -29,9 +29,15 @@ interface AppProps {
   surface?: AppSurface;
 }
 
+type PopupFeedback = {
+  message: string;
+  tone: "success" | "error" | "info";
+};
+
 export default function App({ surface = "popup" }: AppProps) {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
   const [statusMessage, setStatusMessage] = useState("현재 페이지를 확인하고 있습니다.");
+  const [feedback, setFeedback] = useState<PopupFeedback | null>(null);
   const [tabReady, setTabReady] = useState(false);
   const [unsupported, setUnsupported] = useState(false);
   const [requiresReload, setRequiresReload] = useState(false);
@@ -40,6 +46,19 @@ export default function App({ surface = "popup" }: AppProps) {
   const [presets, setPresets] = useState<AssemblyPreset[]>([]);
   const hasPersistableContent = Boolean(snapshot?.hasPersistableContent);
   const captureReady = Boolean(snapshot?.connected);
+
+  const showFeedback = (message: string, tone: PopupFeedback["tone"] = "info"): void => {
+    setFeedback({ message, tone });
+  };
+
+  useEffect(() => {
+    if (!feedback) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setFeedback(null), 3600);
+    return () => window.clearTimeout(timeoutId);
+  }, [feedback]);
 
   useEffect(() => {
     void getSettings()
@@ -225,10 +244,10 @@ export default function App({ surface = "popup" }: AppProps) {
               );
               return;
             case "ERROR":
-              setStatusMessage(message.message);
+              showFeedback(message.message, "error");
               return;
             case "POPUP_FEEDBACK":
-              setStatusMessage(message.payload.message);
+              showFeedback(message.payload.message, "success");
               return;
           }
         };
@@ -314,11 +333,11 @@ export default function App({ surface = "popup" }: AppProps) {
 
   const sendCommand = (message: PopupToContentMessage, label: string): void => {
     if (!port) {
-      setStatusMessage("현재 페이지와 아직 연결되지 않았습니다.");
+      showFeedback("현재 페이지와 아직 연결되지 않았습니다.", "error");
       return;
     }
 
-    setStatusMessage(label);
+    showFeedback(label);
     port.postMessage(message);
   };
 
@@ -326,12 +345,12 @@ export default function App({ surface = "popup" }: AppProps) {
     try {
       const response = await sendRuntimeMessage({ type: "OPEN_HISTORY_PAGE" });
       if (!response.ok) {
-        setStatusMessage(response.error);
+        showFeedback(response.error, "error");
         return;
       }
-      setStatusMessage("저장된 기록 화면을 열었습니다.");
+      showFeedback("저장된 기록 화면을 열었습니다.", "success");
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "저장된 기록 화면을 열지 못했습니다.");
+      showFeedback(error instanceof Error ? error.message : "저장된 기록 화면을 열지 못했습니다.", "error");
     }
   };
 
@@ -339,12 +358,12 @@ export default function App({ surface = "popup" }: AppProps) {
     try {
       const response = await sendRuntimeMessage({ type: "OPEN_OPTIONS_PAGE" });
       if (!response.ok) {
-        setStatusMessage(response.error);
+        showFeedback(response.error, "error");
         return;
       }
-      setStatusMessage("환경 설정 화면을 열었습니다.");
+      showFeedback("환경 설정 화면을 열었습니다.", "success");
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "환경 설정 화면을 열지 못했습니다.");
+      showFeedback(error instanceof Error ? error.message : "환경 설정 화면을 열지 못했습니다.", "error");
     }
   };
 
@@ -355,12 +374,12 @@ export default function App({ surface = "popup" }: AppProps) {
         tabId: currentTabId ?? undefined,
       });
       if (!response.ok) {
-        setStatusMessage(response.error);
+        showFeedback(response.error, "error");
         return;
       }
-      setStatusMessage("상태 확인 화면을 열었습니다.");
+      showFeedback("상태 확인 화면을 열었습니다.", "success");
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "상태 확인 화면을 열지 못했습니다.");
+      showFeedback(error instanceof Error ? error.message : "상태 확인 화면을 열지 못했습니다.", "error");
     }
   };
 
@@ -370,18 +389,21 @@ export default function App({ surface = "popup" }: AppProps) {
         type: "OPEN_SIDE_PANEL",
         tabId: currentTabId ?? undefined,
       });
-      setStatusMessage(response.ok ? "브라우저 사이드 패널을 열었습니다." : response.error);
+      showFeedback(
+        response.ok ? "브라우저 사이드 패널을 열었습니다." : response.error,
+        response.ok ? "success" : "error",
+      );
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "사이드 패널을 열지 못했습니다.");
+      showFeedback(error instanceof Error ? error.message : "사이드 패널을 열지 못했습니다.", "error");
     }
   };
 
   const openPreset = async (preset: AssemblyPreset): Promise<void> => {
     try {
       await createTab(preset.url);
-      setStatusMessage(`${preset.name} 페이지를 열었습니다.`);
+      showFeedback(`${preset.name} 페이지를 열었습니다.`, "success");
     } catch (error) {
-      setStatusMessage(error instanceof Error ? error.message : "프리셋 페이지를 열지 못했습니다.");
+      showFeedback(error instanceof Error ? error.message : "프리셋 페이지를 열지 못했습니다.", "error");
     }
   };
 
@@ -428,6 +450,11 @@ export default function App({ surface = "popup" }: AppProps) {
         <div className="status-line" role="status" aria-live="polite">
           {statusMessage}
         </div>
+        {feedback ? (
+          <div className={`feedback-toast ${feedback.tone}`} role="status" aria-live="polite">
+            {feedback.message}
+          </div>
+        ) : null}
         {requiresReload ? (
           <div className="warning-box">
             확장 설치 전부터 열려 있던 탭이면 새로고침이 필요할 수 있습니다.
