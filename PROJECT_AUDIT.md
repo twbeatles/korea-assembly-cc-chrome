@@ -1,380 +1,348 @@
 # Project Audit
 
-**대상:** `korea-assembly-cc-chrome` (국회 AI 자막 추출 Chrome Extension)  
-**감사 일자:** 2026-08-12 (5차 · **전 기능 구현 관점** 재감사)  
-**배포 버전 기준:** `package.json` / README `1.0.13`  
-**방법:** `README.md` · `CLAUDE.md` 정독 → CodeGraph MCP로 엔트리·호출 관계·blast radius 분석 → 고위험 경로 보조 대조 → `npm run test` (감사 시 361 passed)  
+감사일: **2026-09-09 (KST)** · 대상: **국회 AI 자막 추출기 1.0.13** · 기준 커밋: **`4cf5ea4`** (`main`)
 
-**관련 문서:** 보안·성능·a11y·CI·아키텍처 비용 등 **비기능 범위**는 `PROJECT_AUDIT_NONFUNCTIONAL.md` 를 본다.
-
-> **구현 반영 (2026-08-12, 감사 직후)**  
-> §5 Fix Plan 1–3단계 핵심 항목을 코드에 반영했다. 회귀: **68 files / 372 tests 통과**.  
-> - M1: 롤오버 큐 128, 시작 시 큐 비우기 제거, 진단 `segmentRollover` + options UI  
-> - M2: exit-persist **index** 키로 list 시 `get(null)` 회피(마이그레이션 1회 스캔)  
-> - M3/L5: `segment-rollover-diagnostics` 추출, multi-span·normalize·SW·prepare 테스트 보강  
-> - M4: README 주/보조 호스트 안내  
-> - M5: `LIVE_CAPTURE_SMOKE_CHECKLIST.md`  
-> - L1/L2: SW persist 스키마 검증, `sanitizeSessionId`/`sanitizeQualityStats`  
-> - L4: pendingPreviews 회귀 테스트 강화  
-> - 설정: `exportSpeakerEnabled` → `txtExportSpeakerEnabled` alias  
-> 남은 대형 작업: `runtime-core` 전면 분해, History App 추가 분리, 실중계 수동 스모크 실행.  
-
-> **5차 범위**  
-> 수집 파이프라인, 영속화(IDB/fallback/queue), page-exit 복구, export/download, import sanitize,  
-> 브리지/nonce 보안, 비동기·race, 설정 반영, 문서-구현 정합, 테스트 공백.  
->
-> **이전 감사와의 관계**  
-> - 1–3차: lifecycle lock, write 큐, IDB TTL, CSV BOM, messaging, 롤오버 큐, timeRange 등 기반 안정화.  
-> - 4차(2026-08-10): 발언자 UI/export 정합 중심.  
-> - **5차 확인:** 4차 Medium 다수는 코드상 **이미 해소**됨 (아래 §1·§3 “해소된 항목”). 본 문서는 **현재 코드 기준 잔존 위험**만 고위험으로 싣는다.
-
-**주의:** 코드는 수정하지 않았다. High-Risk는 실제 코드 근거가 있는 항목만 싣고, 추정은 §4에 분리한다.
-
----
+이번 문서는 기존 감사를 현재 코드와 실행 결과로 갱신한 보고서다. 제품 코드·설정·의존성은 수정하지 않았다. 기존 사용자 프로필, IndexedDB, 확장 저장소에는 접근하거나 쓰지 않았다. 재현은 임시 Node 프로세스의 fake-indexeddb와 메모리 Chrome API 대역으로 수행했다.
 
 ## 1. Executive Summary
 
-이 제품은 국회 의사중계 AI 자막을 **수집 → 로컬 확정 저장 → History · 다형식 export** 하는 Manifest V3 확장이다. 저장소 성숙도가 높고(큐·락·fallback·replay·import allow-list·export 한도 등), 단위/통합 테스트 **66 files · 361 tests 전부 통과**했다.
+수집·검색·편집·다형식 내보내기의 기능 골격과 오류 처리 기반은 갖춰져 있다. **기존 테스트 69개 파일, 375개 테스트가 통과**했고 lint 및 임시 디렉터리 대상 Vite production build도 성공했다. 실제 국회 법사위 중계에서 자막 DOM 갱신을 관측했으며, 핵심 선택자와 확정/미확정 스타일은 구현과 일치했다.
 
-**전체 위험도: Low–Medium**
+그러나 **전체 위험도는 High**로 평가한다. 저장 완료로 표시된 사용자 수정이 다음 자동 저장에 사라지는 문제와, 별도 실행 환경 간 쓰기 및 종료 복구 인덱스 경쟁을 격리 재현했다. 단위 테스트 통과만으로 데이터 보존을 보장할 수 없는 상태다.
 
-| 등급 | 개수(5차 잔존) | 요약 |
-|------|----------------|------|
-| Critical | 0 | 전손·원격 RCE·의도적 데이터 유출 경로는 확인되지 않음 |
-| High | 0 | 확정 High 없음 |
-| Medium | 5 | 롤오버 중 이벤트 드롭, storage 전체 스냅샷 비용, runtime 거대 모듈 회귀, 보조 호스트 DNS, 실사이트 e2e 공백 |
-| Low | 다수 | SW 메시지 스키마 방어 심화, qualityStats 정규화 약함, multi-tab soft split, 일부 심볼 직접 테스트 부재 |
+| 이슈 | 우선순위 | 신뢰도 | 핵심 영향 |
+|---|---|---|---|
+| ISSUE-001 | High | Confirmed | 수집 중 History의 자막 수정·중요 표시·행 메모가 자동 저장에 덮어써짐 |
+| ISSUE-002 | High | Confirmed | History/백그라운드 등 별도 실행 환경 사이에서 메타데이터 변경 유실 |
+| ISSUE-003 | High | Confirmed | 종료 복구 큐의 인덱스 경쟁으로 durable record가 재시작 후 조회되지 않음 |
+| ISSUE-004 | Medium | Likely | 자동 분할 저장 중 멈추기를 누르면 대기 중 자막 이벤트가 사라짐 |
+| ISSUE-005 | Medium | Confirmed | 삭제한 기록이 남은 종료 복구 큐에서 재생되어 되살아남 |
 
-**강점 (사실):**
+**데이터 유실 가능성: 있음.** ISSUE-001/002는 논리적 덮어쓰기, ISSUE-003은 복구 대상 누락이다. DB 파일 자체의 물리적 손상이나 전체 라이브러리 파괴, 외부로 자막을 유출하는 Critical 경로는 확인하지 못했다. ISSUE-003은 원본 키가 저장소에 남아 있어 복구 여지가 있으며, 모든 동시 종료가 영구 유실로 이어진다는 뜻은 아니다.
 
-- 수집 의미론이 문서와 대체로 일치: committed entry만 persist/export, preview-only 비승격 (`buildPreparedSessionState`가 `pendingPreviews` 비움).  
-- `captureLifecycleLock` + `enqueueSessionWrite` + IDB soft-disable TTL + fallback memory rollback.  
-- page-exit queue merge · startup replay-before-cleanup · diagnostics.  
-- import는 `session-backup` allow-list + 타임스탬프/버전 검증, running→saved 정규화.  
-- export: offscreen Blob 우선, `DATA_URL`/`DOWNLOAD_REQUEST` 2 MiB 한도, CSV UTF-8 BOM, speaker 옵션 포맷 연동.  
-- 브리지: page-world `postMessage` origin 고정, observer token, frame-forward nonce + mismatch resync.  
-- 4차 지적(TXT 접두 불일치, MD/CSV 옵션 무시, estimate speaker 미반영, multi-span 미분할, speakerChanged 미설정 등)은 **1.0.13 코드에서 대체로 수정됨**.
-
-**한 줄 결론:** 기능 골격은 안정적이고 Critical 수정은 불필요하다. 남은 과제는 **장시간 수집 중 롤오버 버퍼 손실 완화**, **storage 전체 읽기 비용**, **runtime-core 분해·통합 테스트**, **실중계 e2e**, **보조 호스트/문서 운영 정리**다.
-
----
+가장 먼저 **캡처 원문과 사용자 편집의 저장 정책**, **실행 환경을 가로지르는 쓰기 직렬화**, **종료 복구 큐의 원자성·발견 가능성**을 수정해야 한다.
 
 ## 2. Project Understanding
 
-### 2.1 목적 (README / CLAUDE)
+### 목적·개발 규칙
 
-| 항목 | 내용 |
-|------|------|
-| 제품 | 국회 의사중계 AI 자막 실시간 수집 · 로컬 저장 · History · TXT/SRT/VTT/JSON/MD/CSV |
-| 호스트 | `assembly.webcast.go.kr`, `webcast.assembly.go.kr` |
-| 수집 범위 | 플레이어(`main/player*`, `pressplayer*`); 홈(`/main`)은 패널·진단만 |
-| 스택 | MV3 · TypeScript(7 typecheck / 6 ESLint) · React · Vite · Vitest · IndexedDB(+chrome.storage/memory fallback) |
-| 저장 원칙 | 확정(committed) 자막만 persist/export; preview-only 승격 금지 |
-| 검증 | `lint` / `typecheck` / `test` / `build` / `verify:e2e` (`verify`에 check:version·injected 포함) |
+- 국회 의사중계 페이지의 AI 자막을 실시간 수집하고 브라우저 내부에 저장하는 Chrome Manifest V3 확장이다. TXT/SRT/VTT/JSON/MD/CSV 내보내기, History 검색·메모·편집·백업을 제공한다.
+- `README.md`, `CLAUDE.md`, `manifest.json`, `package.json`, `vite.config.ts`, `vitest.config.ts`, `tsconfig.json`, CI workflow, `SECURITY.md`, 실중계 체크리스트 및 기존 감사의 요약을 확인했다.
+- **루트 `AGENTS.md` 파일은 존재하지 않았다.** 사용자 메시지에 제공된 CodeGraph 우선 사용 및 main 작업 규칙을 적용했다. 별도 브랜치나 worktree는 만들지 않았다.
+- 활성 제품은 TypeScript/React 확장이다. 과거 Python/PyQt/Selenium 앱은 이번 production 감사 대상에서 제외했다. 신규 기능 구현이나 Spec Kit 산출물 작성은 수행하지 않았다.
 
-### 2.2 주요 실행 흐름 (CodeGraph)
+### 진입점·핵심 모듈
+
+| 영역 | 진입점 / 모듈 | 역할 |
+|---|---|---|
+| Content | `src/content/content-script.ts` → `app/runtime/orchestrator/runtime-core.ts` | bootstrap, 상태, 패널, observer/polling, 저장, 분할, 종료 |
+| Page world | `src/content/injected-observer.ts` → 생성된 `public/injected-observer.js` | MutationObserver와 DOM 재읽기, token 기반 브리지 |
+| DOM | `subtitle-rows.ts`, `dom-probe.ts`, `frame-probe.ts` | 행 키·발언자·미확정 필터, 접근 가능한 프레임 탐색 |
+| 자막 처리 | `src/core/live-capture.ts`, `subtitle-pipeline/commit.ts` 및 관련 모듈 | 행 reconcile, 보정, 중복/노이즈 필터, commit |
+| Background | `src/background/service-worker.ts`, `service-worker-commands.ts` | 저장 명령, 다운로드, nonce, startup 복구 |
+| 저장 | `src/storage/session-store.ts` 및 하위 public-api/idb/fallback | 메타데이터·본문·청크 CRUD, 검색, lineage, import/export |
+| 복구 | `src/storage/persist-recovery.ts`, `src/background/startup-persistence.ts` | 종료 스냅샷 큐, 재생, running 기록 종료 처리 |
+| UI | popup/history/options/sidepanel의 HTML·React entry | 연결, 기록 관리, 설정, 보조 UI |
+| Export | `src/storage/session-store/export-payload.ts`, `src/core/exporters/*`, offscreen | 선택·시간 필터, 출력 정규화, Blob 다운로드 |
+
+### 데이터 저장·공유 상태
+
+- IndexedDB schema **5**, session record version **4**. 세션 메타데이터와 자막 청크를 별도 object store에 두고 쓰기는 같은 readwrite transaction으로 수행한다.
+- IndexedDB open/capability 실패 시 30초 TTL 후 재시도하며 `chrome.storage.local` per-session fallback을 사용한다. fallback 쓰기 실패 시 메모리 변경을 되돌리는 보호가 있다.
+- 설정, fallback 인덱스·메타데이터, 종료 복구 레코드·인덱스, 진단, frame nonce 등은 확장 storage에 저장한다.
+- Content의 `state`, `liveCaptureLedger`, 분할 대기 큐는 페이지별 메모리다. 저장소의 `queues: Map`, fallback queue, memory cache는 **각 JavaScript 실행 환경별 모듈 상태**다. 같은 확장 ID를 사용해도 History 문서와 service worker의 Map은 공유되지 않는다.
+- 서버 DB, SQL, 사용자 파일 경로를 여는 런타임 subprocess는 활성 핵심 흐름에 없다. 브라우저 다운로드 API로 파일을 생성한다. DB transaction/migration 감사는 IndexedDB를 대상으로 했다.
+
+### 핵심 실행 흐름
 
 ```text
-content-script bootstrap (멱등)
-  └─ createContentRuntime → orchestrator/runtime-core
-       ├─ mountInPagePanel
-       ├─ bindBridgeMessages (observer token + frame-forward nonce)
-       ├─ startCapturePipeline / startCapture (captureLifecycleLock)
-       │    ├─ injected-observer (page world MutationObserver)
-       │    ├─ local-polling / top-frame fallback
-       │    ├─ live-capture ledger + subtitle-pipeline (commit/merge)
-       │    ├─ scheduleRunningPersist (entries 있을 때만)
-       │    └─ segment rollover (persist → continued state + event queue)
-       ├─ stop / page-exit → prepared snapshot → persist + queue replay
-       └─ export/copy → DOWNLOAD_SESSION_EXPORT / page Blob (History)
+지원 player URL
+ → content bootstrap / lifecycle start
+ → AI 자막 레이어 활성화
+ → page-world observer 또는 local polling / frame fallback
+ → token·nonce 검증 / normalizeCaptureEvent
+ → reconcileLiveCapture → commitLiveRow → committed entries
+ → 패널·popup 갱신 / 자동 분할 / autosave
+ → PERSIST_SESSION_RECORD → background handler
+ → updateRunningSession 또는 saveSession
+ → IDB metadata+chunks transaction / chrome.storage fallback
+ → 저장 시각 또는 오류 표시
 
-background service-worker
-  ├─ frame-forward nonce lifecycle (tab loading rotate / remove clear)
-  ├─ startup persistence (debounce guard → replay → close running)
-  └─ export download (offscreen Blob → data: ≤2MiB)
+History 입력
+ → 빈 본문·메타데이터·선택 상태 확인
+ → updateSessionContent / updateSessionMetadata / updateSessionLineageMetadata
+ → load → patch → writeSessionRecord
+ → library revision 알림 / 목록 재조회
 
-session-store
-  ├─ mutations: save/updateRunning (write 큐 + preserve metadata)
-  ├─ idb open TTL soft disable + tryIndexedDb
-  ├─ fallback: chrome.storage + memory rollback on quota/fail
-  └─ import-export: normalize + createSessionExportPayload
+JSON 파일
+ → 25 MiB 제한 / abort-aware 파일 읽기 / JSON parse
+ → parseSessionImportPayload allow-list·날짜·URL 검증
+ → importSessionRecords (running→saved, updatedAt 비교)
+ → record별 저장 / 부분 성공·취소 요약
+
+내보내기
+ → 세션 또는 lineage 조회 → 선택·시간 범위 필터
+ → 출력 정규화 → 형식별 exporter
+ → offscreen Blob → chrome.downloads
+ → 실패 시 크기 제한 내 data URL fallback
+전체 JSON 백업 → page-wise packaging → History page Blob 다운로드
+
+pagehide / beforeunload
+ → 확정 entries의 stopped 스냅샷
+ → 종료 큐 저장 → background 저장 시도
+ → onStartup/onInstalled: queue replay → 잔여 running cleanup → 진단
 ```
 
-### 2.3 핵심 모듈 맵
+### 국회 사이트 실측
 
-| 영역 | 경로 | 역할 |
-|------|------|------|
-| Content bootstrap | `src/content/content-script.ts`, `app/runtime/` | facade → runtime-core |
-| Capture lock | `src/content/runtime/capture-lifecycle-lock.ts` | start/stop/clear/export 직렬화 |
-| Pipeline | `src/core/subtitle-pipeline/*` | extract / commit / history / lifecycle |
-| Rows | `src/content/subtitle-rows.ts` | structured rows · multi-span 화자 분할 |
-| Session store | `src/storage/session-store/*` | IDB · fallback · public API |
-| Persist recovery | `src/storage/persist-recovery.ts` | page-exit queue |
-| Background | `src/background/service-worker*.ts` | export · nonce · startup |
-| History / Options / Popup | `src/history/`, `options/`, `popup/` | React UI |
-| Import sanitize | `src/storage/session-backup.ts` | JSON allow-list |
+**관측 시각: 2026-09-09 약 11:03~11:06 KST.** 단순 HTTP 추출에는 빈 중계 카드와 기본 달력만 나타났으나, JavaScript가 실행된 브라우저에서는 실제 당일 목록이 표시됐다. 정적 HTML의 빈 목록을 “중계 없음”으로 판단하지 않았다.
 
-### 2.4 문서·구현 정합 (요약)
+- [공식 홈](https://assembly.webcast.go.kr/main/)에 **법사위 ‘개의’와 생중계 링크**가 있었고 **본회의는 14:00 중계예정**이었다.
+- [확인한 플레이어](https://assembly.webcast.go.kr/main/player.asp?xcode=25&xcgcd=DCM000025224390201&)의 제목은 **제439회 국회(정기회) 제02차 법제사법위원회**였다.
+- AI 자막보기 클릭 후 `.btn_subtit_ai.on`, `#viewSubtit`의 `display:block`, `.incont`, `p.smi_word.stxt789` 등의 행과 `span#segarr_789_0` 구조를 확인했다. 관측한 player 문서에는 iframe/frame이 없었다. 다른 중계의 프레임 구성까지 일반화하지 않는다.
+- 11:04:43의 `stxt789…796`에서 11:06:23의 `stxt804…809`로 행과 문장이 변경됐다. **실시간 자막 공급은 실제 관측으로 확인**했다.
+- 확정 행은 투명 배경, 발언자 색은 `rgb(35,124,147)` / `rgb(30,30,30)`, 미확정 행은 `#cfe5f7` 배경과 `#0c2b80` 글자색이었다. 구현의 class key·발언자 분류·배경 필터와 부합한다.
+- 관측 구조 중 3행을 임시 jsdom에서 재구성해 현재 `readObservedSubtitleRows`를 실행했다. **stable class key 2행, primary/secondary 분류, 미확정 1행 제외**를 확인했다. 실제 확장의 수집·저장 완료 테스트를 대신하는 결과는 아니다.
+- 내장 브라우저에서 영상은 재생되지 않았고 마지막 관측은 `paused:true, readyState:0, error:null`이었다. 영상 스트림의 정상 재생·음성과 자막의 정확도는 확인하지 못했다. 이를 확장 버그로 분류하지 않았다.
+- 보조 호스트 `webcast.assembly.go.kr`는 web 접근이 실패했고 Windows `Resolve-DnsName`도 “DNS 이름이 없습니다”를 반환했다. **현재 감사 환경의 결과**이며 전 세계 장애로 단정하지 않는다. README에 이미 보조 호스트 불통 가능성이 명시되어 있다.
 
-| 주제 | 정합 |
-|------|------|
-| committed-only save/export | 일치 (`buildPreparedSessionState` clears `pendingPreviews`) |
-| `recentDuplicateMinLength` 설정 반영 | 일치 (`resolveRecentDuplicateMinLength` → extract) |
-| autosave empty running 금지 | 일치 (`hasPersistableRunningContent` = running && entries>0) |
-| frame nonce · origin postMessage | 일치 |
-| CSV BOM · speaker 옵션 · multi-span | 일치 (1.0.13 / CLAUDE Sync Delta 2026-08-10) |
-| `panelSpeakerHighlightEnabled` 기본값 | 일치 (`false` in `DEFAULT_EXTENSION_SETTINGS`) |
-| 보조 호스트 `webcast.assembly.go.kr` | 문서·manifest 지원 vs 실측 DNS 실패 가능 (사이트 호환 문서 참고) |
-| 4차 감사 문서 일부 | **구식** (MD/CSV always speaker, TXT plain 등 현재 코드와 불일치 → 본 5차가 대체) |
+## 3. Audit Coverage & Limitations
 
----
+### 확인한 범위와 CodeGraph 사용
 
-## 3. High-Risk Issues
+CodeGraph **MCP `codegraph_explore`를 실제 사용**했다. 먼저 entrypoints, storage/export/import, 다음으로 정확한 심볼을 조회했으며 다음 경로와 영향 범위를 확인했다.
 
-Critical / High 는 없다. 아래는 근거 있는 Medium·Low.
+| 호출 관계 | 확인 사항 |
+|---|---|
+| `updateSessionContent → loadSession → withSessionStoresTransaction` | 읽기와 후속 쓰기의 transaction 경계 |
+| `saveSession/updateRunningSession → preserveStoredSessionMetadata → writeSessionRecord` | 메타 보존 범위와 session-id queue |
+| `handleTopFrameEvent → queueSegmentRolloverEvent`, `flushQueuedSegmentRolloverEvent → handleTopFrameEvent` | 버퍼 진입·재생과 stop 경쟁 |
+| `applyStructuredRowsEvent → reconcileLiveCapture/commitLiveRow` | 행 보정·commit 및 state 변경 |
+| `readObservedSubtitleRows ← dom-probe/injected-observer` | 실제 DOM 선택자와 발언자·미확정 분류 |
+| `queueExitPersistRecord/list/clear ← page exit/startup/store` | 복구 인덱스·메모리 merge·삭제 영향 |
+| `exportSessionData/exportSessionLineageData ← service-worker` | 세션 기반 출력 조립, 선택·시간 필터 |
+| `importSessionRecords ← History` | UI validation 이후 저장, 취소·부분 성공 |
+| `closeRunningSessionsOnStartup ← runStartupPersistenceMaintenance` | replay 후 cleanup 순서 |
 
----
+MCP 응답에는 크기 제한에 따른 생략 구간이 있었다. 그 구간의 handler 본문, UI disabled 조건, migration·worker listener·설정 구현은 `rg`와 직접 열람으로 보완했다. 그래프의 이름 매칭은 모호한 후보나 facade import를 caller로 포함할 수 있다. 따라서 그래프가 “테스트 없음”이라고 출력한 것만으로 테스트 부재를 단정하지 않았고 실제 테스트 파일도 확인했다.
 
-### M1. 세그먼트 롤오버 중 bounded event queue 드롭 → 자막 누락 가능
+### 실행 결과
 
-* **위치:**  
-  - `src/content/runtime/segment-event-queue.ts` — `DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX = 64`, `enqueueBoundedSegmentEvent`  
-  - `src/content/app/runtime/orchestrator/runtime-core.ts` — `queueSegmentRolloverEvent`, `rollOverRunningSessionSegment`
-* **문제:** 롤오버 persist가 진행 중일 때 들어오는 observer 이벤트는 최대 64개만 버퍼한다. 초과 시 **가장 오래된 이벤트부터 폐기**하고 패널 notice만 남긴다.
-* **영향:** 장시간·고밀도 자막 + 느린 IDB write 시, 세그먼트 전환 구간에서 확정 자막이 일부 유실될 수 있다. 사용자에게 드롭 건수는 안내되나 **복구 불가**.
-* **근거:** `nextQueue.slice(-safeMaxSize)` 로 drop; `segmentRolloverInFlight` 동안 이벤트가 큐에만 쌓임; CodeGraph blast: `rollOverRunningSessionSegment` 직접 covering test 약함.
-* **권장 수정 방향:**  
-  1) 롤오버 중 수신 이벤트를 메모리 state에 직접 반영(큐 없이 ledger 갱신)하거나,  
-  2) 큐 상한을 설정화·동적 확장하고 drop 시 진단 카운터를 options에 영속화,  
-  3) 롤오버 통합 테스트(대량 이벤트 + slow persist mock).
-* **우선순위:** Medium
+| 검증 | 결과 / 의미 |
+|---|---|
+| `npm run test -- --reporter=dot` | **69 files / 375 tests passed**, 38.61초. jsdom/fake-indexeddb 및 UI/API 대역 기반 |
+| `npm run lint` | 성공, 오류 출력 없음 |
+| `npm run check:version` | 1.0.13 일치 |
+| `npm run check:injected` | 성공, 생성 observer와 소스 일치 |
+| `npm run typecheck` | **실행 실패**: `Cannot find module 'typescript-7/package.json'` |
+| `node node_modules/typescript/bin/tsc --noEmit` | 설치된 **TypeScript 5.9.3**로 보조 검사 성공. 프로젝트 지정 TS7 검사 통과를 의미하지 않음 |
+| `node node_modules/vite/bin/vite.js build --outDir <TEMP>/assembly-audit-build-20260909` | 성공, Vite 표시 2.07초. 기존 `dist`를 덮어쓰지 않는 임시 production build |
+| 임시 재현 harness | 실제 저장 모듈을 esbuild로 메모리 번들링하여 아래 4가지 잘못된 결과 재현; DOM 파서 호환 확인 |
+| 공식 사이트 브라우저 검사 | 당일 중계 목록, 법사위 player, 자막 활성화와 시간차 갱신 확인 |
 
----
+`npm run verify`, `npm run build` 전체 script, TS6/TS7 정식 검증, coverage 측정, `verify:e2e`, `test:e2e:extension`은 통과했다고 주장하지 않는다. 표의 임시 Vite 빌드는 별도 명령이다. dependency 설치는 하지 않았다. 로컬 Node는 **v24.19.0**, CI는 Node 20이므로 환경도 동일하지 않다.
 
-### M2. page-exit replay 목록이 `chrome.storage.local.get(null)` 전체 스냅샷에 의존
+테스트 stderr의 quota/transaction/clear 실패 문구는 기존 실패 주입 테스트의 예상 로그였으며, 테스트 실패와 구분했다.
 
-* **위치:** `src/storage/persist-recovery.ts` — `listQueuedExitPersistRecords`  
-  (유사 패턴: fallback clear 경로 `fallback/storage.ts` 의 `get(null)`)
-* **문제:** 큐 레코드 접두 키만 필요해도 storage **전체**를 읽는다. fallback 레코드·다운로드 URL 맵·설정·nonce 등이 커지면 읽기 비용·메모리 피크가 커진다.
-* **영향:** 확장 재시작·startup maintenance 지연, 저사양 환경에서 SW 수명/응답 악화 **가능**. 데이터 손상 직접 원인은 아님.
-* **근거:** `const snapshot = await chrome.storage.local.get(null)` 후 prefix 필터.
-* **권장 수정 방향:** 전용 index 키(세션 ID 목록)를 유지하거나, 알려진 prefix 키 목록을 별도 index에 두고 `get(keys)` 로 제한. 회귀 테스트로 대량 키 시나리오.
-* **우선순위:** Medium
+### 격리 재현 방법과 결과
 
----
+임시 파일: `C:/Users/soulb/AppData/Local/Temp/assembly-audit-repro.mjs`, 결과 `assembly-audit-repro.log`. 기존 설치된 esbuild/fake-indexeddb/jsdom만 사용했다. 번들은 `write:false`, ESM data URL로 로드했고 A/B에 서로 다른 import fragment를 부여해 모듈 전역 상태를 분리했다. 두 인스턴스가 하나의 **메모리 fake-indexeddb와 구조 복사하는 비동기 chrome.storage 대역**을 공유하도록 했다. 실제 Chrome 프로필에는 연결하지 않았다.
 
-### M3. `runtime-core.ts` 거대 모듈 + start/stop/rollover 직접 테스트 공백
+주요 입력과 출력은 다음과 같다. 향후 회귀 테스트에서는 아래 잘못된 결과가 발생하지 않아야 한다.
 
-* **위치:** `src/content/app/runtime/orchestrator/runtime-core.ts` (~2800 lines)  
-  CodeGraph: `startCapture` / `stopCapture` / `rollOverRunningSessionSegment` / `bindBridgeMessages` / `scheduleRunningPersist` — “⚠️ no covering tests found” (헬퍼 단위 테스트는 존재)
-* **문제:** 수집 상태·타이머·패널·persist·롤오버·URL reconcile이 한 모듈 클로저에 집중. 단위 헬퍼 테스트는 풍부하나 **오케스트레이션 경로 회귀**는 `content-runtime` 등에 부분적으로만 의존.
-* **영향:** 작은 변경이 캡처 전체 의미론을 깨뜨려도 늦게 발견될 위험. 기능 버그라기보다 **회귀·유지보수 위험**.
-* **근거:** 라인 수 실측 ~2800; CodeGraph blast radius 다수 no covering tests; 패널 콜백이 `void startCapture().catch(...)` fire-and-forget.
-* **권장 수정 방향:**  
-  1) capture lifecycle / rollover / bridge bind를 순수 서비스로 추가 분리,  
-  2) fake timers + mock store 로 start→commit→rollover→stop 시나리오 통합 테스트,  
-  3) “수집 중 URL 변경 시 stop+persist” 계약 고정 테스트.
-* **우선순위:** Medium
+```text
+1) updateRunningSession(original e1)
+   → updateSessionContent(e1 = user edit, highlighted=true, entryNote=user note)
+   → updateRunningSession(original e1 + new e2)
+   결과: e1.text=original, highlighted=false, entryNote=null, count=2
 
----
+2) A와 B가 동시에 같은 saved 기록에
+   A.updateSessionMetadata({note: retained note})
+   B.updateSessionMetadata({starred: true})
+   결과: note="", starred=true (양쪽 호출은 성공)
 
-### M4. 보조 호스트 `webcast.assembly.go.kr` 도달 불안정 vs “지원 사이트” 표기
+3) anchor 큐를 저장한 뒤 A.queue(queue-a), B.queue(queue-b)를 동시 호출
+   → 메모리가 없는 새 모듈에서 listQueuedExitPersistRecords()
+   durable keys: anchor, queue-a, queue-b
+   index/listed: anchor, queue-b (queue-a 누락)
 
-* **위치:** `src/shared/constants.ts` · `manifest.json` · `README.md`  
-  근거 문서: `SITE_COMPATIBILITY_REVIEW_2026-08-10.md` (감사 시점 DNS 실패 기록)
-* **문제:** 제품·권한은 두 호스트를 동등 지원으로 노출하지만, 실측상 보조 호스트가 DNS 실패할 수 있다. 코드 버그는 아니나 **사용자 기대·스토어 설명**과 어긋날 수 있다.
-* **영향:** 보조 호스트 접속 실패 시 확장 “미동작” 오인. 주 호스트만으로 핵심 기능은 유지.
-* **근거:** 사이트 호환 문서 §2 “DNS 해석 실패”; 코드는 양쪽 hostname allow.
-* **권장 수정 방향:** README에 “주 호스트 권장, 보조는 네트워크 상태에 따라 불가할 수 있음” 명시. 장기: 실 DNS 모니터링 후 manifest 정리 여부 결정.
-* **우선순위:** Medium (운영/문서)
+4) saved 기록 + 더 최신 stopped 종료 큐
+   → deleteSession → loadSession → replayQueuedExitPersistRecords → loadSession
+   결과: 삭제 직후 없음, replay 후 다시 존재
 
----
-
-### M5. 실중계 런타임 e2e 공백 (사이트 DOM 계약 회귀)
-
-* **위치:** 수집 경로 전반 (`subtitle-rows`, `injected-observer`, `dom-probe`, `subtitle-layer`)  
-  참고: `SITE_COMPATIBILITY_REVIEW_2026-08-10.md` §1.2 한계
-* **문제:** 정적 HTML·셀렉터·화자색 계약은 검토됐으나, 생중계 중 WebSocket/`.smi_word` 제자리 갱신·미확정→확정 전환은 오프라인 시 최종 검증 불가. 로컬 테스트는 fixture·jsdom 중심.
-* **영향:** 국회 사이트 배포 후 수집 품질 급변 시 자동 감지 어려움. **추정 아님 — 호환 문서가 한계를 명시.**
-* **근거:** 호환 문서 “런타임 스모크는 중계 재개 후 권장”; `tests/e2e-smoke.mjs` / extension smoke는 확장 로드 수준.
-* **권장 수정 방향:** 중계 재개 시 체크리스트( structured / fallback / multi-span / plenary raw ) 수동 또는 Playwright 녹화 픽스처 갱신. DOM contract 스냅샷 테스트 유지.
-* **우선순위:** Medium (품질 잔여 리스크)
-
----
-
-### L1. Background `PERSIST_SESSION_RECORD` / `QUEUE_EXIT_PERSIST_RECORD` 페이로드 스키마 검증 약함
-
-* **위치:** `src/background/service-worker-commands.ts` — `handleBackgroundCommand`  
-  후속: `saveSession` → `normalizeSessionRecord`
-* **문제:** 확장 자체 발신(`isMessageFromOwnExtension`)만 검사하고 `message.record` 구조 스키마는 없다. 정상 경로는 content가 prepared record를 보내며 `saveSession`이 normalize한다. 방어 심화 관점에서는 거대·기형 객체가 SW에 들어올 여지.
-* **영향:** 외부 웹 페이지 직접 공격은 어렵다(확장 ID 경계). 손상된 content context·버그 시 저장소에 비정상 레코드 유입 가능. import allow-list 수준은 아님.
-* **근거:** case 분기에서 `message.record` 즉시 전달; `normalizeSessionRecord`는 `id` 타입 강제·`qualityStats` 깊은 sanitize 없이 shallow copy.
-* **권장 수정 방향:** SW 경계에서 `sanitizeStoredSessionRecord` 또는 최소 id/entries/updatedAt 검증 후 reject. 크기 상한.
-* **우선순위:** Low
-
----
-
-### L2. `normalizeSessionRecord`의 `qualityStats` · `id` 검증 불완전
-
-* **위치:** `src/storage/session-store/normalize.ts` — `normalizeSessionRecord`
-* **문제:**  
-  - `qualityStats`는 object면 `{ ...session.qualityStats }` 만 수행 (`session-backup.sanitizeQualityStats`와 불일치).  
-  - `id`가 비문자열이어도 그대로 통과 (import 경로는 사전 sanitize).
-* **영향:** History JSON import 정상 경로는 안전. 다른 호출부·손상 데이터에서 메타 오염. 기능 핵심 경로 영향은 작음.
-* **근거:** normalize L109–118 vs `session-backup.ts` `sanitizeQualityStats` / `sanitizeStoredSessionRecord`.
-* **권장 수정 방향:** normalize에서 `sanitizeQualityStats` 재사용, `id`는 non-empty string 강제.
-* **우선순위:** Low
-
----
-
-### L3. multi-tab capture는 soft ownership — 기록이 둘로 갈라질 수 있음
-
-* **위치:** `src/content/runtime/capture-ownership.ts` (호출: `startCaptureUnlocked` multiTab 경고 notice)
-* **문제:** 하드 블록이 아니라 경고. 의도된 제품 동작(README에도 안내).
-* **영향:** 같은 회의 다중 탭 시 lineage 분기·중복 기록. 데이터 손상은 아니나 UX 혼란.
-* **근거:** soft claim + 패널 안내 문구; CLAUDE Sync Delta multi-tab soft ownership.
-* **권장 수정 방향:** 유지 가능. 강화 시 옵션 “다른 탭 수집 시 시작 차단”.
-* **우선순위:** Low (알려진 제품 한계)
-
----
-
-### L4. `flushPendingPreviews`는 여전히 preview를 entry로 materialize 가능
-
-* **위치:** `src/core/subtitle-pipeline/commit.ts` — `flushPendingPreviews`  
-  대비: `src/content/session-lifecycle.ts` — `buildPreparedSessionState` 는 `pendingPreviews = []` 만 수행
-* **문제:** 현재 저장 경로는 flush를 쓰지 않아 CLAUDE 의미론과 일치. 다만 flush API가 남아 있어 향후 호출 재도입 시 preview-only가 저장될 위험.
-* **영향:** 현재 기본 경로 버그 아님. 회귀 함정.
-* **근거:** CodeGraph: prepared path clears only; flush applies `applyPreview` per pending.
-* **권장 수정 방향:** flush를 deprecated/제거하거나 “export 전용 아님” 주석 + 호출 금지 테스트(prepare 후 pending 비어 있고 entry 증가 없음).
-* **우선순위:** Low
-
----
-
-### L5. `collectMultiSpeakerSegments` 직접 단위 테스트 약함
-
-* **위치:** `src/content/subtitle-rows.ts` — `collectMultiSpeakerSegments` (CodeGraph no covering tests)
-* **문제:** multi-span 분할은 구현됐으나 심볼 단위 테스트가 약하면 span 구조 변경 시 회귀 감지 지연.
-* **영향:** 화자 정확도 저하 가능. 수집 전체 실패로 이어지진 않음.
-* **근거:** CodeGraph blast; `subtitle-rows.test.ts` / fixtures는 존재하나 multi-color 분기 커버 여부는 추가 확인 권장.
-* **권장 수정 방향:** 서로 다른 color의 child span fixture로 row 개수·`nodeKey#suffix`·channel 단언.
-* **우선순위:** Low
-
----
-
-## 4. Potential Functional Gaps
-
-확실하지 않은 항목은 **추정**으로 표시한다.
-
-| 항목 | 상태 | 설명 |
-|------|------|------|
-| 롤오버 중 드롭된 자막 재합성 | 갭 (사실: drop only) | M1. 사용자 복구 UI 없음 |
-| storage queue index | 갭 | M2. 전체 get 대신 전용 index 부재 |
-| 실중계 자동 e2e | 갭 | M5. 중계 재개 후 권장 |
-| WebVTT `<v Speaker>` 표준 화자 | 미구현 | cue 텍스트 접두만 (의도적일 수 있음) |
-| 외국어 noise filter 확대 | 문서상 범위 외 | 필터 off 권장 — README/CLAUDE 일치 |
-| 사이드 패널 실험 기능 완성도 | **추정** 부분 구현 | 메인 UX는 in-page panel |
-| History 검색 전문 색인 | 미구현 | 페이지·필터 기반 — 대형 라이브러리 **추정** 성능 한계 |
-| 프리셋에 발언자 옵션 | 없음 | 위원회별 기본값 수요는 **추정** 낮음 |
-| 손상 entry 1건 시 세션 전체 import 거부 | 엄격 정책 | 부분 import 허용은 제품 결정 사항 |
-| `txtExportSpeakerEnabled` 키 이름 | 레거시 | 의미는 TXT+SRT+VTT+MD+CSV+복사 — rename은 선택 |
-| 진단에 롤오버 drop 누적 / unknown 화자 비율 | 부분 | 패널 notice만; options 영속 지표는 약함 **추정** |
-| Service worker 수명 중 long export | 완화됨 | offscreen + 한도. 초대형 lineage split UI 의존 |
-| 4차 감사 문서 잔존 독자 | 문서 부채 | 본 5차가 대체; POTENTIAL_ISSUES는 PROJECT_AUDIT 참조 중 |
-
----
-
-## 5. Recommended Fix Plan
-
-### 1단계 — 즉시(작은 비용 · 손실/혼란 방지)
-
-1. **롤오버 드롭 가시성 강화 (M1 단기):** drop 누적을 diagnostics snapshot에 기록, options “수집 진단”에 노출.  
-2. **문서 정합 (M4):** README 지원 호스트 주석, 4차 감사 구식 문장 정리(본 문서가 권위).  
-3. **`normalizeSessionRecord` id · qualityStats 강화 (L2):** import와 동일 sanitize 재사용.  
-4. **prepare 경로 회귀 테스트 (L4):** `pendingPreviews` 가 persist snapshot에 절대 entry화되지 않음 단언 고정.
-
-### 2단계 — 안정성
-
-1. **롤오버 중 이벤트 처리 개선 (M1):** 큐 drop 최소화 설계(상태 직접 반영 또는 상한·백프레셔).  
-2. **persist queue storage 읽기 제한 (M2):** index 키 도입.  
-3. **SW persist 메시지 스키마 검증 (L1).**  
-4. **multi-span · rollover 통합 테스트 (L5, M1).**  
-5. **중계 재개 시 실사이트 스모크 체크리스트 실행 (M5).**
-
-### 3단계 — 구조 개선
-
-1. **`runtime-core` 분해 (M3):** capture session service / bridge / rollover 모듈.  
-2. **History App 상태 축소:** 이미 섹션 분리됨 — long-task·export 핸들러 추가 추출.  
-3. **설정 키 rename 검토** (`exportSpeakerEnabled` alias).  
-4. **e2e:** 녹화 기반 fixture + 선택적 Playwright 실사이트 프로브.
-
----
-
-## 6. Test Recommendations
-
-### 현재 상태 (사실)
-
-- `npm run test`: **66 files, 361 tests, 전부 통과** (2026-08-12).  
-- 커버가 두꺼운 영역: session-store, pipeline extract/commit, persist-recovery, frame nonce, export formats, settings sanitize, autosave helpers, page-exit, ownership soft claim 등.
-
-### 추가·보강 권장
-
-| 테스트 | 목적 | 관련 |
-|--------|------|------|
-| Rollover + 100 events while `persist` hangs | drop 수·notice·남은 큐 의미론 | M1 |
-| `listQueuedExitPersistRecords` with N unrelated storage keys | 전체 get 없이/또는 성능 회귀 상한 | M2 |
-| start → structured commit → rollover → stop (fake clock + mock store) | runtime 오케스트레이션 | M3 |
-| multi-span different colors → 2 rows, `#suffix` keys | 화자 분할 | L5 |
-| `buildPreparedSessionRecord` with non-empty `pendingPreviews` | entry 증가 없음 | L4 |
-| `normalizeSessionRecord` invalid qualityStats / non-string id | 저장 정규화 방어 | L2 |
-| SW `PERSIST_SESSION_RECORD` malformed record | reject or sanitize | L1 |
-| format × `txtExportSpeakerEnabled` matrix (export-payload) | 1.0.13 회귀 고정 | 유지·확장 |
-| `estimateSessionExportBytes(..., speaker=true)` | speaker 옵션 반영 유지 | 유지 |
-| 실중계 수동/반자동 checklist | DOM 계약 | M5 |
-
-### 검증 게이트 (변경 시)
-
-```bash
-npm run check:version
-npm run check:injected
-npm run lint
-npm run typecheck
-npm run test
-npm run build
-# 의미 있는 배포 전
-npm run verify
-# 또는
-npm run verify:e2e
+5) 실사이트 대표 DOM: 투명 배경 2행 + 하늘색 배경 1행
+   결과: class:stxt789/secondary, class:stxt795/primary,
+         둘 다 unstable=false, filtered=1
 ```
 
----
+### 한계·반증 결과
 
-## 7. Appendix: 4차 감사 항목 상태 (1.0.13 코드 대조)
+- 확장 설치가 없는 내장 브라우저에서 사이트만 확인했다. 최신 빌드를 로드한 실제 Chrome에서 `DOM → 확장 panel → SW → 실제 IDB → 다운로드 파일` 전체 경로는 이번에 실행하지 않았다.
+- Windows에서 수행했으며 macOS/Linux 실행, 실제 quota 고갈, OS 강제 종료, 브라우저 crash·자동 업데이트, 장시간 본회의·대형 lineage export는 미검증이다.
+- 코드 변경 없이 한정된 감사다. 모든 소스 줄을 읽거나 모든 라이브러리의 동작을 독립 검증한 것은 아니다.
+- 동일 실행 환경의 session queue, metadata+chunks transaction, transient messaging retry, fallback rollback, preview 비승격, import allow-list, CSV 안전 처리 등 기존 보호를 확인했다. 이를 없는 것처럼 지적하지 않았다.
+- Page-world token과 panel CustomEvent는 같은 의사중계 호스트 스크립트가 접근할 수 있으나, `SECURITY.md`가 명시한 신뢰 호스트 전제와 일치한다. 이 사실만으로 원격 침해 취약점이라고 분류하지 않았다.
+- 전체 import 취소의 부분 완료는 문서화된 정책이다. 전체 rollback 부재를 버그로 분류하지 않았다. 보조 호스트 DNS 실패, bounded queue의 상한, 모듈 크기 자체도 별도의 production 버그로 세지 않았다.
 
-| 4차 ID | 요약 | 5차 상태 |
-|--------|------|----------|
-| M1 | 옵션 vs MD/CSV/JSON 동작 | **해소** — `export-payload`가 md/csv에 `includeSpeaker` 전달, off 시 열 생략 |
-| M2 | TXT plain vs 복사 bracket | **해소** — `exportTxt`가 `formatSpeakerPrefix` 사용 |
-| M3 | estimate 바이트 speaker 미반영 | **해소** — `estimateSessionExportBytes(..., txtExportSpeakerEnabled)` |
-| L1 | multi-span 미분할 | **해소** — `collectMultiSpeakerSegments` + `#span` nodeKey |
-| L2 | `speakerChanged` 미설정 | **해소** — `appendOrMergeEntry`에서 설정 |
-| L3 | speakerColor 인라인 비검증 | **해소** — `sanitizeSpeakerColorForCss` |
-| L4 | 문서 미반영 | **대부분 해소** (README/CLAUDE Sync Delta 2026-08-10); 보조 호스트는 M4 |
-| L5 | export-payload 테스트 | **개선** — `tests/export-payload.test.ts` 존재 |
+## 4. High-Risk Issues
 
----
+이 절에는 재현으로 확인한 Confirmed 4건과 코드 근거가 강한 Likely 1건만 포함한다. 절 이름과 별개로 각 항목의 실제 심각도는 개별 표기를 따른다.
 
-## 8. Appendix: CodeGraph 관찰 요약
+### [ISSUE-001] 수집 중 History의 행 편집이 다음 자동 저장에 덮어써진다
 
-| 관찰 | 의미 |
-|------|------|
-| `saveSession` / write 큐 / preserve metadata | 메타·본문 경쟁 완화됨 |
-| `tryIndexedDb` + TTL disable | open 실패 soft recovery |
-| `saveFallbackRecord` memory rollback | quota 실패 시 메모리 오염 방지 |
-| bridge: origin 고정 + token + nonce | 신뢰 호스트 전제 하에 합리적 |
-| `hasPersistableContent` = entries.length > 0 | popup/panel 저장 게이트 일치 |
-| start/stop/rollover 직접 테스트 공백 | M3 근거 |
-| 테스트 361 통과 | 현재 회귀 기준선 양호 |
+- **위치:** `src/history/app/App.tsx:809` `persistSelectedEntries`, `src/storage/session-store/public-api/mutations.ts:187` `updateRunningSession`, `src/storage/session-store/normalize.ts:202` `mergeEditableSessionMetadata`
+- **우선순위:** High
+- **신뢰도:** Confirmed
+- **문제:** History는 저장된 `entries`를 수정하지만 content의 캡처 state에는 수정이 전달되지 않는다. 다음 자동 저장이 content의 전체 entries로 기존 본문을 교체한다. 보존 함수는 세션의 note/star/tags 등을 보존할 뿐 행의 text/highlight/entryNote를 합치지 않는다.
+- **발생 조건:** 수집이 계속되는 세션을 History에서 편집하거나 중요 표시한 후 다음 자동 저장 또는 최종 저장이 발생한다. 매우 짧은 동시 실행 창이 필요하지 않으며 순차 호출만으로 발생한다.
+- **영향:** 사용자 수정, 중요 표시, 행 메모가 소실된다. 삭제·병합·분할 역시 캡처 snapshot과 충돌할 수 있다. 오래된 History 전체 entries를 저장하면 최근 캡처분을 일시적으로 되돌릴 위험도 있다.
+- **근거:** 격리 재현 1에서 `user edit / highlighted=true / user note` 저장 뒤 자동 저장을 실행하자 `original / false / null`이 됐다. 새 캡처 행 e2는 남아 있어 파일 손상이 아닌 덮어쓰기임을 확인했다.
+- **반증 확인:** `persistSelectedEntries`는 selectedSession 존재만 확인한다. `SessionDetailPanel.tsx:921` 부근 편집·중요 표시 버튼의 disabled 조건은 `actionButtonsDisabled`이며 running 제한이 없다. 세션 쓰기 큐는 순서만 보장하므로 순차 덮어쓰기를 막지 못한다. History의 revision refresh도 content state를 갱신하지 않는다.
+- **호출/영향 범위:** CodeGraph의 `History → updateSessionContent → writeSessionRecord`와 `content persist → worker → updateRunningSession → preserveStoredSessionMetadata → writeSessionRecord`가 같은 레코드에서 만난다. History 결과와 이후 모든 export에 영향이 있다.
+- **권장 수정 방향:** 우선 실제 캡처 중인 세션의 행 편집을 UI·저장 API 양쪽에서 보호한다. 수동 저장이 status를 saved로 바꿔도 캡처는 계속될 수 있으므로 단순 persisted status 검사만으로 해결하지 않는다. 장기적으로 캡처 원문과 사용자 편집/삭제 overlay를 entry-id 기준으로 분리하거나, 충돌을 검출하는 patch/revision 정책을 둔다.
+- **필요한 회귀 테스트:** original e1 저장 → e1 수정·중요 표시·메모 → e2 수집 → 자동/최종 저장. e1 사용자 변경과 e2가 함께 남거나 편집 요청이 명시적으로 거부되어야 한다. 수정뿐 아니라 삭제·분할·병합을 포함한다.
 
----
+### [ISSUE-002] 세션 쓰기 큐가 실행 환경별로 분리되어 변경 유실을 막지 못한다
 
-*본 문서는 기능 구현 감사 결과이며, 코드 변경 없이 작성되었다. 후속 작업 시 이 파일의 §5 Fix Plan을 우선순위로 사용하면 된다.*
+- **위치:** `src/storage/session-write-queue.ts:6`, `src/storage/session-store/public-api/mutations.ts:223`, `src/storage/session-store/mutations-internal.ts:146` 및 `:155`
+- **우선순위:** High
+- **신뢰도:** Confirmed
+- **문제:** 모듈 전역 Map으로 만든 큐는 History 문서와 service worker 사이에 공유되지 않는다. `loadSession → patch/preserve → write`의 읽기는 후속 쓰기 transaction 밖에 있으며, 두 환경이 같은 이전 snapshot을 읽고 각각 전체 레코드를 덮어쓸 수 있다.
+- **발생 조건:** History 두 창에서 같은 기록을 변경하거나, History 메타데이터 저장과 background 자동 저장이 겹친다.
+- **영향:** 성공 응답 이후에도 한쪽 note/star/tags 또는 캡처 snapshot이 사라질 수 있다. ISSUE-001의 순차 편집 충돌과는 별개로 세션 메타데이터에도 발생한다.
+- **근거:** 독립 번들 A/B의 동시 `note` 및 `starred` patch가 모두 resolve했지만 결과는 `note="", starred=true`였다. 공유 fake-indexeddb가 실제 transaction 순서를 처리하는 상태에서 재현했다.
+- **반증 확인:** IDB metadata+chunks write transaction은 부분 청크 저장을 방지한다. 하지만 transaction 안에서 읽는 `previousRecord`는 청크 갱신용이며 이미 작성한 record를 최신 값에 다시 merge하지 않는다. 세션별 queue·History busy UI·storage revision은 별도 실행 환경의 임계 구역이 아니다.
+- **호출/영향 범위:** CodeGraph에서 History는 `updateSessionMetadata/updateSessionLineageMetadata/updateSessionContent`를 직접 호출하고, worker는 `saveSession/updateRunningSession`을 호출한다. lineage 메타 편집도 내부에서 session-id 큐를 사용하므로 같은 한계가 있다. fallback의 전역 mutation queue도 실행 환경별이라는 점을 수정 설계에 포함해야 한다.
+- **권장 수정 방향:** 변경 명령을 단일 background writer에 모으고 read-modify-write를 같은 직렬화 경계에 둔다. 또는 모든 writer가 참여하는 공유 lock/IDB transaction/revision 비교·재시도를 도입한다. in-memory Map만 추가하는 수정은 충분하지 않다.
+- **필요한 회귀 테스트:** 독립 History/worker 환경에서 note 변경과 autosave를 barrier로 교차시켜 최신 entries와 note가 함께 남는지 확인한다. History 두 창의 서로 다른 metadata patch도 모두 보존되어야 한다.
+
+### [ISSUE-003] 종료 복구 인덱스의 경쟁으로 저장된 스냅샷을 재시작 후 놓친다
+
+- **위치:** `src/storage/persist-recovery.ts:47` `addSessionIdToExitPersistIndex`, `:267` `queueExitPersistRecord`, `:323` `listQueuedExitPersistRecords`
+- **우선순위:** High
+- **신뢰도:** Confirmed
+- **문제:** 종료 레코드와 공용 인덱스를 별도로 저장하고 인덱스에 `get → 배열 추가 → set`을 수행한다. 동시 추가가 서로를 덮어쓰면 실제 레코드는 존재해도 인덱스에서 사라진다. 이후 조회는 인덱스에 있는 키만 읽는다.
+- **발생 조건:** 두 수집 탭 종료, 또는 content와 background의 queue/cleanup 호출이 겹친다. 이후 작성 환경 메모리가 사라지고 background 직접 저장도 완료되지 않아 큐 재생이 필요한 경우가 특히 중요하다.
+- **영향:** 마지막 확정 자막 스냅샷이 복구에서 누락되어 이전 autosave까지만 보일 수 있다. 원본 storage key는 남지만 정상 UI에서 발견하지 못할 수 있다.
+- **근거:** anchor 존재 상태에서 queue-a/b를 동시 기록했다. 세 레코드 키가 모두 저장됐지만 인덱스는 `[anchor, queue-b]`였고 새 모듈의 조회도 두 건만 반환했다.
+- **반증 확인:** 기존 memory-before/after merge는 같은 런타임의 snapshot만 보완한다. 새 worker는 다른 content의 소실된 메모리를 읽지 못한다. 전체 스캔 복구는 `index.length === 0`일 때만 수행되어 **비어 있지 않은 불완전 인덱스**를 고치지 못한다. background 직접 저장 성공은 일부 경우를 구제하므로 “모든 동시 종료에서 유실”이라고 단정하지 않는다.
+- **호출/영향 범위:** CodeGraph의 page-exit queue → storage index/list → `replayQueuedExitPersistRecords → saveSession` 경로. 인덱스 삭제·정리의 read-modify-write 역시 동일 공유 자원에 참여한다.
+- **권장 수정 방향:** queue 본체를 원자적 저장소/단일 writer로 관리하고 인덱스가 유일한 발견 수단이 되지 않게 한다. 기존 고아 레코드의 일회 재조정·복구도 포함한다. content를 background로 단순 우회시킬 경우 page-exit 전달 실패에 대한 durable 보장은 별도로 유지해야 한다.
+- **필요한 회귀 테스트:** 비어 있지 않은 인덱스에서 서로 다른 ID 동시 enqueue → 모든 모듈 메모리 폐기 → 새 reader/replay. 저장된 모든 최신 stopped snapshot을 발견해야 한다. enqueue와 clear, 레코드 set 성공 후 인덱스 set 실패도 포함한다.
+
+### [ISSUE-004] 자동 분할 중 Stop이 큐에 대기한 자막을 버린다
+
+- **위치:** `src/content/app/runtime/orchestrator/runtime-core.ts:1630`, `:1713`, `:2313` `stopCaptureUnlocked`, `:2334` `rollOverRunningSessionSegment`
+- **우선순위:** Medium
+- **신뢰도:** Likely
+- **문제:** 자동 롤오버는 lifecycle lock 바깥에서 fire-and-forget으로 시작된다. 그 저장 응답을 기다리는 동안 자막 이벤트는 state에 반영되지 않고 큐에 쌓인다. Stop은 큐를 재생하기 전에 token을 변경하고 `queuedSegmentRolloverEvents = []`로 비운 뒤 현재 state만 저장한다.
+- **발생 조건:** 분할 threshold 도달 → persist 지연 중 새 stable row 수신 → 저장 완료 전에 사용자 Stop. 느린 storage/worker 응답이면 충분히 가능한 순서다.
+- **영향:** 분할 대기 구간의 확정 가능한 자막이 마지막 저장에서 빠질 수 있다. 이 손실은 queue overflow가 아니므로 droppedTotal 진단에도 반영되지 않는다.
+- **근거:** `handleTopFrameEvent`의 in-flight 분기는 enqueue 후 즉시 return한다. Stop의 큐 초기화는 snapshot 작성 전이다. 이전 rollover의 finally는 token이 달라지면 flush하지 않는다. 정적 흐름으로 확인했으나 실제 Chrome에서 이 타이밍을 강제로 재현하지는 않았다.
+- **반증 확인:** Stop 자체는 lifecycle lock을 사용하지만 자동 rollover 호출은 같은 lock에 예약되지 않는다. 큐 상한 128이나 일반 완료 시 flush는 Stop의 무조건 초기화를 보호하지 못한다. 중지 후 이벤트는 running 검사에서 제외되므로 다시 관측해도 현재 저장에 보충되지 않는다.
+- **호출/영향 범위:** CodeGraph의 `handleTopFrameEvent → rollOverRunningSessionSegment/persistSessionRecord`, `handleCommand → stopCaptureUnlocked`가 segment token/state/queue를 공유한다. 최종 세션·lineage 출력에 영향이 있다.
+- **권장 수정 방향:** Stop과 rollover의 완료·취소를 하나의 명시적 순서로 조정한다. 대기 이벤트를 기존/다음 세그먼트 중 하나에 정확히 한 번 반영한 뒤 stopped snapshot을 만든다. page-exit/clear/save-and-new도 같은 종료 정책을 점검한다.
+- **필요한 회귀 테스트:** persist promise를 보류하고 stable row B/C를 enqueue → Stop → persist 해제. 모든 세그먼트 합계에 A/B/C가 각각 한 번 존재해야 한다. 실패 응답과 URL 이동도 별도 검사한다.
+
+### [ISSUE-005] 삭제한 세션이 종료 복구 큐에서 되살아난다
+
+- **위치:** `src/storage/session-store/public-api/deletions.ts:160` `deleteSession`, `:207` `deleteAllSessions`, `src/storage/session-store/public-api/startup.ts:161` `replayQueuedExitPersistRecords`
+- **우선순위:** Medium
+- **신뢰도:** Confirmed
+- **문제:** 기록 삭제는 IDB와 fallback을 처리하지만 해당 종료 복구 큐를 제거하거나 삭제 tombstone을 남기지 않는다. 이후 replay가 기존 기록을 찾지 못하면 큐 내용을 다시 저장한다.
+- **발생 조건:** page-exit 저장이 끝나지 않아 큐가 남아 있는 세션을 History에서 삭제한 후 다음 startup/install 복구가 실행된다. 기존 autosave 덕분에 삭제할 세션이 History에 보이는 상황이다.
+- **영향:** 사용자가 삭제 완료로 인식한 기록이 재등장한다. 기록 정리 및 삭제 의도와 데이터 보존 상태가 어긋난다.
+- **근거:** 더 최신 stopped 큐가 있는 saved 세션을 삭제하면 `loadSession`은 없음을 반환했다. replay 이후 같은 ID가 다시 존재했다.
+- **반증 확인:** History의 삭제 확인은 사용자 의도 확인일 뿐 queue lifecycle을 변경하지 않는다. `deleteSessionLineage`도 `deleteSession`을 반복 호출한다. startup의 freshness 비교는 기존 레코드가 없으면 보호하지 못하며, 삭제 함수들에 queue 제거 호출은 없다. 정상 저장 성공 시 queue 정리는 있지만 삭제 성공 경로에는 적용되지 않는다.
+- **호출/영향 범위:** CodeGraph의 `History → deleteSessionLineage → deleteSession` 및 `startup → replayQueuedExitPersistRecords → saveSession`. 전체 삭제도 같은 누락을 코드에서 확인했지만 별도의 전체 삭제 재현은 실행하지 않았다.
+- **권장 수정 방향:** 삭제를 해당 queue 정리와 조정하고 늦게 도착한 저장/replay에 대한 삭제 revision/tombstone 정책을 정의한다. 단순 remove 한 번만으로 동시 재삽입까지 해결되지는 않는다.
+- **필요한 회귀 테스트:** 저장된 세션 + pending stopped 큐 → 개별/lineage/전체 삭제 → 새 모듈에서 replay. 삭제한 기록은 없어야 하고 관련 없는 큐는 보존되어야 한다. 삭제와 지연 enqueue의 교차도 검사한다.
+
+## 5. Potential Functional Gaps
+
+현재 버그와 분리하여 기능·안정성 보완 후보를 기록한다.
+
+| 분류 | 항목 | 근거와 필요한 결정 |
+|---|---|---|
+| Confirmed Gap | 실제 확장 다중 실행 환경을 연결한 자동 검증 | 현 테스트는 각 모듈 helper와 대역 중심이다. `content-runtime.test.ts`도 helper 테스트이며 실제 runtime-core start/stop/rollover 전체를 실행하지 않는다. 이번 4개 저장 재현은 기존 suite가 모두 통과하는 상태에서 발생했다. |
+| Confirmed Gap | 큰 export의 transport-level streaming | `service-worker.ts:324`는 문자열을 부분 배열로 나누지만 배열 전체를 **한 번의** runtime message로 보낸다. chunk 배열은 메시지 총량을 줄이지 않는다. 실제 메시지 제한 초과 재현은 하지 않았으므로 현재 모든 대형 export가 실패한다고 분류하지 않는다. segment 분할 내보내기는 workaround다. |
+| Likely Gap | 종료 직전 durable 저장 기회 확보 | `persistQueuedPageExitRecord`는 진단 쓰기를 await한 뒤 queue 쓰기, 그 뒤 background persist를 수행한다. 페이지 파괴 시 비동기 완료는 검증되지 않았다. 진단을 핵심 저장보다 먼저 기다릴 필요와 사전 checkpoint 전략을 검토할 가치가 있다. |
+| Likely Gap | 복구 완료를 보장하는 재시도 정책 | startup/install 시 복구는 있지만 첫 replay 실패 후 성공할 때까지의 주기적 복구 보장은 확인하지 못했다. transient queue/storage 오류 뒤의 재실행 시점을 제품 정책으로 정해야 한다. |
+| 추정 | 이전 자막 전체 회수·영상 시간과의 정밀 동기화 | 현 목적은 접속 후 DOM에 제공되는 자막 수집이며 SRT/VTT는 세션 시작 기준 시간이다. 중계 처음부터 회수하거나 영상 시간에 정밀 정렬하는 기능이 필요한지는 별도 요구사항 결정 사항이다. 누락 구현 버그로 단정하지 않는다. |
+
+## 6. Documentation Mismatches
+
+- **CLAUDE.md §7.3의 메타데이터 보존 기대와 실제 실행 환경 경계:** stale snapshot이 본문·상태를 되돌리면 안 된다는 원칙이 있고, 2026-07-28 delta는 preserve+write 큐를 명시한다. 구현은 한 환경 안에서는 이를 따른다. 그러나 환경 간 보장은 없어 ISSUE-002가 남아 있다. 문구만 고칠 사안이 아니라 코드 보완이 우선이다.
+- **CLAUDE.md §4.3의 상태 소유 파일 설명:** `app/runtime/implementation.ts`가 orchestration을 소유한다고 되어 있지만 실제 본체는 `app/runtime/orchestrator/runtime-core.ts`다. §3의 최신 구조 표는 맞고 일부 설명만 과거 위치를 가리킨다.
+- **CLAUDE.md의 2026-07-28 queue 기본 64 설명:** 현재 `DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX`는 128이다. 뒤의 2026-08-12 delta에는 정정되어 있으나 앞 설명과 중복·상충한다.
+- **CLAUDE.md의 “CI runs npm run verify” 설명:** 실제 workflow는 별도 step으로 동등한 주요 명령들을 실행한다. 동작 누락 자체가 아니라 실행 명령 설명의 차이다.
+- **README의 자동 저장·복구 표현:** 기능은 존재한다. 다만 이번에 확인한 편집/동시성/큐 발견 실패를 고려하면 데이터 보존 보장으로 읽히지 않도록 조건을 명확히 할 필요가 있다.
+
+주/보조 호스트 안내, 현재 버전, 여섯 export 형식, CSV BOM, 홈과 player 역할, 레코드 4/IDB 5, import 부분 완료 정책은 확인 범위에서 구현과 대체로 일치했다. 로컬 TS7 패키지 부재는 **현재 설치 환경과 manifest의 불일치**이며, 이를 clean install 또는 production 코드의 확정 오류라고 쓰지 않는다.
+
+## 7. Recommended Fix Plan
+
+### Phase 1 — Immediate
+
+1. **ISSUE-001:** 실제 캡처 ownership과 연결한 편집 보호를 먼저 적용한다. 행 metadata를 포함한 사용자 수정 보존/충돌 정책을 결정한다.
+2. **ISSUE-002:** History와 worker가 공유하는 쓰기 경계를 만든다. IDB read-modify-write 원자성 또는 revision 검증을 포함하고, fallback·import·삭제도 같은 writer 정책에 참여시킨다.
+3. **ISSUE-003:** 종료 큐 인덱스 경쟁을 제거하고 이미 생긴 고아 레코드도 검색·복구한다. 인덱스가 비어 있을 때만 복구하는 조건을 수정한다.
+
+각 수정은 위 격리 재현을 정상 기대값의 회귀 테스트로 전환한 뒤 진행한다. 이번 감사에서는 구현하지 않았다.
+
+### Phase 2 — Stability
+
+1. **ISSUE-004:** Stop/rollover/page-exit/URL 전환의 버퍼 처리 순서를 통합한다. 정상 종료, 저장 실패, 늦은 완료마다 commit 책임을 한 곳에 둔다.
+2. **ISSUE-005:** 삭제와 queue replay 간 일관성을 확보한다. 개별·lineage·전체 삭제를 모두 검증한다.
+3. 저장 지연·queue 실패·fallback quota·worker 응답 유실을 주입하고 복구 안내와 재시도 결과를 사용자 관점에서 확인한다.
+4. 환경이 준비된 시점에 프로젝트 지정 TS7/TS6와 Node 20 clean-install 검증을 수행한다. 이번에는 감사 외 dependency 설치를 하지 않았다.
+
+### Phase 3 — Structural
+
+1. runtime-core를 분리한다면 파일 크기가 아니라 **캡처 이벤트 입력, lifecycle, persist 결과**를 독립적으로 제어할 수 있는 경계를 우선한다.
+2. History의 전체 entries 교체를 entry-id patch/revision 기반으로 바꾸고 캡처 데이터와 사용자 편집을 분리한다.
+3. transport-level export streaming 및 큰 백업의 메모리 상한을 검증한다. 현재 chunk-array와 실제 메시지 분할을 명확히 구분한다.
+4. 독립 extension context 및 실제 Chromium storage를 사용하는 통합 시나리오를 CI/릴리스 검증에 추가한다. 일반 스타일 리팩터링은 이 계획의 목적이 아니다.
+
+## 8. Test Recommendations
+
+아래는 **추가 권장 테스트**이며 실행 결과가 아니다. 현재 실행한 검사는 §3에만 기재했다.
+
+| 종류 | 입력·실행 조건 | 기대 결과 |
+|---|---|---|
+| Unit / Regression — 001 | e1 수정·행 메모·중요 표시 뒤 e1+e2 autosave | 사용자 편집과 e2 동시 보존 또는 편집 거부. 성공 후 조용한 rollback 금지 |
+| Integration / Concurrency — 002 | 두 독립 모듈/History·worker가 같은 버전을 읽도록 barrier, note/star/entries 별도 갱신 | 서로 다른 변경 모두 보존; 같은 필드 충돌은 revision 오류/명시적 정책 |
+| Concurrency — 003 | anchor 큐 존재, A/B enqueue 동시 완료, 작성 메모리 폐기 | 새 reader/replay가 anchor/A/B 모두 발견 |
+| Regression — 003 | 레코드 set 성공 후 index set 실패, 비어 있지 않은 stale index, enqueue와 clear 경쟁 | durable 레코드 발견·복구; 오래된 cleanup이 새 record를 제거하지 않음 |
+| Integration — 004 | 낮은 분할 임계, persist promise 보류, stable B/C 이벤트, Stop, 응답 해제 | 세그먼트 합계에 A/B/C 각 1회, status stopped, 버퍼 손실 없음 |
+| Regression — 005 | pending exit snapshot 존재 후 개별/lineage/전체 삭제, 새 모듈 replay | 삭제 기록 재등장 없음; 관련 없는 queue 정상 복구 |
+| End-to-End — 실중계 | 별도 테스트 프로필에 최신 빌드 로드, 중계 중 접속, 자막 2회 이상 보정·화자 전환 관찰 | stable 행만 정확히 수집, 보정은 제자리 갱신, panel 수와 저장/export의 관계 일치 |
+| End-to-End — 재시작 | 확정 N행 수집, 정상 종료 및 테스트 프로필 강제 종료를 분리, 재시작 | 정상 종료 최종 스냅샷 복구; 강제 종료는 마지막 durable checkpoint 범위 명시·진단 |
+| Integration — IDB | 구 schema 데이터/청크를 test DB에 seed, v5 open; chunk put 중간 실패 주입 | lineage 기본값·메타·본문 보존; transaction 실패 시 부분 청크 노출 없음 |
+| Integration — fallback | IDB open 실패 → chrome.storage 성공, 이어 quota 실패, 30초 뒤 IDB 복구 | 실패를 저장 성공으로 표시하지 않음; 이전 메모리 rollback; 최신본 선택·복귀 |
+| Integration — import | 구 JSON v3, 잘못된 날짜, 미지원 URL, 중복 ID, 25 MiB 초과, 진행 중 취소 | 유효 레코드만 정규화; URL 제거; 크기 초과 명시 실패; 취소 시 정확한 부분 완료 수 |
+| Concurrency — import | import compare 이후 다른 writer가 더 최신 record 저장 | import가 최신 변경을 과거 snapshot으로 덮어쓰지 않음; 최신성 판단을 쓰기 경계에서 재확인 |
+| Unit / Export | 한글·emoji·CRLF·CSV `= + - @` 접두, speaker on/off, 선택 entry, 시간 경계 | 형식 파싱 가능, BOM/CRLF 및 수식 중화, speaker 옵션 일치, 원본 기준 시간 유지 |
+| End-to-End — 큰 export | 메시지 직렬화 한도를 넘는 synthetic lineage, offscreen 실패, 분할 export | 가능한 경로는 정상 파일 생성; 불가능한 요청은 명시 오류, 중복 다운로드 없음 |
+| Integration — UI 연결 | active tab 변경/닫힘, unsupported URL 이동, runtime port 일시 단절 | 현재 supported 탭으로 재연결 또는 안내; 영구 invalidation으로 오판하지 않음 |
+| Platform-specific | Windows Chrome/Edge·macOS Chrome·Linux Chromium, 한글 파일명·이모지·금지문자·UTC/KST | 파일명·인코딩 정상, SRT/VTT 상대 시간 일치; UI 시간은 해당 로컬 시간 정책 준수 |
+| Security / Regression | 외부 sender 명령, 잘못된 token/nonce, malformed import, sourceUrl `javascript:` | 거부/정규화, UI 실행 없음, 캡처 전체가 영구 정지하지 않음 |
+
+기존 `verify:e2e`는 HTML 페이지 제목을 확인하는 smoke이고, `test:e2e:extension`은 요청을 fixture HTML로 대체한다. 둘의 통과를 “실중계 정확도와 저장 복구까지 통과”로 해석하면 안 된다.
+
+## 9. Final Assessment
+
+| 평가 항목 | 판정 | 근거 |
+|---|---|---|
+| Functional Correctness | **Needs Work** | 기본 기능과 실사이트 DOM 대응은 양호하지만 수집 중 편집 보존과 삭제 후 복구 의미론이 깨짐 |
+| Runtime Stability | **Needs Work** | observer/polling·오류 fallback은 있으나 lifecycle과 자동 rollover의 종료 경쟁이 남음 |
+| Data Integrity | **High Risk** | 순차 편집 덮어쓰기, 독립 context 동시 변경 유실, 재시작 queue 누락을 재현 |
+| Error Resilience | **Needs Work** | TTL/retry/rollback/diagnostics 기반은 있으나 durable queue의 불완전 인덱스가 복구를 우회함 |
+| Cross-platform Robustness | **Acceptable** | 브라우저 API 중심, UTF-8 CSV·파일명 보호·보조 타입검사/빌드 확인. macOS/Linux 실실행은 미검증 |
+| Test Confidence | **Needs Work** | 375개 테스트 통과에도 context 간 경쟁과 실제 runtime lifecycle 연결을 놓침. 지정 TS7 검사도 환경상 미완료 |
+
+**실제로 먼저 수정할 세 문제:**
+
+1. **ISSUE-001 — 수집 중 사용자 편집을 다음 저장이 덮어쓰는 문제.** 동시성 타이밍 없이도 사용자 작업이 사라진다.
+2. **ISSUE-002 — History와 background 사이의 쓰기 경계.** 같은 환경의 Map queue를 전체 확장의 lock으로 취급하지 않도록 한다.
+3. **ISSUE-003 — 종료 큐 인덱스 경쟁과 고아 레코드 복구.** 저장된 최종 스냅샷이 실제 재시작 복구에 반드시 포함되도록 한다.
