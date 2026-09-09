@@ -6,6 +6,7 @@ import {
 import {
   applySessionContentPatch,
   applySessionMetadataPatch,
+  mergeCaptureSnapshotWithStoredEdits,
   mergeEditableSessionMetadata,
   normalizeEntries,
   normalizeImportedSessionStatus,
@@ -113,6 +114,7 @@ import {
   logStoreError,
 } from "./utils";
 import {
+  hydrateIndexedDbSessionRecord,
   toIndexedDbRecord,
   writeChunkedSessionRecord,
 } from "./idb/records";
@@ -123,6 +125,7 @@ import {
 } from "./idb/database";
 import {
   bestEffortDeleteFallbackRecord,
+  loadFallbackRecord,
   saveFallbackRecord,
 } from "./fallback/storage";
 import { loadSession } from "./load-session";
@@ -149,11 +152,54 @@ export async function preserveStoredSessionMetadata(record: SessionRecord): Prom
   }
 
   const existingRecord = await loadSession(record.id);
-  return mergeEditableSessionMetadata(record, existingRecord);
+  return mergeCaptureSnapshotWithStoredEdits(record, existingRecord);
+}
+
+export type SessionRecordMutator = (
+  latest: SessionRecord | undefined,
+) => SessionRecord | Promise<SessionRecord>;
+
+async function persistResolvedSessionRecord(
+  record: SessionRecord,
+  previousRecord: IndexedDbSessionRecord | undefined,
+  sessionStore: IDBObjectStore,
+  chunkStore: IDBObjectStore,
+): Promise<SessionRecord> {
+  const chunks = buildSessionEntryChunks(record.id, record.entries, SESSION_ENTRY_CHUNK_SIZE);
+  const metadataRecord = toIndexedDbRecord(record);
+  await writeChunkedSessionRecord(chunkStore, metadataRecord, chunks, previousRecord);
+  await withRequest(sessionStore.put(metadataRecord));
+  return record;
+}
+
+function isSessionMutatorError(error: unknown): boolean {
+  return error instanceof Error && error.name === "SessionStoreMutationError";
+}
+
+export function throwSessionStoreMutationError(message: string): never {
+  const error = new Error(message);
+  error.name = "SessionStoreMutationError";
+  throw error;
+}
+
+async function writeFallbackWithMutator(
+  sessionId: string,
+  mutate: SessionRecordMutator,
+): Promise<SessionRecord> {
+  const first = await mutate(await loadFallbackRecord(sessionId));
+  await saveFallbackRecord(first);
+  const reread = await loadFallbackRecord(sessionId);
+  if (!reread || reread.updatedAt === first.updatedAt) {
+    return first;
+  }
+  const second = await mutate(reread);
+  await saveFallbackRecord(second);
+  return second;
 }
 
 async function writeSessionRecordUnlocked(
-  record: SessionRecord,
+  sessionId: string,
+  mutate: SessionRecordMutator,
   options: {
     allowFallbackOnIndexedDbError?: boolean;
     notifyRevision?: boolean;
@@ -163,29 +209,35 @@ async function writeSessionRecordUnlocked(
     throw createExtensionContextInvalidatedError();
   }
 
-  if (!record.id) {
+  if (!sessionId) {
     throw new Error("세션 id가 올바르지 않습니다.");
   }
 
   const allowFallbackOnIndexedDbError = options.allowFallbackOnIndexedDbError !== false;
   const notifyRevision = options.notifyRevision !== false;
-  const indexedDbResult = await tryIndexedDb(async () => {
-    const chunks = buildSessionEntryChunks(record.id, record.entries, SESSION_ENTRY_CHUNK_SIZE);
-    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
+  const indexedDbResult = await tryIndexedDb(async () =>
+    withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
       const previousRecord = (await withRequest(
-        sessionStore.get(record.id),
+        sessionStore.get(sessionId),
       )) as IndexedDbSessionRecord | undefined;
-      const metadataRecord = toIndexedDbRecord(record);
-      await writeChunkedSessionRecord(chunkStore, metadataRecord, chunks, previousRecord);
-      await withRequest(sessionStore.put(metadataRecord));
-      return record;
-    });
-    return record;
-  });
+      const latest = previousRecord
+        ? await hydrateIndexedDbSessionRecord(previousRecord, chunkStore)
+        : undefined;
+      const record = await mutate(latest);
+      return persistResolvedSessionRecord(record, previousRecord, sessionStore, chunkStore);
+    }),
+  );
+
+  if (!indexedDbResult.ok && isSessionMutatorError(indexedDbResult.error)) {
+    throw indexedDbResult.error;
+  }
 
   if (indexedDbResult.ok && indexedDbResult.value) {
-    await bestEffortDeleteFallbackRecord(record.id);
-    await clearQueuedExitPersistRecordsUpTo(record.id, record.updatedAt);
+    await bestEffortDeleteFallbackRecord(indexedDbResult.value.id);
+    await clearQueuedExitPersistRecordsUpTo(
+      indexedDbResult.value.id,
+      indexedDbResult.value.updatedAt,
+    );
     if (notifyRevision) {
       await bumpSessionLibraryRevision();
     }
@@ -202,7 +254,7 @@ async function writeSessionRecordUnlocked(
       : new Error("IndexedDB session write failed");
   }
 
-  const savedFallbackRecord = await saveFallbackRecord(record);
+  const savedFallbackRecord = await writeFallbackWithMutator(sessionId, mutate);
   await clearQueuedExitPersistRecordsUpTo(savedFallbackRecord.id, savedFallbackRecord.updatedAt);
   if (notifyRevision) {
     await bumpSessionLibraryRevision();
@@ -228,17 +280,25 @@ export async function writeSessionRecord(
   record: SessionRecord,
   options: WriteSessionRecordOptions = {},
 ): Promise<SessionRecord> {
+  return writeMutatedSessionRecord(record.id, () => record, options);
+}
+
+export async function writeMutatedSessionRecord(
+  sessionId: string,
+  mutate: SessionRecordMutator,
+  options: WriteSessionRecordOptions = {},
+): Promise<SessionRecord> {
   if (hasExtensionContextInvalidated()) {
     throw createExtensionContextInvalidatedError();
   }
 
   const { enqueue = true, ...writeOptions } = options;
   if (!enqueue) {
-    return writeSessionRecordUnlocked(record, writeOptions);
+    return writeSessionRecordUnlocked(sessionId, mutate, writeOptions);
   }
 
-  return enqueueSessionWrite(record.id, () =>
-    writeSessionRecordUnlocked(record, writeOptions),
+  return enqueueSessionWrite(sessionId, () =>
+    writeSessionRecordUnlocked(sessionId, mutate, writeOptions),
   );
 }
 

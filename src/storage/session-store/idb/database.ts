@@ -443,7 +443,10 @@ export async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<Inde
         error: createExtensionContextInvalidatedError(),
       };
     }
-    if (!isExtensionContextInvalidatedError(error)) {
+    if (
+      !isExtensionContextInvalidatedError(error) &&
+      !(error instanceof Error && error.name === "SessionStoreMutationError")
+    ) {
       logStoreError("IndexedDB operation failed, falling back", error);
     }
     return {

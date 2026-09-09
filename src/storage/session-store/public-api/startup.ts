@@ -34,6 +34,7 @@ import {
 import {
   clearQueuedExitPersistRecord,
   clearQueuedExitPersistRecordsUpTo,
+  isSessionDeleted,
   listQueuedExitPersistRecords,
   recoverOrphanedExitPersistRecords,
   resetPersistRecoveryStateForTests,

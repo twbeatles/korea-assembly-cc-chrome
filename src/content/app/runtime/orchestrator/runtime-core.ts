@@ -629,6 +629,7 @@ function startCaptureOwnershipHeartbeat(): void {
       storage: getChromeLocalOwnershipStorage(),
       ownerId: captureOwnerId,
       committeeName: state.committeeName,
+      sessionId: state.sessionId,
     });
   }, 8_000);
 }
@@ -641,6 +642,7 @@ async function claimCaptureOwnershipForStart(): Promise<boolean> {
     storage: getChromeLocalOwnershipStorage(),
     ownerId: captureOwnerId,
     committeeName: state.committeeName,
+    sessionId: state.sessionId,
   });
   startCaptureOwnershipHeartbeat();
   return claim.foreignActive;
@@ -2332,7 +2334,13 @@ async function startCapture(): Promise<void> {
 async function stopCaptureUnlocked(): Promise<void> {
   segmentRolloverToken += 1;
   segmentRolloverInFlight = false;
-  queuedSegmentRolloverEvents = [];
+  if (queuedSegmentRolloverEvents.length > 0) {
+    const pending = queuedSegmentRolloverEvents;
+    queuedSegmentRolloverEvents = [];
+    for (const event of pending) {
+      handleTopFrameEvent(event);
+    }
+  }
   clearRunningPersistTimer();
   clearPendingReset();
   lastSegmentCapacityWarningReason = null;

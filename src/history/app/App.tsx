@@ -23,6 +23,11 @@ import {
   SESSION_LIBRARY_REVISION_STORAGE_KEY,
 } from "../../shared/constants";
 import {
+  CAPTURE_OWNERSHIP_STORAGE_KEY,
+  isLiveCaptureOwnershipForSession,
+  type CaptureOwnershipSnapshot,
+} from "../../content/runtime/capture-ownership";
+import {
   mapDownloadErrorMessage,
   resolveDownloadErrorMessage,
 } from "../../shared/download-errors";
@@ -160,6 +165,7 @@ export default function App() {
   const [panelSpeakerHighlightEnabled, setPanelSpeakerHighlightEnabled] = useState(
     DEFAULT_EXTENSION_SETTINGS.panelSpeakerHighlightEnabled,
   );
+  const [liveCaptureSessionId, setLiveCaptureSessionId] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const [busyAction, setBusyAction] = useState<string | null>(null);
 
@@ -236,6 +242,9 @@ export default function App() {
     Boolean(categoryFilter.trim()) ||
     showHighlightedOnly;
   const actionButtonsDisabled = busyAction !== null;
+  const captureInProgress =
+    selectedSession?.status === "running" ||
+    Boolean(selectedSession && liveCaptureSessionId === selectedSession.id);
   const jsonTaskButtonsDisabled = busyAction !== null || longTask !== null;
   const heroMessage = longTask?.message ?? message;
   const longTaskProgressLabel =
@@ -565,6 +574,33 @@ export default function App() {
       };
     }
 
+    const applyOwnershipSnapshot = (value: unknown): void => {
+      const snapshot = value as CaptureOwnershipSnapshot | null;
+      if (snapshot && typeof snapshot.sessionId === "string" && snapshot.sessionId) {
+        setLiveCaptureSessionId(
+          isLiveCaptureOwnershipForSession(snapshot, snapshot.sessionId)
+            ? snapshot.sessionId
+            : "",
+        );
+        return;
+      }
+      setLiveCaptureSessionId("");
+    };
+
+    if (chrome.storage.local?.get) {
+      void chrome.storage.local
+        .get(CAPTURE_OWNERSHIP_STORAGE_KEY)
+        .then((snapshot) => {
+          if (!active) {
+            return;
+          }
+          applyOwnershipSnapshot(snapshot[CAPTURE_OWNERSHIP_STORAGE_KEY]);
+        })
+        .catch(() => {
+          // History can still use persisted session status without ownership.
+        });
+    }
+
     const handleStorageChange = (
       changes: Record<string, chrome.storage.StorageChange>,
       areaName: string,
@@ -587,6 +623,10 @@ export default function App() {
       if (changes[SESSION_LIBRARY_REVISION_STORAGE_KEY]) {
         preserveMessageOnRefreshRef.current = true;
         setReloadKey((current) => current + 1);
+      }
+
+      if (changes[CAPTURE_OWNERSHIP_STORAGE_KEY]) {
+        applyOwnershipSnapshot(changes[CAPTURE_OWNERSHIP_STORAGE_KEY].newValue);
       }
     };
 
@@ -882,6 +922,10 @@ export default function App() {
     if (!selectedSession || !selectedEntries.length) {
       return;
     }
+    if (captureInProgress) {
+      setMessage("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
+      return;
+    }
     if (
       !(await confirmDestructiveAction(
         `선택한 자막 ${selectedEntries.length}개를 삭제할까요?`,
@@ -901,6 +945,10 @@ export default function App() {
   const handleMergeSelectedEntries = async (): Promise<void> => {
     if (!selectedSession || selectedEntries.length < 2) {
       setMessage("병합할 자막을 2개 이상 선택하세요.");
+      return;
+    }
+    if (captureInProgress) {
+      setMessage("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
       return;
     }
     if (
@@ -962,6 +1010,10 @@ export default function App() {
       setMessage("분할할 자막 1개를 선택하세요.");
       return;
     }
+    if (captureInProgress) {
+      setMessage("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
+      return;
+    }
     const target = selectedEntries[0];
     setSplitEntryId(target.id);
     setSplitDraft(target.text);
@@ -976,6 +1028,10 @@ export default function App() {
 
   const handleSaveSplitEntry = async (): Promise<void> => {
     if (!selectedSession || !splitEntryId) {
+      return;
+    }
+    if (captureInProgress) {
+      setMessage("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
       return;
     }
     const target = selectedSession.entries.find(
@@ -1528,6 +1584,7 @@ export default function App() {
           totalSessionCount={totalSessionCount}
           showStarredOnly={showStarredOnly}
           actionButtonsDisabled={actionButtonsDisabled}
+          captureInProgress={captureInProgress}
           noteDraft={noteDraft}
           tagDraft={tagDraft}
           categoryDraft={categoryDraft}

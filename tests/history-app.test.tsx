@@ -884,6 +884,63 @@ describe("history app", () => {
     expect(screen.getAllByText("민생 예산").length).toBeGreaterThan(0);
   });
 
+  it("disables structural entry edits while a selected session is still capturing", async () => {
+    const session = buildSession({
+      status: "running",
+      endedAt: null,
+      subtitleCount: 2,
+      entries: [
+        {
+          id: "entry_1",
+          text: "첫번째",
+          timestamp: "2026-03-10T09:00:00.000Z",
+          startTime: "2026-03-10T09:00:00.000Z",
+          endTime: "2026-03-10T09:00:01.000Z",
+        },
+        {
+          id: "entry_2",
+          text: "두번째",
+          timestamp: "2026-03-10T09:00:01.000Z",
+          startTime: "2026-03-10T09:00:01.000Z",
+          endTime: "2026-03-10T09:00:02.000Z",
+        },
+      ],
+    });
+    sessionStoreMocks.listSessionLineagesPage.mockResolvedValue({
+      lineages: [buildLineageSummary(session)],
+      totalCount: 1,
+      page: 1,
+      pageSize: 200,
+    });
+    sessionStoreMocks.loadSession.mockResolvedValue(session);
+    sessionStoreMocks.listSessionLineageSegments.mockResolvedValue([session]);
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(
+      async (ids: string[]) => (ids.includes(session.id) ? [session] : []),
+    );
+
+    render(<App />);
+    fireEvent.click(await screen.findByLabelText("첫번째 항목 선택"));
+    fireEvent.click(screen.getByLabelText("두번째 항목 선택"));
+
+    expect((screen.getByRole("button", { name: "선택 병합" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    expect((screen.getByRole("button", { name: "선택 분할" }) as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    const entryDeleteButton = screen
+      .getAllByRole("button", { name: "선택 삭제" })
+      .find((button) => button.getAttribute("title")?.includes("수집 중인 기록"));
+    expect((entryDeleteButton as HTMLButtonElement | undefined)?.disabled).toBe(true);
+    expect(screen.getByText(/수집 중인 기록입니다/)).toBeTruthy();
+    expect(
+      (screen.getAllByRole("button", { name: "중요 표시" })[0] as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (screen.getAllByRole("button", { name: "수정/메타데이터" })[0] as HTMLButtonElement).disabled,
+    ).toBe(false);
+  });
+
   it("saves inline entry text, speaker, labels, and note metadata", async () => {
     const session = buildSession({
       speakerLabels: { primary: "위원장" },

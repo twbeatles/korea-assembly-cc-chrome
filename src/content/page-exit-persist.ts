@@ -14,12 +14,6 @@ export async function persistQueuedPageExitRecord(
   options: PageExitPersistOptions,
 ): Promise<void> {
   try {
-    await options.onPersistAttempt?.(record);
-  } catch (error) {
-    options.onPersistAttemptError?.(error);
-  }
-
-  try {
     await options.queueRecord(record);
   } catch (error) {
     options.onQueueError?.(error);
@@ -28,6 +22,12 @@ export async function persistQueuedPageExitRecord(
         options.onQueueError?.(backgroundError);
       });
     }
+  }
+
+  try {
+    await options.onPersistAttempt?.(record);
+  } catch (error) {
+    options.onPersistAttemptError?.(error);
   }
 
   options.persistRecordInBackground(record);

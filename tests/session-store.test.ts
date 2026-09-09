@@ -1683,6 +1683,75 @@ describe("session store", () => {
     expect(updated.charCount).toBe("수정한 자막".length);
   });
 
+  it("keeps History row edits when the next running autosave adds a new entry", async () => {
+    const original = await updateRunningSession(buildSession("session_overlay_autosave", "running"));
+    await updateSessionContent(original.id, {
+      entries: [
+        {
+          ...original.entries[0],
+          originalText: original.entries[0].text,
+          text: "user edit",
+          highlighted: true,
+          entryNote: "user note",
+        },
+      ],
+    });
+
+    await updateRunningSession({
+      ...original,
+      entries: [
+        original.entries[0],
+        {
+          id: "session_overlay_autosave_e2",
+          text: "new captured row",
+          timestamp: "2026-03-10T09:00:04.000Z",
+          startTime: "2026-03-10T09:00:04.000Z",
+          endTime: "2026-03-10T09:00:05.000Z",
+        },
+      ],
+      subtitleCount: 2,
+      charCount: original.entries[0].text.length + "new captured row".length,
+      updatedAt: "2026-03-10T09:00:05.000Z",
+    });
+
+    const loaded = await loadSession(original.id);
+    expect(loaded?.entries).toHaveLength(2);
+    expect(loaded?.entries[0]).toMatchObject({
+      id: original.entries[0].id,
+      text: "user edit",
+      originalText: "테스트 자막",
+      highlighted: true,
+      entryNote: "user note",
+    });
+    expect(loaded?.entries[1]).toMatchObject({
+      id: "session_overlay_autosave_e2",
+      text: "new captured row",
+    });
+  });
+
+  it("rejects structural entry edits while a session is still being captured", async () => {
+    const original = await updateRunningSession(buildSession("session_live_structural", "running"));
+
+    await expect(
+      updateSessionContent(original.id, {
+        entries: [],
+      }),
+    ).rejects.toThrow("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
+
+    const overlay = await updateSessionContent(original.id, {
+      entries: [
+        {
+          ...original.entries[0],
+          originalText: original.entries[0].text,
+          text: "live overlay",
+          highlighted: true,
+        },
+      ],
+    });
+    expect(overlay.entries[0]?.text).toBe("live overlay");
+    expect(overlay.entries[0]?.highlighted).toBe(true);
+  });
+
   it("keeps note and starred when running autosave races with metadata updates", async () => {
     const base = buildSession("session_race_meta", "running");
     await updateRunningSession(base);
@@ -1794,5 +1863,29 @@ describe("session store", () => {
         value: originalIndexedDb,
       });
     }
+  });
+
+  it("does not resurrect a deleted session when replaying queued exit persist records", async () => {
+    const session = buildSession("session_to_delete", "saved");
+    await saveSession(session);
+
+    await queueExitPersistRecord({
+      ...session,
+      status: "stopped",
+      updatedAt: "2026-03-10T09:00:10.000Z",
+    });
+
+    await queueExitPersistRecord({
+      ...buildSession("session_to_keep", "stopped"),
+      updatedAt: "2026-03-10T09:00:10.000Z",
+    });
+
+    await deleteSession("session_to_delete");
+    expect(await loadSession("session_to_delete")).toBeUndefined();
+
+    const replaySummary = await replayQueuedExitPersistRecords();
+    expect(await loadSession("session_to_delete")).toBeUndefined();
+    expect(await loadSession("session_to_keep")).toBeDefined();
+    expect(replaySummary.replayedCount).toBe(1);
   });
 });

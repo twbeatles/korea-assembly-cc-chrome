@@ -133,6 +133,7 @@ import {
   bumpSessionLibraryRevision,
   stopRunningRecord,
   preserveStoredSessionMetadata,
+  writeMutatedSessionRecord,
   writeSessionRecord,
 } from "../mutations-internal";
 import {
@@ -240,16 +241,28 @@ export async function importSessionRecords(
     }
 
     try {
-      const existing = existingById.get(record.id);
-      if (!existing) {
-        await writeSessionRecord(record, {
+      const outcomeRef = { current: "kept" as "added" | "updated" | "kept" };
+      await writeMutatedSessionRecord(
+        record.id,
+        (latest) => {
+          if (!latest) {
+            outcomeRef.current = "added";
+            return record;
+          }
+          if (record.updatedAt.localeCompare(latest.updatedAt) > 0) {
+            outcomeRef.current = "updated";
+            return record;
+          }
+          outcomeRef.current = "kept";
+          return latest;
+        },
+        {
           notifyRevision: false,
-        });
+        },
+      );
+      if (outcomeRef.current === "added") {
         addedCount += 1;
-      } else if (record.updatedAt.localeCompare(existing.updatedAt) > 0) {
-        await writeSessionRecord(record, {
-          notifyRevision: false,
-        });
+      } else if (outcomeRef.current === "updated") {
         updatedCount += 1;
       } else {
         keptCount += 1;

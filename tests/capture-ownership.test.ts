@@ -4,6 +4,7 @@ import {
   CAPTURE_OWNERSHIP_STORAGE_KEY,
   claimCaptureOwnership,
   isForeignActiveOwnership,
+  isLiveCaptureOwnershipForSession,
   releaseCaptureOwnership,
   type CaptureOwnershipStorage,
 } from "../src/content/runtime/capture-ownership";
@@ -58,6 +59,31 @@ describe("capture ownership", () => {
     ).toBe(false);
     expect(
       isForeignActiveOwnership({ ownerId: "me", updatedAt: now }, "me", now),
+    ).toBe(false);
+  });
+
+  it("treats a fresh ownership snapshot for the same session as live capture", () => {
+    const now = 1_000_000;
+    expect(
+      isLiveCaptureOwnershipForSession(
+        { ownerId: "tab-a", updatedAt: now - 1_000, sessionId: "session_live" },
+        "session_live",
+        now,
+      ),
+    ).toBe(true);
+    expect(
+      isLiveCaptureOwnershipForSession(
+        { ownerId: "tab-a", updatedAt: now - 1_000, sessionId: "session_live" },
+        "session_other",
+        now,
+      ),
+    ).toBe(false);
+    expect(
+      isLiveCaptureOwnershipForSession(
+        { ownerId: "tab-a", updatedAt: now - 60_000, sessionId: "session_live" },
+        "session_live",
+        now,
+      ),
     ).toBe(false);
   });
 

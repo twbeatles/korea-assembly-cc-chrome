@@ -8,8 +8,10 @@ const EXIT_PERSIST_RECORD_PREFIX = "assembly-subtitle-exit-persist:";
 /** 큐 세션 id 목록. list 시 storage 전체 get(null) 을 피하기 위한 인덱스. */
 export const EXIT_PERSIST_INDEX_STORAGE_KEY = "assembly-subtitle-exit-persist:index";
 const PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY = "assembly-subtitle-persist-replay-diagnostics";
+const SESSION_DELETED_PREFIX = "assembly-subtitle-deleted-session:";
 
 const memoryQueuedRecords = new Map<string, QueuedExitPersistRecord>();
+const memoryDeletedSessionTombstones = new Map<string, string>();
 let memoryDiagnostics = createEmptyPersistReplayDiagnostics();
 /** 인덱스 read-modify-write 를 탭/호출 간에 직렬화한다. */
 let exitPersistIndexMutationQueue: Promise<unknown> = Promise.resolve();
@@ -114,7 +116,7 @@ export async function recoverOrphanedExitPersistRecords(): Promise<string[]> {
  * 인덱스가 비어 있을 때 1회성으로 storage 를 스캔해 인덱스를 재구성한다.
  * (마이그레이션 / 구버전 호환)
  */
-async function rebuildExitPersistIndexFromStorage(): Promise<string[]> {
+export async function rebuildExitPersistIndexFromStorage(): Promise<string[]> {
   if (!hasChromeStorageLocal()) {
     return [];
   }
@@ -123,7 +125,6 @@ async function rebuildExitPersistIndexFromStorage(): Promise<string[]> {
   await writeExitPersistIndex(uniqueIds);
   return uniqueIds;
 }
-
 function cloneQueuedRecord(record: QueuedExitPersistRecord): QueuedExitPersistRecord {
   return {
     sessionId: record.sessionId,
@@ -172,6 +173,71 @@ function resolvePersistReplayLastError(diagnostics: PersistReplayDiagnostics): s
 
 function getQueuedRecordStorageKey(sessionId: string): string {
   return `${EXIT_PERSIST_RECORD_PREFIX}${sessionId}`;
+}
+
+function getDeletedSessionStorageKey(sessionId: string): string {
+  return `${SESSION_DELETED_PREFIX}${sessionId}`;
+}
+
+export async function markSessionDeleted(
+  sessionId: string,
+  deletedAt = new Date().toISOString(),
+): Promise<void> {
+  if (!sessionId) {
+    return;
+  }
+
+  memoryDeletedSessionTombstones.set(sessionId, deletedAt);
+  memoryQueuedRecords.delete(sessionId);
+
+  if (!hasChromeStorageLocal()) {
+    return;
+  }
+
+  try {
+    await chrome.storage.local.set({
+      [getDeletedSessionStorageKey(sessionId)]: deletedAt,
+    });
+    await chrome.storage.local.remove(getQueuedRecordStorageKey(sessionId));
+    await removeSessionIdFromExitPersistIndex(sessionId);
+  } catch {
+    // best-effort
+  }
+}
+
+export async function isSessionDeleted(
+  sessionId: string,
+  snapshotUpdatedAt?: string,
+): Promise<boolean> {
+  if (!sessionId) {
+    return false;
+  }
+
+  const memoryDeletedAt = memoryDeletedSessionTombstones.get(sessionId);
+  if (memoryDeletedAt) {
+    if (!snapshotUpdatedAt || snapshotUpdatedAt.localeCompare(memoryDeletedAt) <= 0) {
+      return true;
+    }
+  }
+
+  if (!hasChromeStorageLocal()) {
+    return false;
+  }
+
+  try {
+    const key = getDeletedSessionStorageKey(sessionId);
+    const snapshot = await chrome.storage.local.get(key);
+    const storageDeletedAt = snapshot[key];
+    if (typeof storageDeletedAt === "string" && storageDeletedAt) {
+      if (!snapshotUpdatedAt || snapshotUpdatedAt.localeCompare(storageDeletedAt) <= 0) {
+        return true;
+      }
+    }
+  } catch {
+    // best-effort
+  }
+
+  return false;
 }
 
 function isValidDateString(value: unknown): value is string {
@@ -312,6 +378,10 @@ export async function queueExitPersistRecord(record: SessionRecord): Promise<voi
     return;
   }
 
+  if (await isSessionDeleted(record.id, record.updatedAt)) {
+    return;
+  }
+
   const nextRecord: QueuedExitPersistRecord = {
     sessionId: record.id,
     queuedAt: new Date().toISOString(),
@@ -370,60 +440,75 @@ export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistR
 
   const memorySnapshotBeforeRead = [...memoryQueuedRecords.values()].map(cloneQueuedRecord);
 
-  let index = await readExitPersistIndex();
-  if (index.length === 0 && memorySnapshotBeforeRead.length === 0) {
-    // 인덱스 공백: 구버전 데이터 또는 손상 시 1회 전체 스캔으로 복구
-    index = await rebuildExitPersistIndexFromStorage();
-  } else if (index.length === 0 && memorySnapshotBeforeRead.length > 0) {
-    // 메모리는 있으나 인덱스가 없으면 storage 재구성 시도
-    index = await rebuildExitPersistIndexFromStorage();
-  }
-
-  const storageKeys = index.map((sessionId) => getQueuedRecordStorageKey(sessionId));
-  const snapshot =
-    storageKeys.length > 0 ? await chrome.storage.local.get(storageKeys) : {};
-  const storageRecords = storageKeys
-    .map((key) => sanitizeQueuedRecord(snapshot[key]))
-    .filter((value): value is QueuedExitPersistRecord => Boolean(value));
-
-  // 인덱스에 있으나 값이 없는 키는 인덱스에서 정리
-  if (storageRecords.length < index.length) {
-    const liveIds = new Set(storageRecords.map((record) => record.sessionId));
-    const nextIndex = index.filter((id) => liveIds.has(id));
-    if (nextIndex.length !== index.length) {
-      await enqueueExitPersistIndexMutation(() => writeExitPersistIndex(nextIndex)).catch(() => {
-        // best-effort
-      });
+  // storage 전체에서 durable queue records와 tombstone을 스캔 (인덱스 누락 및 orphan 방지)
+  const allStorage = await chrome.storage.local.get(null);
+  const deletedTombstones = new Map<string, string>();
+  for (const [key, value] of Object.entries(allStorage)) {
+    if (key.startsWith(SESSION_DELETED_PREFIX) && typeof value === "string") {
+      const sessionId = key.slice(SESSION_DELETED_PREFIX.length);
+      deletedTombstones.set(sessionId, value);
+      memoryDeletedSessionTombstones.set(sessionId, value);
     }
   }
+
+  const storageRecords: QueuedExitPersistRecord[] = [];
+  const durableSessionIds: string[] = [];
+  const orphanedKeysToRemove: string[] = [];
+
+  for (const [key, value] of Object.entries(allStorage)) {
+    if (key.startsWith(EXIT_PERSIST_RECORD_PREFIX) && key !== EXIT_PERSIST_INDEX_STORAGE_KEY) {
+      const sessionId = key.slice(EXIT_PERSIST_RECORD_PREFIX.length);
+      const sanitized = sanitizeQueuedRecord(value);
+      const deletedAt =
+        deletedTombstones.get(sessionId) ?? memoryDeletedSessionTombstones.get(sessionId);
+
+      if (deletedAt && sanitized && sanitized.record.updatedAt.localeCompare(deletedAt) <= 0) {
+        orphanedKeysToRemove.push(key);
+        continue;
+      }
+
+      if (sanitized) {
+        storageRecords.push(sanitized);
+        durableSessionIds.push(sessionId);
+      }
+    }
+  }
+
+  if (orphanedKeysToRemove.length > 0) {
+    await chrome.storage.local.remove(orphanedKeysToRemove).catch(() => {
+      // best-effort
+    });
+  }
+
+  // Durable keys 기준으로 index 재동기화
+  const uniqueSessionIds = [...new Set(durableSessionIds)];
+  await writeExitPersistIndex(uniqueSessionIds).catch(() => {
+    // best-effort
+  });
 
   const memorySnapshotAfterRead = [...memoryQueuedRecords.values()].map(cloneQueuedRecord);
   const mergedRecords = mergeQueuedRecordCollections(storageRecords, memorySnapshotBeforeRead);
   const freshestRecords = mergeQueuedRecordCollections(mergedRecords, memorySnapshotAfterRead);
 
-  freshestRecords.forEach((record) => {
+  // deleted tombstones 필터링
+  const activeRecords = freshestRecords.filter((record) => {
+    const deletedAt =
+      deletedTombstones.get(record.sessionId) ?? memoryDeletedSessionTombstones.get(record.sessionId);
+    if (deletedAt && record.record.updatedAt.localeCompare(deletedAt) <= 0) {
+      memoryQueuedRecords.delete(record.sessionId);
+      return false;
+    }
+    return true;
+  });
+
+  activeRecords.forEach((record) => {
     const current = memoryQueuedRecords.get(record.sessionId);
     if (!current || compareQueuedRecordFreshness(record, current) >= 0) {
       memoryQueuedRecords.set(record.sessionId, cloneQueuedRecord(record));
     }
   });
 
-  // 메모리에만 있는 최신 큐도 인덱스에 반영 (다음 list 가 get(null) 없이 동작)
-  const indexSet = new Set(index);
-  let indexNeedsUpdate = false;
-  for (const record of freshestRecords) {
-    if (!indexSet.has(record.sessionId)) {
-      indexSet.add(record.sessionId);
-      indexNeedsUpdate = true;
-    }
-  }
-  if (indexNeedsUpdate) {
-    await enqueueExitPersistIndexMutation(() => writeExitPersistIndex([...indexSet])).catch(() => {
-      // best-effort
-    });
-  }
-
-  return freshestRecords.map(cloneQueuedRecord);
+  return activeRecords.map(cloneQueuedRecord);
 }
 
 export async function clearQueuedExitPersistRecord(sessionId: string): Promise<void> {
@@ -505,10 +590,15 @@ export async function writePersistReplayDiagnostics(
   });
 }
 
-export async function resetPersistRecoveryStateForTests(): Promise<void> {
+export function resetPersistRecoveryMemoryForTests(): void {
   memoryQueuedRecords.clear();
   memoryDiagnostics = createEmptyPersistReplayDiagnostics();
   exitPersistIndexMutationQueue = Promise.resolve();
+  memoryDeletedSessionTombstones.clear();
+}
+
+export async function resetPersistRecoveryStateForTests(): Promise<void> {
+  resetPersistRecoveryMemoryForTests();
   if (!hasChromeStorageLocal()) {
     return;
   }
@@ -518,7 +608,8 @@ export async function resetPersistRecoveryStateForTests(): Promise<void> {
     (key) =>
       key === PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY ||
       key === EXIT_PERSIST_INDEX_STORAGE_KEY ||
-      key.startsWith(EXIT_PERSIST_RECORD_PREFIX),
+      key.startsWith(EXIT_PERSIST_RECORD_PREFIX) ||
+      key.startsWith(SESSION_DELETED_PREFIX),
   );
   if (keys.length) {
     await chrome.storage.local.remove(keys);
