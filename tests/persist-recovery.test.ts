@@ -6,9 +6,11 @@ import {
   clearQueuedExitPersistRecordsUpTo,
   createEmptyPersistReplayDiagnostics,
   listQueuedExitPersistRecords,
+  markSessionDeleted,
   queueExitPersistRecord,
   recordPageExitPersistAttempt,
   readPersistReplayDiagnostics,
+  resetPersistRecoveryMemoryForTests,
   resetPersistRecoveryStateForTests,
 } from "../src/storage/persist-recovery";
 
@@ -135,20 +137,36 @@ describe("persist recovery", () => {
     expect(listed[0]?.record.title).toBe("newer");
   });
 
-  it("lists queue records via index without requiring a full storage dump after queue", async () => {
-    const storageGet = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
-    await queueExitPersistRecord(buildSession("session_indexed", "2026-03-10T09:00:02.000Z"));
+  it("discovers concurrently queued records after the writer memory is discarded", async () => {
+    await queueExitPersistRecord(buildSession("anchor", "2026-03-10T09:00:01.000Z", "anchor"));
+    await Promise.all([
+      queueExitPersistRecord(buildSession("queue-a", "2026-03-10T09:00:02.000Z", "queue-a")),
+      queueExitPersistRecord(buildSession("queue-b", "2026-03-10T09:00:03.000Z", "queue-b")),
+    ]);
 
-    storageGet.mockClear();
+    resetPersistRecoveryMemoryForTests();
     const listed = await listQueuedExitPersistRecords();
-    expect(listed.map((item) => item.sessionId)).toContain("session_indexed");
+    expect(listed.map((item) => item.sessionId).sort()).toEqual(["anchor", "queue-a", "queue-b"]);
+  });
 
-    // index + keyed get 경로: get(null) 전체 스냅샷을 쓰지 않는다
-    const usedFullDump = storageGet.mock.calls.some((call) => {
-      const arg = call[0];
-      return arg === null || arg === undefined;
+  it("still lists a durable record when the shared index omits it", async () => {
+    await queueExitPersistRecord(buildSession("queue-orphan", "2026-03-10T09:00:02.000Z", "orphan"));
+    await chrome.storage.local.set({
+      "assembly-subtitle-exit-persist:index": ["unrelated"],
     });
-    expect(usedFullDump).toBe(false);
+    resetPersistRecoveryMemoryForTests();
+
+    const listed = await listQueuedExitPersistRecords();
+    expect(listed.map((item) => item.sessionId)).toContain("queue-orphan");
+  });
+
+  it("does not enqueue a stopped snapshot after the session was deleted", async () => {
+    await markSessionDeleted("session_deleted", "2026-03-10T09:00:10.000Z");
+    await queueExitPersistRecord(
+      buildSession("session_deleted", "2026-03-10T09:00:02.000Z", "stale"),
+    );
+    resetPersistRecoveryMemoryForTests();
+    expect(await listQueuedExitPersistRecords()).toEqual([]);
   });
 
   it("keeps a queue record inserted during storage snapshot reconciliation", async () => {

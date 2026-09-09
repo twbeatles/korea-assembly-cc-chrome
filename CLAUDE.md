@@ -556,6 +556,17 @@ When editing this repository, align with the audit follow-up behavior below. Det
 - Threat model: `SECURITY.md`. `sharp` is a **devDependency** only.
 - Coverage thresholds include `src/core/subtitle-pipeline/**` and `extension-context.ts`.
 
+## Sync Delta (2026-09-09 · data preservation audit remediation)
+
+Use this delta as the current operational baseline.
+
+- **ISSUE-001 (수집 중 사용자 편집 보존 및 구조적 변경 방어):** autosave 가 유입되더라도 History 에서 수정한 텍스트(`originalText` 보존), 행 메모(`entryNote`), 중요 표시(`highlighted`), 라벨, 발언자를 보존 (`mergeCaptureSnapshotWithStoredEdits`). 수집 중인 세션(`status === "running"` 또는 live ownership 보유)에 대한 삭제·병합·분할 시도는 UI disabled 및 `LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR` 예외로 거부.
+- **ISSUE-002 (실행 환경 간 쓰기 직렬화 및 원자적 IDB 갱신):** `navigator.locks.request` (Web Locks API)를 도입하여 History 문서, popup, service worker 간 cross-context 쓰기를 직렬화하고, `writeMutatedSessionRecord`로 IDB `readwrite` 트랜잭션 내부에서 최신 레코드를 읽고 쓰는 원자적 read-modify-write 보장.
+- **ISSUE-003 (종료 복구 큐의 durable 레코드 발견 보장):** `listQueuedExitPersistRecords()`에서 인덱스 배열에만 의존하지 않고 storage 전체에서 `assembly-subtitle-exit-persist:*` durable record를 스캔하여 동시 enqueue 경쟁이나 인덱스 누락 상황에서도 고아 레코드를 전수 발견·복구하고 인덱스를 자동 재동기화.
+- **ISSUE-004 (자동 분할 중 Stop 시 대기 큐 자막 보존):** `stopCaptureUnlocked()` 시 `queuedSegmentRolloverEvents` 대기 큐를 폐기하지 않고 남은 이벤트를 즉시 drain/commit하여 세션 상태에 반영한 뒤 최종 stopped snapshot 생성.
+- **ISSUE-005 (삭제된 세션의 종료 복구 큐 부활 방지):** `markSessionDeleted`, `isSessionDeleted` 및 삭제 tombstone(`assembly-subtitle-deleted-session:*`) 도입. 세션 삭제 시 exit persist queue 정리 및 tombstone 기록으로 startup replay 시 삭제된 세션이 되살아나는 문제 방지.
+- **검증 기준:** 70개 테스트 파일 / 389개 단위 테스트 통과, `npm run lint`, `npm run build` 완료.
+
 <!-- SPECKIT-AGENT-GUIDE:START -->
 
 ## Spec Kit / Spec-Driven Development (AI 에이전트 필독)

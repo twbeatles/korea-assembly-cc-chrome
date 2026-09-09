@@ -4,6 +4,7 @@
  */
 import { sanitizeEntriesForStorage } from "../../core/output-normalizer";
 import {
+  cloneEntry,
   cloneSessionRecord,
   getSessionCharCount,
   resolveSessionLineageId,
@@ -220,6 +221,69 @@ export function mergeEditableSessionMetadata(
     qualityStats: existingRecord.qualityStats
       ? { ...existingRecord.qualityStats }
       : undefined,
+  };
+}
+
+export function mergeCaptureEntriesWithUserEdits(
+  captureEntries: SubtitleEntry[],
+  storedEntries: SubtitleEntry[] | undefined,
+): SubtitleEntry[] {
+  if (!storedEntries?.length) {
+    return captureEntries.map(cloneEntry);
+  }
+
+  const storedById = new Map(storedEntries.map((entry) => [entry.id, entry]));
+  return captureEntries.map((capture) => {
+    const stored = storedById.get(capture.id);
+    if (!stored) {
+      return cloneEntry(capture);
+    }
+
+    const userEditedText =
+      typeof stored.originalText === "string" && stored.originalText.length > 0;
+
+    return {
+      ...cloneEntry(capture),
+      originalText: stored.originalText ?? capture.originalText,
+      text: userEditedText ? stored.text : capture.text,
+      highlighted: stored.highlighted ?? capture.highlighted,
+      entryNote: stored.entryNote ?? capture.entryNote,
+      labels: stored.labels ? [...stored.labels] : capture.labels,
+      speakerLabel: stored.speakerLabel ?? capture.speakerLabel,
+    };
+  });
+}
+
+export function isStructuralEntryPatch(
+  existing: SubtitleEntry[],
+  next: SubtitleEntry[],
+): boolean {
+  if (existing.length !== next.length) {
+    return true;
+  }
+
+  return existing.some((entry, index) => {
+    const candidate = next[index];
+    if (!candidate || candidate.id !== entry.id) {
+      return true;
+    }
+    const existingSources = entry.sourceEntryIds?.join("\0") ?? "";
+    const nextSources = candidate.sourceEntryIds?.join("\0") ?? "";
+    return existingSources !== nextSources;
+  });
+}
+
+export function mergeCaptureSnapshotWithStoredEdits(
+  record: SessionRecord,
+  existingRecord?: SessionRecord,
+): SessionRecord {
+  const withMetadata = mergeEditableSessionMetadata(record, existingRecord);
+  const entries = mergeCaptureEntriesWithUserEdits(record.entries, existingRecord?.entries);
+  return {
+    ...withMetadata,
+    entries,
+    subtitleCount: entries.length,
+    charCount: getSessionCharCount(entries),
   };
 }
 

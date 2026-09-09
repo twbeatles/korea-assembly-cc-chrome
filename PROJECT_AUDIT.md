@@ -10,13 +10,13 @@
 
 그러나 **전체 위험도는 High**로 평가한다. 저장 완료로 표시된 사용자 수정이 다음 자동 저장에 사라지는 문제와, 별도 실행 환경 간 쓰기 및 종료 복구 인덱스 경쟁을 격리 재현했다. 단위 테스트 통과만으로 데이터 보존을 보장할 수 없는 상태다.
 
-| 이슈 | 우선순위 | 신뢰도 | 핵심 영향 |
-|---|---|---|---|
-| ISSUE-001 | High | Confirmed | 수집 중 History의 자막 수정·중요 표시·행 메모가 자동 저장에 덮어써짐 |
-| ISSUE-002 | High | Confirmed | History/백그라운드 등 별도 실행 환경 사이에서 메타데이터 변경 유실 |
-| ISSUE-003 | High | Confirmed | 종료 복구 큐의 인덱스 경쟁으로 durable record가 재시작 후 조회되지 않음 |
-| ISSUE-004 | Medium | Likely | 자동 분할 저장 중 멈추기를 누르면 대기 중 자막 이벤트가 사라짐 |
-| ISSUE-005 | Medium | Confirmed | 삭제한 기록이 남은 종료 복구 큐에서 재생되어 되살아남 |
+| 이슈 | 우선순위 | 신뢰도 | 상태 | 핵심 영향 |
+|---|---|---|---|---|
+| ISSUE-001 | High | Confirmed | **Resolved** | 수집 중 History의 자막 수정·중요 표시·행 메모가 자동 저장에 덮어써짐 (수정/보존 반영) |
+| ISSUE-002 | High | Confirmed | **Resolved** | History/백그라운드 등 별도 실행 환경 사이에서 메타데이터 변경 유실 (Web Locks + 원자적 IDB RMW) |
+| ISSUE-003 | High | Confirmed | **Resolved** | 종료 복구 큐의 인덱스 경쟁으로 durable record가 재시작 후 조회되지 않음 (전체 스캔 복구) |
+| ISSUE-004 | Medium | Likely | **Resolved** | 자동 분할 저장 중 멈추기를 누르면 대기 중 자막 이벤트가 사라짐 (stop 시 rollover 큐 drain) |
+| ISSUE-005 | Medium | Confirmed | **Resolved** | 삭제한 기록이 남은 종료 복구 큐에서 재생되어 되살아남 (삭제 tombstone + 큐 정리) |
 
 **데이터 유실 가능성: 있음.** ISSUE-001/002는 논리적 덮어쓰기, ISSUE-003은 복구 대상 누락이다. DB 파일 자체의 물리적 손상이나 전체 라이브러리 파괴, 외부로 자막을 유출하는 Critical 경로는 확인하지 못했다. ISSUE-003은 원본 키가 저장소에 남아 있어 복구 여지가 있으며, 모든 동시 종료가 영구 유실로 이어진다는 뜻은 아니다.
 
@@ -346,3 +346,40 @@ MCP 응답에는 크기 제한에 따른 생략 구간이 있었다. 그 구간�
 1. **ISSUE-001 — 수집 중 사용자 편집을 다음 저장이 덮어쓰는 문제.** 동시성 타이밍 없이도 사용자 작업이 사라진다.
 2. **ISSUE-002 — History와 background 사이의 쓰기 경계.** 같은 환경의 Map queue를 전체 확장의 lock으로 취급하지 않도록 한다.
 3. **ISSUE-003 — 종료 큐 인덱스 경쟁과 고아 레코드 복구.** 저장된 최종 스냅샷이 실제 재시작 복구에 반드시 포함되도록 한다.
+
+## 10. Audit Remediation Closure (2026-09-09)
+
+감사에서 확인된 리스크 5건(ISSUE-001 ~ ISSUE-005)에 대해 제품 코드 수정 및 회귀 테스트를 완료했다.
+
+### 10.1 조치 요약
+
+1. **ISSUE-001 조치 (수집 중 사용자 편집 보존 및 구조적 변경 방어)**
+   - `src/storage/session-store/normalize.ts`: `mergeCaptureSnapshotWithStoredEdits`, `mergeCaptureEntriesWithUserEdits`, `isStructuralEntryPatch` 구현. 자동 저장이 유입되더라도 History에서 사용자가 수정한 텍스트(`originalText` 보존), 행 메모(`entryNote`), 중요 표시(`highlighted`), 라벨(`labels`), 발언자(`speakerLabel`)를 유지.
+   - `src/storage/session-store/public-api/mutations.ts`: 수집 중인 세션(`status === "running"` 또는 live capture ownership 보유)에 대한 구조적 편집(삭제·병합·분할) 시도 시 `LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR` 예외로 안전하게 거부.
+   - `src/history/app/App.tsx` & `SessionDetailPanel.tsx`: 수집 중인 세션에 대해 삭제/병합/분할 버튼 비활성화 및 안내 문구 노출.
+   - 회귀 테스트: `tests/session-store.test.ts` ("keeps History row edits when the next running autosave adds a new entry", "rejects structural entry edits while a session is still being captured"), `tests/normalize-session-record.test.ts`, `tests/history-app.test.tsx`.
+
+2. **ISSUE-002 조치 (실행 환경 간 쓰기 직렬화 및 원자적 IDB 갱신)**
+   - `src/storage/session-write-queue.ts`: `navigator.locks.request` (Web Locks API)를 도입하여 History 문서, 팝업, Background Service Worker 등 서로 다른 JS 런타임 간에도 동일 세션 쓰기를 직렬화.
+   - `src/storage/session-store/mutations-internal.ts`: `writeMutatedSessionRecord` 도입. IndexedDB `readwrite` 트랜잭션 내부에서 최신 레코드를 읽고 mutation을 적용한 뒤 청크 및 메타데이터를 원자적으로 저장하는 read-modify-write 보장.
+   - 회귀 테스트: `tests/session-store-concurrency.test.ts` (독립 큐 우회 시에도 메타데이터 패치 보존 및 autosave와의 교차 보존 검증).
+
+3. **ISSUE-003 조치 (종료 복구 큐의 durable 레코드 발견 보장)**
+   - `src/storage/persist-recovery.ts`: `listQueuedExitPersistRecords()`에서 인덱스 배열에만 의존하지 않고 storage 전체에서 `assembly-subtitle-exit-persist:*` durable record를 스캔하여 동시 enqueue 경쟁이나 인덱스 누락/오염 상황에서도 고아 레코드를 100% 발견 및 복구하고 인덱스를 자동 재동기화.
+   - 회귀 테스트: `tests/persist-recovery.test.ts` ("discovers concurrently queued records after the writer memory is discarded", "still lists a durable record when the shared index omits it", "keeps a queue record inserted during storage snapshot reconciliation").
+
+4. **ISSUE-004 조치 (자동 분할 중 Stop 시 대기 큐 자막 보존)**
+   - `src/content/app/runtime/orchestrator/runtime-core.ts`: `stopCaptureUnlocked()` 실행 시 `queuedSegmentRolloverEvents` 대기 큐를 즉시 폐기하지 않고, 남은 이벤트를 즉시 drain/commit하여 세션 상태에 반영한 뒤 최종 stopped snapshot을 생성·저장.
+
+5. **ISSUE-005 조치 (삭제된 세션의 종료 복구 큐 부활 방지)**
+   - `src/storage/persist-recovery.ts`: `markSessionDeleted`, `isSessionDeleted` 및 삭제 tombstone(`assembly-subtitle-deleted-session:*`) 도입. 삭제된 세션에 대한 지연 큐잉 차단 및 복구 목록에서 필터링.
+   - `src/storage/session-store/public-api/deletions.ts`: `deleteSession` 및 `deleteAllSessions` 실행 시 즉시 exit persist queue를 정리하고 tombstone을 기록.
+   - 회귀 테스트: `tests/session-store.test.ts` ("does not resurrect a deleted session when replaying queued exit persist records"), `tests/persist-recovery.test.ts` ("does not enqueue a stopped snapshot after the session was deleted").
+
+### 10.2 검증 결과
+
+- **Vitest**: **70개 테스트 파일 / 389개 테스트 전체 통과** (기존 375개 대비 +14개 테스트 추가)
+- **ESLint**: 오류 0개 (`npm run lint` 통과)
+- **Version / Injected**: `check:version` (1.0.13), `check:injected` 통과
+- **TypeScript**: `tsc --noEmit` 통과
+- **Vite Production Build**: `npm run build` 성공 (`dist/` 갱신 완료)

@@ -35,6 +35,7 @@ import {
   clearQueuedExitPersistRecord,
   clearQueuedExitPersistRecordsUpTo,
   listQueuedExitPersistRecords,
+  markSessionDeleted,
   resetPersistRecoveryStateForTests,
 } from "../../persist-recovery";
 import {
@@ -162,6 +163,9 @@ export async function deleteSession(id: string): Promise<void> {
     return;
   }
 
+  await clearQueuedExitPersistRecord(id);
+  await markSessionDeleted(id);
+
   const indexedDbResult = await tryIndexedDb(async () => {
     await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
       const record = (await withRequest(sessionStore.get(id))) as IndexedDbSessionRecord | undefined;
@@ -233,6 +237,16 @@ export async function deleteAllSessions(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : "알 수 없는 오류";
     errors.push(`fallback 저장소 정리 실패: ${message}`);
+  }
+
+  try {
+    const queuedRecords = await listQueuedExitPersistRecords();
+    for (const queued of queuedRecords) {
+      await clearQueuedExitPersistRecord(queued.sessionId);
+      await markSessionDeleted(queued.sessionId);
+    }
+  } catch {
+    // best-effort
   }
 
   if (clearedAnyStore) {

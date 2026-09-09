@@ -259,7 +259,16 @@ npm run verify:e2e
 - popup 종료와 수집 중단을 연결하면 안 됩니다.
 - `legacy/` 는 로컬 참조 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
-- 변경 후에는 가능하면 `lint`, `typecheck`, `test`, `build` 를 모두 실행합니다.
+## Sync Delta (2026-09-09)
+
+Use this delta as the current operational baseline.
+
+- **ISSUE-001 (수집 중 사용자 편집 보존 및 구조적 변경 방어):** autosave 유입 시 History 사용자 수정(텍스트/`originalText`, 행 메모, 중요 표시, 라벨, 발언자) 보존 (`mergeCaptureSnapshotWithStoredEdits`). 수집 중인 세션에 대한 삭제·병합·분할은 UI 비활성화 및 `LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR` 예외로 거부.
+- **ISSUE-002 (실행 환경 간 쓰기 직렬화 및 원자적 IDB 갱신):** `navigator.locks.request` (Web Locks API)로 실행 환경 간 세션 쓰기 직렬화 및 `writeMutatedSessionRecord`로 IDB `readwrite` 트랜잭션 내 원자적 read-modify-write 보장.
+- **ISSUE-003 (종료 복구 큐의 durable 레코드 발견 보장):** `listQueuedExitPersistRecords()`에서 storage 전체 `assembly-subtitle-exit-persist:*` 키를 전수 스캔하여 인덱스 누락이나 동시 큐잉 경쟁에서도 고아 레코드를 발견·복구하고 인덱스 자동 재동기화.
+- **ISSUE-004 (자동 분할 중 Stop 시 대기 큐 자막 보존):** `stopCaptureUnlocked()` 시 `queuedSegmentRolloverEvents` 대기 큐를 즉시 drain/commit하여 세션 상태에 반영한 뒤 최종 stopped snapshot 생성.
+- **ISSUE-005 (삭제된 세션의 종료 복구 큐 부활 방지):** `markSessionDeleted`, `isSessionDeleted` 및 삭제 tombstone(`assembly-subtitle-deleted-session:*`) 도입. 세션 삭제 시 exit persist queue 정리 및 tombstone 기록으로 startup replay 시 삭제된 세션 부활 방지.
+- **검증 기준:** 70개 테스트 파일 / 389개 단위 테스트 통과, `npm run lint`, `npm run build` 완료.
 
 ## Sync Delta (2026-07-13)
 

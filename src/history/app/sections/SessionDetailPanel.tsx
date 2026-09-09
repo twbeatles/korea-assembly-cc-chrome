@@ -34,6 +34,7 @@ export interface SessionDetailPanelProps {
   totalSessionCount: number;
   showStarredOnly: boolean;
   actionButtonsDisabled: boolean;
+  captureInProgress: boolean;
   noteDraft: string;
   tagDraft: string;
   categoryDraft: string;
@@ -123,6 +124,7 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
     totalSessionCount,
     showStarredOnly,
     actionButtonsDisabled,
+    captureInProgress,
     noteDraft,
     tagDraft,
     categoryDraft,
@@ -556,7 +558,14 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                       )
                     }
                     disabled={
-                      actionButtonsDisabled || selectedEntries.length < 2
+                      actionButtonsDisabled ||
+                      captureInProgress ||
+                      selectedEntries.length < 2
+                    }
+                    title={
+                      captureInProgress
+                        ? "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요."
+                        : undefined
                     }
                   >
                     선택 병합
@@ -572,7 +581,14 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                       )
                     }
                     disabled={
-                      actionButtonsDisabled || selectedEntries.length !== 1
+                      actionButtonsDisabled ||
+                      captureInProgress ||
+                      selectedEntries.length !== 1
+                    }
+                    title={
+                      captureInProgress
+                        ? "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요."
+                        : undefined
                     }
                   >
                     선택 분할
@@ -587,11 +603,25 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                         "선택한 자막을 삭제하고 있습니다.",
                       )
                     }
-                    disabled={actionButtonsDisabled || !selectedEntries.length}
+                    disabled={
+                      actionButtonsDisabled ||
+                      captureInProgress ||
+                      !selectedEntries.length
+                    }
+                    title={
+                      captureInProgress
+                        ? "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요."
+                        : undefined
+                    }
                   >
                     선택 삭제
                   </button>
                 </div>
+                {captureInProgress ? (
+                  <small>
+                    수집 중인 기록입니다. 중요 표시와 행 메모·텍스트 수정은 저장되지만, 삭제·병합·분할은 멈춘 뒤에 할 수 있습니다.
+                  </small>
+                ) : null}
               </div>
 
               <p className="section-heading">
@@ -897,7 +927,7 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                                     "자막 분할 내용을 저장하고 있습니다.",
                                   )
                                 }
-                                disabled={actionButtonsDisabled}
+                                disabled={actionButtonsDisabled || captureInProgress}
                               >
                                 분할 저장
                               </button>

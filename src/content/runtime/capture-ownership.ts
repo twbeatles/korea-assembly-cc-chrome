@@ -11,6 +11,7 @@ export interface CaptureOwnershipSnapshot {
   ownerId: string;
   updatedAt: number;
   committeeName?: string;
+  sessionId?: string;
 }
 
 export interface CaptureOwnershipStorage {
@@ -44,6 +45,26 @@ export function isForeignActiveOwnership(
   return now - snapshot.updatedAt <= staleMs;
 }
 
+export function isLiveCaptureOwnershipForSession(
+  snapshot: CaptureOwnershipSnapshot | null,
+  sessionId: string,
+  now = Date.now(),
+  staleMs = CAPTURE_OWNERSHIP_STALE_MS,
+): boolean {
+  if (!snapshot || !sessionId || snapshot.sessionId !== sessionId) {
+    return false;
+  }
+  return now - snapshot.updatedAt <= staleMs;
+}
+
+export async function isLiveCapturingSession(
+  sessionId: string,
+  now = Date.now(),
+): Promise<boolean> {
+  const snapshot = await readCaptureOwnership(getChromeLocalOwnershipStorage());
+  return isLiveCaptureOwnershipForSession(snapshot, sessionId, now);
+}
+
 export async function readCaptureOwnership(
   storage: CaptureOwnershipStorage | null | undefined,
 ): Promise<CaptureOwnershipSnapshot | null> {
@@ -63,6 +84,7 @@ export async function claimCaptureOwnership(options: {
   storage: CaptureOwnershipStorage | null | undefined;
   ownerId: string;
   committeeName?: string;
+  sessionId?: string;
   now?: number;
 }): Promise<{ foreignActive: boolean; previous: CaptureOwnershipSnapshot | null }> {
   const now = options.now ?? Date.now();
@@ -77,6 +99,7 @@ export async function claimCaptureOwnership(options: {
     ownerId: options.ownerId,
     updatedAt: now,
     committeeName: options.committeeName?.trim() || previous?.committeeName,
+    sessionId: options.sessionId?.trim() || previous?.sessionId,
   };
 
   try {
@@ -94,6 +117,7 @@ export async function heartbeatCaptureOwnership(options: {
   storage: CaptureOwnershipStorage | null | undefined;
   ownerId: string;
   committeeName?: string;
+  sessionId?: string;
   now?: number;
 }): Promise<void> {
   if (!options.storage) {
@@ -111,6 +135,7 @@ export async function heartbeatCaptureOwnership(options: {
         ownerId: options.ownerId,
         updatedAt: now,
         committeeName: options.committeeName?.trim() || previous?.committeeName,
+        sessionId: options.sessionId?.trim() || previous?.sessionId,
       } satisfies CaptureOwnershipSnapshot,
     });
   } catch {

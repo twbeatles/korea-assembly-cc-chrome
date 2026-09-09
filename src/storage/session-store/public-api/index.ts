@@ -1,6 +1,7 @@
 /** session-store 공개 API 배럴 (기능별 모듈 분리) */
 export { SESSION_NOTE_MAX_LENGTH } from "../normalize";
 export {
+  LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR,
   saveSession,
   updateRunningSession,
   upsertSessionRecord,

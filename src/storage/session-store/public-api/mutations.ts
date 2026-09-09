@@ -6,6 +6,8 @@ import {
 import {
   applySessionContentPatch,
   applySessionMetadataPatch,
+  isStructuralEntryPatch,
+  mergeCaptureSnapshotWithStoredEdits,
   mergeEditableSessionMetadata,
   normalizeEntries,
   normalizeImportedSessionStatus,
@@ -133,6 +135,8 @@ import {
   bumpSessionLibraryRevision,
   stopRunningRecord,
   preserveStoredSessionMetadata,
+  throwSessionStoreMutationError,
+  writeMutatedSessionRecord,
   writeSessionRecord,
 } from "../mutations-internal";
 import {
@@ -155,8 +159,12 @@ import {
   deleteFallbackRecord,
 } from "../fallback/storage";
 
+import { isLiveCapturingSession } from "../../../content/runtime/capture-ownership";
 import { loadSession } from "../load-session";
 import { listSessionLineageSegments } from "./queries";
+
+export const LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR =
+  "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.";
 
 export async function saveSession(session: SessionRecord): Promise<SessionRecord> {
   if (hasExtensionContextInvalidated()) {
@@ -164,23 +172,17 @@ export async function saveSession(session: SessionRecord): Promise<SessionRecord
   }
 
   const sessionId = typeof session.id === "string" ? session.id : "";
-  return enqueueSessionWrite(sessionId, async () => {
-    if (hasExtensionContextInvalidated()) {
-      throw createExtensionContextInvalidatedError();
-    }
-    const record = await preserveStoredSessionMetadata(
-      normalizeSessionRecord(
-        {
-          ...session,
-          status: session.status === "running" ? "saved" : session.status,
-        },
-        {
-          forceStatus: session.status === "running" ? "saved" : session.status,
-        },
-      ),
+  return writeMutatedSessionRecord(sessionId, (latest) => {
+    const normalized = normalizeSessionRecord(
+      {
+        ...session,
+        status: session.status === "running" ? "saved" : session.status,
+      },
+      {
+        forceStatus: session.status === "running" ? "saved" : session.status,
+      },
     );
-    // preserve + write 를 동일 큐에서 처리 (running autosave vs History 메타 경쟁 방지)
-    return writeSessionRecord(record, { enqueue: false });
+    return mergeCaptureSnapshotWithStoredEdits(normalized, latest);
   });
 }
 
@@ -190,22 +192,17 @@ export async function updateRunningSession(session: SessionRecord): Promise<Sess
   }
 
   const sessionId = typeof session.id === "string" ? session.id : "";
-  return enqueueSessionWrite(sessionId, async () => {
-    if (hasExtensionContextInvalidated()) {
-      throw createExtensionContextInvalidatedError();
-    }
-    const record = await preserveStoredSessionMetadata(
-      normalizeSessionRecord(
-        {
-          ...session,
-          status: "running",
-        },
-        {
-          forceStatus: "running",
-        },
-      ),
+  return writeMutatedSessionRecord(sessionId, (latest) => {
+    const normalized = normalizeSessionRecord(
+      {
+        ...session,
+        status: "running",
+      },
+      {
+        forceStatus: "running",
+      },
     );
-    return writeSessionRecord(record, { enqueue: false });
+    return mergeCaptureSnapshotWithStoredEdits(normalized, latest);
   });
 }
 
@@ -231,18 +228,11 @@ export async function updateSessionMetadata(
     throw new Error("기록을 찾지 못했습니다.");
   }
 
-  return enqueueSessionWrite(sessionId, async () => {
-    if (hasExtensionContextInvalidated()) {
-      throw createExtensionContextInvalidatedError();
+  return writeMutatedSessionRecord(sessionId, (latest) => {
+    if (!latest) {
+      throwSessionStoreMutationError("기록을 찾지 못했습니다.");
     }
-    const existingRecord = await loadSession(sessionId);
-    if (!existingRecord) {
-      throw new Error("기록을 찾지 못했습니다.");
-    }
-
-    const updatedAt = new Date().toISOString();
-    const record = applySessionMetadataPatch(existingRecord, patch, updatedAt);
-    return writeSessionRecord(record, { enqueue: false });
+    return applySessionMetadataPatch(latest, patch, new Date().toISOString());
   });
 }
 
@@ -265,13 +255,13 @@ export async function updateSessionLineageMetadata(
     const records: SessionRecord[] = [];
     for (const segment of segments) {
       // 세그먼트별 session id 큐로 직렬화 (lineage 큐와 id 가 달라 중첩 가능)
-      const saved = await enqueueSessionWrite(segment.id, async () => {
-        const latest = (await loadSession(segment.id)) ?? segment;
-        return writeSessionRecord(applySessionMetadataPatch(latest, patch, updatedAt), {
+      const saved = await writeMutatedSessionRecord(
+        segment.id,
+        (latest) => applySessionMetadataPatch(latest ?? segment, patch, updatedAt),
+        {
           notifyRevision: false,
-          enqueue: false,
-        });
-      });
+        },
+      );
       records.push(saved);
     }
     await bumpSessionLibraryRevision();
@@ -290,18 +280,20 @@ export async function updateSessionContent(
     throw new Error("기록을 찾지 못했습니다.");
   }
 
-  return enqueueSessionWrite(sessionId, async () => {
-    if (hasExtensionContextInvalidated()) {
-      throw createExtensionContextInvalidatedError();
-    }
-    const existingRecord = await loadSession(sessionId);
-    if (!existingRecord) {
-      throw new Error("기록을 찾지 못했습니다.");
+  const liveByOwnership = await isLiveCapturingSession(sessionId);
+  return writeMutatedSessionRecord(sessionId, (latest) => {
+    if (!latest) {
+      throwSessionStoreMutationError("기록을 찾지 못했습니다.");
     }
 
-    return writeSessionRecord(
-      applySessionContentPatch(existingRecord, patch, new Date().toISOString()),
-      { enqueue: false },
-    );
+    if (
+      patch.entries !== undefined &&
+      isStructuralEntryPatch(latest.entries, patch.entries) &&
+      (latest.status === "running" || liveByOwnership)
+    ) {
+      throwSessionStoreMutationError(LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR);
+    }
+
+    return applySessionContentPatch(latest, patch, new Date().toISOString());
   });
 }
