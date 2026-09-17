@@ -36,7 +36,7 @@ npm run verify:e2e
 
 `npm run build` 는 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 먼저 생성한 뒤 확장 번들을 만듭니다. 전체 검증은 `npm run verify` (CI: `.github/workflows/ci.yml`), 로컬 Chrome 확장 smoke 는 `npm run test:e2e:extension` (closed shadow · light DOM 미러) 기준입니다.
 
-**보안·검증 문서:** `SECURITY.md` · `LIVE_CAPTURE_SMOKE_CHECKLIST.md`. 상세 Sync Delta 는 `CLAUDE.md` 를 우선합니다.
+**보안·검증 문서:** `SECURITY.md` · `LIVE_CAPTURE_SMOKE_CHECKLIST.md` · `SITE_COMPATIBILITY_REVIEW_2026-09-17.md`. 상세 Sync Delta 는 `CLAUDE.md` 를 우선합니다.
 
 ### 3.1 TypeScript dual-track (2026-07-13)
 
@@ -258,6 +258,16 @@ npm run verify:e2e
 - popup 종료와 수집 중단을 연결하면 안 됩니다.
 - `legacy/` 는 로컬 참조 아카이브일 수 있지만 Git 추적 대상으로 전제하면 안 됩니다.
 - frame forwarding 은 nonce 검증을 통과한 메시지만 허용해야 합니다.
+
+## Sync Delta (2026-09-17 · 국회 중계 사이트 실측)
+
+Use this delta for live webcast compatibility. Details: `SITE_COMPATIBILITY_REVIEW_2026-09-17.md`.
+
+- 생중계 플레이어는 `main/player.asp?xcode=&xcgcd=`, 기자회견은 `main/pressplayer.asp`. 2026-09-17 개의 중: 외통위 `48`/`DCM000048224390101`, 복지위 `33`/`DCM000033224390201` (AI `smiai`).
+- 본회의는 `xcode=10` / `DCM000010…`. 당일 본회의 `xsami` 는 `smi-dw` 일반 자막(`btn_subtit_def`). 상임위는 `btn_subtit_ai`.
+- `#viewSubtit` / `.smi_word` / 화자색 / 미확정 `#cfe5f7` 계약 유지. 셀렉터·manifest 수정 없음.
+- 개의 전(`xstat=0`) 플레이어는 홈으로 리다이렉트. 보조 호스트 DNS 실패는 기존과 같음.
+
 ## Sync Delta (2026-09-09)
 
 Use this delta as the current operational baseline.

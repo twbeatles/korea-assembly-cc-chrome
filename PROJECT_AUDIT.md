@@ -106,6 +106,8 @@ pagehide / beforeunload
 - 내장 브라우저에서 영상은 재생되지 않았고 마지막 관측은 `paused:true, readyState:0, error:null`이었다. 영상 스트림의 정상 재생·음성과 자막의 정확도는 확인하지 못했다. 이를 확장 버그로 분류하지 않았다.
 - 보조 호스트 `webcast.assembly.go.kr`는 web 접근이 실패했고 Windows `Resolve-DnsName`도 “DNS 이름이 없습니다”를 반환했다. **현재 감사 환경의 결과**이며 전 세계 장애로 단정하지 않는다. README에 이미 보조 호스트 불통 가능성이 명시되어 있다.
 
+후속 실측(2026-09-17, 외통위·복지위 개의 중): `SITE_COMPATIBILITY_REVIEW_2026-09-17.md`. URL·자막 DOM 계약은 유지되며 이 감사 시점 코드 수정은 없다.
+
 ## 3. Audit Coverage & Limitations
 
 ### 확인한 범위와 CodeGraph 사용

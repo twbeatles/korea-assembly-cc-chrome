@@ -223,6 +223,7 @@ CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR �
 | [SECURITY.md](SECURITY.md) | 위협 모델·권한 경계·e2e 훅 |
 | [PRIVACY_POLICY_DRAFT_KO.md](PRIVACY_POLICY_DRAFT_KO.md) | 개인정보처리방침 초안 (스토어 게시 전 운영자 정보 필수) |
 | [LIVE_CAPTURE_SMOKE_CHECKLIST.md](LIVE_CAPTURE_SMOKE_CHECKLIST.md) | 실중계 수동 스모크 체크리스트 |
+| [SITE_COMPATIBILITY_REVIEW_2026-09-17.md](SITE_COMPATIBILITY_REVIEW_2026-09-17.md) | 국회 중계 사이트 실측·호환 검토 |
 | [A11Y_CHECKLIST.md](A11Y_CHECKLIST.md) | 키보드·스크린 리더 수동 점검 |
 | [CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md](CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md) | 스토어 권한 문안 |
 | `CLAUDE.md` | AI/기여자용 컨텍스트·Sync Delta |

@@ -264,6 +264,8 @@ src/
 - 배포 절차: `DEPLOYMENT.md`
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
+- 국회 중계 사이트 실측: `SITE_COMPATIBILITY_REVIEW_2026-09-17.md`
+- 실중계 스모크: `LIVE_CAPTURE_SMOKE_CHECKLIST.md`
 
 ## Sync Delta (2026-07-13)
 
@@ -584,6 +586,18 @@ Use this delta as the current operational baseline.
 - **ISSUE-004 (자동 분할 중 Stop 시 대기 큐 자막 보존):** `stopCaptureUnlocked()` 시 `queuedSegmentRolloverEvents` 대기 큐를 폐기하지 않고 남은 이벤트를 즉시 drain/commit하여 세션 상태에 반영한 뒤 최종 stopped snapshot 생성.
 - **ISSUE-005 (삭제된 세션의 종료 복구 큐 부활 방지):** `markSessionDeleted`, `isSessionDeleted` 및 삭제 tombstone(`assembly-subtitle-deleted-session:*`) 도입. 세션 삭제 시 exit persist queue 정리 및 tombstone 기록으로 startup replay 시 삭제된 세션이 되살아나는 문제 방지.
 - **검증 기준:** 70개 테스트 파일 / 389개 단위 테스트 통과, `npm run lint`, `npm run build` 완료.
+
+## Sync Delta (2026-09-17 · 국회 중계 사이트 실측)
+
+When editing this repository, align with the live site observation below. Details: `SITE_COMPATIBILITY_REVIEW_2026-09-17.md`.
+
+- 주 호스트 `assembly.webcast.go.kr` 의 생중계 플레이어는 계속 `main/player.asp?xcode=&xcgcd=` 이다. 기자회견은 `main/pressplayer.asp`.
+- 2026-09-17 11:19 KST 개의 중 실측 링크: 외통위 `xcode=48&xcgcd=DCM000048224390101`, 복지위 `xcode=33&xcgcd=DCM000033224390201`. 둘 다 AI 자막 `wss://smiai.webcast.go.kr:8091/aistt/…`.
+- 본회의는 `xcode=10` / `xcgcd=DCM000010…` 판별을 유지한다. 당일 본회의 `xsami` 는 `wss://smi-dw.webcast.go.kr/10` 이라 **일반 자막 버튼**(`btn_subtit_def`) 분기다. 상임위는 `smiai` → `btn_subtit_ai`.
+- 자막 DOM 계약(`#viewSubtit` / `.incont` / `.smi_word.stxt*` / `#cfe5f7` 미확정 / 화자색 `#237c93`·`#1e1e1e`)은 유지. 셀렉터·manifest 수정 없음.
+- `xstat==0` 이면 사이트 플레이어가 홈으로 리다이렉트한다. 개의 전 URL로는 수집하지 않는다.
+- 위원회 xcode 재편(재경위 65, 기후노동위 62, 성평등가족위 63 등)은 제목 기반 `committeeName` 이라 수집 로직 변경이 없다.
+- 보조 호스트 `webcast.assembly.go.kr` 는 이번에도 DNS NXDOMAIN. 목록은 유지한다.
 
 <!-- SPECKIT-AGENT-GUIDE:START -->
 

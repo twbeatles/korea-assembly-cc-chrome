@@ -37,7 +37,32 @@
 - 대략 시각·위원회명
 - Console `[assembly-subtitle]` 로그 (debugLogging on 시)
 
+## 최근 실측 플레이어 (2026-09-17)
+
+주 호스트만 사용한다. 보조 호스트 `webcast.assembly.go.kr` 는 DNS 실패가 반복된다.
+
+개의 중 확인한 링크 (`live_list.asp` / `live_play.asp`, 약 11:19 KST):
+
+- 외통위(AI): https://assembly.webcast.go.kr/main/player.asp?xcode=48&xcgcd=DCM000048224390101&
+- 복지위(AI): https://assembly.webcast.go.kr/main/player.asp?xcode=33&xcgcd=DCM000033224390201&
+
+같은 날 참고:
+
+- 본회의 제09차 14:00 예정 — `xcode=10` `DCM000010224390901`, **일반 자막** (`smi-dw`, `btn_subtit_def`)
+- 법사위 개의예정 — `xcode=25` `DCM000025224390501`. `xstat=0` 이면 사이트가 홈으로 보낸다.
+
+호환 검토 전문: `SITE_COMPATIBILITY_REVIEW_2026-09-17.md`.  
+상임위는 「AI 자막보기」, 본회의는 「자막보기」가 켜져야 한다(항목 2).
+
 ## 완료 기록
+
+### 2026-09-17 구조 호환 실측
+
+- 일시: 2026-09-17 약 11:18~11:20 KST
+- 빌드/버전: 1.0.14 (`34becb2`)
+- 방법: `live_list` / `live_play` JSON, 개의 중 player HTML, `openos_util.js` 자막 렌더. Chrome 확장 로드 스모크는 하지 않음
+- 종합 판정: **조건부 통과** (URL·DOM 계약 호환, 런타임 수집 항목 1~16은 미실시)
+- 후속 이슈: 외통위·복지위 확장 스모크, 본회의 개의 후 일반 자막 경로 스모크
 
 - 일시:
 - 빌드/버전:
