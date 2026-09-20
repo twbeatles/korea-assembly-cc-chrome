@@ -49,7 +49,11 @@ src/
           impl.ts                    # 하위 호환 re-export
         constants.ts / types.ts
     runtime/                         # pure helpers (lock, url-reconcile, …)
-    inpage-panel/ …
+    injected-observer.ts             # facade → injected-observer/ + bootstrap side-effect
+    injected-observer/
+      constants.ts / types.ts / dom.ts / reading.ts / bridge.ts / bootstrap.ts
+    inpage-panel/
+      styles.ts                      # facade → styles/ (tokens/shell/header/sections/live/controls/responsive)
   core/
     subtitle-pipeline.ts             # facade → subtitle-pipeline/
     subtitle-pipeline/
@@ -71,6 +75,10 @@ src/
       fallback/
         storage.ts                   # chrome.storage + memory fallback
       entry-chunks.ts / export-payload.ts / backup-bundle.ts
+    persist-recovery.ts              # facade → persist-recovery/
+    persist-recovery/
+      keys.ts / state.ts / sanitize.ts / index-store.ts
+      tombstones.ts / diagnostics.ts / queue.ts / testing.ts
     session-write-queue.ts
   history/
     App.tsx                          # facade
@@ -87,11 +95,13 @@ src/
 
 ### SOLID 구조 메모
 
-- **공개 facade 유지**: `content-script.ts`, `app/runtime.ts`, `session-store.ts`, `history/App.tsx`, `core/subtitle-pipeline.ts`, `orchestrator.ts`, `public-api.ts`.
+- **공개 facade 유지**: `content-script.ts`, `app/runtime.ts`, `session-store.ts`, `history/App.tsx`, `core/subtitle-pipeline.ts`, `orchestrator.ts`, `public-api.ts`, `persist-recovery.ts`, `injected-observer.ts`, `inpage-panel/styles.ts`.
 - **session-store**: IDB / fallback / normalize / public API 폴더 분리, `storeRuntime` bag으로 가변 상태 공유. 공개 API는 mutations·queries·deletions·import-export·startup 으로 분리.
 - **history**: Hero·목록·상세 섹션 + long-task 훅 분리; App 은 상태·핸들러 조립 루트.
 - **content runtime**: `constants`/`types` + `orchestrator/` (helpers + runtime-core). 모듈 레벨 상태 상호 호출이 강해 본체는 runtime-core 에 유지하고 순수 헬퍼만 분리.
+- **injected-observer**: 상수·타입·DOM 접근·읽기·브리지·부트스트랩 모듈로 분리. facade import 시 bootstrap side-effect 로 page world 에 1회 설치되며 esbuild 주입 번들 진입을 유지.
 - **subtitle-pipeline**: 타입·히스토리·증분 추출·커밋·라이프사이클 모듈로 분리 (순수 함수, facade 경로 유지).
+- **persist-recovery**: 키·휘발성 상태·순수 sanitize·인덱스·tombstone·진단·큐·테스트 격리 모듈로 분리, 공개 export 15개 동일 유지. 휘발성 상태는 `state.ts` 싱글턴이 소유하고 진단은 setter 경유로만 갱신.
 
 
 ## 4. 자막 추출 구조
