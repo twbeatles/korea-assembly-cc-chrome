@@ -45,7 +45,14 @@ src/
         orchestrator/
           index.ts                   # 공개 진입 (createContentRuntime)
           helpers.ts                 # 순수 헬퍼 (capture page notice, token, committee)
-          runtime-core.ts            # content runtime 본체 (상태·수집·바인딩)
+          runtime-core.ts            # facade → runtime-core/
+          runtime-core/
+            context.ts (상태 bag) / timers.ts / notices.ts
+            panel-status.ts / snapshots.ts / ownership.ts / persistence.ts
+            fallback-commit.ts / capture-events.ts
+            observer-bridge.ts / polling.ts
+            session-lifecycle.ts / session-commands.ts
+            panel-host.ts / bindings.ts / lifecycle.ts (조립 루트)
           impl.ts                    # 하위 호환 re-export
         constants.ts / types.ts
     runtime/                         # pure helpers (lock, url-reconcile, …)
@@ -83,9 +90,10 @@ src/
   history/
     App.tsx                          # facade
     app/
-      App.tsx                        # 상태·핸들러 조립
+      App.tsx                        # 상태·핸들러 조립 루트
       helpers.ts
-      hooks/useHistoryLongTask.ts
+      hooks/useHistoryLongTask.ts / useHistoryLibrary.ts
+      hooks/useHistoryDetail.ts / useHistoryEntries.ts / useHistoryTransfer.ts
       sections/
         HistoryHero.tsx
         SessionListPanel.tsx
@@ -97,8 +105,8 @@ src/
 
 - **공개 facade 유지**: `content-script.ts`, `app/runtime.ts`, `session-store.ts`, `history/App.tsx`, `core/subtitle-pipeline.ts`, `orchestrator.ts`, `public-api.ts`, `persist-recovery.ts`, `injected-observer.ts`, `inpage-panel/styles.ts`.
 - **session-store**: IDB / fallback / normalize / public API 폴더 분리, `storeRuntime` bag으로 가변 상태 공유. 공개 API는 mutations·queries·deletions·import-export·startup 으로 분리.
-- **history**: Hero·목록·상세 섹션 + long-task 훅 분리; App 은 상태·핸들러 조립 루트.
-- **content runtime**: `constants`/`types` + `orchestrator/` (helpers + runtime-core). 모듈 레벨 상태 상호 호출이 강해 본체는 runtime-core 에 유지하고 순수 헬퍼만 분리.
+- **history**: Hero·목록·상세 섹션 + long-task 훅 분리; App 은 상태·핸들러 조립 루트. App 본체는 목록(library)·상세(detail)·엔트리(entries)·입출력(transfer) 도메인 훅으로 분리하고, 도메인을 가로지르는 전환 가드와 화면 조립만 App 에 둔다.
+- **content runtime**: `constants`/`types` + `orchestrator/` (helpers + runtime-core). runtime-core 는 상태 bag(`context.ts`) + 15개 도메인 모듈로 분리하고, 모든 함수가 ctx 를 첫 인자로 받는다. 공개 진입은 `createContentRuntime` 하나이며 facade 경로를 유지한다.
 - **injected-observer**: 상수·타입·DOM 접근·읽기·브리지·부트스트랩 모듈로 분리. facade import 시 bootstrap side-effect 로 page world 에 1회 설치되며 esbuild 주입 번들 진입을 유지.
 - **subtitle-pipeline**: 타입·히스토리·증분 추출·커밋·라이프사이클 모듈로 분리 (순수 함수, facade 경로 유지).
 - **persist-recovery**: 키·휘발성 상태·순수 sanitize·인덱스·tombstone·진단·큐·테스트 격리 모듈로 분리, 공개 export 15개 동일 유지. 휘발성 상태는 `state.ts` 싱글턴이 소유하고 진단은 setter 경유로만 갱신.
