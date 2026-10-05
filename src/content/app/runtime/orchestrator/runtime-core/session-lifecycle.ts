@@ -202,7 +202,7 @@ export async function startCapturePipelineForCurrentPage(ctx: RuntimeCoreContext
       .catch(
       (error: unknown) => {
         reportRuntimeError(ctx, 
-          "자동 시작 설정에 따라 자막 모으기를 시도했으나 실패했습니다.",
+          "자동 시작 설정에 따라 자막 수집을 시도했으나 실패했습니다.",
           error,
         );
       },
@@ -304,8 +304,8 @@ export async function startCaptureUnlocked(ctx: RuntimeCoreContext): Promise<voi
   ctx.state.committeeName = deriveCommitteeName(document.title);
   const multiTabCaptureWarning = await claimCaptureOwnershipForStart(ctx);
   const startNotice = multiTabCaptureWarning
-    ? "자막 모으기를 시작했습니다. 다른 탭에서도 수집 중일 수 있어 기록이 둘로 나뉠 수 있습니다."
-    : "자막 모으기를 시작했습니다. 페이지를 이동하거나 닫으려고 하면 수집을 중단하고, 종료 직전에 자동 저장을 시도합니다.";
+    ? "자막 수집을 시작했습니다. 다른 탭에서도 수집 중일 수 있어 기록이 둘로 나뉠 수 있습니다."
+    : "자막 수집을 시작했습니다. 페이지를 이동하거나 닫으려고 하면 수집을 중단하고, 종료 직전에 자동 저장을 시도합니다.";
   setPanelNotice(ctx, startNotice);
   dispatchObserverConfig(ctx);
   syncUserInterfaces(ctx);
@@ -319,8 +319,8 @@ export async function startCaptureUnlocked(ctx: RuntimeCoreContext): Promise<voi
   if (!subtitleLayerReady) {
     setPanelNotice(ctx, 
       multiTabCaptureWarning
-        ? "자막 모으기를 시작했습니다. 다른 탭 수집 가능 — 페이지에서 'AI 자막보기'를 한 번 눌러주세요."
-        : "자막 모으기를 시작했습니다. 페이지에서 'AI 자막보기'를 한 번 눌러주세요.",
+        ? "자막 수집을 시작했습니다. 다른 탭 수집 가능 — 페이지에서 'AI 자막보기'를 한 번 눌러주세요."
+        : "자막 수집을 시작했습니다. 페이지에서 'AI 자막보기'를 한 번 눌러주세요.",
     );
   }
 
@@ -347,7 +347,7 @@ export async function stopCaptureUnlocked(ctx: RuntimeCoreContext): Promise<void
   const now = Date.now();
   const stoppedRecord = buildPreparedSessionRecord(ctx, "stopped", now);
   ctx.state = finalizeSession(ctx.state, now, ctx.settings).state;
-  setPanelNotice(ctx, "자막 모으기를 멈췄습니다.");
+  setPanelNotice(ctx, "자막 수집을 종료했습니다.");
   rememberAutoStartCooldown(isTopFrame);
   await releaseCaptureOwnershipForStop(ctx);
   await persistStoppedSession(ctx, stoppedRecord);

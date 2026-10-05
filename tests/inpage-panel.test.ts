@@ -325,7 +325,8 @@ describe("in-page panel", () => {
 
     expect(previewSection?.classList.contains("collapsed")).toBe(false);
     expect(previewToggle?.textContent).toBe("실시간 내용 접기");
-    expect(styleText).toMatch(/\.hero-card\s*\{[\s\S]*?flex:\s*1 0 auto;/);
+    // 자막 카드는 남는 높이만 차지하고 목록이 내부에서 스크롤되어 조작 버튼이 항상 보인다.
+    expect(styleText).toMatch(/\.hero-card\s*\{[^}]*?flex:\s*1 1 0;/);
     expect(styleText).toMatch(
       /\.preview-section\s*\{[\s\S]*?flex:\s*0 0 auto;/,
     );

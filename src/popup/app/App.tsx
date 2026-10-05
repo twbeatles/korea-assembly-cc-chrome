@@ -414,40 +414,46 @@ export default function App({ surface = "popup" }: AppProps) {
   const recentEntries = snapshot?.recentEntries ?? [];
   const sidePanelShownCount = recentEntries.length;
 
+  const meetingName = snapshot?.committeeName || snapshot?.title || "";
+  const saveAndPanelButtons = (
+    <div className="save-open-row">
+      <button
+        className="secondary"
+        onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
+        disabled={!tabReady || !hasPersistableContent}
+      >
+        {UI_TEXT.saveSession}
+      </button>
+      <button
+        className="secondary"
+        onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
+        disabled={!tabReady}
+      >
+        {UI_TEXT.openPanel}
+      </button>
+    </div>
+  );
+
   return (
     <div className={`popup-shell${isSidePanel ? " sidepanel-shell" : ""}`}>
       <header className="popup-header">
-        <div>
-          <p className="eyebrow">{isSidePanel ? "실시간 보조 패널" : "빠른 열기"}</p>
-          <h1>{UI_TEXT.appName}</h1>
-        </div>
+        <h1>{UI_TEXT.appName}</h1>
         <span className={`status-badge ${snapshot?.status ?? "idle"}`}>
           {snapshot ? getCaptureStatusLabel(snapshot.status) : "연결 전"}
         </span>
       </header>
 
-      <section className="panel">
+      <section className="summary">
+        {meetingName ? <strong className="meeting-name">{meetingName}</strong> : null}
         <div className="stat-row" aria-label="현재 수집 요약">
-          <div className="stat">
-            <span className="stat-label">상태</span>
-            <span className="stat-value">
-              {unsupported ? "지원되지 않음" : tabReady ? "연결됨" : "대기 중"}
-            </span>
-          </div>
-          <div className="stat">
-            <span className="stat-label">자막</span>
-            <span className="stat-value">{subtitleCount.toLocaleString("ko-KR")}문장</span>
-          </div>
-          <div className="stat">
-            <span className="stat-label">글자</span>
-            <span className="stat-value">{charCount.toLocaleString("ko-KR")}자</span>
-          </div>
+          <span className="stat-value">{subtitleCount.toLocaleString("ko-KR")}문장</span>
+          <span className="stat-value">{charCount.toLocaleString("ko-KR")}자</span>
         </div>
-        <div className="meta-row">
-          <span>회의 이름</span>
-          <strong>{snapshot?.committeeName || snapshot?.title || "-"}</strong>
-        </div>
-        <div className="status-line" role="status" aria-live="polite">
+        <div
+          className={`status-line${unsupported ? " unsupported" : ""}`}
+          role="status"
+          aria-live="polite"
+        >
           {statusMessage}
         </div>
         {feedback ? (
@@ -469,12 +475,9 @@ export default function App({ surface = "popup" }: AppProps) {
       </section>
 
       {isSidePanel ? (
-        <section className="panel sidepanel-subtitle-panel">
-          <div className="subtitle-section-header primary">
-            <div className="subtitle-section-copy">
-              <h2>{UI_TEXT.screenSubtitles}</h2>
-              <p>방금 수집된 자막을 더 큰 글씨로 바로 확인합니다.</p>
-            </div>
+        <section className="sidepanel-subtitle-panel">
+          <div className="subtitle-section-header">
+            <h2>{UI_TEXT.screenSubtitles}</h2>
             <div className="subtitle-section-meta">
               <span className="mode-badge">{getCaptureModeBadge(snapshot)}</span>
               <span className="section-count">{subtitleCount.toLocaleString("ko-KR")}줄</span>
@@ -495,7 +498,7 @@ export default function App({ surface = "popup" }: AppProps) {
                 </article>
               ))
             ) : (
-              <p className="empty-text">화면에서 자막을 찾으면 수집된 자막이 이곳에 누적됩니다.</p>
+              <p className="empty-text">수집한 자막이 여기에 쌓입니다.</p>
             )}
           </div>
 
@@ -507,112 +510,66 @@ export default function App({ surface = "popup" }: AppProps) {
           ) : null}
 
           {snapshot?.previewText ? (
-            <div className="sidepanel-preview-section">
-              <div className="preview-label">{UI_TEXT.livePreview}</div>
+            <div className="preview-block">
+              <span className="preview-label">{UI_TEXT.livePreview}</span>
               <p className="preview-text">{snapshot.previewText}</p>
             </div>
           ) : null}
         </section>
       ) : null}
 
-      <section className="panel">
+      <section className="actions">
         {!isSidePanel ? (
-          <div className="group">
-            <span className="group-label">자막 수집</span>
-            <div className="capture-actions">
-              {isRunning ? (
-                <button
-                  className="capture-btn stop"
-                  onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 멈춥니다.")}
-                  disabled={!tabReady}
-                >
-                  {UI_TEXT.stopCapture}
-                </button>
-              ) : (
-                <button
-                  className="capture-btn"
-                  onClick={() =>
-                    sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")
-                  }
-                  disabled={!tabReady || !captureReady}
-                >
-                  {UI_TEXT.startCapture}
-                </button>
-              )}
-              <div className="save-open-row">
-                <button
-                  className="secondary"
-                  onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
-                  disabled={!tabReady || !hasPersistableContent}
-                >
-                  {UI_TEXT.saveSession}
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
-                  disabled={!tabReady}
-                >
-                  {UI_TEXT.openPanel}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="group">
-            <span className="group-label">저장 및 페이지 패널</span>
-            <div className="save-open-row">
-              <button
-                className="secondary"
-                onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
-                disabled={!tabReady || !hasPersistableContent}
-              >
-                {UI_TEXT.saveSession}
-              </button>
-              <button
-                className="secondary"
-                onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
-                disabled={!tabReady}
-              >
-                {UI_TEXT.openPanel}
-              </button>
-            </div>
-          </div>
-        )}
-        <div className="group">
-          <span className="group-label">다른 화면 열기</span>
-          <div className={`nav-actions${isSidePanel ? "" : " four"}`}>
-            <button className="ghost" onClick={() => void openHistory()}>
-              {UI_TEXT.openHistory}
+          isRunning ? (
+            <button
+              className="capture-btn stop"
+              onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 종료합니다.")}
+              disabled={!tabReady}
+            >
+              {UI_TEXT.stopCapture}
             </button>
-            <button className="ghost" onClick={() => void openOptions()}>
-              {UI_TEXT.openOptions}
+          ) : (
+            <button
+              className="capture-btn"
+              onClick={() =>
+                sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")
+              }
+              disabled={!tabReady || !captureReady}
+            >
+              {UI_TEXT.startCapture}
             </button>
-            <button className="ghost" onClick={() => void openDiagnostics()}>
-              {UI_TEXT.openDiagnostics}
-            </button>
-            {!isSidePanel ? (
-              <button className="ghost" onClick={() => void openSidePanel()}>
-                사이드 패널
-              </button>
-            ) : null}
-          </div>
-        </div>
+          )
+        ) : null}
+        {saveAndPanelButtons}
         {presets.length ? (
-          <div className="group">
-            <span className="group-label">즐겨 찾는 페이지</span>
-            <div className="preset-row">
-              {presets.slice(0, 4).map((preset) => (
-                <button
-                  className="secondary"
-                  key={preset.id}
-                  onClick={() => void openPreset(preset)}
-                >
-                  {preset.name}
-                </button>
-              ))}
-            </div>
+          <div className="preset-row" aria-label="즐겨 찾는 페이지">
+            {presets.slice(0, 4).map((preset) => (
+              <button
+                className="secondary"
+                key={preset.id}
+                onClick={() => void openPreset(preset)}
+              >
+                {preset.name}
+              </button>
+            ))}
           </div>
         ) : null}
+        <nav className="nav-actions" aria-label="다른 화면 열기">
+          <button className="ghost" onClick={() => void openHistory()}>
+            {UI_TEXT.openHistory}
+          </button>
+          <button className="ghost" onClick={() => void openOptions()}>
+            {UI_TEXT.openOptions}
+          </button>
+          <button className="ghost" onClick={() => void openDiagnostics()}>
+            {UI_TEXT.openDiagnostics}
+          </button>
+          {!isSidePanel ? (
+            <button className="ghost" onClick={() => void openSidePanel()}>
+              사이드 패널
+            </button>
+          ) : null}
+        </nav>
       </section>
     </div>
   );

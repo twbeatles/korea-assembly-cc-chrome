@@ -56,12 +56,13 @@ export function HistoryHero(props: HistoryHeroProps) {
 
   return (
     <header className="hero">
-      <div>
-        <p className="eyebrow">기록 보기</p>
-        <h1>저장된 자막 기록</h1>
-      </div>
+      <h1>저장된 자막 기록</h1>
       <div className="hero-actions">
-        <button onClick={onRefresh} disabled={actionButtonsDisabled}>
+        <button
+          className="secondary"
+          onClick={onRefresh}
+          disabled={actionButtonsDisabled}
+        >
           목록 새로고침
         </button>
         <button
@@ -122,16 +123,17 @@ export function HistoryHero(props: HistoryHeroProps) {
           value={globalSearchQuery}
           onChange={(event) => onGlobalSearchChange(event.target.value)}
           placeholder="전체 기록에서 제목, 메모, 자막 찾기"
+          aria-label="전체 기록 검색"
         />
         <input
-          className="search-input"
+          className="search-input narrow"
           type="search"
           value={tagFilter}
           onChange={(event) => onTagFilterChange(event.target.value)}
           placeholder="태그 필터"
         />
         <input
-          className="search-input"
+          className="search-input narrow"
           type="search"
           value={categoryFilter}
           onChange={(event) => onCategoryFilterChange(event.target.value)}

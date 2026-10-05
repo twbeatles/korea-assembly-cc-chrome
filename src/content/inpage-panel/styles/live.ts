@@ -1,28 +1,25 @@
 /** 실시간 미리보기/자막 행/알림 — PANEL_STYLE 분할 파트. */
 export const liveStyle = `  .preview-box,
   .live-row-list {
-    border-radius: 16px;
-    background: #f2f6fb;
-    border: 1px solid rgba(20, 54, 90, 0.06);
+    border-radius: var(--radius-md);
+    background: #ffffff;
+    border: 1px solid var(--line-soft);
   }
 
   .live-row-shell {
     position: relative;
-    flex: 1 1 auto;
-    min-height: 250px;
+    flex: 1 1 0;
+    min-height: 120px;
     display: flex;
   }
 
   .preview-box {
     overflow: hidden;
     flex-shrink: 0;
-    height: 72px;
+    height: 58px;
     min-height: 0;
-    opacity: 1;
-    transition:
-      height 180ms ease,
-      opacity 180ms ease,
-      border-color 180ms ease;
+    background: var(--tint-100);
+    transition: height 160ms ease, opacity 160ms ease;
   }
 
   .preview-section.collapsed .preview-box {
@@ -41,46 +38,38 @@ export const liveStyle = `  .preview-box,
     width: 100%;
     height: 100%;
     overflow: auto;
-    scrollbar-gutter: stable both-edges;
-    padding: 14px 16px;
-    font-size: 13px;
-    font-weight: 500;
-    line-height: 1.55;
+    padding: 8px 10px;
+    font-size: 12px;
+    line-height: 1.5;
     white-space: pre-wrap;
-    color: #18344f;
+    color: var(--ink-500);
   }
 
   .live-row-list {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 10px;
     overflow: auto;
-    scrollbar-gutter: stable both-edges;
-    min-height: 250px;
-    background: linear-gradient(180deg, #f8fbff, #edf4fb);
+    min-height: 0;
   }
 
   .scroll-jump {
     position: absolute;
-    right: 16px;
-    bottom: 16px;
+    right: 12px;
+    bottom: 10px;
     z-index: 1;
-    width: 44px;
-    min-width: 44px;
-    height: 44px;
-    min-height: 44px;
+    width: 32px;
+    min-width: 32px;
+    height: 32px;
+    min-height: 32px;
     padding: 0;
     border-radius: 999px;
-    background: rgba(23, 63, 110, 0.96);
-    color: #ffffff;
-    font-size: 22px;
+    font-size: 15px;
     line-height: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    box-shadow: 0 14px 24px rgba(17, 44, 82, 0.28);
+    box-shadow: 0 6px 14px rgba(17, 44, 82, 0.25);
   }
 
   .scroll-jump[hidden] {
@@ -88,15 +77,16 @@ export const liveStyle = `  .preview-box,
   }
 
   .live-row {
-    padding: 12px 14px;
-    border-radius: 14px;
-    background: #ffffff;
-    border: 1px solid var(--line-soft);
-    box-shadow: 0 10px 18px rgba(20, 54, 90, 0.06);
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  .live-row:last-child {
+    border-bottom: 0;
   }
 
   .live-row.speaker-highlight {
-    border-left-width: 4px;
+    border-left-width: 3px;
     border-left-style: solid;
   }
 
@@ -113,8 +103,7 @@ export const liveStyle = `  .preview-box,
   }
 
   .live-row time {
-    display: block;
-    margin-bottom: 4px;
+    margin-right: 6px;
     color: var(--navy-400);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
@@ -125,15 +114,13 @@ export const liveStyle = `  .preview-box,
     align-items: center;
     justify-content: center;
     min-width: 1.4em;
-    margin: 0 0 6px;
-    padding: 1px 7px;
+    padding: 0 6px;
     border-radius: 999px;
     background: rgba(20, 54, 90, 0.08);
-    color: var(--navy-700, #1f3b57);
-    font-size: 11px;
+    color: var(--navy-700);
+    font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.02em;
-    line-height: 1.4;
+    line-height: 1.5;
   }
 
   .live-row.speaker-primary .speaker-badge {
@@ -147,39 +134,29 @@ export const liveStyle = `  .preview-box,
   }
 
   .live-row p {
-    margin: 0;
+    margin: 2px 0 0;
     color: var(--ink-900);
-    font-size: 17px;
-    font-weight: 600;
-    line-height: 1.7;
+    font-size: 14px;
+    line-height: 1.6;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
   }
 
   .empty-text {
-    margin: 0;
-    min-height: 180px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 0 10px;
+    margin: auto;
+    padding: 16px;
     text-align: center;
-    color: #35536e;
-    font-size: 16px;
-    font-weight: 700;
-    line-height: 1.7;
-  }
-
-  .section-count {
-    padding: 6px 10px;
-    background: #e8f0fa;
-    color: var(--navy-600);
+    color: var(--navy-500);
+    font-size: 13px;
+    line-height: 1.6;
   }
 
   .notice {
     box-sizing: border-box;
-    padding: 10px 12px;
+    padding: 7px 10px;
     border-radius: var(--radius-sm);
-    background: rgba(227, 236, 247, 0.72);
-    border: 1px solid var(--line-soft);
+    background: var(--tint-200);
+    border-left: 3px solid var(--navy-400);
     font-size: 12px;
     color: var(--ink-500);
     line-height: 1.5;

@@ -8,7 +8,12 @@ export function formatEntryTime(value: string | null | undefined): string {
   if (Number.isNaN(timestamp.getTime())) {
     return "-";
   }
-  return timestamp.toLocaleString("ko-KR");
+  return timestamp.toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
 }
 
 export function getCaptureModeBadge(snapshot: StatusSnapshot | null): string {

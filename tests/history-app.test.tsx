@@ -937,7 +937,7 @@ describe("history app", () => {
       (screen.getAllByRole("button", { name: "중요 표시" })[0] as HTMLButtonElement).disabled,
     ).toBe(false);
     expect(
-      (screen.getAllByRole("button", { name: "수정/메타데이터" })[0] as HTMLButtonElement).disabled,
+      (screen.getAllByRole("button", { name: "수정" })[0] as HTMLButtonElement).disabled,
     ).toBe(false);
   });
 
@@ -982,7 +982,7 @@ describe("history app", () => {
 
     render(<App />);
     fireEvent.click(
-      await screen.findByRole("button", { name: "수정/메타데이터" }),
+      await screen.findByRole("button", { name: "수정" }),
     );
 
     fireEvent.change(screen.getByDisplayValue("테스트 자막"), {

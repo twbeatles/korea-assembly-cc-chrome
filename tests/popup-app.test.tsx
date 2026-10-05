@@ -298,7 +298,7 @@ describe("popup app", () => {
         ),
       ).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: "자막 모으기" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByRole("button", { name: "수집 시작" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByRole("button", { name: "페이지 패널 열기" }).hasAttribute("disabled")).toBe(
       false,
     );
@@ -394,8 +394,8 @@ describe("popup app", () => {
       expect(screen.getByText("첫 번째로 수집된 자막입니다.")).toBeTruthy();
       expect(screen.getByText("두 번째로 수집된 자막입니다.")).toBeTruthy();
     });
-    expect(screen.queryByRole("button", { name: "자막 모으기" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "멈추기" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "수집 시작" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "수집 종료" })).toBeNull();
     expect(screen.queryByRole("button", { name: "사이드 패널" })).toBeNull();
     expect(screen.getByRole("button", { name: "지금 저장" }).hasAttribute("disabled")).toBe(
       false,

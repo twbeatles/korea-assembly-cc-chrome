@@ -6,7 +6,7 @@ import {
 } from "../dom/builders";
 import {
   formatCaptureMode,
-  formatDate,
+  formatRowTime,
   formatElapsedTime,
 } from "../formatters";
 import { isScrollNearBottom, scrollToBottom } from "../scroll";
@@ -49,7 +49,6 @@ export function createInPagePanel(
     host,
     wrapper,
     statusBadge,
-    headerCount,
     modeBadge,
     liveRowCount,
     liveRowList,
@@ -164,8 +163,9 @@ export function createInPagePanel(
 
       statusBadge.textContent = nextState.statusLabel;
       statusBadge.className = `status-badge ${nextState.status}`;
-      headerCount.textContent = `자막 ${nextState.subtitleCount}줄`;
       modeBadge.textContent = formatCaptureMode(nextState.captureMode);
+      // structured 는 섹션 제목과 같은 문구라 숨기고, 다른 수집 방식일 때만 드러낸다.
+      modeBadge.hidden = nextState.captureMode === "structured";
       liveRowCount.textContent = `${nextState.liveRows.length}개`;
       copyRecentButton.textContent = `최근 ${nextState.recentCopyLineCount}줄 복사`;
 
@@ -229,7 +229,7 @@ export function createInPagePanel(
 
             const timeNode = node.querySelector("time");
             const textNode = node.querySelector("p");
-            const nextTime = formatDate(row.updatedAt);
+            const nextTime = formatRowTime(row.updatedAt);
             if (timeNode && timeNode.textContent !== nextTime) {
               timeNode.textContent = nextTime;
             }

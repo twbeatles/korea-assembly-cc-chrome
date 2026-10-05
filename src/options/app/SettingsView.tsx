@@ -414,7 +414,7 @@ export function SettingsView(props: {
               />
               <SettingToggleCard
                 title="자동 시작"
-                description="이 페이지를 열 때 바로 자막 모으기를 시작합니다."
+                description="이 페이지를 열 때 바로 자막 수집을 시작합니다."
                 checked={presetDraft.autoStartEnabled}
                 onChange={(checked) =>
                   handlePresetDraftChange("autoStartEnabled", checked)

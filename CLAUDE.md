@@ -254,7 +254,7 @@ src/
 - history 의 전체 JSON 백업 다운로드는 page Blob URL helper 를 사용해야 하며, 대형 `content` 문자열을 `DOWNLOAD_REQUEST` 로 service worker 에 보내면 안 됩니다.
 - `autoScroll` 옵션이 꺼지면 패널의 `실시간 내용` / `수집된 자막` 영역을 강제 스크롤하지 않습니다.
 - autosave는 옵션에서 켜고 끌 수 있지만 `Stop` 시 최종 저장은 항상 유지합니다.
-- stopped 세션 최종 저장이 실패하면 다음 `자막 모으기`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
+- stopped 세션 최종 저장이 실패하면 다음 `수집 시작`/`화면 비우기` 전에 저장을 1회 재시도하고, 재시도도 실패할 때만 폐기 확인을 표시합니다.
 - replay queue 조회는 `chrome.storage.local` snapshot과 메모리 snapshot을 merge 해야 하며, 같은 `sessionId` 충돌 시 `record.updatedAt` 우선, 동률이면 `queuedAt`이 더 늦은 쪽을 유지해야 합니다.
 - queue write 실패는 메모리 queue를 지우면 안 되며, diagnostics는 `lastQueueWriteError`, `lastReplayError`, `lastCleanupError`, `lastError`로 phase별로 남겨야 합니다.
 - capture notice 는 기본 idle 안내만 숨기고, `정상 수집`, `자동 조정 중 수집`, `reset 복구 중`, 수동 클릭 안내, 오류/액션 피드백을 실제 텍스트로 사용자에게 드러내야 하며, fallback/polling 경로에서도 실제 수집이 이어질 때는 과도한 장애 경고 문구를 피해야 합니다.
@@ -618,6 +618,17 @@ When editing this repository, align with the live site observation below. Detail
 - 보조 호스트 `webcast.assembly.go.kr` 는 이번에도 DNS NXDOMAIN. 목록은 유지한다.
 
 <!-- SPECKIT-AGENT-GUIDE:START -->
+
+## Sync Delta (2026-10-05 · UI 간소화)
+
+When editing this repository, align with the newly implemented behavior below.
+
+- 수집 제어 라벨은 패널·popup·스모크 모두 `UI_TEXT.startCapture`(`수집 시작`) / `UI_TEXT.stopCapture`(`수집 종료`) 하나로 통일한다. `자막 모으기`/`멈추기` 문구는 더 쓰지 않는다.
+- in-page 패널은 폭 400px, 중첩 카드 없는 단일 면이다. `.hero-card` 는 `flex: 1 1 0` 으로 남는 높이만 차지하고 `수집된 자막` 목록이 내부 스크롤되므로, 조작 버튼(수집 시작/종료·지금 저장·최근 N줄 복사·TXT 저장)은 항상 보인다.
+- 패널 자막 행 시각은 `formatRowTime`(HH:MM:SS)만 표시한다. `화면 비우기`·`최신 중요 표시`·`중간 저장 후 새 세션`은 `더보기` 안에 두고, 발언자 토글 2종은 자막 목록 바로 위 한 줄(`.option-row`)에 둔다. mode badge 는 `structured` 일 때 숨긴다.
+- popup 은 헤더·요약(회의명, 문장/글자 수, 상태 줄)·수집 버튼·저장/패널 열기·화면 이동 링크만 둔다.
+- history 상세는 `메모 · 분류 · 발언자 라벨`과 `시간 범위 · 선택 항목만 내보내기`를 접이식(`.detail-fold`)으로 두고, 내보내기 → 복사 → 검색/선택 → 자막 목록 순서로 배치한다. 미저장 초안이 있으면 메모 영역은 열린 상태를 유지한다.
+- `enqueueSessionWrite` 는 `navigator.locks.request` 를 반드시 `locks` 객체에서 직접 호출한다. 메서드를 떼어 호출하면 실제 브라우저에서 `Illegal invocation` 으로 모든 세션 쓰기가 실패한다 (`tests/session-write-queue.test.ts` 회귀 테스트).
 
 ## Spec Kit / Spec-Driven Development (AI 에이전트 필독)
 

@@ -6,7 +6,7 @@ import {
 } from "../../../core/exporters/speaker-label";
 import type { ExportFormat } from "../../../core/subtitle-models";
 import { getExportFormatLabel, UI_TEXT } from "../../../shared/ui-labels";
-import { formatDate } from "../formatters";
+import { formatRowTime } from "../formatters";
 import { PANEL_STYLE } from "../styles";
 import { IN_PAGE_PANEL_HOST_ID, type InPagePanelActions } from "../types";
 
@@ -14,7 +14,6 @@ export interface InPagePanelElements {
   host: HTMLDivElement;
   wrapper: HTMLDivElement;
   statusBadge: HTMLSpanElement;
-  headerCount: HTMLSpanElement;
   modeBadge: HTMLSpanElement;
   liveRowCount: HTMLSpanElement;
   liveRowList: HTMLDivElement;
@@ -99,7 +98,7 @@ export function createLiveRowCard(
   article.dataset.rowKey = row.key;
 
   const time = document.createElement("time");
-  time.textContent = formatDate(row.updatedAt);
+  time.textContent = formatRowTime(row.updatedAt);
 
   const text = document.createElement("p");
   text.textContent = row.text;
@@ -165,8 +164,6 @@ export function createInPagePanelElements(
   title.textContent = UI_TEXT.appName;
   titleGroup.append(title);
 
-  const headerCount = document.createElement("span");
-  headerCount.className = "header-count";
   const statusBadge = document.createElement("span");
   statusBadge.className = "status-badge";
   const headerActions = document.createElement("div");
@@ -174,41 +171,27 @@ export function createInPagePanelElements(
   const collapseButton = createButton(
     UI_TEXT.collapse,
     actions.onCollapse,
-    "secondary icon",
+    "link",
   );
-  headerActions.append(statusBadge, headerCount, collapseButton);
+  headerActions.append(statusBadge, collapseButton);
   header.append(titleGroup, headerActions);
 
+  const createStat = (label: string): [HTMLDivElement, HTMLSpanElement] => {
+    const stat = document.createElement("div");
+    stat.className = "stat";
+    const statLabel = document.createElement("span");
+    statLabel.className = "stat-label";
+    statLabel.textContent = label;
+    const statValue = document.createElement("span");
+    statValue.className = "stat-value";
+    stat.append(statLabel, statValue);
+    return [stat, statValue];
+  };
   const statRow = document.createElement("div");
   statRow.className = "stat-row";
-  const statSubtitles = document.createElement("div");
-  statSubtitles.className = "stat";
-  const statSubtitlesLabel = document.createElement("span");
-  statSubtitlesLabel.className = "stat-label";
-  statSubtitlesLabel.textContent = "자막";
-  const statSubtitlesValue = document.createElement("span");
-  statSubtitlesValue.className = "stat-value";
-  statSubtitles.append(statSubtitlesLabel, statSubtitlesValue);
-
-  const statChars = document.createElement("div");
-  statChars.className = "stat";
-  const statCharsLabel = document.createElement("span");
-  statCharsLabel.className = "stat-label";
-  statCharsLabel.textContent = "글자";
-  const statCharsValue = document.createElement("span");
-  statCharsValue.className = "stat-value";
-  statChars.append(statCharsLabel, statCharsValue);
-
-  const statElapsed = document.createElement("div");
-  statElapsed.className = "stat";
-  const statElapsedLabel = document.createElement("span");
-  statElapsedLabel.className = "stat-label";
-  statElapsedLabel.textContent = "경과";
-  const statElapsedValue = document.createElement("span");
-  statElapsedValue.className = "stat-value";
-  statElapsedValue.style.fontVariantNumeric = "tabular-nums";
-  statElapsed.append(statElapsedLabel, statElapsedValue);
-
+  const [statSubtitles, statSubtitlesValue] = createStat("자막");
+  const [statChars, statCharsValue] = createStat("글자");
+  const [statElapsed, statElapsedValue] = createStat("경과");
   statRow.append(statSubtitles, statChars, statElapsed);
 
   const heroCard = document.createElement("section");
@@ -217,14 +200,12 @@ export function createInPagePanelElements(
   modeBadge.className = "mode-badge";
 
   const liveRowHeader = document.createElement("div");
-  liveRowHeader.className = "section-header primary";
+  liveRowHeader.className = "section-header";
   const liveRowCopy = document.createElement("div");
   liveRowCopy.className = "section-copy";
   const liveRowTitle = document.createElement("h2");
   liveRowTitle.textContent = UI_TEXT.screenSubtitles;
-  const liveRowHint = document.createElement("p");
-  liveRowHint.textContent = "방금 수집된 자막을 더 큰 글씨로 바로 확인합니다.";
-  liveRowCopy.append(liveRowTitle, liveRowHint);
+  liveRowCopy.append(liveRowTitle);
   const liveRowMeta = document.createElement("div");
   liveRowMeta.className = "section-meta";
   const liveRowCount = document.createElement("span");
@@ -232,38 +213,38 @@ export function createInPagePanelElements(
   liveRowMeta.append(modeBadge, liveRowCount);
   liveRowHeader.append(liveRowCopy, liveRowMeta);
 
-  const speakerToggleBar = document.createElement("div");
-  speakerToggleBar.className = "speaker-toggle-bar";
-  speakerToggleBar.setAttribute("role", "group");
-  speakerToggleBar.setAttribute("aria-label", "발언자 표시 및 내보내기");
-
-  const speakerHighlightLabel = document.createElement("label");
-  speakerHighlightLabel.className = "speaker-toggle";
-  const speakerHighlightToggle = document.createElement("input");
-  speakerHighlightToggle.type = "checkbox";
-  speakerHighlightToggle.className = "speaker-toggle-input";
-  speakerHighlightToggle.setAttribute("aria-label", "패널에 발언자 색 표시");
-  speakerHighlightToggle.addEventListener("change", () => {
-    actions.onSetSpeakerHighlight(speakerHighlightToggle.checked);
-  });
-  const speakerHighlightText = document.createElement("span");
-  speakerHighlightText.textContent = "발언자 보기";
-  speakerHighlightLabel.append(speakerHighlightToggle, speakerHighlightText);
-
-  const exportSpeakerLabel = document.createElement("label");
-  exportSpeakerLabel.className = "speaker-toggle";
-  const exportSpeakerToggle = document.createElement("input");
-  exportSpeakerToggle.type = "checkbox";
-  exportSpeakerToggle.className = "speaker-toggle-input";
-  exportSpeakerToggle.setAttribute("aria-label", "내보내기·복사에 발언자 포함");
-  exportSpeakerToggle.addEventListener("change", () => {
-    actions.onSetExportSpeaker(exportSpeakerToggle.checked);
-  });
-  const exportSpeakerText = document.createElement("span");
-  exportSpeakerText.textContent = "내보내기·복사";
-  exportSpeakerLabel.append(exportSpeakerToggle, exportSpeakerText);
-
-  speakerToggleBar.append(speakerHighlightLabel, exportSpeakerLabel);
+  const createOptionToggle = (
+    label: string,
+    ariaLabel: string,
+    onChange: (checked: boolean) => void,
+  ): [HTMLLabelElement, HTMLInputElement] => {
+    const toggle = document.createElement("label");
+    toggle.className = "speaker-toggle";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.className = "speaker-toggle-input";
+    input.setAttribute("aria-label", ariaLabel);
+    input.addEventListener("change", () => onChange(input.checked));
+    const text = document.createElement("span");
+    text.textContent = label;
+    toggle.append(input, text);
+    return [toggle, input];
+  };
+  const [speakerHighlightLabel, speakerHighlightToggle] = createOptionToggle(
+    "발언자 색 표시",
+    "패널에 발언자 색 표시",
+    actions.onSetSpeakerHighlight,
+  );
+  const [exportSpeakerLabel, exportSpeakerToggle] = createOptionToggle(
+    "저장·복사에 발언자 포함",
+    "내보내기·복사에 발언자 포함",
+    actions.onSetExportSpeaker,
+  );
+  const optionRow = document.createElement("div");
+  optionRow.className = "option-row";
+  optionRow.setAttribute("role", "group");
+  optionRow.setAttribute("aria-label", "발언자 표시 및 내보내기");
+  optionRow.append(speakerHighlightLabel, exportSpeakerLabel);
 
   const liveRowList = document.createElement("div");
   liveRowList.className = "live-row-list";
@@ -272,8 +253,7 @@ export function createInPagePanelElements(
   liveRowList.setAttribute("aria-relevant", "additions text");
   const liveRowEmpty = document.createElement("p");
   liveRowEmpty.className = "empty-text";
-  liveRowEmpty.textContent =
-    "화면에서 자막을 찾으면 수집된 자막이 이곳에 누적됩니다.";
+  liveRowEmpty.textContent = "수집한 자막이 여기에 쌓입니다.";
   liveRowList.append(liveRowEmpty);
   const liveRowShell = document.createElement("div");
   liveRowShell.className = "live-row-shell";
@@ -296,14 +276,11 @@ export function createInPagePanelElements(
   previewCopy.className = "preview-copy";
   const previewTitle = document.createElement("h2");
   previewTitle.textContent = UI_TEXT.livePreview;
-  const previewHint = document.createElement("p");
-  previewHint.textContent =
-    "지금 화면에서 감지한 최신 자막 흐름을 보조로 표시합니다.";
-  previewCopy.append(previewTitle, previewHint);
+  previewCopy.append(previewTitle);
   const previewToggle = createButton(
     "실시간 내용 접기",
     actions.onTogglePreviewCollapsed,
-    "secondary preview-toggle",
+    "link preview-toggle",
   );
   previewToggle.setAttribute("aria-expanded", "true");
   previewHeader.append(previewCopy, previewToggle);
@@ -318,50 +295,49 @@ export function createInPagePanelElements(
   previewBox.append(previewScroll);
   previewSection.append(previewHeader, previewBox);
 
-  heroCard.append(liveRowHeader, speakerToggleBar, liveRowShell, previewSection);
+  heroCard.append(liveRowHeader, optionRow, liveRowShell, previewSection);
 
   const controlsCard = document.createElement("section");
   controlsCard.className = "controls-card";
 
-  const captureGroup = document.createElement("div");
-  captureGroup.className = "group capture-group";
-  const captureGroupLabel = document.createElement("span");
-  captureGroupLabel.className = "group-label";
-  captureGroupLabel.textContent = "자막 수집";
-  const captureRow = document.createElement("div");
-  captureRow.className = "capture-row";
-  const startCaptureButton = createButton("수집 시작", actions.onStartCapture);
-  const stopCaptureButton = createButton("수집 종료", actions.onStopCapture, "stop-action");
-  captureRow.append(startCaptureButton, stopCaptureButton);
-  captureGroup.append(captureGroupLabel, captureRow);
-
-  const saveGroup = document.createElement("div");
-  saveGroup.className = "group";
-  const saveGroupLabel = document.createElement("span");
-  saveGroupLabel.className = "group-label";
-  saveGroupLabel.textContent = "저장 / 복사";
-  const saveRow = document.createElement("div");
-  saveRow.className = "secondary-row";
-  const saveButton = createButton(UI_TEXT.saveSession, actions.onSaveSession);
+  const actionGrid = document.createElement("div");
+  actionGrid.className = "action-grid";
+  const startCaptureButton = createButton(
+    UI_TEXT.startCapture,
+    actions.onStartCapture,
+  );
+  const stopCaptureButton = createButton(
+    UI_TEXT.stopCapture,
+    actions.onStopCapture,
+    "stop-action",
+  );
+  const saveButton = createButton(
+    UI_TEXT.saveSession,
+    actions.onSaveSession,
+    "secondary",
+  );
   const copyRecentButton = createButton(
     UI_TEXT.copyRecent,
     actions.onCopyRecent,
     "secondary",
   );
-  saveRow.append(saveButton, copyRecentButton);
-  saveGroup.append(saveGroupLabel, saveRow);
+  const txtExportButton = createButton(
+    "TXT 저장",
+    () => actions.onExport("txt"),
+    "secondary txt-export-button",
+  );
+  actionGrid.append(
+    startCaptureButton,
+    stopCaptureButton,
+    saveButton,
+    copyRecentButton,
+    txtExportButton,
+  );
 
-  const exportGroup = document.createElement("div");
-  exportGroup.className = "group";
-  const exportGroupLabel = document.createElement("span");
-  exportGroupLabel.className = "group-label";
-  exportGroupLabel.textContent = "파일로 내보내기";
-  const txtExportButton = createButton("TXT 저장", () => actions.onExport("txt"));
-  txtExportButton.classList.add("txt-export-button");
   const exportDetails = document.createElement("details");
   exportDetails.className = "export-details";
   const exportSummary = document.createElement("summary");
-  exportSummary.textContent = "다른 형식 선택";
+  exportSummary.textContent = "다른 형식으로 저장";
   const exportRow = document.createElement("div");
   exportRow.className = "export-row";
   const exportButtons = (["srt", "vtt", "json", "md", "csv"] as ExportFormat[]).map(
@@ -369,19 +345,17 @@ export function createInPagePanelElements(
       const button = createButton(getExportFormatLabel(format), () =>
         actions.onExport(format),
       );
+      button.title = getExportFormatLabel(format);
       exportRow.append(button);
       return button;
     },
   );
   exportDetails.append(exportSummary, exportRow);
-  exportGroup.append(exportGroupLabel, txtExportButton, exportDetails);
 
-  const advancedGroup = document.createElement("div");
-  advancedGroup.className = "group";
   const advancedDetails = document.createElement("details");
   advancedDetails.className = "advanced";
   const advancedSummary = document.createElement("summary");
-  advancedSummary.textContent = "더보기 · 화면 비우기, 중요 표시, 새 세션";
+  advancedSummary.textContent = "더보기";
   const advancedBody = document.createElement("div");
   advancedBody.className = "advanced-body";
   const clearButton = createButton(
@@ -399,11 +373,10 @@ export function createInPagePanelElements(
     actions.onSaveAndStartNewSession ?? (() => undefined),
     "secondary",
   );
-  advancedBody.append(clearButton, highlightLatestButton, rolloverButton);
+  advancedBody.append(highlightLatestButton, clearButton, rolloverButton);
   advancedDetails.append(advancedSummary, advancedBody);
-  advancedGroup.append(advancedDetails);
 
-  controlsCard.append(captureGroup, saveGroup, exportGroup, advancedGroup);
+  controlsCard.append(actionGrid, exportDetails, advancedDetails);
 
   const notice = document.createElement("div");
   notice.className = "notice";
@@ -415,20 +388,11 @@ export function createInPagePanelElements(
 
   const footer = document.createElement("div");
   footer.className = "footer-actions";
-  const historyButton = createButton(
-    UI_TEXT.openHistory,
-    actions.onOpenHistory,
-    "secondary",
-  );
-  const optionsButton = createButton(
-    UI_TEXT.openOptions,
-    actions.onOpenOptions,
-    "secondary",
-  );
+  const historyButton = createButton(UI_TEXT.openHistory, actions.onOpenHistory);
+  const optionsButton = createButton(UI_TEXT.openOptions, actions.onOpenOptions);
   const diagnosticsButton = createButton(
     UI_TEXT.openDiagnostics,
     actions.onOpenDiagnostics,
-    "secondary",
   );
   footer.append(historyButton, diagnosticsButton, optionsButton);
 
@@ -444,7 +408,6 @@ export function createInPagePanelElements(
     host,
     wrapper,
     statusBadge,
-    headerCount,
     modeBadge,
     liveRowCount,
     liveRowList,

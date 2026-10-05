@@ -8,6 +8,23 @@ export function formatDate(value: string | null | number): string {
   return new Date(value).toLocaleString("ko-KR");
 }
 
+/** 자막 행용 짧은 시각(HH:MM:SS). 날짜는 기록 화면에서 확인한다. */
+export function formatRowTime(value: string | null | number): string {
+  if (!value) {
+    return "-";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "-";
+  }
+  return date.toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+}
+
 export function formatElapsedTime(
   startedAt: string | null,
   status: CaptureStatus,

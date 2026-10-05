@@ -1,34 +1,23 @@
 /** 헤더/타이틀/상태/통계 — PANEL_STYLE 분할 파트. */
-export const headerStyle = `  .eyebrow {
-    margin: 0 0 4px;
-    color: var(--navy-400);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-  }
-
-  .title-group h1,
+export const headerStyle = `  .title-group h1,
   .section-header h2,
   .preview-copy h2 {
     margin: 0;
   }
 
-  .title-group h1 {
-    font-size: 18px;
-    letter-spacing: -0.005em;
+  .title-group {
+    min-width: 0;
   }
 
-  .title-group p:last-child,
-  .section-copy p,
-  .preview-copy p {
-    margin: 4px 0 0;
-    color: var(--navy-500);
-    font-size: 12px;
-    line-height: 1.45;
+  .title-group h1 {
+    font-size: 14px;
+    font-weight: 700;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .status-badge,
-  .header-count,
   .mode-badge,
   .section-count {
     display: inline-flex;
@@ -38,11 +27,11 @@ export const headerStyle = `  .eyebrow {
     font-size: 11px;
     font-weight: 700;
     line-height: 1;
+    white-space: nowrap;
   }
 
   .status-badge {
-    min-width: 64px;
-    padding: 6px 10px;
+    padding: 5px 9px;
     background: var(--tint-300);
     color: var(--navy-700);
     gap: 5px;
@@ -60,7 +49,11 @@ export const headerStyle = `  .eyebrow {
   .status-badge.running {
     background: #dff4e2;
     color: #185f2a;
-    animation: status-running-pulse 2.2s ease-in-out infinite;
+  }
+
+  .status-badge.running::before {
+    opacity: 1;
+    animation: status-running-pulse 1.8s ease-in-out infinite;
   }
 
   .status-badge.stopped {
@@ -74,54 +67,44 @@ export const headerStyle = `  .eyebrow {
   }
 
   @keyframes status-running-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(24, 95, 42, 0.32); }
-    50% { box-shadow: 0 0 0 6px rgba(24, 95, 42, 0); }
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
   }
 
-  .header-count {
-    padding: 6px 10px;
-    background: var(--tint-200);
-    color: var(--navy-500);
+  @media (prefers-reduced-motion: reduce) {
+    .status-badge.running::before {
+      animation: none;
+    }
   }
 
-  .mode-badge {
-    padding: 5px 10px;
+  .mode-badge[hidden] {
+    display: none;
+  }
+
+  .mode-badge,
+  .section-count {
+    padding: 4px 8px;
     background: var(--tint-200);
     color: var(--navy-600);
   }
 
   .stat-row {
     flex-wrap: wrap;
-    padding: 10px 12px;
-    border-radius: var(--radius-sm);
-    background: rgba(255, 255, 255, 0.7);
-    border: 1px solid var(--line-soft);
     flex-shrink: 0;
+    gap: 4px 12px;
+    font-size: 12px;
+    color: var(--navy-500);
   }
 
   .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1 1 78px;
-    min-width: 70px;
-  }
-
-  .stat-label {
-    font-size: 10px;
-    color: var(--navy-400);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
   }
 
   .stat-value {
-    font-size: 14px;
     font-weight: 700;
     color: var(--ink-700);
-  }
-
-  .stat + .stat {
-    border-left: 1px solid var(--line-soft);
-    padding-left: 10px;
+    font-variant-numeric: tabular-nums;
   }
 `;

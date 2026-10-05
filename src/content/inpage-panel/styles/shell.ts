@@ -1,37 +1,36 @@
 /** 패널 셸/레이아웃(패널, 헤더, 스크롤) — PANEL_STYLE 분할 파트. */
 export const shellStyle = `  .panel {
-    width: min(520px, calc(100vw - 24px));
+    width: min(400px, calc(100vw - 24px));
     height: calc(100vh - 24px);
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     box-sizing: border-box;
-    padding: 14px;
+    padding: 12px;
     overflow: hidden;
     border-radius: var(--radius-lg);
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    background:
-      radial-gradient(circle at top right, rgba(24, 119, 182, 0.16), transparent 38%),
-      linear-gradient(180deg, rgba(251, 253, 255, 0.99), rgba(240, 246, 252, 0.99));
+    border: 1px solid var(--line-strong);
+    background: #fbfcfe;
     box-shadow: var(--shadow-panel);
   }
 
   .collapsed-tab {
     writing-mode: vertical-rl;
     text-orientation: mixed;
-    min-height: 156px;
+    min-height: 96px;
     border: 0;
-    border-radius: 18px 0 0 18px;
+    border-radius: 10px 0 0 10px;
     background: var(--navy-800);
     color: #ffffff;
     font: inherit;
-    font-size: 14px;
+    font-size: 12px;
     font-weight: 700;
     letter-spacing: 0.03em;
     cursor: pointer;
-    padding: 14px 10px;
-    box-shadow: 0 18px 34px rgba(17, 44, 82, 0.22);
+    padding: 10px 7px;
+    box-shadow: 0 8px 20px rgba(17, 44, 82, 0.22);
     margin-left: auto;
+    margin-right: -12px;
     display: none;
   }
 
@@ -45,7 +44,6 @@ export const shellStyle = `  .panel {
 
   .header,
   .header-actions,
-  .action-row,
   .footer-actions,
   .section-header,
   .section-meta,
@@ -57,7 +55,6 @@ export const shellStyle = `  .panel {
   }
 
   .header,
-  .footer-actions,
   .section-header,
   .preview-header {
     justify-content: space-between;
@@ -65,7 +62,7 @@ export const shellStyle = `  .panel {
 
   .header {
     flex-shrink: 0;
-    padding-bottom: 10px;
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--line-soft);
   }
 
@@ -74,18 +71,12 @@ export const shellStyle = `  .panel {
     display: flex;
     flex: 1;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     overflow: auto;
     overscroll-behavior: contain;
-    padding-right: 2px;
-    scrollbar-gutter: stable both-edges;
   }
 
   .header-actions {
     flex-wrap: nowrap;
-  }
-
-  .action-row {
-    flex-wrap: wrap;
   }
 `;

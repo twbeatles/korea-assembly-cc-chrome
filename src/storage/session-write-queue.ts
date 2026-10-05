@@ -5,6 +5,14 @@
  * 가능하면 Web Locks로 실행 환경 사이에서도 같은 키를 직렬화한다.
  */
 
+interface SessionWriteLockManager {
+  request?: (
+    name: string,
+    options: { mode: "exclusive" },
+    callback: () => Promise<unknown>,
+  ) => Promise<unknown>;
+}
+
 const queues = new Map<string, Promise<unknown>>();
 let passthroughForTests = false;
 
@@ -32,24 +40,19 @@ export function enqueueSessionWrite<T>(
     return task();
   }
 
-  const nav =
+  const locks =
     typeof navigator !== "undefined"
-      ? (navigator as unknown as { locks?: { request?: unknown } })
+      ? (navigator as unknown as { locks?: SessionWriteLockManager }).locks
       : undefined;
-  const lockRequest = (
-    typeof nav?.locks?.request === "function" ? nav.locks.request : undefined
-  ) as
-    | ((
-        name: string,
-        options: { mode: "exclusive" },
-        callback: () => Promise<T>,
-      ) => Promise<T>)
-    | undefined;
 
-  if (lockRequest) {
-    return lockRequest(`assembly-session-write:${sessionId}`, { mode: "exclusive" }, () =>
-      enqueueMemoryQueue(sessionId, task),
-    );
+  if (typeof locks?.request === "function") {
+    // LockManager.request 는 this 가 LockManager 여야 한다. 메서드를 떼어 호출하면
+    // "Illegal invocation" 으로 모든 세션 쓰기가 실패하므로 반드시 locks 에서 직접 호출한다.
+    return locks.request(
+      `assembly-session-write:${sessionId}`,
+      { mode: "exclusive" },
+      () => enqueueMemoryQueue(sessionId, task),
+    ) as Promise<T>;
   }
 
   return enqueueMemoryQueue(sessionId, task);

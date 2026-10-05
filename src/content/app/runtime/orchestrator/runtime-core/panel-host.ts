@@ -55,7 +55,7 @@ export function mountInPagePanel(ctx: RuntimeCoreContext): void {
         reportRuntimeError(ctx, 
           error instanceof Error
             ? error.message
-            : "자막 모으기를 시작하지 못했습니다.",
+            : "자막 수집을 시작하지 못했습니다.",
           error,
         );
       });
@@ -65,7 +65,7 @@ export function mountInPagePanel(ctx: RuntimeCoreContext): void {
         reportRuntimeError(ctx, 
           error instanceof Error
             ? error.message
-            : "자막 모으기를 멈추지 못했습니다.",
+            : "자막 수집을 종료하지 못했습니다.",
           error,
         );
       });

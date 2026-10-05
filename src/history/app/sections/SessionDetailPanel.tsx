@@ -2,6 +2,8 @@
  * History 우측 세션 상세 패널 (presentational).
  * 상태·핸들러는 App 조립 루트에 두고 UI 만 분리한다.
  */
+import { useState } from "react";
+
 import type { ExportFormat, SessionRecord, SubtitleEntry } from "../../../core/subtitle-models";
 import type { SessionLineageSummary } from "../../../storage/types";
 import { SESSION_NOTE_MAX_LENGTH } from "../../../storage/session-store";
@@ -13,6 +15,7 @@ import {
   getSessionSegmentLabel,
   resolveSpeakerLabel,
 } from "../helpers";
+import { formatByteSize } from "../../../shared/byte-size";
 import {
   formatSpeakerBadge,
   resolveSpeakerAccentColor,
@@ -193,6 +196,10 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
     cancelEditEntry,
   } = props;
 
+  const [metadataOpen, setMetadataOpen] = useState(false);
+  const savedNote = selectedLineageSummary?.note ?? selectedSession?.note ?? "";
+  const totalEntryCount = displaySession?.entries.length ?? 0;
+
   return (
         <section className="session-detail">
           {selectedSession ? (
@@ -207,7 +214,9 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                       </span>
                     ) : null}
                   </div>
-                  <p>{selectedSession.sourceUrl || "원본 URL 없음"}</p>
+                  {selectedSession.sourceUrl ? (
+                    <p>{selectedSession.sourceUrl}</p>
+                  ) : null}
                 </div>
                 <div className="detail-actions">
                   <button
@@ -230,6 +239,7 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                     {selectedLineageSummary?.starred ? "즐겨찾기 해제" : "즐겨찾기 추가"}
                   </button>
                   <button
+                    className="secondary"
                     onClick={() =>
                       runBusyHistoryAction(
                         "reopen_source",
@@ -246,7 +256,7 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                     원본 페이지 열기
                   </button>
                   <button
-                    className="secondary"
+                    className="secondary danger"
                     onClick={() =>
                       runBusyHistoryAction(
                         "delete_single",
@@ -280,7 +290,7 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                   <dd>{displaySession?.charCount ?? selectedSession.charCount}</dd>
                 </div>
                 <div>
-                  <dt>연속 캡처</dt>
+                  <dt>구성</dt>
                   <dd>
                     {shouldShowSelectedSegmentLabel
                       ? getSessionSegmentLabel(selectedSession)
@@ -288,10 +298,8 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                   </dd>
                 </div>
                 <div>
-                  <dt>추정 크기</dt>
-                  <dd>
-                    {selectedEstimatedBytes.toLocaleString("ko-KR")} bytes
-                  </dd>
+                  <dt>크기</dt>
+                  <dd>{formatByteSize(selectedEstimatedBytes)}</dd>
                 </div>
               </dl>
 
@@ -353,6 +361,19 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                 </div>
               ) : null}
 
+              <details
+                className="detail-fold"
+                open={metadataOpen || hasUnsavedSessionDraft}
+                onToggle={(event) => setMetadataOpen(event.currentTarget.open)}
+              >
+                <summary>
+                  메모 · 분류 · 발언자 라벨
+                  {hasUnsavedSessionDraft ? (
+                    <span className="note-status dirty">저장되지 않음</span>
+                  ) : savedNote.trim() ? (
+                    <span className="note-status">메모 있음</span>
+                  ) : null}
+                </summary>
               <div className="note-card">
                 <div className="section-row">
                   <strong>세션 메모</strong>
@@ -481,6 +502,174 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                 </div>
               </div>
 
+              </details>
+
+              <p className="section-heading">
+                내보내기 {showingLineageView ? "(연속 캡처 전체)" : "(현재 세그먼트)"}
+              </p>
+              <div className="export-group">
+                <div className="export-row">
+                  {EXPORT_FORMATS.map((format) => (
+                    <button
+                      key={format}
+                      onClick={() =>
+                        runBusyHistoryAction(
+                          `export_${format}`,
+                          () => handleExport(format),
+                          `${getExportFormatLabel(format)} 저장을 시작하지 못했습니다.`,
+                          `${getExportFormatLabel(format)} 저장을 준비하고 있습니다.`,
+                        )
+                      }
+                      disabled={actionButtonsDisabled}
+                    >
+                      {getExportFormatLabel(format)}
+                    </button>
+                  ))}
+                </div>
+                <details className="detail-fold">
+                  <summary>시간 범위 · 선택 항목만 내보내기</summary>
+                <div className="export-time-range">
+                  <label>
+                    시작 시각
+                    <input
+                      type="datetime-local"
+                      value={exportTimeFrom}
+                      onChange={(event) => setExportTimeFrom(event.target.value)}
+                      disabled={actionButtonsDisabled}
+                      step={1}
+                    />
+                  </label>
+                  <label>
+                    종료 시각
+                    <input
+                      type="datetime-local"
+                      value={exportTimeTo}
+                      onChange={(event) => setExportTimeTo(event.target.value)}
+                      disabled={actionButtonsDisabled}
+                      step={1}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    className="secondary"
+                    onClick={() => {
+                      setExportTimeFrom("");
+                      setExportTimeTo("");
+                    }}
+                    disabled={
+                      actionButtonsDisabled || (!exportTimeFrom && !exportTimeTo)
+                    }
+                  >
+                    시간 범위 지우기
+                  </button>
+                </div>
+                <p className="settings-section-note">
+                  비워 두면 전체 구간을 내보냅니다. 선택 항목 내보내기에도 같은 시간 필터가
+                  적용됩니다.
+                </p>
+                <div className="export-row partial-export-row">
+                  {EXPORT_FORMATS.map((format) => (
+                    <button
+                      key={`selected_${format}`}
+                      className="secondary"
+                      onClick={() =>
+                        runBusyHistoryAction(
+                          `export_selected_${format}`,
+                          () => handleExport(format, selectedEntries),
+                          `선택 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
+                          `선택 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
+                        )
+                      }
+                      disabled={
+                        actionButtonsDisabled || !selectedEntries.length
+                      }
+                    >
+                      선택 {format.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+                </details>
+
+                {shouldOfferSplitExport ? (
+                  <div className="warning-box">
+                    이 연속 캡처는 예상 내보내기 크기가 커서 브라우저 다운로드 제한에 걸릴 수 있습니다. 분할 저장을 사용하면 세그먼트별 파일로 저장합니다.
+                  </div>
+                ) : null}
+
+                {showingLineageView ? (
+                  <div className="export-row partial-export-row">
+                    {EXPORT_FORMATS.map((format) => (
+                      <button
+                        key={`split_${format}`}
+                        className="secondary"
+                        onClick={() =>
+                          runBusyHistoryAction(
+                            `split_export_${format}`,
+                            () => handleSplitLineageExport(format),
+                            `분할 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
+                            `분할 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
+                          )
+                        }
+                        disabled={actionButtonsDisabled || !hasLineageSegments}
+                      >
+                        분할 {format.toUpperCase()}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+
+              <p className="section-heading">
+                복사 {showingLineageView ? "(연속 캡처 전체)" : "(현재 세그먼트)"}
+              </p>
+              <div className="copy-row">
+                <button
+                  onClick={() =>
+                    void handleCopy(
+                      buildCopyText(displaySession?.entries ?? [], {
+                        limit: recentCopyLineCount,
+                        includeSpeaker: txtExportSpeakerEnabled,
+                        session: displaySession,
+                      }),
+                      `${showingLineageView ? "연속 캡처 전체에서 " : ""}최근 ${recentCopyLineCount}줄을 복사했습니다.`,
+                    )
+                  }
+                  disabled={actionButtonsDisabled || !(displaySession?.entries.length ?? 0)}
+                >
+                  최근 {recentCopyLineCount}줄 복사
+                </button>
+                <button
+                  onClick={() =>
+                    void handleCopy(
+                      buildCopyText(displaySession?.entries ?? [], {
+                        query: searchQuery,
+                        includeSpeaker: txtExportSpeakerEnabled,
+                        session: displaySession,
+                      }),
+                      "찾은 내용을 복사했습니다.",
+                    )
+                  }
+                  disabled={actionButtonsDisabled || !filteredEntries.length}
+                >
+                  찾은 내용 복사
+                </button>
+                <button
+                  className="secondary"
+                  onClick={() =>
+                    void handleCopy(
+                      buildCopyText(displaySession?.entries ?? [], {
+                        includeSpeaker: txtExportSpeakerEnabled,
+                        session: displaySession,
+                      }),
+                      showingLineageView ? "연속 캡처 전체 내용을 복사했습니다." : "전체 내용을 복사했습니다.",
+                    )
+                  }
+                  disabled={actionButtonsDisabled || !(displaySession?.entries.length ?? 0)}
+                >
+                  전체 내용 복사
+                </button>
+              </div>
+
               <div className="search-row">
                 <input
                   className="search-input"
@@ -489,14 +678,11 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                   onChange={(event) => setSearchQuery(event.target.value)}
                   placeholder={showingLineageView ? "연속 캡처 전체에서 내용 찾기" : "이 기록 안에서 내용 찾기"}
                 />
-                <span>
-                  {filteredEntries.length} / {displaySession?.entries.length ?? 0}개
-                </span>
               </div>
 
               <div className="selection-toolbar">
                 <span>
-                  보이는 항목 {filteredEntries.length}개 / 선택{" "}
+                  자막 {filteredEntries.length} / {totalEntryCount}개 · 선택{" "}
                   {selectedEntries.length}개
                 </span>
                 <div className="selection-actions">
@@ -624,173 +810,6 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                 ) : null}
               </div>
 
-              <p className="section-heading">
-                내보내기 {showingLineageView ? "(연속 캡처 전체)" : "(현재 세그먼트)"}
-              </p>
-              <div className="export-group">
-                <div className="export-time-range">
-                  <label>
-                    시작 시각
-                    <input
-                      type="datetime-local"
-                      value={exportTimeFrom}
-                      onChange={(event) => setExportTimeFrom(event.target.value)}
-                      disabled={actionButtonsDisabled}
-                      step={1}
-                    />
-                  </label>
-                  <label>
-                    종료 시각
-                    <input
-                      type="datetime-local"
-                      value={exportTimeTo}
-                      onChange={(event) => setExportTimeTo(event.target.value)}
-                      disabled={actionButtonsDisabled}
-                      step={1}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="secondary"
-                    onClick={() => {
-                      setExportTimeFrom("");
-                      setExportTimeTo("");
-                    }}
-                    disabled={
-                      actionButtonsDisabled || (!exportTimeFrom && !exportTimeTo)
-                    }
-                  >
-                    시간 범위 지우기
-                  </button>
-                </div>
-                <p className="settings-section-note">
-                  비워 두면 전체 구간을 내보냅니다. 선택 항목 내보내기에도 같은 시간 필터가
-                  적용됩니다.
-                </p>
-                <div className="export-row">
-                  {EXPORT_FORMATS.map((format) => (
-                    <button
-                      key={format}
-                      onClick={() =>
-                        runBusyHistoryAction(
-                          `export_${format}`,
-                          () => handleExport(format),
-                          `${getExportFormatLabel(format)} 저장을 시작하지 못했습니다.`,
-                          `${getExportFormatLabel(format)} 저장을 준비하고 있습니다.`,
-                        )
-                      }
-                      disabled={actionButtonsDisabled}
-                    >
-                      {getExportFormatLabel(format)}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="export-row partial-export-row">
-                  {EXPORT_FORMATS.map((format) => (
-                    <button
-                      key={`selected_${format}`}
-                      className="secondary"
-                      onClick={() =>
-                        runBusyHistoryAction(
-                          `export_selected_${format}`,
-                          () => handleExport(format, selectedEntries),
-                          `선택 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
-                          `선택 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
-                        )
-                      }
-                      disabled={
-                        actionButtonsDisabled || !selectedEntries.length
-                      }
-                    >
-                      선택 {format.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
-
-                {shouldOfferSplitExport ? (
-                  <div className="warning-box">
-                    이 연속 캡처는 예상 내보내기 크기가 커서 브라우저 다운로드 제한에 걸릴 수 있습니다. 분할 저장을 사용하면 세그먼트별 파일로 저장합니다.
-                  </div>
-                ) : null}
-
-                {showingLineageView ? (
-                  <div className="export-row partial-export-row">
-                    {EXPORT_FORMATS.map((format) => (
-                      <button
-                        key={`split_${format}`}
-                        className="secondary"
-                        onClick={() =>
-                          runBusyHistoryAction(
-                            `split_export_${format}`,
-                            () => handleSplitLineageExport(format),
-                            `분할 ${format.toUpperCase()} 저장을 시작하지 못했습니다.`,
-                            `분할 ${format.toUpperCase()} 저장을 준비하고 있습니다.`,
-                          )
-                        }
-                        disabled={actionButtonsDisabled || !hasLineageSegments}
-                      >
-                        분할 {format.toUpperCase()}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-
-              <p className="section-heading">
-                복사 {showingLineageView ? "(연속 캡처 전체)" : "(현재 세그먼트)"}
-              </p>
-              <div className="copy-row">
-                <button
-                  onClick={() =>
-                    void handleCopy(
-                      buildCopyText(displaySession?.entries ?? [], {
-                        limit: recentCopyLineCount,
-                        includeSpeaker: txtExportSpeakerEnabled,
-                        session: displaySession,
-                      }),
-                      `${showingLineageView ? "연속 캡처 전체에서 " : ""}최근 ${recentCopyLineCount}줄을 복사했습니다.`,
-                    )
-                  }
-                  disabled={actionButtonsDisabled || !(displaySession?.entries.length ?? 0)}
-                >
-                  최근 {recentCopyLineCount}줄 복사
-                </button>
-                <button
-                  onClick={() =>
-                    void handleCopy(
-                      buildCopyText(displaySession?.entries ?? [], {
-                        query: searchQuery,
-                        includeSpeaker: txtExportSpeakerEnabled,
-                        session: displaySession,
-                      }),
-                      "찾은 내용을 복사했습니다.",
-                    )
-                  }
-                  disabled={actionButtonsDisabled || !filteredEntries.length}
-                >
-                  찾은 내용 복사
-                </button>
-                <button
-                  className="secondary"
-                  onClick={() =>
-                    void handleCopy(
-                      buildCopyText(displaySession?.entries ?? [], {
-                        includeSpeaker: txtExportSpeakerEnabled,
-                        session: displaySession,
-                      }),
-                      showingLineageView ? "연속 캡처 전체 내용을 복사했습니다." : "전체 내용을 복사했습니다.",
-                    )
-                  }
-                  disabled={actionButtonsDisabled || !(displaySession?.entries.length ?? 0)}
-                >
-                  전체 내용 복사
-                </button>
-              </div>
-
-              <p className="section-heading">
-                자막 항목 {filteredEntries.length} / {displaySession?.entries.length ?? 0}개
-              </p>
               <div className="entries">
                 {filteredEntries.length ? (
                   filteredEntries.map((entry) => (
@@ -968,7 +987,7 @@ export function SessionDetailPanel(props: SessionDetailPanelProps) {
                             }}
                             disabled={actionButtonsDisabled}
                           >
-                            수정/메타데이터
+                            수정
                           </button>
                         </div>
                       </article>

@@ -96,9 +96,9 @@ try {
   await waitForPanelText(page, "안정 자막 첫 줄입니다.");
   await waitForPanelText(page, "프레임 자막입니다.");
 
-  await clickPanelButton(page, "멈추기");
+  await clickPanelButton(page, "수집 종료");
   await waitForPanelText(page, "잠시 멈춤");
-  await clickPanelButton(page, "자막 모으기");
+  await clickPanelButton(page, "수집 시작");
   await waitForPanelText(page, "수집 중");
   await waitForPanelText(page, "fallback only stable text", 15_000);
 

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   enqueueSessionWrite,
@@ -51,5 +51,35 @@ describe("session write queue", () => {
     expect(order[0]).toBe("a-start");
     expect(order).toContain("b");
     expect(order[order.length - 1]).toBe("a-end");
+  });
+
+  describe("with Web Locks", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("calls LockManager.request with the lock manager as receiver", async () => {
+      resetSessionWriteQueuesForTests();
+      const names: string[] = [];
+      // 실제 브라우저처럼 this 가 LockManager 가 아니면 Illegal invocation 을 던진다.
+      const locks = {
+        request(
+          this: unknown,
+          name: string,
+          _options: { mode: "exclusive" },
+          callback: () => Promise<unknown>,
+        ): Promise<unknown> {
+          if (this !== locks) {
+            throw new TypeError("Illegal invocation");
+          }
+          names.push(name);
+          return callback();
+        },
+      };
+      vi.stubGlobal("navigator", { locks });
+
+      await expect(enqueueSessionWrite("session_a", async () => "ok")).resolves.toBe("ok");
+      expect(names).toEqual(["assembly-session-write:session_a"]);
+    });
   });
 });

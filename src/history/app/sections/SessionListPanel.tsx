@@ -58,8 +58,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
     <aside className="session-list">
       <div className="session-list-toolbar">
         <span>
-          현재 필터 {totalSessionCount}개 / 현재 페이지 {pageLineages.length}개 / 선택{" "}
-          {checkedIds.length}개
+          기록 {totalSessionCount}개 · 선택 {checkedIds.length}개
         </span>
         <div className="session-list-actions">
           <button
@@ -67,9 +66,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
             onClick={onToggleCheckAll}
             disabled={actionButtonsDisabled || !pageLineages.length}
           >
-            {currentPageSessionsChecked
-              ? "현재 페이지 선택 해제"
-              : "현재 페이지 전체 선택"}
+            {currentPageSessionsChecked ? "선택 해제" : "모두 선택"}
           </button>
           <button
             className="secondary"
@@ -135,11 +132,11 @@ export function SessionListPanel(props: SessionListPanelProps) {
                 ) : null}
               </div>
               <span>{formatDate(lineage.startedAt)}</span>
-              <span>
-                {lineage.subtitleCount}문장 / {lineage.charCount}자
-              </span>
-              <small>{getPersistedStatusLabel(lineage.status)}</small>
-              {lineage.note.trim() ? <small>메모 있음</small> : null}
+              <small>
+                {lineage.subtitleCount.toLocaleString("ko-KR")}문장 ·{" "}
+                {getPersistedStatusLabel(lineage.status)}
+                {lineage.note.trim() ? " · 메모" : ""}
+              </small>
             </button>
           </div>
         ))
@@ -157,7 +154,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
             onClick={() => onPageChange(Math.max(1, sessionPage - 1))}
             disabled={actionButtonsDisabled || sessionPage <= 1}
           >
-            이전 페이지
+            이전
           </button>
           <span>
             {sessionPage} / {pageCount}
@@ -167,7 +164,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
             onClick={() => onPageChange(Math.min(pageCount, sessionPage + 1))}
             disabled={actionButtonsDisabled || sessionPage >= pageCount}
           >
-            다음 페이지
+            다음
           </button>
         </div>
       ) : null}

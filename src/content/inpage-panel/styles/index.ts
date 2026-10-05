@@ -1,4 +1,4 @@
-/** PANEL_STYLE 조립 — 파트 순서 변경 금지 (원본과 바이트 동일 유지). */
+/** PANEL_STYLE 조립 — 뒤 파트가 앞 파트를 덮어쓰므로 순서를 유지한다. */
 import { tokensStyle } from "./tokens";
 import { shellStyle } from "./shell";
 import { headerStyle } from "./header";
