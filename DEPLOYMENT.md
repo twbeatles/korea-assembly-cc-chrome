@@ -31,7 +31,7 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
-현재 스토어 제출 준비 기준 버전은 `1.0.14` 입니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.15` 입니다.
 
 ## 3. 배포 전 검증
 
@@ -152,8 +152,14 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.14-cws.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.15-cws.zip -Force
 ```
+
+> Windows PowerShell 5.1 의 `Compress-Archive` 는 zip 내부 경로에 역슬래시를 넣어 스토어 업로드가 거부될 수 있습니다. 문제가 있으면 슬래시 경로로 직접 압축하세요.
+>
+> ```bash
+> python -c "import zipfile,os;z=zipfile.ZipFile('korea-assembly-cc-chrome-1.0.15-cws.zip','w',zipfile.ZIP_DEFLATED);[z.write(os.path.join(r,n),os.path.relpath(os.path.join(r,n),'dist').replace(os.sep,'/')) for r,_,fs in os.walk('dist') for n in fs]"
+> ```
 
 ## 6. Chrome Web Store 배포
 
@@ -293,7 +299,9 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.14-c
 
 ## 11. 릴리스 노트
 
-### 1.0.14 후속 (2026-10-05 · UI 간소화, 스토어 버전 번호 `1.0.14` 유지)
+### 1.0.15 (2026-10-05)
+
+**UI 간소화 · 세션 쓰기 버그 수정**
 
 - 페이지 패널 폭 축소(400px), 자막 목록 내부 스크롤로 조작 버튼 상시 노출, 보조 동작은 `더보기`로 이동, 발언자 토글은 목록 위 한 줄
 - 수집 제어 라벨을 `수집 시작` / `수집 종료`로 통일 (패널·popup·안내 문구·스모크)
