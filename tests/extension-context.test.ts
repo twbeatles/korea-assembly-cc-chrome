@@ -38,6 +38,75 @@ describe("extension context helpers", () => {
     );
   });
 
+  it("extracts messages from chrome lastError-style objects", () => {
+    expect(
+      isExtensionContextInvalidatedError({
+        message: "Extension context invalidated",
+      }),
+    ).toBe(true);
+    expect(isExtensionContextInvalidatedError({ message: 42 })).toBe(false);
+    expect(isExtensionContextInvalidatedError({ code: "NO_MESSAGE" })).toBe(
+      false,
+    );
+  });
+
+  it("treats empty or missing errors as neither transient nor invalidated", () => {
+    expect(isExtensionContextInvalidatedError("")).toBe(false);
+    expect(isExtensionContextInvalidatedError(null)).toBe(false);
+    expect(isExtensionContextInvalidatedError(undefined)).toBe(false);
+    expect(isTransientExtensionMessagingError("")).toBe(false);
+    expect(isTransientExtensionMessagingError(null)).toBe(false);
+    expect(isTransientExtensionMessagingError(undefined)).toBe(false);
+    expect(markExtensionContextInvalidated()).toBe(false);
+    expect(hasExtensionContextInvalidated()).toBe(false);
+  });
+
+  it("matches every documented transient port and connection phrase", () => {
+    expect(
+      isTransientExtensionMessagingError(
+        new Error("Receiving end does not exist."),
+      ),
+    ).toBe(true);
+    expect(
+      isTransientExtensionMessagingError(
+        new Error("Could not establish connection."),
+      ),
+    ).toBe(true);
+    expect(
+      isTransientExtensionMessagingError(
+        new Error("The message port closed before a response was received."),
+      ),
+    ).toBe(true);
+    expect(
+      isTransientExtensionMessagingError(new Error("Message port closed.")),
+    ).toBe(true);
+    expect(
+      isTransientExtensionMessagingError(
+        new Error("Extension context invalidated"),
+      ),
+    ).toBe(false);
+  });
+
+  it("matches the invalidation phrase without regard to case", () => {
+    expect(
+      isExtensionContextInvalidatedError(
+        new Error("extension context invalidated"),
+      ),
+    ).toBe(true);
+  });
+
+  it("short-circuits marking once the context is already invalidated", () => {
+    expect(
+      markExtensionContextInvalidated(
+        new Error("Extension context invalidated"),
+      ),
+    ).toBe(true);
+    expect(
+      markExtensionContextInvalidated(new Error("Background command failed")),
+    ).toBe(true);
+    expect(hasExtensionContextInvalidated()).toBe(true);
+  });
+
   it("tracks permanent invalidated state and normalizes the public error", () => {
     expect(hasExtensionContextInvalidated()).toBe(false);
     expect(markExtensionContextInvalidated(new Error("Background command failed"))).toBe(false);

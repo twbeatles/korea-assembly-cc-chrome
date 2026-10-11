@@ -36,11 +36,17 @@ jobs:
       - name: Check injected observer up to date
         run: npm run check:injected
 
+      - name: Format
+        run: npm run format
+
       - name: Lint
         run: npm run lint
 
       - name: Typecheck (TypeScript 7)
         run: npm run typecheck
+
+      - name: Check coverage calibration
+        run: npm run check:coverage-calibration
 
       - name: Unit tests with coverage
         run: npm run test:coverage
