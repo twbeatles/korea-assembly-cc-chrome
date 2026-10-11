@@ -7,6 +7,7 @@ import { defineConfig } from "vitest/config";
 // vitest/@vitest/coverage-v8 메이저를 올리면 반드시 `npm run test:coverage` 를
 // 다시 돌려 임계를 재보정하고 아래 상수를 갱신한다.
 // scripts/check-coverage-calibration.mjs 가 CI 와 `npm run verify` 에서 이를 강제한다.
+// 커버리지 수집은 Node 24 V8 기준이다. CI node-version 와 다른 Node 에서는 가드가 먼저 실패한다.
 export const COVERAGE_CALIBRATED_VITEST_MAJOR = 5;
 
 export default defineConfig({

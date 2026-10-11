@@ -58,7 +58,7 @@ Chrome 확장 **Manifest V3** 소스 코드입니다.
 
 ### 개발자용 설치 (로컬 빌드)
 
-**필요:** Node.js 20+, npm
+**필요:** Node.js 24+, npm
 
 ```bash
 npm install

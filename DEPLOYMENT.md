@@ -18,7 +18,7 @@
 
 ### 2.1 필수 환경
 
-- Node.js 20 이상 권장
+- Node.js 24 이상 권장 (CI·coverage·verify 표준, V8 커버리지 수집 기준)
 - npm
 - Chrome 최신 버전
 

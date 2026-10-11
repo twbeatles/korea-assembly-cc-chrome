@@ -637,6 +637,7 @@ When editing this repository, align with the coverage calibration below.
 - `src/content/app/runtime/orchestrator/**` 는 jsdom 단위 테스트로 실행할 수 없는 크롬 런타임 통합 배선이므로 커버리지 측정에서 제외한다 (e2e 스모크 영역: `scripts/extension-smoke.mjs`, `tests/e2e-smoke.mjs`).
 - 임계는 vitest 5 실측 기준으로 재보정했다: content 브랜치 65→62, storage 4종 75/75/70/80→73/73/65/77. `src/shared/extension-context.ts` 는 임계 유지 + 회귀 테스트 추가(`tests/extension-context.test.ts`), 쿨다운 헬퍼는 신규 테스트(`tests/autostart-cooldown.test.ts`).
 - vitest/coverage 메이저 업그레이드 전에는 반드시 `npm run test:coverage` 로 임계를 재보정하고 `COVERAGE_CALIBRATED_VITEST_MAJOR` 를 갱신한다. `npm run check:coverage-calibration` (CI·`verify` 선행 스텝)이 이를 강제한다.
+- CI 런타임은 Node 24다. `@vitest/coverage-v8` v5 는 Node 20 에서 커버리지를 0%로만 수집하므로 로컬도 Node 24 를 쓴다. 가드 스크립트가 CI(`node-version`)와 실행 중 Node 메이져를 대조해 어긋나면 먼저 실패시킨다.
 
 ## Spec Kit / Spec-Driven Development (AI 에이전트 필독)
 
