@@ -16,7 +16,7 @@
     "noEmit": true,
     "jsx": "react-jsx",
     "noUncheckedSideEffectImports": true,
-    "types": ["chrome", "vitest/globals"]
+    "types": ["chrome", "node", "vitest/globals"]
   },
   "include": ["src", "tests", "manifest.json"]
 }

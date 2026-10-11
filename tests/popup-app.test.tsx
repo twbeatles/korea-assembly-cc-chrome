@@ -404,7 +404,7 @@ describe("popup app", () => {
 
   it("reconnects to the current active tab when the active tab changes", async () => {
     let activatedListener:
-      | ((activeInfo: chrome.tabs.TabActiveInfo) => void)
+      | ((activeInfo: chrome.tabs.OnActivatedInfo) => void)
       | undefined;
     chromeApiMocks.addTabActivatedListener.mockImplementationOnce((listener) => {
       activatedListener = listener;

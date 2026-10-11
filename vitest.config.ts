@@ -6,7 +6,7 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./tests/setup.ts"],
     coverage: {
-      all: true,
+      // vitest 5 removed coverage.all; the explicit include below still covers uncovered files.
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
       exclude: [

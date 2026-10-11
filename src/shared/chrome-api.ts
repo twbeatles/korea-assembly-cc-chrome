@@ -87,13 +87,13 @@ export function connectToTab(
 }
 
 export function addTabActivatedListener(
-  listener: (activeInfo: chrome.tabs.TabActiveInfo) => void,
+  listener: (activeInfo: chrome.tabs.OnActivatedInfo) => void,
 ): void {
   chrome.tabs.onActivated.addListener(listener);
 }
 
 export function removeTabActivatedListener(
-  listener: (activeInfo: chrome.tabs.TabActiveInfo) => void,
+  listener: (activeInfo: chrome.tabs.OnActivatedInfo) => void,
 ): void {
   chrome.tabs.onActivated.removeListener(listener);
 }
@@ -101,7 +101,7 @@ export function removeTabActivatedListener(
 export function addTabUpdatedListener(
   listener: (
     tabId: number,
-    changeInfo: chrome.tabs.TabChangeInfo,
+    changeInfo: chrome.tabs.OnUpdatedInfo,
     tab: chrome.tabs.Tab,
   ) => void,
 ): void {
@@ -111,7 +111,7 @@ export function addTabUpdatedListener(
 export function removeTabUpdatedListener(
   listener: (
     tabId: number,
-    changeInfo: chrome.tabs.TabChangeInfo,
+    changeInfo: chrome.tabs.OnUpdatedInfo,
     tab: chrome.tabs.Tab,
   ) => void,
 ): void {
@@ -119,13 +119,13 @@ export function removeTabUpdatedListener(
 }
 
 export function addTabRemovedListener(
-  listener: (tabId: number, removeInfo: chrome.tabs.TabRemoveInfo) => void,
+  listener: (tabId: number, removeInfo: chrome.tabs.OnRemovedInfo) => void,
 ): void {
   chrome.tabs.onRemoved.addListener(listener);
 }
 
 export function removeTabRemovedListener(
-  listener: (tabId: number, removeInfo: chrome.tabs.TabRemoveInfo) => void,
+  listener: (tabId: number, removeInfo: chrome.tabs.OnRemovedInfo) => void,
 ): void {
   chrome.tabs.onRemoved.removeListener(listener);
 }
