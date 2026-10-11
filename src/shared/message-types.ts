@@ -18,12 +18,7 @@ export type PersistabilityState =
 export type RowKeySource = "attribute" | "class" | "generated";
 
 export type FallbackCommitState =
-  | "idle"
-  | "pending"
-  | "stable"
-  | "committed"
-  | "duplicate"
-  | "filtered";
+  "idle" | "pending" | "stable" | "committed" | "duplicate" | "filtered";
 
 export type CaptureHealth = "good" | "warning" | "unstable";
 
@@ -278,5 +273,4 @@ export type OffscreenDocumentMessage =
     };
 
 export type OffscreenDocumentResponse =
-  | { ok: true; url?: string }
-  | { ok: false; error: string };
+  { ok: true; url?: string } | { ok: false; error: string };

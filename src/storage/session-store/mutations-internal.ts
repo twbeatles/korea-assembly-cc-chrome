@@ -46,9 +46,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../session-backup";
+import { buildSessionBackupFilename } from "../session-backup";
 import { createRandomToken } from "../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -110,9 +108,7 @@ import type {
   IndexedDbSessionRecord,
   SourcedSessionRecord,
 } from "./globals";
-import {
-  logStoreError,
-} from "./utils";
+import { logStoreError } from "./utils";
 import {
   hydrateIndexedDbSessionRecord,
   toIndexedDbRecord,
@@ -146,7 +142,9 @@ export function stopRunningRecord(record: SessionRecord): SessionRecord {
   };
 }
 
-export async function preserveStoredSessionMetadata(record: SessionRecord): Promise<SessionRecord> {
+export async function preserveStoredSessionMetadata(
+  record: SessionRecord,
+): Promise<SessionRecord> {
   if (hasExtensionContextInvalidated()) {
     throw createExtensionContextInvalidatedError();
   }
@@ -165,9 +163,18 @@ async function persistResolvedSessionRecord(
   sessionStore: IDBObjectStore,
   chunkStore: IDBObjectStore,
 ): Promise<SessionRecord> {
-  const chunks = buildSessionEntryChunks(record.id, record.entries, SESSION_ENTRY_CHUNK_SIZE);
+  const chunks = buildSessionEntryChunks(
+    record.id,
+    record.entries,
+    SESSION_ENTRY_CHUNK_SIZE,
+  );
   const metadataRecord = toIndexedDbRecord(record);
-  await writeChunkedSessionRecord(chunkStore, metadataRecord, chunks, previousRecord);
+  await writeChunkedSessionRecord(
+    chunkStore,
+    metadataRecord,
+    chunks,
+    previousRecord,
+  );
   await withRequest(sessionStore.put(metadataRecord));
   return record;
 }
@@ -213,19 +220,28 @@ async function writeSessionRecordUnlocked(
     throw new Error("세션 id가 올바르지 않습니다.");
   }
 
-  const allowFallbackOnIndexedDbError = options.allowFallbackOnIndexedDbError !== false;
+  const allowFallbackOnIndexedDbError =
+    options.allowFallbackOnIndexedDbError !== false;
   const notifyRevision = options.notifyRevision !== false;
   const indexedDbResult = await tryIndexedDb(async () =>
-    withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
-      const previousRecord = (await withRequest(
-        sessionStore.get(sessionId),
-      )) as IndexedDbSessionRecord | undefined;
-      const latest = previousRecord
-        ? await hydrateIndexedDbSessionRecord(previousRecord, chunkStore)
-        : undefined;
-      const record = await mutate(latest);
-      return persistResolvedSessionRecord(record, previousRecord, sessionStore, chunkStore);
-    }),
+    withSessionStoresTransaction(
+      "readwrite",
+      async ({ sessionStore, chunkStore }) => {
+        const previousRecord = (await withRequest(
+          sessionStore.get(sessionId),
+        )) as IndexedDbSessionRecord | undefined;
+        const latest = previousRecord
+          ? await hydrateIndexedDbSessionRecord(previousRecord, chunkStore)
+          : undefined;
+        const record = await mutate(latest);
+        return persistResolvedSessionRecord(
+          record,
+          previousRecord,
+          sessionStore,
+          chunkStore,
+        );
+      },
+    ),
   );
 
   if (!indexedDbResult.ok && isSessionMutatorError(indexedDbResult.error)) {
@@ -244,7 +260,10 @@ async function writeSessionRecordUnlocked(
     return cloneSessionRecord(indexedDbResult.value);
   }
 
-  if (hasExtensionContextInvalidated() || markExtensionContextInvalidated(indexedDbResult.error)) {
+  if (
+    hasExtensionContextInvalidated() ||
+    markExtensionContextInvalidated(indexedDbResult.error)
+  ) {
     throw createExtensionContextInvalidatedError();
   }
 
@@ -255,7 +274,10 @@ async function writeSessionRecordUnlocked(
   }
 
   const savedFallbackRecord = await writeFallbackWithMutator(sessionId, mutate);
-  await clearQueuedExitPersistRecordsUpTo(savedFallbackRecord.id, savedFallbackRecord.updatedAt);
+  await clearQueuedExitPersistRecordsUpTo(
+    savedFallbackRecord.id,
+    savedFallbackRecord.updatedAt,
+  );
   if (notifyRevision) {
     await bumpSessionLibraryRevision();
   }
@@ -303,7 +325,11 @@ export async function writeMutatedSessionRecord(
 }
 
 export async function bumpSessionLibraryRevision(): Promise<void> {
-  if (hasExtensionContextInvalidated() || typeof chrome === "undefined" || !chrome.storage?.local) {
+  if (
+    hasExtensionContextInvalidated() ||
+    typeof chrome === "undefined" ||
+    !chrome.storage?.local
+  ) {
     return;
   }
 

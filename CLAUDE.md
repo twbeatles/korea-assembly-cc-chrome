@@ -111,7 +111,6 @@ src/
 - **subtitle-pipeline**: 타입·히스토리·증분 추출·커밋·라이프사이클 모듈로 분리 (순수 함수, facade 경로 유지).
 - **persist-recovery**: 키·휘발성 상태·순수 sanitize·인덱스·tombstone·진단·큐·테스트 격리 모듈로 분리, 공개 export 15개 동일 유지. 휘발성 상태는 `state.ts` 싱글턴이 소유하고 진단은 setter 경유로만 갱신.
 
-
 ## 4. 자막 추출 구조
 
 ### 4.1 DOM 탐색
@@ -658,14 +657,14 @@ When editing this repository, align with the coverage calibration below.
 
 ### 권장 워크플로 (스킬 / 슬래시 커맨드)
 
-| 단계 | 커맨드 (Grok/Claude 등) | 산출 |
-|------|-------------------------|------|
-| 원칙 | `/speckit-constitution` | `.specify/memory/constitution.md` |
-| 명세 | `/speckit-specify` | `specs/<id>/spec.md` |
-| 계획 | `/speckit-plan` | `plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md` |
-| 작업 | `/speckit-tasks` | `tasks.md` |
-| 구현 | `/speckit-implement` | 코드 (tasks 순서) |
-| 갭점검 | `/speckit-converge` | `tasks.md` 에 Phase Convergence **append-only** |
+| 단계   | 커맨드 (Grok/Claude 등) | 산출                                                                     |
+| ------ | ----------------------- | ------------------------------------------------------------------------ |
+| 원칙   | `/speckit-constitution` | `.specify/memory/constitution.md`                                        |
+| 명세   | `/speckit-specify`      | `specs/<id>/spec.md`                                                     |
+| 계획   | `/speckit-plan`         | `plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md` |
+| 작업   | `/speckit-tasks`        | `tasks.md`                                                               |
+| 구현   | `/speckit-implement`    | 코드 (tasks 순서)                                                        |
+| 갭점검 | `/speckit-converge`     | `tasks.md` 에 Phase Convergence **append-only**                          |
 
 - Codex skills 모드: `$speckit-specify` 형태일 수 있음
 - 스킬 파일: `.grok/skills/speckit-*/SKILL.md`, `.claude/skills/speckit-*/SKILL.md`

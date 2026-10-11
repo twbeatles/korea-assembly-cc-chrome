@@ -45,9 +45,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../session-backup";
+import { buildSessionBackupFilename } from "../session-backup";
 import { createRandomToken } from "../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -109,19 +107,25 @@ import type {
   IndexedDbSessionRecord,
   SourcedSessionRecord,
 } from "./globals";
-import {
-  buildSessionSortKey,
-} from "./idb/records";
+import { buildSessionSortKey } from "./idb/records";
 
-export function sortSessions(records: SessionRecord[], options: SessionListOptions = {}): SessionRecord[] {
+export function sortSessions(
+  records: SessionRecord[],
+  options: SessionListOptions = {},
+): SessionRecord[] {
   const limit = Math.max(1, options.limit ?? 100);
   return [...records]
-    .sort((left, right) => buildSessionSortKey(right).localeCompare(buildSessionSortKey(left)))
+    .sort((left, right) =>
+      buildSessionSortKey(right).localeCompare(buildSessionSortKey(left)),
+    )
     .slice(0, limit)
     .map(cloneSessionRecord);
 }
 
-export function compareLineageSummaries(left: SessionLineageSummary, right: SessionLineageSummary): number {
+export function compareLineageSummaries(
+  left: SessionLineageSummary,
+  right: SessionLineageSummary,
+): number {
   const leftKey = buildSessionSortKey({
     id: left.lineageId,
     starred: left.starred,
@@ -137,7 +141,9 @@ export function compareLineageSummaries(left: SessionLineageSummary, right: Sess
   return rightKey.localeCompare(leftKey);
 }
 
-export function cloneLineageSummary(summary: SessionLineageSummary): SessionLineageSummary {
+export function cloneLineageSummary(
+  summary: SessionLineageSummary,
+): SessionLineageSummary {
   return {
     ...summary,
     sessionIds: [...summary.sessionIds],
@@ -145,7 +151,9 @@ export function cloneLineageSummary(summary: SessionLineageSummary): SessionLine
   };
 }
 
-export function buildSessionLineageSummaries(sessions: SessionRecord[]): SessionLineageSummary[] {
+export function buildSessionLineageSummaries(
+  sessions: SessionRecord[],
+): SessionLineageSummary[] {
   const groups = new Map<string, SessionRecord[]>();
   sessions.forEach((session) => {
     const lineageId = resolveSessionLineageId(session.id, session.lineageId);
@@ -163,11 +171,12 @@ export function buildSessionLineageSummaries(sessions: SessionRecord[]): Session
       const commonNote = sorted.every((session) => session.note === first.note)
         ? first.note
         : "";
-      const latestPinnedAt = sorted
-        .map((session) => session.pinnedAt)
-        .filter((value): value is string => Boolean(value))
-        .sort()
-        .at(-1) ?? null;
+      const latestPinnedAt =
+        sorted
+          .map((session) => session.pinnedAt)
+          .filter((value): value is string => Boolean(value))
+          .sort()
+          .at(-1) ?? null;
 
       return {
         lineageId,
@@ -177,12 +186,16 @@ export function buildSessionLineageSummaries(sessions: SessionRecord[]): Session
         sourceUrl: representative.sourceUrl || first.sourceUrl,
         startedAt: first.startedAt,
         endedAt: last.endedAt ?? last.updatedAt,
-        updatedAt: sorted
-          .map((session) => session.updatedAt)
-          .sort()
-          .at(-1) ?? last.updatedAt,
+        updatedAt:
+          sorted
+            .map((session) => session.updatedAt)
+            .sort()
+            .at(-1) ?? last.updatedAt,
         segmentCount: sorted.length,
-        subtitleCount: sorted.reduce((sum, session) => sum + session.subtitleCount, 0),
+        subtitleCount: sorted.reduce(
+          (sum, session) => sum + session.subtitleCount,
+          0,
+        ),
         charCount: sorted.reduce((sum, session) => sum + session.charCount, 0),
         status: last.status,
         starred: sorted.some((session) => session.starred),
@@ -196,8 +209,13 @@ export function buildSessionLineageSummaries(sessions: SessionRecord[]): Session
     .map(cloneLineageSummary);
 }
 
-export function compareSessionFreshness(left: SourcedSessionRecord, right: SourcedSessionRecord): number {
-  const updatedCompare = left.record.updatedAt.localeCompare(right.record.updatedAt);
+export function compareSessionFreshness(
+  left: SourcedSessionRecord,
+  right: SourcedSessionRecord,
+): number {
+  const updatedCompare = left.record.updatedAt.localeCompare(
+    right.record.updatedAt,
+  );
   if (updatedCompare !== 0) {
     return updatedCompare;
   }
@@ -233,10 +251,14 @@ export function mergeSessionCollections(
     }
   });
 
-  return Array.from(merged.values(), (value) => cloneSessionRecord(value.record));
+  return Array.from(merged.values(), (value) =>
+    cloneSessionRecord(value.record),
+  );
 }
 
-export function toSessionLibraryPreview(record: SessionRecord): SessionLibraryPreview {
+export function toSessionLibraryPreview(
+  record: SessionRecord,
+): SessionLibraryPreview {
   return {
     id: record.id,
     title: record.title,

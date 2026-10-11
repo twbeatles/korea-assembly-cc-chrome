@@ -12,8 +12,13 @@ export interface ConfirmDestructiveOptions {
 function isTestEnvironment(): boolean {
   try {
     return Boolean(
-      (import.meta as ImportMeta & { env?: { MODE?: string; VITEST?: boolean } }).env?.VITEST ||
-        (import.meta as ImportMeta & { env?: { MODE?: string } }).env?.MODE === "test",
+      (
+        import.meta as ImportMeta & {
+          env?: { MODE?: string; VITEST?: boolean };
+        }
+      ).env?.VITEST ||
+      (import.meta as ImportMeta & { env?: { MODE?: string } }).env?.MODE ===
+        "test",
     );
   } catch {
     return false;
@@ -137,14 +142,22 @@ function showAccessibleConfirmDialog(
         return;
       }
       const focusable = [cancelButton, confirmButton];
-      const currentIndex = focusable.indexOf(document.activeElement as HTMLButtonElement);
+      const currentIndex = focusable.indexOf(
+        document.activeElement as HTMLButtonElement,
+      );
       if (event.shiftKey) {
-        const next = currentIndex <= 0 ? focusable[focusable.length - 1] : focusable[currentIndex - 1];
+        const next =
+          currentIndex <= 0
+            ? focusable[focusable.length - 1]
+            : focusable[currentIndex - 1];
         event.preventDefault();
         next?.focus();
         return;
       }
-      const next = currentIndex >= focusable.length - 1 ? focusable[0] : focusable[currentIndex + 1];
+      const next =
+        currentIndex >= focusable.length - 1
+          ? focusable[0]
+          : focusable[currentIndex + 1];
       event.preventDefault();
       next?.focus();
     };

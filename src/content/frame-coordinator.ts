@@ -1,4 +1,7 @@
-import { FRAME_FORWARD_SOURCE, OBSERVER_BRIDGE_SOURCE } from "../shared/constants";
+import {
+  FRAME_FORWARD_SOURCE,
+  OBSERVER_BRIDGE_SOURCE,
+} from "../shared/constants";
 import type {
   FrameForwardMessage,
   ObserverBridgeEvent,

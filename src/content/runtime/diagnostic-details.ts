@@ -25,7 +25,10 @@ function getUtf8ByteLength(text: string): number {
   return textEncoder.encode(text).length;
 }
 
-function resolveSegmentElapsedMs(state: SessionState, now = Date.now()): number | null {
+function resolveSegmentElapsedMs(
+  state: SessionState,
+  now = Date.now(),
+): number | null {
   if (!state.startedAt) {
     return null;
   }
@@ -67,10 +70,15 @@ export function buildSegmentDiagnostics(
     maxEntriesPerSegment: thresholds.maxEntriesPerSegment,
     maxCharsPerSegment: thresholds.maxCharsPerSegment,
     maxDurationMs: thresholds.maxDurationMs,
-    remainingEntries: Math.max(0, thresholds.maxEntriesPerSegment - state.entries.length),
+    remainingEntries: Math.max(
+      0,
+      thresholds.maxEntriesPerSegment - state.entries.length,
+    ),
     remainingChars: Math.max(0, thresholds.maxCharsPerSegment - charCount),
     remainingDurationMs:
-      elapsedMs === null ? null : Math.max(0, thresholds.maxDurationMs - elapsedMs),
+      elapsedMs === null
+        ? null
+        : Math.max(0, thresholds.maxDurationMs - elapsedMs),
   };
 }
 

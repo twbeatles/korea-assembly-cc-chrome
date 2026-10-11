@@ -33,7 +33,9 @@ function normalizeSubtitleText(text: string): string {
 }
 
 function readText(root: ParentNode): string {
-  const raw = Array.from(root.querySelectorAll<HTMLElement>(SUBTITLE_TEXT_SELECTOR))
+  const raw = Array.from(
+    root.querySelectorAll<HTMLElement>(SUBTITLE_TEXT_SELECTOR),
+  )
     .map((node) => node.innerText || node.textContent || "")
     .join(" ");
   return normalizeSubtitleText(raw);
@@ -43,7 +45,11 @@ function isActivationControlActive(element: HTMLElement): boolean {
   const className = element.className || "";
   const title = element.getAttribute("title") || "";
   const ariaPressed = element.getAttribute("aria-pressed") || "";
-  return /\bon\b/.test(className) || /(끄기|닫기)/.test(title) || ariaPressed === "true";
+  return (
+    /\bon\b/.test(className) ||
+    /(끄기|닫기)/.test(title) ||
+    ariaPressed === "true"
+  );
 }
 
 function findVisibleActivationControl(
@@ -65,7 +71,9 @@ function findVisibleActivationControl(
   return null;
 }
 
-function findActivationControl(root: ParentNode): { selector: string; element: HTMLElement } | null {
+function findActivationControl(
+  root: ParentNode,
+): { selector: string; element: HTMLElement } | null {
   const control = findVisibleActivationControl(root);
   if (!control || control.active) {
     return null;
@@ -88,7 +96,9 @@ function collectAccessibleDocuments(
 
   const documents = [rootDocument];
   const frames = Array.from(
-    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
+      "iframe, frame",
+    ),
   );
 
   for (const frame of frames) {
@@ -98,7 +108,9 @@ function collectAccessibleDocuments(
         continue;
       }
 
-      documents.push(...collectAccessibleDocuments(childDoc, depth + 1, maxDepth));
+      documents.push(
+        ...collectAccessibleDocuments(childDoc, depth + 1, maxDepth),
+      );
     } catch {
       // Cross-origin access ignored
     }
@@ -122,7 +134,9 @@ function walkFramesForControl(
   }
 
   const frames = Array.from(
-    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
+      "iframe, frame",
+    ),
   );
 
   for (const frame of frames) {
@@ -157,7 +171,9 @@ function walkFramesForVisibleControl(
   }
 
   const frames = Array.from(
-    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
+      "iframe, frame",
+    ),
   );
 
   for (const frame of frames) {
@@ -177,7 +193,9 @@ function walkFramesForVisibleControl(
   return null;
 }
 
-export function readSubtitleLayerState(root: ParentNode = document): SubtitleLayerState {
+export function readSubtitleLayerState(
+  root: ParentNode = document,
+): SubtitleLayerState {
   const isDoc = root.nodeType === Node.DOCUMENT_NODE;
   const documents = isDoc ? collectAccessibleDocuments(root as Document) : [];
   const control = isDoc
@@ -247,7 +265,9 @@ export function readSubtitleLayerState(root: ParentNode = document): SubtitleLay
   };
 }
 
-export function tryDomSubtitleActivation(root: ParentNode = document): SubtitleActivationResult {
+export function tryDomSubtitleActivation(
+  root: ParentNode = document,
+): SubtitleActivationResult {
   const current = readSubtitleLayerState(root);
   if (current.visible && (current.hasText || current.controlActive)) {
     return {
@@ -257,7 +277,9 @@ export function tryDomSubtitleActivation(root: ParentNode = document): SubtitleA
   }
 
   const isDoc = root.nodeType === Node.DOCUMENT_NODE;
-  const control = isDoc ? walkFramesForControl(root as Document) : findActivationControl(root);
+  const control = isDoc
+    ? walkFramesForControl(root as Document)
+    : findActivationControl(root);
   if (control) {
     control.element.click();
     return {
@@ -289,7 +311,9 @@ export async function waitForSubtitleLayer(
     if (state.visible && (state.hasText || state.controlActive)) {
       return state;
     }
-    await new Promise<void>((resolve) => window.setTimeout(resolve, intervalMs));
+    await new Promise<void>((resolve) =>
+      window.setTimeout(resolve, intervalMs),
+    );
   }
 
   return readSubtitleLayerState();

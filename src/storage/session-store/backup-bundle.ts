@@ -1,4 +1,7 @@
-import { cloneSessionRecord, type SessionRecord } from "../../core/subtitle-models";
+import {
+  cloneSessionRecord,
+  type SessionRecord,
+} from "../../core/subtitle-models";
 import {
   assertSessionLibraryTransferSizeWithinLimit,
   SESSION_BACKUP_KIND,
@@ -33,7 +36,10 @@ function createAbortError(message: string): Error {
   return error;
 }
 
-function throwIfBackupAborted(signal?: AbortSignal, message = "작업을 취소했습니다."): void {
+function throwIfBackupAborted(
+  signal?: AbortSignal,
+  message = "작업을 취소했습니다.",
+): void {
   if (signal?.aborted) {
     throw createAbortError(message);
   }
@@ -92,7 +98,9 @@ export async function stringifySessionBackupBundleIncrementally(
       ...new Set(
         pageResult.sessions
           .map((session) => session.id)
-          .filter((id): id is string => typeof id === "string" && id.length > 0),
+          .filter(
+            (id): id is string => typeof id === "string" && id.length > 0,
+          ),
       ),
     ].filter((id) => !seenSessionIds.has(id));
     sessionIdsToLoad.forEach((id) => {
@@ -113,7 +121,11 @@ export async function stringifySessionBackupBundleIncrementally(
       onProgress?.(sessionCount, total);
     });
 
-    if (!pageResult.sessions.length || seenSessionIds.size >= total || sessionCount >= total) {
+    if (
+      !pageResult.sessions.length ||
+      seenSessionIds.size >= total ||
+      sessionCount >= total
+    ) {
       break;
     }
 

@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { POPUP_PORT_NAME, isSupportedAssemblySiteUrl } from "../../shared/constants";
+import {
+  POPUP_PORT_NAME,
+  isSupportedAssemblySiteUrl,
+} from "../../shared/constants";
 import {
   addTabActivatedListener,
   addTabRemovedListener,
@@ -36,7 +39,8 @@ type PopupFeedback = {
 
 export default function App({ surface = "popup" }: AppProps) {
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
-  const [statusMessage, setStatusMessage] = useState("현재 페이지를 확인하고 있습니다.");
+  const [statusMessage, setStatusMessage] =
+    useState("현재 페이지를 확인하고 있습니다.");
   const [feedback, setFeedback] = useState<PopupFeedback | null>(null);
   const [tabReady, setTabReady] = useState(false);
   const [unsupported, setUnsupported] = useState(false);
@@ -47,7 +51,10 @@ export default function App({ surface = "popup" }: AppProps) {
   const hasPersistableContent = Boolean(snapshot?.hasPersistableContent);
   const captureReady = Boolean(snapshot?.connected);
 
-  const showFeedback = (message: string, tone: PopupFeedback["tone"] = "info"): void => {
+  const showFeedback = (
+    message: string,
+    tone: PopupFeedback["tone"] = "info",
+  ): void => {
     setFeedback({ message, tone });
   };
 
@@ -138,7 +145,9 @@ export default function App({ surface = "popup" }: AppProps) {
           setCurrentTabId(null);
           setTabReady(false);
           setUnsupported(false);
-          scheduleReconnect("현재 탭 정보를 읽지 못했습니다. 자동으로 다시 연결을 시도합니다.");
+          scheduleReconnect(
+            "현재 탭 정보를 읽지 못했습니다. 자동으로 다시 연결을 시도합니다.",
+          );
           return;
         }
 
@@ -173,7 +182,9 @@ export default function App({ surface = "popup" }: AppProps) {
         setRequiresReload(Boolean(ensure.requiresReload));
         if (!ensure.ready) {
           setTabReady(false);
-          scheduleReconnect("현재 탭과 아직 연결되지 않았습니다. 자동으로 다시 연결을 시도합니다.");
+          scheduleReconnect(
+            "현재 탭과 아직 연결되지 않았습니다. 자동으로 다시 연결을 시도합니다.",
+          );
           return;
         }
 
@@ -226,7 +237,8 @@ export default function App({ surface = "popup" }: AppProps) {
                       ...current,
                       previewText: message.payload.previewText,
                       recentEntries: message.payload.recentEntries,
-                      hasPersistableContent: message.payload.hasPersistableContent,
+                      hasPersistableContent:
+                        message.payload.hasPersistableContent,
                     }
                   : current,
               );
@@ -238,7 +250,8 @@ export default function App({ surface = "popup" }: AppProps) {
                       ...current,
                       subtitleCount: message.payload.subtitleCount,
                       charCount: message.payload.charCount,
-                      hasPersistableContent: message.payload.hasPersistableContent,
+                      hasPersistableContent:
+                        message.payload.hasPersistableContent,
                     }
                   : current,
               );
@@ -267,19 +280,25 @@ export default function App({ surface = "popup" }: AppProps) {
           scheduleReconnect(
             disconnectReason?.includes("Receiving end does not exist")
               ? "현재 탭과의 연결이 없습니다. 자동으로 다시 연결을 시도합니다."
-              : disconnectReason || "연결이 끊겼습니다. 자동으로 다시 연결을 시도합니다.",
+              : disconnectReason ||
+                  "연결이 끊겼습니다. 자동으로 다시 연결을 시도합니다.",
           );
         };
 
         nextPort.onMessage.addListener(onMessage);
         nextPort.onDisconnect.addListener(onDisconnect);
-        nextPort.postMessage({ type: "GET_STATUS" } satisfies PopupToContentMessage);
+        nextPort.postMessage({
+          type: "GET_STATUS",
+        } satisfies PopupToContentMessage);
       } catch (error: unknown) {
         if (!active) {
           return;
         }
 
-        const baseMessage = error instanceof Error ? error.message : "팝업을 준비하지 못했습니다.";
+        const baseMessage =
+          error instanceof Error
+            ? error.message
+            : "팝업을 준비하지 못했습니다.";
         scheduleReconnect(`${baseMessage} 자동으로 다시 연결을 시도합니다.`);
       } finally {
         connecting = false;
@@ -312,7 +331,9 @@ export default function App({ surface = "popup" }: AppProps) {
         return;
       }
 
-      reconnectToActiveTab("현재 탭이 닫혀 활성 탭으로 다시 연결하고 있습니다.");
+      reconnectToActiveTab(
+        "현재 탭이 닫혀 활성 탭으로 다시 연결하고 있습니다.",
+      );
     };
 
     addTabActivatedListener(handleTabActivated);
@@ -350,7 +371,12 @@ export default function App({ surface = "popup" }: AppProps) {
       }
       showFeedback("저장된 기록 화면을 열었습니다.", "success");
     } catch (error) {
-      showFeedback(error instanceof Error ? error.message : "저장된 기록 화면을 열지 못했습니다.", "error");
+      showFeedback(
+        error instanceof Error
+          ? error.message
+          : "저장된 기록 화면을 열지 못했습니다.",
+        "error",
+      );
     }
   };
 
@@ -363,7 +389,12 @@ export default function App({ surface = "popup" }: AppProps) {
       }
       showFeedback("환경 설정 화면을 열었습니다.", "success");
     } catch (error) {
-      showFeedback(error instanceof Error ? error.message : "환경 설정 화면을 열지 못했습니다.", "error");
+      showFeedback(
+        error instanceof Error
+          ? error.message
+          : "환경 설정 화면을 열지 못했습니다.",
+        "error",
+      );
     }
   };
 
@@ -379,7 +410,12 @@ export default function App({ surface = "popup" }: AppProps) {
       }
       showFeedback("상태 확인 화면을 열었습니다.", "success");
     } catch (error) {
-      showFeedback(error instanceof Error ? error.message : "상태 확인 화면을 열지 못했습니다.", "error");
+      showFeedback(
+        error instanceof Error
+          ? error.message
+          : "상태 확인 화면을 열지 못했습니다.",
+        "error",
+      );
     }
   };
 
@@ -394,7 +430,12 @@ export default function App({ surface = "popup" }: AppProps) {
         response.ok ? "success" : "error",
       );
     } catch (error) {
-      showFeedback(error instanceof Error ? error.message : "사이드 패널을 열지 못했습니다.", "error");
+      showFeedback(
+        error instanceof Error
+          ? error.message
+          : "사이드 패널을 열지 못했습니다.",
+        "error",
+      );
     }
   };
 
@@ -403,7 +444,12 @@ export default function App({ surface = "popup" }: AppProps) {
       await createTab(preset.url);
       showFeedback(`${preset.name} 페이지를 열었습니다.`, "success");
     } catch (error) {
-      showFeedback(error instanceof Error ? error.message : "프리셋 페이지를 열지 못했습니다.", "error");
+      showFeedback(
+        error instanceof Error
+          ? error.message
+          : "프리셋 페이지를 열지 못했습니다.",
+        "error",
+      );
     }
   };
 
@@ -419,14 +465,21 @@ export default function App({ surface = "popup" }: AppProps) {
     <div className="save-open-row">
       <button
         className="secondary"
-        onClick={() => sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")}
+        onClick={() =>
+          sendCommand({ type: "SAVE_SESSION" }, "현재 세션을 저장합니다.")
+        }
         disabled={!tabReady || !hasPersistableContent}
       >
         {UI_TEXT.saveSession}
       </button>
       <button
         className="secondary"
-        onClick={() => sendCommand({ type: "OPEN_INPAGE_PANEL" }, "페이지 패널 상태를 확인합니다.")}
+        onClick={() =>
+          sendCommand(
+            { type: "OPEN_INPAGE_PANEL" },
+            "페이지 패널 상태를 확인합니다.",
+          )
+        }
         disabled={!tabReady}
       >
         {UI_TEXT.openPanel}
@@ -444,10 +497,16 @@ export default function App({ surface = "popup" }: AppProps) {
       </header>
 
       <section className="summary">
-        {meetingName ? <strong className="meeting-name">{meetingName}</strong> : null}
+        {meetingName ? (
+          <strong className="meeting-name">{meetingName}</strong>
+        ) : null}
         <div className="stat-row" aria-label="현재 수집 요약">
-          <span className="stat-value">{subtitleCount.toLocaleString("ko-KR")}문장</span>
-          <span className="stat-value">{charCount.toLocaleString("ko-KR")}자</span>
+          <span className="stat-value">
+            {subtitleCount.toLocaleString("ko-KR")}문장
+          </span>
+          <span className="stat-value">
+            {charCount.toLocaleString("ko-KR")}자
+          </span>
         </div>
         <div
           className={`status-line${unsupported ? " unsupported" : ""}`}
@@ -457,7 +516,11 @@ export default function App({ surface = "popup" }: AppProps) {
           {statusMessage}
         </div>
         {feedback ? (
-          <div className={`feedback-toast ${feedback.tone}`} role="status" aria-live="polite">
+          <div
+            className={`feedback-toast ${feedback.tone}`}
+            role="status"
+            aria-live="polite"
+          >
             {feedback.message}
           </div>
         ) : null}
@@ -479,8 +542,12 @@ export default function App({ surface = "popup" }: AppProps) {
           <div className="subtitle-section-header">
             <h2>{UI_TEXT.screenSubtitles}</h2>
             <div className="subtitle-section-meta">
-              <span className="mode-badge">{getCaptureModeBadge(snapshot)}</span>
-              <span className="section-count">{subtitleCount.toLocaleString("ko-KR")}줄</span>
+              <span className="mode-badge">
+                {getCaptureModeBadge(snapshot)}
+              </span>
+              <span className="section-count">
+                {subtitleCount.toLocaleString("ko-KR")}줄
+              </span>
             </div>
           </div>
 
@@ -493,7 +560,9 @@ export default function App({ surface = "popup" }: AppProps) {
             {recentEntries.length ? (
               recentEntries.map((entry) => (
                 <article className="sidepanel-subtitle-row" key={entry.id}>
-                  <time dateTime={entry.timestamp}>{formatEntryTime(entry.timestamp)}</time>
+                  <time dateTime={entry.timestamp}>
+                    {formatEntryTime(entry.timestamp)}
+                  </time>
                   <p>{entry.text}</p>
                 </article>
               ))
@@ -523,7 +592,9 @@ export default function App({ surface = "popup" }: AppProps) {
           isRunning ? (
             <button
               className="capture-btn stop"
-              onClick={() => sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 종료합니다.")}
+              onClick={() =>
+                sendCommand({ type: "STOP_CAPTURE" }, "현재 수집을 종료합니다.")
+              }
               disabled={!tabReady}
             >
               {UI_TEXT.stopCapture}
@@ -532,7 +603,10 @@ export default function App({ surface = "popup" }: AppProps) {
             <button
               className="capture-btn"
               onClick={() =>
-                sendCommand({ type: "START_CAPTURE" }, "현재 탭에서 수집을 시작합니다.")
+                sendCommand(
+                  { type: "START_CAPTURE" },
+                  "현재 탭에서 수집을 시작합니다.",
+                )
               }
               disabled={!tabReady || !captureReady}
             >

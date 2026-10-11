@@ -1,8 +1,14 @@
 import type { SessionRecord } from "../../core/subtitle-models";
 import type { PersistReplayDiagnostics } from "../types";
-import { PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY, hasChromeStorageLocal } from "./keys";
+import {
+  PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY,
+  hasChromeStorageLocal,
+} from "./keys";
 import { memoryDiagnostics, setMemoryDiagnostics } from "./state";
-import { resolvePersistReplayLastError, sanitizePersistReplayDiagnostics } from "./sanitize";
+import {
+  resolvePersistReplayLastError,
+  sanitizePersistReplayDiagnostics,
+} from "./sanitize";
 
 /** persist/replay 진단 스냅샷 읽기·쓰기 (단일 책임: 복구 상태 관측). */
 export async function updatePersistReplayDiagnostics(
@@ -39,7 +45,9 @@ export async function readPersistReplayDiagnostics(): Promise<PersistReplayDiagn
     return { ...memoryDiagnostics };
   }
 
-  const snapshot = await chrome.storage.local.get(PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY);
+  const snapshot = await chrome.storage.local.get(
+    PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY,
+  );
   const diagnostics = sanitizePersistReplayDiagnostics(
     snapshot[PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY],
   );

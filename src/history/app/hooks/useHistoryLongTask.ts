@@ -3,7 +3,10 @@
  */
 import { useRef, useState } from "react";
 
-import type { SessionLongTaskKind, SessionLongTaskProgress } from "../../../storage/types";
+import type {
+  SessionLongTaskKind,
+  SessionLongTaskProgress,
+} from "../../../storage/types";
 import type { HistoryLongTaskState } from "../helpers";
 
 export function useHistoryLongTask() {

@@ -1,17 +1,28 @@
-
-
 import { type SessionRecord } from "../../../../../core/subtitle-models";
 
-import { applyPersistSuccess, resolveRunningPersistDelayMs, scheduleRunningPersistTimer, shouldPersistFinalSession, shouldScheduleRunningPersist, type RunningPersistTrigger } from "../../../../autosave";
+import {
+  applyPersistSuccess,
+  resolveRunningPersistDelayMs,
+  scheduleRunningPersistTimer,
+  shouldPersistFinalSession,
+  shouldScheduleRunningPersist,
+  type RunningPersistTrigger,
+} from "../../../../autosave";
 
 import { sendRuntimeMessage } from "../../../../../shared/chrome-api";
 
 import { isExtensionContextInvalidatedError } from "../../../../../shared/extension-context";
 import type { BackgroundCommandResponse } from "../../../../../shared/message-types";
 
-import { clearFailedStoppedSessionGuard, rememberFailedStoppedSession } from "../../../../failed-stopped-session";
+import {
+  clearFailedStoppedSessionGuard,
+  rememberFailedStoppedSession,
+} from "../../../../failed-stopped-session";
 
-import { queueExitPersistRecord, recordPageExitPersistAttempt } from "../../../../../storage/persist-recovery";
+import {
+  queueExitPersistRecord,
+  recordPageExitPersistAttempt,
+} from "../../../../../storage/persist-recovery";
 
 import { persistQueuedPageExitRecord } from "../../../../page-exit-persist";
 
@@ -21,10 +32,14 @@ import type { RuntimeCoreContext } from "./context";
 import { clearRunningPersistTimer } from "./timers";
 import { reportRuntimeError, setPanelNotice } from "./notices";
 import { syncUserInterfaces } from "./panel-status";
-import { buildPreparedSessionRecord, canPersistCurrentRunningState } from "./snapshots";
+import {
+  buildPreparedSessionRecord,
+  canPersistCurrentRunningState,
+} from "./snapshots";
 
 /** running/stopped 스냅샷 저장과 autosave 스케줄 (단일 책임: 영속화). */
-export async function persistSessionRecord(ctx: RuntimeCoreContext, 
+export async function persistSessionRecord(
+  ctx: RuntimeCoreContext,
   record: SessionRecord,
 ): Promise<SessionRecord> {
   const response = await sendRuntimeMessage({
@@ -41,7 +56,10 @@ export async function persistSessionRecord(ctx: RuntimeCoreContext,
   };
 }
 
-export async function deletePersistedSession(ctx: RuntimeCoreContext, sessionId: string): Promise<void> {
+export async function deletePersistedSession(
+  ctx: RuntimeCoreContext,
+  sessionId: string,
+): Promise<void> {
   const response = await sendRuntimeMessage({
     type: "DELETE_SESSION_RECORD",
     sessionId,
@@ -51,7 +69,10 @@ export async function deletePersistedSession(ctx: RuntimeCoreContext, sessionId:
   }
 }
 
-export async function persistStoppedSession(ctx: RuntimeCoreContext, record: SessionRecord): Promise<void> {
+export async function persistStoppedSession(
+  ctx: RuntimeCoreContext,
+  record: SessionRecord,
+): Promise<void> {
   if (!shouldPersistFinalSession(isTopFrame, record.entries.length)) {
     try {
       await deletePersistedSession(ctx, record.id);
@@ -74,7 +95,8 @@ export async function persistStoppedSession(ctx: RuntimeCoreContext, record: Ses
   }
 }
 
-export function persistSessionRecordInBackground(ctx: RuntimeCoreContext, 
+export function persistSessionRecordInBackground(
+  ctx: RuntimeCoreContext,
   record: SessionRecord,
   retryAttempt = 0,
   trackPageExitDiagnostics = false,
@@ -92,7 +114,8 @@ export function persistSessionRecordInBackground(ctx: RuntimeCoreContext,
     }
 
     if (retryAttempt < maxRetryAttempts) {
-      persistSessionRecordInBackground(ctx, 
+      persistSessionRecordInBackground(
+        ctx,
         record,
         retryAttempt + 1,
         trackPageExitDiagnostics,
@@ -158,7 +181,10 @@ export function persistSessionRecordInBackground(ctx: RuntimeCoreContext,
   }
 }
 
-export function queueExitPersistRecordInBackground(ctx: RuntimeCoreContext, record: SessionRecord): void {
+export function queueExitPersistRecordInBackground(
+  ctx: RuntimeCoreContext,
+  record: SessionRecord,
+): void {
   if (ctx.extensionContextInvalidated) {
     return;
   }
@@ -195,7 +221,8 @@ export function queueExitPersistRecordInBackground(ctx: RuntimeCoreContext, reco
   }
 }
 
-export function persistRunningSnapshotForVisibilityChange(ctx: RuntimeCoreContext, 
+export function persistRunningSnapshotForVisibilityChange(
+  ctx: RuntimeCoreContext,
   now = Date.now(),
   options: { respectAutoSaveSetting?: boolean } = {},
 ): void {
@@ -232,7 +259,10 @@ export function persistRunningSnapshotForVisibilityChange(ctx: RuntimeCoreContex
   persistSessionRecordInBackground(ctx, record);
 }
 
-export function persistStoppedSnapshotForPageExit(ctx: RuntimeCoreContext, now = Date.now()): void {
+export function persistStoppedSnapshotForPageExit(
+  ctx: RuntimeCoreContext,
+  now = Date.now(),
+): void {
   if (
     ctx.extensionContextInvalidated ||
     !isTopFrame ||
@@ -275,7 +305,8 @@ export function persistStoppedSnapshotForPageExit(ctx: RuntimeCoreContext, now =
   });
 }
 
-export function scheduleRunningPersist(ctx: RuntimeCoreContext, 
+export function scheduleRunningPersist(
+  ctx: RuntimeCoreContext,
   trigger: RunningPersistTrigger = "commit",
   now = Date.now(),
 ): void {

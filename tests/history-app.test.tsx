@@ -205,8 +205,8 @@ describe("history app", () => {
     });
     sessionStoreMocks.loadSession.mockResolvedValue(session);
     sessionStoreMocks.listSessionLineageSegments.mockResolvedValue([session]);
-    sessionStoreMocks.loadSessionsByIds.mockImplementation(async (ids: string[]) =>
-      ids.includes(session.id) ? [session] : [],
+    sessionStoreMocks.loadSessionsByIds.mockImplementation(
+      async (ids: string[]) => (ids.includes(session.id) ? [session] : []),
     );
     sessionStoreMocks.searchSessionLineagesPage.mockResolvedValue({
       lineages: [buildLineageSummary(session)],
@@ -305,8 +305,9 @@ describe("history app", () => {
       pageSize: 200,
     });
     sessionStoreMocks.loadSession.mockResolvedValueOnce(segmentedSession);
-    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
-      ids.includes(segmentedSession.id) ? [segmentedSession] : [],
+    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(
+      async (ids: string[]) =>
+        ids.includes(segmentedSession.id) ? [segmentedSession] : [],
     );
 
     render(<App />);
@@ -381,9 +382,13 @@ describe("history app", () => {
       pageSize: 200,
     });
     sessionStoreMocks.loadSession.mockResolvedValueOnce(segmentOne);
-    sessionStoreMocks.listSessionLineageSegments.mockResolvedValueOnce([segmentOne, segmentTwo]);
-    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(async (ids: string[]) =>
-      [segmentOne, segmentTwo].filter((session) => ids.includes(session.id)),
+    sessionStoreMocks.listSessionLineageSegments.mockResolvedValueOnce([
+      segmentOne,
+      segmentTwo,
+    ]);
+    sessionStoreMocks.loadSessionsByIds.mockImplementationOnce(
+      async (ids: string[]) =>
+        [segmentOne, segmentTwo].filter((session) => ids.includes(session.id)),
     );
 
     render(<App />);
@@ -403,7 +408,9 @@ describe("history app", () => {
   });
 
   it("shows a user-facing error when exporting fails", async () => {
-    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(new Error("export failed"));
+    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(
+      new Error("export failed"),
+    );
 
     render(<App />);
     await screen.findByRole("button", { name: "텍스트(TXT)" });
@@ -470,7 +477,9 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "전체 JSON 백업" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.buildSessionLibraryBackupExport).toHaveBeenCalled();
+      expect(
+        sessionStoreMocks.buildSessionLibraryBackupExport,
+      ).toHaveBeenCalled();
       expect(pageBlobDownloadMocks.downloadPageBlobExport).toHaveBeenCalledWith(
         expect.objectContaining({
           filename: "backup.json",
@@ -715,7 +724,9 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "즐겨찾기 추가" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.updateSessionLineageMetadata).toHaveBeenCalledWith(
+      expect(
+        sessionStoreMocks.updateSessionLineageMetadata,
+      ).toHaveBeenCalledWith(
         "session_history_1",
         expect.objectContaining({
           starred: true,
@@ -732,7 +743,9 @@ describe("history app", () => {
     fireEvent.click(screen.getByRole("button", { name: "메모 저장" }));
 
     await waitFor(() => {
-      expect(sessionStoreMocks.updateSessionLineageMetadata).toHaveBeenCalledWith(
+      expect(
+        sessionStoreMocks.updateSessionLineageMetadata,
+      ).toHaveBeenCalledWith(
         "session_history_1",
         expect.objectContaining({
           note: "새 메모",
@@ -753,10 +766,12 @@ describe("history app", () => {
 
     sessionStoreMocks.listSessionLineagesPage.mockResolvedValueOnce({
       lineages: [
-        buildLineageSummary(buildSession({
-        note: "saved note",
-        updatedAt: "2026-03-10T09:00:10.000Z",
-        })),
+        buildLineageSummary(
+          buildSession({
+            note: "saved note",
+            updatedAt: "2026-03-10T09:00:10.000Z",
+          }),
+        ),
       ],
       totalCount: 1,
       page: 1,
@@ -778,7 +793,9 @@ describe("history app", () => {
     });
 
     await waitFor(() => {
-      expect(sessionStoreMocks.listSessionLineagesPage).toHaveBeenCalledTimes(2);
+      expect(sessionStoreMocks.listSessionLineagesPage).toHaveBeenCalledTimes(
+        2,
+      );
     });
     expect(noteInput?.value).toBe("draft note");
   });
@@ -922,22 +939,33 @@ describe("history app", () => {
     fireEvent.click(await screen.findByLabelText("첫번째 항목 선택"));
     fireEvent.click(screen.getByLabelText("두번째 항목 선택"));
 
-    expect((screen.getByRole("button", { name: "선택 병합" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
-    expect((screen.getByRole("button", { name: "선택 분할" }) as HTMLButtonElement).disabled).toBe(
-      true,
-    );
+    expect(
+      (screen.getByRole("button", { name: "선택 병합" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (screen.getByRole("button", { name: "선택 분할" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     const entryDeleteButton = screen
       .getAllByRole("button", { name: "선택 삭제" })
-      .find((button) => button.getAttribute("title")?.includes("수집 중인 기록"));
-    expect((entryDeleteButton as HTMLButtonElement | undefined)?.disabled).toBe(true);
+      .find((button) =>
+        button.getAttribute("title")?.includes("수집 중인 기록"),
+      );
+    expect((entryDeleteButton as HTMLButtonElement | undefined)?.disabled).toBe(
+      true,
+    );
     expect(screen.getByText(/수집 중인 기록입니다/)).toBeTruthy();
     expect(
-      (screen.getAllByRole("button", { name: "중요 표시" })[0] as HTMLButtonElement).disabled,
+      (
+        screen.getAllByRole("button", {
+          name: "중요 표시",
+        })[0] as HTMLButtonElement
+      ).disabled,
     ).toBe(false);
     expect(
-      (screen.getAllByRole("button", { name: "수정" })[0] as HTMLButtonElement).disabled,
+      (screen.getAllByRole("button", { name: "수정" })[0] as HTMLButtonElement)
+        .disabled,
     ).toBe(false);
   });
 
@@ -981,9 +1009,7 @@ describe("history app", () => {
     );
 
     render(<App />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: "수정" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "수정" }));
 
     fireEvent.change(screen.getByDisplayValue("테스트 자막"), {
       target: { value: "수정된 자막" },

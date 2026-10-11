@@ -1,7 +1,10 @@
 /**
  * 세션 검색 매칭 헬퍼 (순수 함수)
  */
-import { cloneSessionRecord, type SessionRecord } from "../../core/subtitle-models";
+import {
+  cloneSessionRecord,
+  type SessionRecord,
+} from "../../core/subtitle-models";
 import type {
   SessionSearchHit,
   SessionSearchOptions,
@@ -14,11 +17,22 @@ export function normalizeSearchToken(value: string | undefined): string {
     .toLocaleLowerCase();
 }
 
-export function includesSearchToken(value: string | undefined, token: string): boolean {
-  return Boolean(token) && String(value ?? "").toLocaleLowerCase().includes(token);
+export function includesSearchToken(
+  value: string | undefined,
+  token: string,
+): boolean {
+  return (
+    Boolean(token) &&
+    String(value ?? "")
+      .toLocaleLowerCase()
+      .includes(token)
+  );
 }
 
-export function buildSearchHits(session: SessionRecord, token: string): SessionSearchHit[] {
+export function buildSearchHits(
+  session: SessionRecord,
+  token: string,
+): SessionSearchHit[] {
   if (!token) {
     return [];
   }
@@ -46,7 +60,11 @@ export function buildSearchHits(session: SessionRecord, token: string): SessionS
       hits.push({ field: "entry", entryId: entry.id, text: entry.text });
     }
     if (includesSearchToken(entry.entryNote, token)) {
-      hits.push({ field: "entry", entryId: entry.id, text: entry.entryNote ?? "" });
+      hits.push({
+        field: "entry",
+        entryId: entry.id,
+        text: entry.entryNote ?? "",
+      });
     }
   });
   return hits;
@@ -62,7 +80,10 @@ export function sessionMatchesMetadataFilters(
   }
 
   const tag = normalizeSearchToken(options.tag);
-  if (tag && !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)) {
+  if (
+    tag &&
+    !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)
+  ) {
     return false;
   }
 
@@ -91,7 +112,10 @@ export function sessionMatchesSearchFilters(
   }
 
   const tag = normalizeSearchToken(options.tag);
-  if (tag && !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)) {
+  if (
+    tag &&
+    !(session.tags ?? []).some((item) => normalizeSearchToken(item) === tag)
+  ) {
     return null;
   }
 
@@ -100,7 +124,10 @@ export function sessionMatchesSearchFilters(
     return null;
   }
 
-  if (options.highlightedOnly && !session.entries.some((entry) => entry.highlighted)) {
+  if (
+    options.highlightedOnly &&
+    !session.entries.some((entry) => entry.highlighted)
+  ) {
     return null;
   }
 

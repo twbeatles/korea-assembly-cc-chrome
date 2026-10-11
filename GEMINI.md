@@ -527,14 +527,14 @@ Use this delta as the current operational baseline.
 
 ### 권장 워크플로 (스킬 / 슬래시 커맨드)
 
-| 단계 | 커맨드 (Grok/Claude 등) | 산출 |
-|------|-------------------------|------|
-| 원칙 | `/speckit-constitution` | `.specify/memory/constitution.md` |
-| 명세 | `/speckit-specify` | `specs/<id>/spec.md` |
-| 계획 | `/speckit-plan` | `plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md` |
-| 작업 | `/speckit-tasks` | `tasks.md` |
-| 구현 | `/speckit-implement` | 코드 (tasks 순서) |
-| 갭점검 | `/speckit-converge` | `tasks.md` 에 Phase Convergence **append-only** |
+| 단계   | 커맨드 (Grok/Claude 등) | 산출                                                                     |
+| ------ | ----------------------- | ------------------------------------------------------------------------ |
+| 원칙   | `/speckit-constitution` | `.specify/memory/constitution.md`                                        |
+| 명세   | `/speckit-specify`      | `specs/<id>/spec.md`                                                     |
+| 계획   | `/speckit-plan`         | `plan.md`, `research.md`, `data-model.md`, `contracts/`, `quickstart.md` |
+| 작업   | `/speckit-tasks`        | `tasks.md`                                                               |
+| 구현   | `/speckit-implement`    | 코드 (tasks 순서)                                                        |
+| 갭점검 | `/speckit-converge`     | `tasks.md` 에 Phase Convergence **append-only**                          |
 
 - Codex skills 모드: `$speckit-specify` 형태일 수 있음
 - 스킬 파일: `.grok/skills/speckit-*/SKILL.md`, `.claude/skills/speckit-*/SKILL.md`

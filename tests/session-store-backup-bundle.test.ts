@@ -37,26 +37,30 @@ describe("session backup bundle", () => {
       ["session_a", buildSession("session_a")],
       ["session_b", buildSession("session_b")],
     ]);
-    const listSessionsPage = vi.fn(async ({ page }: { page: number; pageSize: number }) => {
-      if (page === 1) {
+    const listSessionsPage = vi.fn(
+      async ({ page }: { page: number; pageSize: number }) => {
+        if (page === 1) {
+          return {
+            sessions: [{ id: "session_a" }, { id: "session_a" }],
+            totalCount: 2,
+          };
+        }
+        if (page === 2) {
+          return {
+            sessions: [{ id: "session_a" }, { id: "session_b" }],
+            totalCount: 2,
+          };
+        }
         return {
-          sessions: [{ id: "session_a" }, { id: "session_a" }],
+          sessions: [],
           totalCount: 2,
         };
-      }
-      if (page === 2) {
-        return {
-          sessions: [{ id: "session_a" }, { id: "session_b" }],
-          totalCount: 2,
-        };
-      }
-      return {
-        sessions: [],
-        totalCount: 2,
-      };
-    });
+      },
+    );
     const loadSessionsByIds = vi.fn(async (ids: string[]) =>
-      ids.map((id) => sessions.get(id)).filter((session): session is SessionRecord => Boolean(session)),
+      ids
+        .map((id) => sessions.get(id))
+        .filter((session): session is SessionRecord => Boolean(session)),
     );
 
     const result = await stringifySessionBackupBundleIncrementally({
@@ -69,9 +73,10 @@ describe("session backup bundle", () => {
     expect(loadSessionsByIds).toHaveBeenNthCalledWith(1, ["session_a"]);
     expect(loadSessionsByIds).toHaveBeenNthCalledWith(2, ["session_b"]);
     expect(loadSessionsByIds).toHaveBeenCalledTimes(2);
-    expect(JSON.parse(result.content).sessions.map((session: SessionRecord) => session.id)).toEqual([
-      "session_a",
-      "session_b",
-    ]);
+    expect(
+      JSON.parse(result.content).sessions.map(
+        (session: SessionRecord) => session.id,
+      ),
+    ).toEqual(["session_a", "session_b"]);
   });
 });

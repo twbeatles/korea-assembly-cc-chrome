@@ -53,7 +53,10 @@ function buildSession(id: string, updatedAt: string): SessionRecord {
 describe("session backup helpers", () => {
   it("builds a backup bundle that preserves favorites and notes", () => {
     const exportedAt = "2026-03-12T12:30:45.000Z";
-    const bundle = buildSessionBackupBundle([buildSession("session_1", exportedAt)], exportedAt);
+    const bundle = buildSessionBackupBundle(
+      [buildSession("session_1", exportedAt)],
+      exportedAt,
+    );
 
     expect(bundle.kind).toBe(SESSION_BACKUP_KIND);
     expect(bundle.version).toBe(SESSION_BACKUP_VERSION);
@@ -69,7 +72,9 @@ describe("session backup helpers", () => {
   });
 
   it("parses a single session payload and a bundle payload", () => {
-    const single = parseSessionImportPayload(buildSession("session_single", "2026-03-12T12:00:00.000Z"));
+    const single = parseSessionImportPayload(
+      buildSession("session_single", "2026-03-12T12:00:00.000Z"),
+    );
     expect(single.records).toHaveLength(1);
     expect(single.invalidCount).toBe(0);
 
@@ -99,7 +104,8 @@ describe("session backup helpers", () => {
       injected: "drop me",
       entries: [
         {
-          ...buildSession("session_unknown_field", "2026-03-12T12:00:00.000Z").entries[0],
+          ...buildSession("session_unknown_field", "2026-03-12T12:00:00.000Z")
+            .entries[0],
           extraEntryField: "drop me too",
         },
       ],
@@ -133,7 +139,9 @@ describe("session backup helpers", () => {
       ],
     });
 
-    expect(parsed.records.map((record) => record.id)).toEqual(["session_valid"]);
+    expect(parsed.records.map((record) => record.id)).toEqual([
+      "session_valid",
+    ]);
     expect(parsed.invalidCount).toBe(2);
   });
 
@@ -143,7 +151,9 @@ describe("session backup helpers", () => {
         kind: SESSION_BACKUP_KIND,
         version: "999",
         exportedAt: "2026-03-12T12:30:45.000Z",
-        sessions: [buildSession("session_invalid_version", "2026-03-12T12:00:00.000Z")],
+        sessions: [
+          buildSession("session_invalid_version", "2026-03-12T12:00:00.000Z"),
+        ],
       }),
     ).toThrow("가져온 JSON 형식이 올바르지 않습니다.");
 
@@ -165,7 +175,9 @@ describe("session backup helpers", () => {
   });
 
   it("builds a timestamped backup filename", () => {
-    const filename = buildSessionBackupFilename(new Date(2026, 2, 12, 12, 30, 45));
+    const filename = buildSessionBackupFilename(
+      new Date(2026, 2, 12, 12, 30, 45),
+    );
     expect(filename).toBe("assembly_subtitle_backup_20260312_123045.json");
   });
 });

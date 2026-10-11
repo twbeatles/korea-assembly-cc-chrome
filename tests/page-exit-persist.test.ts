@@ -51,7 +51,12 @@ describe("page exit persistence", () => {
       },
     });
 
-    expect(steps).toEqual(["queue:start", "queue:end", "attempt", "background"]);
+    expect(steps).toEqual([
+      "queue:start",
+      "queue:end",
+      "attempt",
+      "background",
+    ]);
   });
 
   it("still attempts the background persist after a queue failure", async () => {

@@ -12,7 +12,9 @@ describe("fallback preview helpers", () => {
     const suffix = "B".repeat(200);
     const normalized = normalizeFallbackInternalRaw(`${prefix}${suffix}`);
 
-    expect(normalized.length).toBe(PIPELINE_DEFAULTS.fallbackInternalRawMaxChars);
+    expect(normalized.length).toBe(
+      PIPELINE_DEFAULTS.fallbackInternalRawMaxChars,
+    );
     expect(normalized.endsWith(suffix)).toBe(true);
   });
 
@@ -28,7 +30,10 @@ describe("fallback preview helpers", () => {
   });
 
   it("caps plenary preview while preserving full internal raw separately", () => {
-    const lines = Array.from({ length: 12 }, (_, index) => `plenary line ${index + 1}`);
+    const lines = Array.from(
+      { length: 12 },
+      (_, index) => `plenary line ${index + 1}`,
+    );
     const formatted = formatFallbackPreviewText(lines.join("\n"));
 
     expect(formatted).not.toContain("plenary line 8");

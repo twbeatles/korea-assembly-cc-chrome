@@ -1,8 +1,5 @@
 import { isSupportedAssemblyUrl } from "../../../../shared/constants";
-import {
-  DEFAULT_IN_PAGE_NOTICE,
-  NON_CAPTURE_PAGE_NOTICE,
-} from "../constants";
+import { DEFAULT_IN_PAGE_NOTICE, NON_CAPTURE_PAGE_NOTICE } from "../constants";
 import { createRandomToken } from "../../../../shared/random-token";
 import type { ObserverBridgeEvent } from "../../../../shared/message-types";
 

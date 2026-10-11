@@ -18,7 +18,9 @@ describe("probeFramePath", () => {
       <iframe id="frame-b"></iframe>
     `;
 
-    const frames = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"));
+    const frames = Array.from(
+      document.querySelectorAll<HTMLIFrameElement>("iframe"),
+    );
     attachFrameDocument(
       frames[0],
       `<div id="viewSubtit"><div class="smi_word row_a"><span>alpha</span></div></div>`,
@@ -51,7 +53,9 @@ describe("probeFramePath", () => {
 
   it("marks blocked fallback probes when unconfirmed filtering suppresses container text", () => {
     document.body.innerHTML = `<iframe id="frame-a"></iframe>`;
-    const [frame] = Array.from(document.querySelectorAll<HTMLIFrameElement>("iframe"));
+    const [frame] = Array.from(
+      document.querySelectorAll<HTMLIFrameElement>("iframe"),
+    );
     attachFrameDocument(
       frame,
       `

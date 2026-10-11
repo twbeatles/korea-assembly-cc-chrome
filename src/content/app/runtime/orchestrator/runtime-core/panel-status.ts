@@ -1,20 +1,34 @@
+import {
+  listLivePanelRows,
+  type CaptureMode,
+  type LivePanelRow,
+} from "../../../../../core/live-capture";
 
-
-import { listLivePanelRows, type CaptureMode, type LivePanelRow } from "../../../../../core/live-capture";
-
-import type { FallbackCommitState, ObservedSubtitleRow, PersistabilityState, RowKeySource, StatusSnapshot } from "../../../../../shared/message-types";
+import type {
+  FallbackCommitState,
+  ObservedSubtitleRow,
+  PersistabilityState,
+  RowKeySource,
+  StatusSnapshot,
+} from "../../../../../shared/message-types";
 
 import { buildInPagePanelState } from "../../../../inpage-panel";
 import { resolvePanelLiveRows } from "../../../../panel-live-rows";
 
 import { createPopupMessages, postToPopupPort } from "../../../../popup-bridge";
 
-import { formatPreviewForDisplay, resolveLivePreviewText } from "../../../../runtime/preview";
+import {
+  formatPreviewForDisplay,
+  resolveLivePreviewText,
+} from "../../../../runtime/preview";
 
 import { buildSegmentRolloverDiagnostics } from "../../../../runtime/segment-rollover-diagnostics";
 import { SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX } from "../../../../runtime/segment-event-queue";
 
-import { buildContentStatusSnapshot, canClearCurrentSessionState } from "../../../../runtime/status-snapshot";
+import {
+  buildContentStatusSnapshot,
+  canClearCurrentSessionState,
+} from "../../../../runtime/status-snapshot";
 
 import { isTopFrame } from "../../constants";
 import type { RowDiagnosticsState } from "../../types";
@@ -47,7 +61,10 @@ export function getCaptureMode(ctx: RuntimeCoreContext): CaptureMode {
   return ctx.liveCaptureLedger.captureMode;
 }
 
-export function setPersistabilityState(ctx: RuntimeCoreContext, stateValue: PersistabilityState): void {
+export function setPersistabilityState(
+  ctx: RuntimeCoreContext,
+  stateValue: PersistabilityState,
+): void {
   ctx.latestPersistabilityState = stateValue;
 }
 
@@ -60,7 +77,8 @@ export function createEmptyRowDiagnostics(): RowDiagnosticsState {
   };
 }
 
-export function updateRowDiagnostics(ctx: RuntimeCoreContext, 
+export function updateRowDiagnostics(
+  ctx: RuntimeCoreContext,
   rows: ObservedSubtitleRow[] = [],
   filteredUnconfirmedCount = 0,
 ): void {
@@ -79,11 +97,15 @@ export function updateRowDiagnostics(ctx: RuntimeCoreContext,
   };
 }
 
-export function setFallbackCommitState(ctx: RuntimeCoreContext, stateValue: FallbackCommitState): void {
+export function setFallbackCommitState(
+  ctx: RuntimeCoreContext,
+  stateValue: FallbackCommitState,
+): void {
   ctx.latestFallbackCommitState = stateValue;
 }
 
-export function buildStatusSnapshot(ctx: RuntimeCoreContext, 
+export function buildStatusSnapshot(
+  ctx: RuntimeCoreContext,
   requiresReload = false,
   includeExportEstimates = false,
 ): StatusSnapshot {
@@ -112,7 +134,10 @@ export function buildStatusSnapshot(ctx: RuntimeCoreContext,
   });
 }
 
-export function broadcastPopupState(ctx: RuntimeCoreContext, requiresReload = false): void {
+export function broadcastPopupState(
+  ctx: RuntimeCoreContext,
+  requiresReload = false,
+): void {
   if (!isTopFrame) {
     return;
   }
@@ -120,7 +145,11 @@ export function broadcastPopupState(ctx: RuntimeCoreContext, requiresReload = fa
   ctx.popupPorts.forEach((port) => {
     try {
       const messages = createPopupMessages(
-        buildStatusSnapshot(ctx, requiresReload, ctx.diagnosticsPorts.has(port)),
+        buildStatusSnapshot(
+          ctx,
+          requiresReload,
+          ctx.diagnosticsPorts.has(port),
+        ),
       );
       messages.forEach((message) => postToPopupPort(port, message));
     } catch {
@@ -129,7 +158,8 @@ export function broadcastPopupState(ctx: RuntimeCoreContext, requiresReload = fa
   });
 }
 
-export function syncPortState(ctx: RuntimeCoreContext, 
+export function syncPortState(
+  ctx: RuntimeCoreContext,
   port: chrome.runtime.Port,
   requiresReload = false,
   includeExportEstimates = ctx.diagnosticsPorts.has(port),
@@ -139,7 +169,8 @@ export function syncPortState(ctx: RuntimeCoreContext,
   ).forEach((message) => postToPopupPort(port, message));
 }
 
-export function canClearCurrentSession(ctx: RuntimeCoreContext, 
+export function canClearCurrentSession(
+  ctx: RuntimeCoreContext,
   showNotice = shouldShowPanelNotice(ctx, ctx.panelNotice),
 ): boolean {
   return canClearCurrentSessionState({
@@ -174,7 +205,10 @@ export function updateInPagePanel(ctx: RuntimeCoreContext): void {
   );
 }
 
-export function syncUserInterfaces(ctx: RuntimeCoreContext, requiresReload = false): void {
+export function syncUserInterfaces(
+  ctx: RuntimeCoreContext,
+  requiresReload = false,
+): void {
   updateInPagePanel(ctx);
   broadcastPopupState(ctx, requiresReload);
 }

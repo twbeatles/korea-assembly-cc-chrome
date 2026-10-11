@@ -2,7 +2,9 @@ import { compactSubtitleText } from "../core/text-normalizer";
 import type { DomProbeResult } from "./dom-probe";
 import type { ObservedSubtitleRow } from "../shared/message-types";
 
-export function buildObservedRowsSignature(rows: ObservedSubtitleRow[]): string {
+export function buildObservedRowsSignature(
+  rows: ObservedSubtitleRow[],
+): string {
   if (!rows.length) {
     return "";
   }
@@ -15,7 +17,9 @@ export function buildObservedRowsSignature(rows: ObservedSubtitleRow[]): string 
     .join("||");
 }
 
-export function buildLocalProbeSignature(probe: Pick<DomProbeResult, "text" | "rows">): string {
+export function buildLocalProbeSignature(
+  probe: Pick<DomProbeResult, "text" | "rows">,
+): string {
   const compact = compactSubtitleText(probe.text);
   if (!compact) {
     return "";

@@ -23,7 +23,7 @@ function buildSession(overrides?: Partial<SessionRecord>): SessionRecord {
     entries: [
       {
         id: "entry_formula",
-        text: "=HYPERLINK(\"https://example.com\")",
+        text: '=HYPERLINK("https://example.com")',
         timestamp: "2026-03-10T09:00:01.000Z",
         startTime: "2026-03-10T09:00:01.000Z",
         endTime: "2026-03-10T09:00:03.000Z",
@@ -73,16 +73,19 @@ describe("CSV exporter", () => {
     const decodedBody = new TextDecoder("utf-8").decode(encoded);
     expect(decodedBody.startsWith("\uFEFF")).toBe(false);
     expect(decodedBody).toBe(csv.slice(1));
-    expect(decodedBody).toContain("안녕하십니까 가능한 부분의 협조가 필요합니다");
+    expect(decodedBody).toContain(
+      "안녕하십니까 가능한 부분의 협조가 필요합니다",
+    );
   });
 
   it("uses CRLF line endings for spreadsheet compatibility", () => {
     const csv = exportCsv(buildSession());
     const withoutBom = csv.startsWith("\uFEFF") ? csv.slice(1) : csv;
     expect(withoutBom.includes("\r\n")).toBe(true);
-    expect(withoutBom.includes("\n") && !withoutBom.replaceAll("\r\n", "").includes("\n")).toBe(
-      true,
-    );
+    expect(
+      withoutBom.includes("\n") &&
+        !withoutBom.replaceAll("\r\n", "").includes("\n"),
+    ).toBe(true);
   });
 
   it("omits the speaker column when includeSpeaker is off (default)", () => {

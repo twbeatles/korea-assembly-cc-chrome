@@ -4,17 +4,26 @@ import { toIsoString } from "../timeline";
 import { cloneEntryAtIndex, updateStateMetadata } from "./state-helpers";
 import type { PipelineResult } from "./types";
 
-export function applyKeepalive(state: SessionState, now: number): PipelineResult {
+export function applyKeepalive(
+  state: SessionState,
+  now: number,
+): PipelineResult {
   const next = updateStateMetadata(state, now);
   const lastEntryIndex = next.entries.length - 1;
-  const lastEntry = lastEntryIndex >= 0 ? cloneEntryAtIndex(next, lastEntryIndex) : undefined;
+  const lastEntry =
+    lastEntryIndex >= 0 ? cloneEntryAtIndex(next, lastEntryIndex) : undefined;
   if (!lastEntry) {
     return { state: next, changed: false, reason: "no_entries" };
   }
 
   lastEntry.endTime = toIsoString(now);
   next.lastKeepaliveAt = now;
-  return { state: next, changed: true, appendedEntry: lastEntry, reason: "keepalive" };
+  return {
+    state: next,
+    changed: true,
+    appendedEntry: lastEntry,
+    reason: "keepalive",
+  };
 }
 
 export function applyReset(
@@ -47,10 +56,16 @@ export function finalizeSession(
   next.previewText = "";
   next.lastCommittedResetAt = null;
   const lastEntryIndex = next.entries.length - 1;
-  const lastEntry = lastEntryIndex >= 0 ? cloneEntryAtIndex(next, lastEntryIndex) : undefined;
+  const lastEntry =
+    lastEntryIndex >= 0 ? cloneEntryAtIndex(next, lastEntryIndex) : undefined;
   if (lastEntry) {
     lastEntry.endTime = toIsoString(now);
   }
 
-  return { state: next, changed: true, appendedEntry: lastEntry, reason: "finalized" };
+  return {
+    state: next,
+    changed: true,
+    appendedEntry: lastEntry,
+    reason: "finalized",
+  };
 }

@@ -26,7 +26,11 @@ export function exportTxt(
         : "";
       const body = `${timePrefix}${speakerPrefix}${entry.text}`;
       const notes = includeEntryNotes
-        ? [entry.highlighted ? "중요" : "", entry.entryNote ?? "", entry.labels?.join(", ") ?? ""]
+        ? [
+            entry.highlighted ? "중요" : "",
+            entry.entryNote ?? "",
+            entry.labels?.join(", ") ?? "",
+          ]
             .filter((part) => part.trim())
             .join(" / ")
         : "";

@@ -42,17 +42,16 @@ describe("injected observer token bridge", () => {
       }),
     );
 
-    const hasTokenizedBridgeEvent = postMessageSpy.mock.calls.some(([payload]) => {
-      const data = payload as {
-        source?: string;
-        kind?: string;
-        token?: string;
-      };
-      return (
-        data.source === OBSERVER_BRIDGE_SOURCE &&
-        data.token === token
-      );
-    });
+    const hasTokenizedBridgeEvent = postMessageSpy.mock.calls.some(
+      ([payload]) => {
+        const data = payload as {
+          source?: string;
+          kind?: string;
+          token?: string;
+        };
+        return data.source === OBSERVER_BRIDGE_SOURCE && data.token === token;
+      },
+    );
 
     expect(hasTokenizedBridgeEvent).toBe(true);
   });

@@ -15,10 +15,14 @@ describe("extension context helpers", () => {
   });
 
   it("detects permanent invalidated extension context errors", () => {
-    expect(isExtensionContextInvalidatedError(new Error("Extension context invalidated."))).toBe(
-      true,
-    );
-    expect(isExtensionContextInvalidatedError("Extension context invalidated")).toBe(true);
+    expect(
+      isExtensionContextInvalidatedError(
+        new Error("Extension context invalidated."),
+      ),
+    ).toBe(true);
+    expect(
+      isExtensionContextInvalidatedError("Extension context invalidated"),
+    ).toBe(true);
   });
 
   it("treats missing receiver as transient messaging failure, not permanent invalidation", () => {
@@ -32,10 +36,16 @@ describe("extension context helpers", () => {
   });
 
   it("does not classify unrelated runtime errors as invalidated contexts", () => {
-    expect(isExtensionContextInvalidatedError(new Error("Background command failed"))).toBe(false);
-    expect(isTransientExtensionMessagingError(new Error("Background command failed"))).toBe(
-      false,
-    );
+    expect(
+      isExtensionContextInvalidatedError(
+        new Error("Background command failed"),
+      ),
+    ).toBe(false);
+    expect(
+      isTransientExtensionMessagingError(
+        new Error("Background command failed"),
+      ),
+    ).toBe(false);
   });
 
   it("extracts messages from chrome lastError-style objects", () => {
@@ -109,13 +119,19 @@ describe("extension context helpers", () => {
 
   it("tracks permanent invalidated state and normalizes the public error", () => {
     expect(hasExtensionContextInvalidated()).toBe(false);
-    expect(markExtensionContextInvalidated(new Error("Background command failed"))).toBe(false);
+    expect(
+      markExtensionContextInvalidated(new Error("Background command failed")),
+    ).toBe(false);
     expect(hasExtensionContextInvalidated()).toBe(false);
 
     expect(
-      markExtensionContextInvalidated(new Error("Extension context invalidated.")),
+      markExtensionContextInvalidated(
+        new Error("Extension context invalidated."),
+      ),
     ).toBe(true);
     expect(hasExtensionContextInvalidated()).toBe(true);
-    expect(createExtensionContextInvalidatedError().message).toBe("Extension context invalidated");
+    expect(createExtensionContextInvalidatedError().message).toBe(
+      "Extension context invalidated",
+    );
   });
 });

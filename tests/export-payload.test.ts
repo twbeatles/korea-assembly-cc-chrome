@@ -98,7 +98,9 @@ describe("createSessionExportPayload speaker options", () => {
     expect(md.content).toContain("| 시간 | 내용 | 비고 |");
     expect(md.content).not.toContain("| 시간 | 발언자 | 내용 | 비고 |");
     expect(md.content).not.toContain("발언자 A");
-    expect(csv.content).toContain("startTime,endTime,text,highlighted,note,labels");
+    expect(csv.content).toContain(
+      "startTime,endTime,text,highlighted,note,labels",
+    );
     expect(csv.content).not.toContain(",speaker,");
     expect(csv.content).not.toContain("발언자 A");
     const parsed = JSON.parse(json.content) as SessionRecord;
@@ -125,7 +127,9 @@ describe("createSessionExportPayload speaker options", () => {
 
     expect(md.content).toContain("| 시간 | 발언자 | 내용 | 비고 |");
     expect(md.content).toContain("| 발언자 A | 안녕하세요 |");
-    expect(csv.content).toContain("startTime,endTime,speaker,text,highlighted,note,labels");
+    expect(csv.content).toContain(
+      "startTime,endTime,speaker,text,highlighted,note,labels",
+    );
     expect(csv.content).toContain("발언자 A,안녕하세요");
   });
 });

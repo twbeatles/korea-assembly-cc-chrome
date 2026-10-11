@@ -1,6 +1,12 @@
 import type { SpeakerChannel } from "../core/subtitle-models";
-import type { ObservedSubtitleRow, RowKeySource } from "../shared/message-types";
-import { compactSubtitleText, normalizeSubtitleText } from "../core/text-normalizer";
+import type {
+  ObservedSubtitleRow,
+  RowKeySource,
+} from "../shared/message-types";
+import {
+  compactSubtitleText,
+  normalizeSubtitleText,
+} from "../core/text-normalizer";
 import { createRandomToken } from "../shared/random-token";
 
 export const PRIMARY_SPEAKER_COLOR = "rgb(35, 124, 147)";
@@ -143,15 +149,21 @@ function collectMultiSpeakerSegments(node: HTMLElement): SpeakerSegment[] {
   const spans =
     directSpans.length > 0
       ? directSpans
-      : Array.from(node.querySelectorAll<HTMLElement>("span")).filter((span) => {
-          // 중첩 span 의 조상이 같은 노드 아래 다른 span 이면 leaf 만
-          const parentSpan = span.parentElement?.closest("span");
-          return !parentSpan || parentSpan === node || !node.contains(parentSpan);
-        });
+      : Array.from(node.querySelectorAll<HTMLElement>("span")).filter(
+          (span) => {
+            // 중첩 span 의 조상이 같은 노드 아래 다른 span 이면 leaf 만
+            const parentSpan = span.parentElement?.closest("span");
+            return (
+              !parentSpan || parentSpan === node || !node.contains(parentSpan)
+            );
+          },
+        );
 
   const segments: SpeakerSegment[] = [];
   spans.forEach((span, index) => {
-    const text = normalizeSubtitleText(span.innerText || span.textContent || "");
+    const text = normalizeSubtitleText(
+      span.innerText || span.textContent || "",
+    );
     if (!compactSubtitleText(text)) {
       return;
     }
@@ -183,11 +195,17 @@ function hasOpaqueBackground(backgroundColor: string): boolean {
   const normalized = String(backgroundColor || "")
     .replace(/\s+/g, "")
     .toLowerCase();
-  return Boolean(normalized) && normalized !== "transparent" && normalized !== "rgba(0,0,0,0)";
+  return (
+    Boolean(normalized) &&
+    normalized !== "transparent" &&
+    normalized !== "rgba(0,0,0,0)"
+  );
 }
 
 function hasHighlightBackgroundImage(backgroundImage: string): boolean {
-  const normalized = String(backgroundImage || "").trim().toLowerCase();
+  const normalized = String(backgroundImage || "")
+    .trim()
+    .toLowerCase();
   return Boolean(normalized) && normalized !== "none";
 }
 
@@ -308,7 +326,7 @@ export function hasUnconfirmedSubtitleBackground(root: ParentNode): boolean {
 export function readObservedSubtitleRows(
   root: ParentNode,
   selector = "#viewSubtit .smi_word",
-  options?: { filterUnconfirmedEnabled?: boolean }
+  options?: { filterUnconfirmedEnabled?: boolean },
 ): ObservedSubtitleRow[] {
   const rows: ObservedSubtitleRow[] = [];
   const nodes = getSmiWordNodes(root, selector);
@@ -384,7 +402,9 @@ export function readObservedSubtitleRows(
       return;
     }
 
-    const text = normalizeSubtitleText(node.innerText || node.textContent || "");
+    const text = normalizeSubtitleText(
+      node.innerText || node.textContent || "",
+    );
     const speakerColor = readSpeakerColor(node);
     pushRow({
       nodeKey: baseNodeKey,
@@ -403,7 +423,9 @@ export function countFilteredUnconfirmedSubtitleRows(
   root: ParentNode,
   selector = "#viewSubtit .smi_word",
 ): number {
-  return getSmiWordNodes(root, selector).filter((node) => !isConfirmedSubtitleNode(node)).length;
+  return getSmiWordNodes(root, selector).filter(
+    (node) => !isConfirmedSubtitleNode(node),
+  ).length;
 }
 
 export function buildObservedSubtitlePreview(
@@ -418,6 +440,8 @@ export function buildObservedSubtitlePreview(
     .trim();
 }
 
-export function hasStableObservedSubtitleRows(rows: ObservedSubtitleRow[]): boolean {
+export function hasStableObservedSubtitleRows(
+  rows: ObservedSubtitleRow[],
+): boolean {
   return rows.some((row) => !row.unstableKey);
 }

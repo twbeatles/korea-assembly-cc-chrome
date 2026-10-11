@@ -36,7 +36,9 @@ import {
 
 interface HistoryDetailDeps {
   selectedSession: SessionRecord | null;
-  setSelectedSession: React.Dispatch<React.SetStateAction<SessionRecord | null>>;
+  setSelectedSession: React.Dispatch<
+    React.SetStateAction<SessionRecord | null>
+  >;
   selectedLineageSummary: SessionLineageSummary | null;
   requestRefresh: (
     messageOnSuccess?: string,
@@ -79,9 +81,8 @@ export function useHistoryDetail({
   const [txtExportSpeakerEnabled, setTxtExportSpeakerEnabled] = useState(
     DEFAULT_EXTENSION_SETTINGS.txtExportSpeakerEnabled,
   );
-  const [panelSpeakerHighlightEnabled, setPanelSpeakerHighlightEnabled] = useState(
-    DEFAULT_EXTENSION_SETTINGS.panelSpeakerHighlightEnabled,
-  );
+  const [panelSpeakerHighlightEnabled, setPanelSpeakerHighlightEnabled] =
+    useState(DEFAULT_EXTENSION_SETTINGS.panelSpeakerHighlightEnabled);
   const [liveCaptureSessionId, setLiveCaptureSessionId] = useState("");
 
   const selectedLineageId =
@@ -101,11 +102,15 @@ export function useHistoryDetail({
   const hasLineageSegments = availableLineageSessions.length > 1;
   const lineageAggregateSession = useMemo(
     () =>
-      hasLineageSegments ? mergeSessionSegments(availableLineageSessions) : null,
+      hasLineageSegments
+        ? mergeSessionSegments(availableLineageSessions)
+        : null,
     [availableLineageSessions, hasLineageSegments],
   );
   const displaySession =
-    lineageViewEnabled && lineageAggregateSession ? lineageAggregateSession : selectedSession;
+    lineageViewEnabled && lineageAggregateSession
+      ? lineageAggregateSession
+      : selectedSession;
   const displayExportEstimateBytes = useMemo(
     () =>
       displaySession
@@ -117,27 +122,30 @@ export function useHistoryDetail({
         : 0,
     [displaySession, txtExportTimestampsEnabled, txtExportSpeakerEnabled],
   );
-  const hasUnsavedNote =
-    selectedSession
-      ? noteDraft !== (selectedLineageSummary?.note ?? selectedSession.note)
-      : noteDraft.trim().length > 0;
+  const hasUnsavedNote = selectedSession
+    ? noteDraft !== (selectedLineageSummary?.note ?? selectedSession.note)
+    : noteDraft.trim().length > 0;
   const hasUnsavedMetadata = selectedSession
     ? tagDraft !== formatTagInput(selectedSession.tags) ||
       categoryDraft !== (selectedSession.category ?? "") ||
       speakerPrimaryDraft !== (selectedSession.speakerLabels?.primary ?? "") ||
-      speakerSecondaryDraft !== (selectedSession.speakerLabels?.secondary ?? "") ||
+      speakerSecondaryDraft !==
+        (selectedSession.speakerLabels?.secondary ?? "") ||
       speakerUnknownDraft !== (selectedSession.speakerLabels?.unknown ?? "")
     : false;
   const hasUnsavedSessionDraft = hasUnsavedNote || hasUnsavedMetadata;
   const captureInProgress =
     selectedSession?.status === "running" ||
     Boolean(selectedSession && liveCaptureSessionId === selectedSession.id);
-  const showingLineageView = lineageViewEnabled && hasLineageSegments && !!lineageAggregateSession;
+  const showingLineageView =
+    lineageViewEnabled && hasLineageSegments && !!lineageAggregateSession;
   const shouldOfferSplitExport =
-    showingLineageView && displayExportEstimateBytes > LARGE_LINEAGE_EXPORT_WARNING_BYTES;
+    showingLineageView &&
+    displayExportEstimateBytes > LARGE_LINEAGE_EXPORT_WARNING_BYTES;
   const selectedEstimatedBytes = displayExportEstimateBytes;
   const shouldShowSelectedSegmentLabel =
-    !!selectedSession && (hasLineageSegments || isSegmentedSessionRecord(selectedSession));
+    !!selectedSession &&
+    (hasLineageSegments || isSegmentedSessionRecord(selectedSession));
 
   const discardUnsavedNoteDraft = (): void => {
     setNoteDraft(selectedLineageSummary?.note ?? selectedSession?.note ?? "");
@@ -206,7 +214,9 @@ export function useHistoryDetail({
 
     setLineageSessions([selectedSession]);
     setLineageLoading(true);
-    void listSessionLineageSegments(resolveSessionLineageId(selectedSession.id, selectedSession.lineageId))
+    void listSessionLineageSegments(
+      resolveSessionLineageId(selectedSession.id, selectedSession.lineageId),
+    )
       .then((sessions) => {
         if (!active) {
           return;
@@ -215,14 +225,17 @@ export function useHistoryDetail({
         const nextSessions = sessions.length ? sessions : [selectedSession];
         setLineageSessions(nextSessions);
         const hydratedSelectedSession =
-          nextSessions.find((session) => session.id === selectedSession.id) ?? null;
+          nextSessions.find((session) => session.id === selectedSession.id) ??
+          null;
         if (
           selectedSession.entries.length === 0 &&
           hydratedSelectedSession &&
           hydratedSelectedSession.entries.length > 0
         ) {
           setSelectedSession((current) =>
-            current?.id === hydratedSelectedSession.id ? hydratedSelectedSession : current,
+            current?.id === hydratedSelectedSession.id
+              ? hydratedSelectedSession
+              : current,
           );
         }
       })
@@ -266,7 +279,9 @@ export function useHistoryDetail({
         setFilenamePattern(nextSettings.filenamePattern);
         setTxtExportTimestampsEnabled(nextSettings.txtExportTimestampsEnabled);
         setTxtExportSpeakerEnabled(nextSettings.txtExportSpeakerEnabled);
-        setPanelSpeakerHighlightEnabled(nextSettings.panelSpeakerHighlightEnabled);
+        setPanelSpeakerHighlightEnabled(
+          nextSettings.panelSpeakerHighlightEnabled,
+        );
       })
       .catch(() => {
         // Keep defaults if settings cannot be loaded from a standalone history page.
@@ -280,7 +295,11 @@ export function useHistoryDetail({
 
     const applyOwnershipSnapshot = (value: unknown): void => {
       const snapshot = value as CaptureOwnershipSnapshot | null;
-      if (snapshot && typeof snapshot.sessionId === "string" && snapshot.sessionId) {
+      if (
+        snapshot &&
+        typeof snapshot.sessionId === "string" &&
+        snapshot.sessionId
+      ) {
         setLiveCaptureSessionId(
           isLiveCaptureOwnershipForSession(snapshot, snapshot.sessionId)
             ? snapshot.sessionId
@@ -321,7 +340,9 @@ export function useHistoryDetail({
         setFilenamePattern(nextSettings.filenamePattern);
         setTxtExportTimestampsEnabled(nextSettings.txtExportTimestampsEnabled);
         setTxtExportSpeakerEnabled(nextSettings.txtExportSpeakerEnabled);
-        setPanelSpeakerHighlightEnabled(nextSettings.panelSpeakerHighlightEnabled);
+        setPanelSpeakerHighlightEnabled(
+          nextSettings.panelSpeakerHighlightEnabled,
+        );
       }
 
       if (changes[SESSION_LIBRARY_REVISION_STORAGE_KEY]) {

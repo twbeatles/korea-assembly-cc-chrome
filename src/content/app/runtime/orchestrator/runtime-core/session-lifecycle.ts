@@ -1,4 +1,3 @@
-
 import { finalizeSession } from "../../../../../core/subtitle-pipeline";
 import { resetLiveCaptureLedgerForNewSegment } from "../../../../../core/live-capture";
 
@@ -7,31 +6,74 @@ import { OBSERVER_STOP_EVENT } from "../../../../../shared/constants";
 import { applyPersistSuccess } from "../../../../autosave";
 import { confirmDestructiveAction } from "../../../../../shared/accessible-confirm";
 
-import { DUPLICATE_START_CAPTURE_NOTICE, shouldIgnoreStartCapture, shouldRunDeferredCaptureStart } from "../../../../runtime/capture-start";
+import {
+  DUPLICATE_START_CAPTURE_NOTICE,
+  shouldIgnoreStartCapture,
+  shouldRunDeferredCaptureStart,
+} from "../../../../runtime/capture-start";
 
-import { clearAutoStartCooldown, hasAutoStartCooldown, rememberAutoStartCooldown } from "../../../../runtime/autostart-cooldown";
+import {
+  clearAutoStartCooldown,
+  hasAutoStartCooldown,
+  rememberAutoStartCooldown,
+} from "../../../../runtime/autostart-cooldown";
 
-import { rememberFailedStoppedSession, resolveFailedStoppedSessionGuard } from "../../../../failed-stopped-session";
+import {
+  rememberFailedStoppedSession,
+  resolveFailedStoppedSessionGuard,
+} from "../../../../failed-stopped-session";
 
 import { createResetSessionState } from "../../../../session-lifecycle";
 
-import { buildRolledOverRunningSessionState, buildSegmentRolloverNotice } from "../../../../runtime/segment-rollover";
+import {
+  buildRolledOverRunningSessionState,
+  buildSegmentRolloverNotice,
+} from "../../../../runtime/segment-rollover";
 
 import { type RuntimeSessionSegmentationReason } from "../../../../runtime/segmentation-policy";
 
 import { isTopFrame } from "../../constants";
 
-import { isCapturePage, resolveDefaultPanelNotice, deriveCommitteeName } from "../helpers";
+import {
+  isCapturePage,
+  resolveDefaultPanelNotice,
+  deriveCommitteeName,
+} from "../helpers";
 import type { RuntimeCoreContext } from "./context";
-import { clearLocalPolling, clearPendingReset, clearRunningPersistTimer, clearTopFallbackTimer } from "./timers";
+import {
+  clearLocalPolling,
+  clearPendingReset,
+  clearRunningPersistTimer,
+  clearTopFallbackTimer,
+} from "./timers";
 import { logDebug, reportRuntimeError, setPanelNotice } from "./notices";
-import { getLivePreviewText, setPersistabilityState, syncUserInterfaces } from "./panel-status";
+import {
+  getLivePreviewText,
+  setPersistabilityState,
+  syncUserInterfaces,
+} from "./panel-status";
 import { buildPreparedSessionRecord } from "./snapshots";
-import { claimCaptureOwnershipForStart, releaseCaptureOwnershipForStop } from "./ownership";
-import { deletePersistedSession, persistSessionRecord, persistStoppedSession, scheduleRunningPersist } from "./persistence";
+import {
+  claimCaptureOwnershipForStart,
+  releaseCaptureOwnershipForStop,
+} from "./ownership";
+import {
+  deletePersistedSession,
+  persistSessionRecord,
+  persistStoppedSession,
+  scheduleRunningPersist,
+} from "./persistence";
 import { clearFallbackCommitCandidate } from "./fallback-commit";
-import { clearStructuredRuntimeState, flushQueuedSegmentRolloverEvent, handleTopFrameEvent } from "./capture-events";
-import { dispatchObserverConfig, ensureSubtitleLayerActive, injectObserverScript } from "./observer-bridge";
+import {
+  clearStructuredRuntimeState,
+  flushQueuedSegmentRolloverEvent,
+  handleTopFrameEvent,
+} from "./capture-events";
+import {
+  dispatchObserverConfig,
+  ensureSubtitleLayerActive,
+  injectObserverScript,
+} from "./observer-bridge";
 import { startLocalPolling, startTopFrameFallback } from "./polling";
 
 /** 수집 시작·중지·리셋·세그먼트 전환과 URL 재조정 (단일 책임: 세션 수명주기). */
@@ -43,7 +85,10 @@ export async function confirmSessionClear(): Promise<boolean> {
   });
 }
 
-export async function confirmFailedStoppedSessionDiscard(ctx: RuntimeCoreContext, message: string): Promise<boolean> {
+export async function confirmFailedStoppedSessionDiscard(
+  ctx: RuntimeCoreContext,
+  message: string,
+): Promise<boolean> {
   return confirmDestructiveAction(message, {
     title: "저장 실패 세션",
     confirmLabel: "버리고 계속",
@@ -51,14 +96,16 @@ export async function confirmFailedStoppedSessionDiscard(ctx: RuntimeCoreContext
   });
 }
 
-export async function ensureFailedStoppedSessionResolved(ctx: RuntimeCoreContext, 
+export async function ensureFailedStoppedSessionResolved(
+  ctx: RuntimeCoreContext,
   actionLabel: string,
 ): Promise<boolean> {
   const resolution = await resolveFailedStoppedSessionGuard({
     actionLabel,
     guard: ctx.failedStoppedSessionGuard,
     persistRecord: (record) => persistSessionRecord(ctx, record),
-    confirmDiscard: (message) => confirmFailedStoppedSessionDiscard(ctx, message),
+    confirmDiscard: (message) =>
+      confirmFailedStoppedSessionDiscard(ctx, message),
   });
 
   ctx.failedStoppedSessionGuard = resolution.guard;
@@ -67,7 +114,10 @@ export async function ensureFailedStoppedSessionResolved(ctx: RuntimeCoreContext
     resolution.persistedRecord &&
     ctx.state.sessionId === resolution.persistedRecord.id
   ) {
-    ctx.state = applyPersistSuccess(ctx.state, resolution.persistedRecord.updatedAt);
+    ctx.state = applyPersistSuccess(
+      ctx.state,
+      resolution.persistedRecord.updatedAt,
+    );
   }
 
   if (resolution.notice) {
@@ -78,7 +128,9 @@ export async function ensureFailedStoppedSessionResolved(ctx: RuntimeCoreContext
   return resolution.proceed;
 }
 
-export async function ensureCurrentRunningSessionPreservedBeforeReset(ctx: RuntimeCoreContext): Promise<boolean> {
+export async function ensureCurrentRunningSessionPreservedBeforeReset(
+  ctx: RuntimeCoreContext,
+): Promise<boolean> {
   if (!isTopFrame || ctx.state.status !== "running") {
     return true;
   }
@@ -95,7 +147,8 @@ export async function ensureCurrentRunningSessionPreservedBeforeReset(ctx: Runti
         stoppedRecord,
         error,
       );
-      reportRuntimeError(ctx, 
+      reportRuntimeError(
+        ctx,
         "세션 초기화 전에 이전 실행 세션 저장에 실패했습니다.",
         error,
       );
@@ -107,7 +160,8 @@ export async function ensureCurrentRunningSessionPreservedBeforeReset(ctx: Runti
     await deletePersistedSession(ctx, sessionId);
     return true;
   } catch (error) {
-    reportRuntimeError(ctx, 
+    reportRuntimeError(
+      ctx,
       "세션 초기화 전에 이전 실행 세션 정리에 실패했습니다.",
       error,
     );
@@ -136,7 +190,9 @@ export function resetRuntimeState(ctx: RuntimeCoreContext): void {
   setPanelNotice(ctx, resolveDefaultPanelNotice());
 }
 
-export function stopCapturePipelineForCurrentPage(ctx: RuntimeCoreContext): void {
+export function stopCapturePipelineForCurrentPage(
+  ctx: RuntimeCoreContext,
+): void {
   clearLocalPolling(ctx);
   clearTopFallbackTimer(ctx);
   clearFallbackCommitCandidate(ctx);
@@ -148,7 +204,9 @@ export function stopCapturePipelineForCurrentPage(ctx: RuntimeCoreContext): void
   }
 }
 
-export async function startCapturePipelineForCurrentPage(ctx: RuntimeCoreContext): Promise<void> {
+export async function startCapturePipelineForCurrentPage(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   if (ctx.extensionContextInvalidated || !isCapturePage()) {
     stopCapturePipelineForCurrentPage(ctx);
     return;
@@ -158,7 +216,8 @@ export async function startCapturePipelineForCurrentPage(ctx: RuntimeCoreContext
     try {
       await injectObserverScript(ctx);
     } catch (error) {
-      reportRuntimeError(ctx, 
+      reportRuntimeError(
+        ctx,
         "MutationObserver 주입에 실패해 polling fallback으로 계속 진행합니다.",
         error,
       );
@@ -199,14 +258,13 @@ export async function startCapturePipelineForCurrentPage(ctx: RuntimeCoreContext
         }
         return startCaptureUnlocked(ctx);
       })
-      .catch(
-      (error: unknown) => {
-        reportRuntimeError(ctx, 
+      .catch((error: unknown) => {
+        reportRuntimeError(
+          ctx,
           "자동 시작 설정에 따라 자막 수집을 시도했으나 실패했습니다.",
           error,
         );
-      },
-    );
+      });
   }
 }
 
@@ -215,7 +273,10 @@ export async function startCapturePipelineForCurrentPage(ctx: RuntimeCoreContext
  * 성공 시에만 ctx.urlReconcileController 가 lastKnownUrl 을 커밋한다.
  * stop/start 는 unlocked 경로를 사용해 lifecycle lock 중첩 deadlock 을 피한다.
  */
-export async function performUrlReconcile(ctx: RuntimeCoreContext, currentUrl: string): Promise<void> {
+export async function performUrlReconcile(
+  ctx: RuntimeCoreContext,
+  currentUrl: string,
+): Promise<void> {
   const previousUrl = ctx.urlReconcileController.getLastKnownUrl();
   const urlChanged = currentUrl !== previousUrl;
   if (!urlChanged && ctx.capturePipelineStarted === isCapturePage()) {
@@ -226,7 +287,8 @@ export async function performUrlReconcile(ctx: RuntimeCoreContext, currentUrl: s
     try {
       await stopCaptureUnlocked(ctx);
     } catch (error) {
-      reportRuntimeError(ctx, 
+      reportRuntimeError(
+        ctx,
         "페이지 이동 전 실행 중인 세션 저장에 실패했습니다.",
         error,
       );
@@ -254,7 +316,9 @@ export async function performUrlReconcile(ctx: RuntimeCoreContext, currentUrl: s
   await startCapturePipelineForCurrentPage(ctx);
 }
 
-export async function clearSessionAndResetUnlocked(ctx: RuntimeCoreContext): Promise<void> {
+export async function clearSessionAndResetUnlocked(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   if (!(await ensureFailedStoppedSessionResolved(ctx, "clear session"))) {
     return;
   }
@@ -268,13 +332,20 @@ export async function clearSessionAndResetUnlocked(ctx: RuntimeCoreContext): Pro
   syncUserInterfaces(ctx);
 }
 
-export async function clearSessionAndReset(ctx: RuntimeCoreContext): Promise<void> {
-  return ctx.captureLifecycleLock.run("clear", () => clearSessionAndResetUnlocked(ctx));
+export async function clearSessionAndReset(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
+  return ctx.captureLifecycleLock.run("clear", () =>
+    clearSessionAndResetUnlocked(ctx),
+  );
 }
 
-export async function startCaptureUnlocked(ctx: RuntimeCoreContext): Promise<void> {
+export async function startCaptureUnlocked(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   if (!isCapturePage()) {
-    setPanelNotice(ctx, 
+    setPanelNotice(
+      ctx,
       "국회 의사중계 플레이어 페이지에서만 자막 수집을 시작할 수 있습니다.",
     );
     syncUserInterfaces(ctx);
@@ -312,12 +383,17 @@ export async function startCaptureUnlocked(ctx: RuntimeCoreContext): Promise<voi
 
   const subtitleLayerReady = await ensureSubtitleLayerActive(ctx).catch(
     (error: unknown) => {
-      reportRuntimeError(ctx, "AI 자막 레이어를 자동으로 열지 못했습니다.", error);
+      reportRuntimeError(
+        ctx,
+        "AI 자막 레이어를 자동으로 열지 못했습니다.",
+        error,
+      );
       return false;
     },
   );
   if (!subtitleLayerReady) {
-    setPanelNotice(ctx, 
+    setPanelNotice(
+      ctx,
       multiTabCaptureWarning
         ? "자막 수집을 시작했습니다. 다른 탭 수집 가능 — 페이지에서 'AI 자막보기'를 한 번 눌러주세요."
         : "자막 수집을 시작했습니다. 페이지에서 'AI 자막보기'를 한 번 눌러주세요.",
@@ -331,7 +407,9 @@ export async function startCapture(ctx: RuntimeCoreContext): Promise<void> {
   return ctx.captureLifecycleLock.run("start", () => startCaptureUnlocked(ctx));
 }
 
-export async function stopCaptureUnlocked(ctx: RuntimeCoreContext): Promise<void> {
+export async function stopCaptureUnlocked(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   ctx.segmentRolloverToken += 1;
   ctx.segmentRolloverInFlight = false;
   if (ctx.queuedSegmentRolloverEvents.length > 0) {
@@ -358,12 +436,17 @@ export async function stopCapture(ctx: RuntimeCoreContext): Promise<void> {
   return ctx.captureLifecycleLock.run("stop", () => stopCaptureUnlocked(ctx));
 }
 
-export async function rollOverRunningSessionSegment(ctx: RuntimeCoreContext, 
+export async function rollOverRunningSessionSegment(
+  ctx: RuntimeCoreContext,
   reason: RuntimeSessionSegmentationReason,
   now = Date.now(),
   token = ctx.segmentRolloverToken,
 ): Promise<void> {
-  if (!isTopFrame || ctx.state.status !== "running" || !ctx.state.entries.length) {
+  if (
+    !isTopFrame ||
+    ctx.state.status !== "running" ||
+    !ctx.state.entries.length
+  ) {
     if (token === ctx.segmentRolloverToken) {
       ctx.segmentRolloverInFlight = false;
       flushQueuedSegmentRolloverEvent(ctx);
@@ -398,10 +481,14 @@ export async function rollOverRunningSessionSegment(ctx: RuntimeCoreContext,
       committeeName: deriveCommitteeName(document.title),
       nowIso,
     });
-    setPersistabilityState(ctx, 
+    setPersistabilityState(
+      ctx,
       getLivePreviewText(ctx).trim() ? "preview_only" : "idle",
     );
-    setPanelNotice(ctx, buildSegmentRolloverNotice(ctx.state.segmentNumber, reason));
+    setPanelNotice(
+      ctx,
+      buildSegmentRolloverNotice(ctx.state.segmentNumber, reason),
+    );
     syncUserInterfaces(ctx);
   } catch (error) {
     if (token === ctx.segmentRolloverToken) {

@@ -1,10 +1,11 @@
-
-
 import { OBSERVER_STOP_EVENT } from "../../../../../shared/constants";
 
 import { runInvalidationTimerCleanup } from "../../../../runtime/invalidation-shutdown";
 
-import { invalidateExtensionContext, markExtensionContextInvalidated } from "../../../../../shared/extension-context";
+import {
+  invalidateExtensionContext,
+  markExtensionContextInvalidated,
+} from "../../../../../shared/extension-context";
 
 import { postToPopupPort } from "../../../../popup-bridge";
 
@@ -12,12 +13,24 @@ import { INVALIDATED_CONTEXT_NOTICE, isTopFrame } from "../../constants";
 
 import { resolveDefaultPanelNotice } from "../helpers";
 import type { RuntimeCoreContext } from "./context";
-import { clearCaptureOwnershipHeartbeat, clearFallbackCommitTimer, clearFrameForwardNonceRefresh, clearLocalPolling, clearPendingReset, clearRunningPersistTimer, clearTopFallbackTimer, clearUrlChangePolling } from "./timers";
+import {
+  clearCaptureOwnershipHeartbeat,
+  clearFallbackCommitTimer,
+  clearFrameForwardNonceRefresh,
+  clearLocalPolling,
+  clearPendingReset,
+  clearRunningPersistTimer,
+  clearTopFallbackTimer,
+  clearUrlChangePolling,
+} from "./timers";
 import { updateInPagePanel } from "./panel-status";
 import { releaseCaptureOwnershipForStop } from "./ownership";
 
 /** 패널 알림·디버그·런타임 오류와 무효 컨텍스트 종료 (단일 책임: 사용자 통지). */
-export function setPanelNotice(ctx: RuntimeCoreContext, message: string): boolean {
+export function setPanelNotice(
+  ctx: RuntimeCoreContext,
+  message: string,
+): boolean {
   if (ctx.panelNotice === message) {
     return false;
   }
@@ -25,18 +38,29 @@ export function setPanelNotice(ctx: RuntimeCoreContext, message: string): boolea
   return true;
 }
 
-export function shouldShowPanelNotice(ctx: RuntimeCoreContext, message: string): boolean {
+export function shouldShowPanelNotice(
+  ctx: RuntimeCoreContext,
+  message: string,
+): boolean {
   return Boolean(message.trim()) && message !== resolveDefaultPanelNotice();
 }
 
-export function logDebug(ctx: RuntimeCoreContext, message: string, payload?: unknown): void {
+export function logDebug(
+  ctx: RuntimeCoreContext,
+  message: string,
+  payload?: unknown,
+): void {
   if (!ctx.settings.debugLogging) {
     return;
   }
   console.debug("[assembly-subtitle]", message, payload);
 }
 
-export function reportRuntimeError(ctx: RuntimeCoreContext, message: string, error?: unknown): void {
+export function reportRuntimeError(
+  ctx: RuntimeCoreContext,
+  message: string,
+  error?: unknown,
+): void {
   if (markExtensionContextInvalidated(error)) {
     shutdownForInvalidatedContext(ctx);
     message = INVALIDATED_CONTEXT_NOTICE;

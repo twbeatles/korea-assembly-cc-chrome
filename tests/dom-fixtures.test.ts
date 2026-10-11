@@ -31,4 +31,3 @@ describe("DOM subtitle fixtures", () => {
     });
   });
 });
-

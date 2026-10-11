@@ -26,7 +26,9 @@ export function compactSubtitleText(text: string): string {
     return "";
   }
 
-  return stripZeroWidth(String(text ?? "")).replace(MULTI_SPACE_RE, "").trim();
+  return stripZeroWidth(String(text ?? ""))
+    .replace(MULTI_SPACE_RE, "")
+    .trim();
 }
 
 export function normalizeRawText(raw: string): string {
@@ -68,13 +70,13 @@ export function joinStreamText(base: string, addition: string): string {
     "]",
     "}",
     "%",
-    "\"",
+    '"',
     "'",
     "”",
     "’",
     "…",
   ]);
-  const noSpaceAfter = new Set(["(", "[", "{", "<", "\"", "'", "“", "‘"]);
+  const noSpaceAfter = new Set(["(", "[", "{", "<", '"', "'", "“", "‘"]);
 
   if (noSpaceBefore.has(right[0]) || noSpaceAfter.has(left[left.length - 1])) {
     return `${left}${right}`;

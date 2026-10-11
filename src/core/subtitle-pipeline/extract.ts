@@ -4,7 +4,11 @@ import {
   normalizeRawText,
   stripZeroWidth,
 } from "../text-normalizer";
-import { LARGE_APPEND_MIN, MIN_COMPACT_ANCHOR, type IncrementalExtractResult } from "./types";
+import {
+  LARGE_APPEND_MIN,
+  MIN_COMPACT_ANCHOR,
+  type IncrementalExtractResult,
+} from "./types";
 
 export function extractIncrementalTextWithRecentHistory(
   rawText: string,
@@ -26,10 +30,17 @@ export function extractIncrementalTextWithRecentHistory(
     }
   }
 
-  return extractIncrementalTextFromHistory(rawText, fullHistory, recentDuplicateMinLength);
+  return extractIncrementalTextFromHistory(
+    rawText,
+    fullHistory,
+    recentDuplicateMinLength,
+  );
 }
 
-export function sliceFromCompactIndex(text: string, compactIndex: number): string {
+export function sliceFromCompactIndex(
+  text: string,
+  compactIndex: number,
+): string {
   const raw = stripZeroWidth(String(text || ""));
   if (compactIndex <= 0) {
     return normalizeRawText(raw);
@@ -139,7 +150,8 @@ export function extractIncrementalTextFromHistory(
         duplicate: !text,
         ambiguous:
           firstPos !== lastPos &&
-          predictedAppend > Math.max(LARGE_APPEND_MIN, Math.floor(rawCompact.length / 3)),
+          predictedAppend >
+            Math.max(LARGE_APPEND_MIN, Math.floor(rawCompact.length / 3)),
         reason: text ? "suffix" : "suffix_duplicate",
       };
     }

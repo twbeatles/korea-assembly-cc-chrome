@@ -1,4 +1,8 @@
-import type { ExportFormat, SessionRecord, SubtitleEntry } from "./subtitle-models";
+import type {
+  ExportFormat,
+  SessionRecord,
+  SubtitleEntry,
+} from "./subtitle-models";
 import { sanitizeFilenameBasename } from "../shared/filename-pattern";
 
 function pad(value: number, length = 2): string {
@@ -30,7 +34,10 @@ function formatDurationMs(value: number, separator: "," | "."): string {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}${separator}${pad(milliseconds, 3)}`;
 }
 
-function formatCueTime(value: string | number | Date, separator: "," | "."): string {
+function formatCueTime(
+  value: string | number | Date,
+  separator: "," | ".",
+): string {
   const date = toDate(value);
   return `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}${separator}${pad(date.getMilliseconds(), 3)}`;
 }
@@ -51,20 +58,31 @@ export function formatVttDuration(valueMs: number): string {
   return formatDurationMs(valueMs, ".");
 }
 
-export function resolveEntryRange(entry: SubtitleEntry, fallbackDurationMs = 1000): [Date, Date] {
+export function resolveEntryRange(
+  entry: SubtitleEntry,
+  fallbackDurationMs = 1000,
+): [Date, Date] {
   const start = toDate(entry.startTime || entry.timestamp);
-  const end = entry.endTime ? toDate(entry.endTime) : new Date(start.getTime() + fallbackDurationMs);
+  const end = entry.endTime
+    ? toDate(entry.endTime)
+    : new Date(start.getTime() + fallbackDurationMs);
   if (end.getTime() <= start.getTime()) {
     return [start, new Date(start.getTime() + fallbackDurationMs)];
   }
   return [start, end];
 }
 
-export function differenceSeconds(start: string | number | Date, end: string | number | Date): number {
+export function differenceSeconds(
+  start: string | number | Date,
+  end: string | number | Date,
+): number {
   return Math.max(0, (toDate(end).getTime() - toDate(start).getTime()) / 1000);
 }
 
-export function bucketBySeconds(value: string | number | Date, bucketSeconds: number): number {
+export function bucketBySeconds(
+  value: string | number | Date,
+  bucketSeconds: number,
+): number {
   return Math.floor(toDate(value).getTime() / 1000 / bucketSeconds);
 }
 
@@ -86,10 +104,10 @@ export function buildExportFilename(
   );
   const basename = sanitizeFilenameBasename(
     (filenamePattern || "{date}_{committee}_{time}")
-    .replaceAll("{date}", date)
-    .replaceAll("{time}", time)
-    .replaceAll("{committee}", committee)
-    .trim(),
+      .replaceAll("{date}", date)
+      .replaceAll("{time}", time)
+      .replaceAll("{committee}", committee)
+      .trim(),
   );
 
   return `${basename || `${date}_${committee}_${time}`}.${format}`;

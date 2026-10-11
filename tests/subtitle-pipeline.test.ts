@@ -123,11 +123,7 @@ describe("subtitle pipeline", () => {
     let state = createEmptySessionState("http://test.com", "Test");
     const now = Date.parse("2026-03-11T08:15:00.000Z");
 
-    state = applyPreview(
-      state,
-      "위원장 감사합니다",
-      now,
-    ).state;
+    state = applyPreview(state, "위원장 감사합니다", now).state;
 
     state = applyPreview(
       state,
@@ -174,14 +170,9 @@ describe("subtitle pipeline", () => {
     const state = createEmptySessionState("http://test.com", "Test");
     const longText = "가".repeat(1500);
 
-    const result = applyPreview(
-      state,
-      longText,
-      now,
-      {
-        maxBufferLength: 1000,
-      },
-    );
+    const result = applyPreview(state, longText, now, {
+      maxBufferLength: 1000,
+    });
 
     expect(result.state.entries).toHaveLength(1);
     expect(result.state.confirmedCompact.length).toBe(1000);
@@ -195,7 +186,11 @@ describe("subtitle pipeline", () => {
     expect(blocked.duplicate).toBe(true);
     expect(blocked.reason).toBe("contained_in_history");
 
-    const allowed = extractIncrementalTextFromHistory(containedRaw, history, 32);
+    const allowed = extractIncrementalTextFromHistory(
+      containedRaw,
+      history,
+      32,
+    );
     expect(allowed.reason).not.toBe("contained_in_history");
   });
 
@@ -203,12 +198,10 @@ describe("subtitle pipeline", () => {
     let state = createEmptySessionState("http://test.com", "Test");
     const now = Date.parse("2026-05-07T08:00:00.000Z");
 
-    state = applyPreview(
-      state,
-      "가나다라마바사아자차카타파하",
-      now,
-      { recentDuplicateMinLength: 8, noiseFilterEnabled: false },
-    ).state;
+    state = applyPreview(state, "가나다라마바사아자차카타파하", now, {
+      recentDuplicateMinLength: 8,
+      noiseFilterEnabled: false,
+    }).state;
 
     const blockedAtDefault = applyPreview(
       state,
@@ -218,7 +211,10 @@ describe("subtitle pipeline", () => {
     );
     expect(blockedAtDefault.reason).toBe("preview_contained_in_history");
 
-    let stateForLargeThreshold = createEmptySessionState("http://test.com", "Test");
+    let stateForLargeThreshold = createEmptySessionState(
+      "http://test.com",
+      "Test",
+    );
     stateForLargeThreshold = applyPreview(
       stateForLargeThreshold,
       "가나다라마바사아자차카타파하",
@@ -232,7 +228,9 @@ describe("subtitle pipeline", () => {
       now + 1000,
       { recentDuplicateMinLength: 32, noiseFilterEnabled: false },
     );
-    expect(allowedAtLargeThreshold.reason).not.toBe("preview_contained_in_history");
+    expect(allowedAtLargeThreshold.reason).not.toBe(
+      "preview_contained_in_history",
+    );
   });
 
   it("does not materialize preview-only text when preparing a save/export snapshot", () => {
@@ -299,11 +297,17 @@ describe("subtitle pipeline", () => {
       speakerColor: "rgb(35, 124, 147)",
     }).state;
 
-    const next = applyPreview(state, "발언자 A 문장 이어서 B", base + 500, undefined, {
-      sourceCaptureMode: "fallback",
-      speakerChannel: "secondary",
-      speakerColor: "rgb(30, 30, 30)",
-    });
+    const next = applyPreview(
+      state,
+      "발언자 A 문장 이어서 B",
+      base + 500,
+      undefined,
+      {
+        sourceCaptureMode: "fallback",
+        speakerChannel: "secondary",
+        speakerColor: "rgb(30, 30, 30)",
+      },
+    );
 
     expect(next.state.entries).toHaveLength(2);
     expect(next.state.entries[0].speakerChannel).toBe("primary");
@@ -320,9 +324,15 @@ describe("subtitle pipeline", () => {
       sourceCaptureMode: "fallback",
     }).state;
     // structured merge gap 은 5초, fallback 은 약 2초
-    const afterShortGap = applyPreview(state, "곧이은 폴백", base + 2500, undefined, {
-      sourceCaptureMode: "fallback",
-    });
+    const afterShortGap = applyPreview(
+      state,
+      "곧이은 폴백",
+      base + 2500,
+      undefined,
+      {
+        sourceCaptureMode: "fallback",
+      },
+    );
 
     expect(afterShortGap.state.entries).toHaveLength(2);
     expect(afterShortGap.state.entries[1].text).toBe("곧이은 폴백");
@@ -344,7 +354,8 @@ describe("subtitle pipeline", () => {
       ).state;
     }
 
-    const fullPreview = state.entries.map((entry) => entry.text).join(" ") + " 마지막 추가 문장";
+    const fullPreview =
+      state.entries.map((entry) => entry.text).join(" ") + " 마지막 추가 문장";
     const result = applyPreview(state, fullPreview, base + 22000);
 
     expect(result.state.entries.at(-1)?.text).toBe("마지막 추가 문장");

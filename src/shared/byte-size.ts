@@ -4,7 +4,6 @@ export function getUtf8ByteLength(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 
-
 /** 사람이 읽기 쉬운 크기 표기 (B / KB / MB). */
 export function formatByteSize(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 1024) {

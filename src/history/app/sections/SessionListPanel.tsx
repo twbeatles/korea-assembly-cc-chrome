@@ -128,7 +128,9 @@ export function SessionListPanel(props: SessionListPanelProps) {
               <div className="session-item-heading">
                 <strong>{lineage.committeeName || lineage.title}</strong>
                 {lineage.segmentCount > 1 ? (
-                  <span className="segment-badge">세그먼트 {lineage.segmentCount}개</span>
+                  <span className="segment-badge">
+                    세그먼트 {lineage.segmentCount}개
+                  </span>
                 ) : null}
               </div>
               <span>{formatDate(lineage.startedAt)}</span>

@@ -78,7 +78,9 @@ describe("session write queue", () => {
       };
       vi.stubGlobal("navigator", { locks });
 
-      await expect(enqueueSessionWrite("session_a", async () => "ok")).resolves.toBe("ok");
+      await expect(
+        enqueueSessionWrite("session_a", async () => "ok"),
+      ).resolves.toBe("ok");
       expect(names).toEqual(["assembly-session-write:session_a"]);
     });
   });

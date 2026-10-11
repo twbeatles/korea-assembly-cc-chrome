@@ -1,4 +1,7 @@
-import { isSupportedAssemblySiteUrl, OFFSCREEN_DOCUMENT_PATH } from "../shared/constants";
+import {
+  isSupportedAssemblySiteUrl,
+  OFFSCREEN_DOCUMENT_PATH,
+} from "../shared/constants";
 import { runStartupPersistenceMaintenance } from "./startup-persistence";
 import {
   handleFrameForwardNonceTabRemoved,
@@ -33,7 +36,8 @@ import { queueExitPersistRecord } from "../storage/persist-recovery";
 import { createRandomToken } from "../shared/random-token";
 
 const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
-const OFFSCREEN_JUSTIFICATION = "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
+const OFFSCREEN_JUSTIFICATION =
+  "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
 const frameForwardNonceByTabId = new Map<number, string>();
 const blobDownloadUrls = new Map<number, string>();
 // Tracks Blob download IDs created during the current service worker
@@ -47,7 +51,9 @@ const TOP_FRAME_READY_RETRY_DELAY_MS = 150;
 const OFFSCREEN_BLOB_CHUNK_SIZE = 512 * 1024;
 const DATA_URL_FALLBACK_MAX_BYTES = 2 * 1024 * 1024;
 
-function callbackPromise<T>(executor: (callback: (value: T) => void) => void): Promise<T> {
+function callbackPromise<T>(
+  executor: (callback: (value: T) => void) => void,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     executor((value) => {
       const lastError = chrome.runtime.lastError;
@@ -66,7 +72,9 @@ function supportsAssemblyPage(url?: string): boolean {
 
 async function persistBlobDownloadUrls(): Promise<void> {
   await chrome.storage.local.set({
-    [BLOB_DOWNLOAD_URLS_STORAGE_KEY]: Object.fromEntries(blobDownloadUrls.entries()),
+    [BLOB_DOWNLOAD_URLS_STORAGE_KEY]: Object.fromEntries(
+      blobDownloadUrls.entries(),
+    ),
   });
 }
 
@@ -78,12 +86,14 @@ async function restoreBlobDownloadUrls(): Promise<void> {
     return;
   }
 
-  Object.entries(snapshot as Record<string, unknown>).forEach(([key, value]) => {
-    const downloadId = Number(key);
-    if (Number.isInteger(downloadId) && typeof value === "string" && value) {
-      blobDownloadUrls.set(downloadId, value);
-    }
-  });
+  Object.entries(snapshot as Record<string, unknown>).forEach(
+    ([key, value]) => {
+      const downloadId = Number(key);
+      if (Number.isInteger(downloadId) && typeof value === "string" && value) {
+        blobDownloadUrls.set(downloadId, value);
+      }
+    },
+  );
 }
 
 async function cleanupPersistedBlobDownloadUrls(): Promise<void> {
@@ -94,8 +104,8 @@ async function cleanupPersistedBlobDownloadUrls(): Promise<void> {
     }
 
     for (const [downloadId, blobUrl] of [...blobDownloadUrls.entries()]) {
-      const items = await callbackPromise<chrome.downloads.DownloadItem[]>((callback) =>
-        chrome.downloads.search({ id: downloadId }, callback),
+      const items = await callbackPromise<chrome.downloads.DownloadItem[]>(
+        (callback) => chrome.downloads.search({ id: downloadId }, callback),
       );
       const state = items[0]?.state;
       if (!state || state === "complete" || state === "interrupted") {
@@ -112,7 +122,10 @@ async function cleanupPersistedBlobDownloadUrls(): Promise<void> {
     }
     await persistBlobDownloadUrls();
   } catch (error) {
-    console.warn("[service-worker] Failed to restore persisted Blob URLs", error);
+    console.warn(
+      "[service-worker] Failed to restore persisted Blob URLs",
+      error,
+    );
   }
 }
 
@@ -124,7 +137,11 @@ function bytesToBase64(bytes: Uint8Array): string {
   }
 
   const chunks: string[] = [];
-  for (let offset = 0; offset < bytes.length; offset += BASE64_BINARY_CHUNK_SIZE) {
+  for (
+    let offset = 0;
+    offset < bytes.length;
+    offset += BASE64_BINARY_CHUNK_SIZE
+  ) {
     const slice = bytes.subarray(offset, offset + BASE64_BINARY_CHUNK_SIZE);
     chunks.push(String.fromCharCode(...slice));
   }
@@ -162,7 +179,9 @@ function isOffscreenDocumentAlreadyExistsError(error: unknown): boolean {
   );
 }
 
-async function getOrCreateStoredFrameForwardNonce(tabId: number): Promise<string> {
+async function getOrCreateStoredFrameForwardNonce(
+  tabId: number,
+): Promise<string> {
   return getOrCreatePersistedFrameForwardNonce({
     tabId,
     cache: frameForwardNonceByTabId,
@@ -217,7 +236,8 @@ async function waitForTopFrameReady(
 }
 
 async function injectConfiguredContentScripts(tabId: number): Promise<void> {
-  const manifestContentScripts = chrome.runtime.getManifest().content_scripts ?? [];
+  const manifestContentScripts =
+    chrome.runtime.getManifest().content_scripts ?? [];
   for (const script of manifestContentScripts) {
     if (!script.js?.length) {
       continue;
@@ -235,25 +255,37 @@ async function injectConfiguredContentScripts(tabId: number): Promise<void> {
 
 async function openHistoryPage(): Promise<void> {
   await callbackPromise((callback) =>
-    chrome.tabs.create({ url: chrome.runtime.getURL("history.html") }, callback),
+    chrome.tabs.create(
+      { url: chrome.runtime.getURL("history.html") },
+      callback,
+    ),
   );
 }
 
 async function openOptionsPage(): Promise<void> {
-  await callbackPromise<void>((callback) => chrome.runtime.openOptionsPage(callback));
+  await callbackPromise<void>((callback) =>
+    chrome.runtime.openOptionsPage(callback),
+  );
 }
 
 async function openSidePanel(tabId?: number): Promise<void> {
   const runtimeWithSidePanel = chrome as typeof chrome & {
     sidePanel?: {
       open?: (options: { tabId?: number; windowId?: number }) => Promise<void>;
-      setOptions?: (options: { tabId?: number; path?: string; enabled?: boolean }) => Promise<void>;
+      setOptions?: (options: {
+        tabId?: number;
+        path?: string;
+        enabled?: boolean;
+      }) => Promise<void>;
     };
   };
 
   if (!runtimeWithSidePanel.sidePanel?.open) {
     await callbackPromise((callback) =>
-      chrome.tabs.create({ url: chrome.runtime.getURL("sidepanel.html") }, callback),
+      chrome.tabs.create(
+        { url: chrome.runtime.getURL("sidepanel.html") },
+        callback,
+      ),
     );
     return;
   }
@@ -277,7 +309,9 @@ async function openDiagnosticsPage(tabId?: number): Promise<void> {
     url.searchParams.set("tabId", String(tabId));
   }
 
-  await callbackPromise((callback) => chrome.tabs.create({ url: url.toString() }, callback));
+  await callbackPromise((callback) =>
+    chrome.tabs.create({ url: url.toString() }, callback),
+  );
 }
 
 async function ensureOffscreenDocument(): Promise<void> {
@@ -318,12 +352,20 @@ async function ensureOffscreenDocument(): Promise<void> {
 async function sendOffscreenMessage(
   message: OffscreenDocumentMessage,
 ): Promise<OffscreenDocumentResponse> {
-  return callbackPromise((callback) => chrome.runtime.sendMessage(message, callback));
+  return callbackPromise((callback) =>
+    chrome.runtime.sendMessage(message, callback),
+  );
 }
 
-async function requestBlobUrl(content: string, mimeType: string): Promise<string> {
+async function requestBlobUrl(
+  content: string,
+  mimeType: string,
+): Promise<string> {
   await ensureOffscreenDocument();
-  const contentParts = splitContentForBlobParts(content, OFFSCREEN_BLOB_CHUNK_SIZE);
+  const contentParts = splitContentForBlobParts(
+    content,
+    OFFSCREEN_BLOB_CHUNK_SIZE,
+  );
   const response = await sendOffscreenMessage({
     type: "OFFSCREEN_CREATE_BLOB_URL",
     content: contentParts.length === 1 ? contentParts[0] : undefined,
@@ -331,7 +373,9 @@ async function requestBlobUrl(content: string, mimeType: string): Promise<string
     mimeType,
   });
   if (!response.ok || !response.url) {
-    throw new Error(response.ok ? "Blob URL을 생성하지 못했습니다." : response.error);
+    throw new Error(
+      response.ok ? "Blob URL을 생성하지 못했습니다." : response.error,
+    );
   }
   return response.url;
 }
@@ -379,9 +423,14 @@ async function downloadExport(
     getByteLength: getUtf8ByteLength,
     dataUrlFallbackMaxBytes: DATA_URL_FALLBACK_MAX_BYTES,
     createDataUrlFallbackDisabledError: (byteLength) =>
-      new Error(`Data URL fallback disabled for large export (${byteLength} bytes)`),
+      new Error(
+        `Data URL fallback disabled for large export (${byteLength} bytes)`,
+      ),
     onBlobFallbackError: (error) => {
-      console.warn("[service-worker] Blob export download failed; evaluating fallback path", error);
+      console.warn(
+        "[service-worker] Blob export download failed; evaluating fallback path",
+        error,
+      );
     },
   });
 }
@@ -395,7 +444,10 @@ async function handleMessage(
     waitForTopFrameReady,
     injectConfiguredContentScripts,
     onInjectConfiguredContentScriptsError: (error) => {
-      console.warn("[service-worker] Failed to inject configured content scripts", error);
+      console.warn(
+        "[service-worker] Failed to inject configured content scripts",
+        error,
+      );
     },
     getOrCreateStoredFrameForwardNonce,
     queueExitPersistRecord,
@@ -437,7 +489,10 @@ async function runStartupSessionCleanup(): Promise<void> {
     await cleanupPersistedBlobDownloadUrls();
     try {
       const result = await runStartupPersistenceMaintenance();
-      if (result.replaySummary.replayedCount > 0 || result.cleanupSummary.closedCount > 0) {
+      if (
+        result.replaySummary.replayedCount > 0 ||
+        result.cleanupSummary.closedCount > 0
+      ) {
         console.info(
           `[service-worker] Replayed ${result.replaySummary.replayedCount} queued exit record(s); closed ${result.cleanupSummary.closedCount} stale running session(s) on startup`,
         );
@@ -447,10 +502,16 @@ async function runStartupSessionCleanup(): Promise<void> {
         result.replaySummary.failedCount > 0 ||
         result.cleanupSummary.failedCount > 0
       ) {
-        console.warn("[service-worker] Startup persistence maintenance finished with failures", result);
+        console.warn(
+          "[service-worker] Startup persistence maintenance finished with failures",
+          result,
+        );
       }
     } catch (error) {
-      console.warn("[service-worker] Failed to run startup persistence maintenance", error);
+      console.warn(
+        "[service-worker] Failed to run startup persistence maintenance",
+        error,
+      );
     } finally {
       lastStartupSessionCleanupAt = Date.now();
     }
@@ -473,7 +534,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     .catch((error: unknown) => {
       sendResponse({
         ok: false,
-        error: error instanceof Error ? error.message : "Background command failed",
+        error:
+          error instanceof Error ? error.message : "Background command failed",
       } satisfies BackgroundCommandResponse);
     });
   return true;
@@ -502,7 +564,11 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 });
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
-  void handleFrameForwardNonceTabUpdated(tabId, changeInfo, rotateStoredFrameForwardNonce);
+  void handleFrameForwardNonceTabUpdated(
+    tabId,
+    changeInfo,
+    rotateStoredFrameForwardNonce,
+  );
 });
 
 chrome.runtime.onStartup.addListener(() => {

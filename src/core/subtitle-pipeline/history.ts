@@ -48,19 +48,25 @@ export function rebuildConfirmedHistory(
     state.entries,
     resolveConfirmedCompactMaxLength(settings),
   );
-  state.trailingSuffix = state.confirmedCompact.slice(-PIPELINE_DEFAULTS.suffixLength);
+  state.trailingSuffix = state.confirmedCompact.slice(
+    -PIPELINE_DEFAULTS.suffixLength,
+  );
 }
 
 export function softResyncHistory(
   state: SessionState,
   settings?: Partial<ExtensionSettings>,
 ): void {
-  const recentEntries = state.entries.slice(-PIPELINE_DEFAULTS.recentResyncEntries);
+  const recentEntries = state.entries.slice(
+    -PIPELINE_DEFAULTS.recentResyncEntries,
+  );
   state.confirmedCompact = buildConfirmedCompactHistory(
     recentEntries,
     resolveConfirmedCompactMaxLength(settings),
   );
-  state.trailingSuffix = state.confirmedCompact.slice(-PIPELINE_DEFAULTS.suffixLength);
+  state.trailingSuffix = state.confirmedCompact.slice(
+    -PIPELINE_DEFAULTS.suffixLength,
+  );
   state.previewDesyncCount = 0;
   state.previewAmbiguousSkipCount = 0;
 }
@@ -74,7 +80,10 @@ export function resolveRecentHistoryCompactLength(
   }
   return Math.max(
     1,
-    Math.min(Math.floor(candidate), PIPELINE_DEFAULTS.recentHistoryCompactLength),
+    Math.min(
+      Math.floor(candidate),
+      PIPELINE_DEFAULTS.recentHistoryCompactLength,
+    ),
   );
 }
 

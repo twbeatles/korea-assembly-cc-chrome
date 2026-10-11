@@ -11,7 +11,9 @@ export function postToPopupPort(
   port.postMessage(message);
 }
 
-export function createPopupMessages(snapshot: StatusSnapshot): ContentToPopupMessage[] {
+export function createPopupMessages(
+  snapshot: StatusSnapshot,
+): ContentToPopupMessage[] {
   return [
     {
       type: "CAPTURE_STATUS",

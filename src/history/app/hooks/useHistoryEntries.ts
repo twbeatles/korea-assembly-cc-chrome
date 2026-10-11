@@ -15,15 +15,13 @@ import {
   toggleSelectedEntryId,
 } from "../../history-view-state";
 import { confirmDestructiveAction } from "../confirm-dialog";
-import {
-  computeSplitTime,
-  formatTagInput,
-  parseLabelInput,
-} from "../helpers";
+import { computeSplitTime, formatTagInput, parseLabelInput } from "../helpers";
 
 interface HistoryEntriesDeps {
   selectedSession: SessionRecord | null;
-  setSelectedSession: React.Dispatch<React.SetStateAction<SessionRecord | null>>;
+  setSelectedSession: React.Dispatch<
+    React.SetStateAction<SessionRecord | null>
+  >;
   displaySession: SessionRecord | null;
   searchQuery: string;
   captureInProgress: boolean;
@@ -64,7 +62,10 @@ export function useHistoryEntries({
     [checkedEntryIds],
   );
   const selectedEntries = useMemo(
-    () => displaySession?.entries.filter((entry) => checkedEntryIdSet.has(entry.id)) ?? [],
+    () =>
+      displaySession?.entries.filter((entry) =>
+        checkedEntryIdSet.has(entry.id),
+      ) ?? [],
     [checkedEntryIdSet, displaySession],
   );
   const allVisibleEntriesChecked =
@@ -154,7 +155,9 @@ export function useHistoryEntries({
       return;
     }
     if (captureInProgress) {
-      setMessage("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
+      setMessage(
+        "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.",
+      );
       return;
     }
     if (
@@ -179,7 +182,9 @@ export function useHistoryEntries({
       return;
     }
     if (captureInProgress) {
-      setMessage("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
+      setMessage(
+        "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.",
+      );
       return;
     }
     if (
@@ -242,7 +247,9 @@ export function useHistoryEntries({
       return;
     }
     if (captureInProgress) {
-      setMessage("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
+      setMessage(
+        "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.",
+      );
       return;
     }
     const target = selectedEntries[0];
@@ -262,7 +269,9 @@ export function useHistoryEntries({
       return;
     }
     if (captureInProgress) {
-      setMessage("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
+      setMessage(
+        "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.",
+      );
       return;
     }
     const target = selectedSession.entries.find(

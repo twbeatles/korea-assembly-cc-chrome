@@ -56,7 +56,7 @@ function fixContent(s) {
     s = s.split("__ALREADY_SRC__" + p).join(`from "../../../../${p}`);
   }
 
-  // context was ../context from runtime/ → ../context still? 
+  // context was ../context from runtime/ → ../context still?
   // runtime/orchestrator.ts had: from "../context" which is runtime/../context = content/app/context
   // Wait: orchestrator was at content/app/runtime/orchestrator.ts
   // ../context = content/app/context - correct
@@ -85,6 +85,9 @@ for (const f of fs.readdirSync(dir)) {
 }
 
 // verify one sample
-const sample = fs.readFileSync(path.join(dir, "impl.ts"), "utf8").split("\n").slice(0, 30);
+const sample = fs
+  .readFileSync(path.join(dir, "impl.ts"), "utf8")
+  .split("\n")
+  .slice(0, 30);
 console.log("--- sample ---");
 sample.forEach((l) => console.log(l));

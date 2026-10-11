@@ -10,13 +10,13 @@
 
 그러나 **전체 위험도는 High**로 평가한다. 저장 완료로 표시된 사용자 수정이 다음 자동 저장에 사라지는 문제와, 별도 실행 환경 간 쓰기 및 종료 복구 인덱스 경쟁을 격리 재현했다. 단위 테스트 통과만으로 데이터 보존을 보장할 수 없는 상태다.
 
-| 이슈 | 우선순위 | 신뢰도 | 상태 | 핵심 영향 |
-|---|---|---|---|---|
-| ISSUE-001 | High | Confirmed | **Resolved** | 수집 중 History의 자막 수정·중요 표시·행 메모가 자동 저장에 덮어써짐 (수정/보존 반영) |
-| ISSUE-002 | High | Confirmed | **Resolved** | History/백그라운드 등 별도 실행 환경 사이에서 메타데이터 변경 유실 (Web Locks + 원자적 IDB RMW) |
-| ISSUE-003 | High | Confirmed | **Resolved** | 종료 복구 큐의 인덱스 경쟁으로 durable record가 재시작 후 조회되지 않음 (전체 스캔 복구) |
-| ISSUE-004 | Medium | Likely | **Resolved** | 자동 분할 저장 중 멈추기를 누르면 대기 중 자막 이벤트가 사라짐 (stop 시 rollover 큐 drain) |
-| ISSUE-005 | Medium | Confirmed | **Resolved** | 삭제한 기록이 남은 종료 복구 큐에서 재생되어 되살아남 (삭제 tombstone + 큐 정리) |
+| 이슈      | 우선순위 | 신뢰도    | 상태         | 핵심 영향                                                                                       |
+| --------- | -------- | --------- | ------------ | ----------------------------------------------------------------------------------------------- |
+| ISSUE-001 | High     | Confirmed | **Resolved** | 수집 중 History의 자막 수정·중요 표시·행 메모가 자동 저장에 덮어써짐 (수정/보존 반영)           |
+| ISSUE-002 | High     | Confirmed | **Resolved** | History/백그라운드 등 별도 실행 환경 사이에서 메타데이터 변경 유실 (Web Locks + 원자적 IDB RMW) |
+| ISSUE-003 | High     | Confirmed | **Resolved** | 종료 복구 큐의 인덱스 경쟁으로 durable record가 재시작 후 조회되지 않음 (전체 스캔 복구)        |
+| ISSUE-004 | Medium   | Likely    | **Resolved** | 자동 분할 저장 중 멈추기를 누르면 대기 중 자막 이벤트가 사라짐 (stop 시 rollover 큐 drain)      |
+| ISSUE-005 | Medium   | Confirmed | **Resolved** | 삭제한 기록이 남은 종료 복구 큐에서 재생되어 되살아남 (삭제 tombstone + 큐 정리)                |
 
 **데이터 유실 가능성: 있음.** ISSUE-001/002는 논리적 덮어쓰기, ISSUE-003은 복구 대상 누락이다. DB 파일 자체의 물리적 손상이나 전체 라이브러리 파괴, 외부로 자막을 유출하는 Critical 경로는 확인하지 못했다. ISSUE-003은 원본 키가 저장소에 남아 있어 복구 여지가 있으며, 모든 동시 종료가 영구 유실로 이어진다는 뜻은 아니다.
 
@@ -33,17 +33,17 @@
 
 ### 진입점·핵심 모듈
 
-| 영역 | 진입점 / 모듈 | 역할 |
-|---|---|---|
-| Content | `src/content/content-script.ts` → `app/runtime/orchestrator/runtime-core.ts` | bootstrap, 상태, 패널, observer/polling, 저장, 분할, 종료 |
-| Page world | `src/content/injected-observer.ts` → 생성된 `public/injected-observer.js` | MutationObserver와 DOM 재읽기, token 기반 브리지 |
-| DOM | `subtitle-rows.ts`, `dom-probe.ts`, `frame-probe.ts` | 행 키·발언자·미확정 필터, 접근 가능한 프레임 탐색 |
-| 자막 처리 | `src/core/live-capture.ts`, `subtitle-pipeline/commit.ts` 및 관련 모듈 | 행 reconcile, 보정, 중복/노이즈 필터, commit |
-| Background | `src/background/service-worker.ts`, `service-worker-commands.ts` | 저장 명령, 다운로드, nonce, startup 복구 |
-| 저장 | `src/storage/session-store.ts` 및 하위 public-api/idb/fallback | 메타데이터·본문·청크 CRUD, 검색, lineage, import/export |
-| 복구 | `src/storage/persist-recovery.ts`, `src/background/startup-persistence.ts` | 종료 스냅샷 큐, 재생, running 기록 종료 처리 |
-| UI | popup/history/options/sidepanel의 HTML·React entry | 연결, 기록 관리, 설정, 보조 UI |
-| Export | `src/storage/session-store/export-payload.ts`, `src/core/exporters/*`, offscreen | 선택·시간 필터, 출력 정규화, Blob 다운로드 |
+| 영역       | 진입점 / 모듈                                                                    | 역할                                                      |
+| ---------- | -------------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Content    | `src/content/content-script.ts` → `app/runtime/orchestrator/runtime-core.ts`     | bootstrap, 상태, 패널, observer/polling, 저장, 분할, 종료 |
+| Page world | `src/content/injected-observer.ts` → 생성된 `public/injected-observer.js`        | MutationObserver와 DOM 재읽기, token 기반 브리지          |
+| DOM        | `subtitle-rows.ts`, `dom-probe.ts`, `frame-probe.ts`                             | 행 키·발언자·미확정 필터, 접근 가능한 프레임 탐색         |
+| 자막 처리  | `src/core/live-capture.ts`, `subtitle-pipeline/commit.ts` 및 관련 모듈           | 행 reconcile, 보정, 중복/노이즈 필터, commit              |
+| Background | `src/background/service-worker.ts`, `service-worker-commands.ts`                 | 저장 명령, 다운로드, nonce, startup 복구                  |
+| 저장       | `src/storage/session-store.ts` 및 하위 public-api/idb/fallback                   | 메타데이터·본문·청크 CRUD, 검색, lineage, import/export   |
+| 복구       | `src/storage/persist-recovery.ts`, `src/background/startup-persistence.ts`       | 종료 스냅샷 큐, 재생, running 기록 종료 처리              |
+| UI         | popup/history/options/sidepanel의 HTML·React entry                               | 연결, 기록 관리, 설정, 보조 UI                            |
+| Export     | `src/storage/session-store/export-payload.ts`, `src/core/exporters/*`, offscreen | 선택·시간 필터, 출력 정규화, Blob 다운로드                |
 
 ### 데이터 저장·공유 상태
 
@@ -114,33 +114,33 @@ pagehide / beforeunload
 
 CodeGraph **MCP `codegraph_explore`를 실제 사용**했다. 먼저 entrypoints, storage/export/import, 다음으로 정확한 심볼을 조회했으며 다음 경로와 영향 범위를 확인했다.
 
-| 호출 관계 | 확인 사항 |
-|---|---|
-| `updateSessionContent → loadSession → withSessionStoresTransaction` | 읽기와 후속 쓰기의 transaction 경계 |
-| `saveSession/updateRunningSession → preserveStoredSessionMetadata → writeSessionRecord` | 메타 보존 범위와 session-id queue |
-| `handleTopFrameEvent → queueSegmentRolloverEvent`, `flushQueuedSegmentRolloverEvent → handleTopFrameEvent` | 버퍼 진입·재생과 stop 경쟁 |
-| `applyStructuredRowsEvent → reconcileLiveCapture/commitLiveRow` | 행 보정·commit 및 state 변경 |
-| `readObservedSubtitleRows ← dom-probe/injected-observer` | 실제 DOM 선택자와 발언자·미확정 분류 |
-| `queueExitPersistRecord/list/clear ← page exit/startup/store` | 복구 인덱스·메모리 merge·삭제 영향 |
-| `exportSessionData/exportSessionLineageData ← service-worker` | 세션 기반 출력 조립, 선택·시간 필터 |
-| `importSessionRecords ← History` | UI validation 이후 저장, 취소·부분 성공 |
-| `closeRunningSessionsOnStartup ← runStartupPersistenceMaintenance` | replay 후 cleanup 순서 |
+| 호출 관계                                                                                                  | 확인 사항                               |
+| ---------------------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `updateSessionContent → loadSession → withSessionStoresTransaction`                                        | 읽기와 후속 쓰기의 transaction 경계     |
+| `saveSession/updateRunningSession → preserveStoredSessionMetadata → writeSessionRecord`                    | 메타 보존 범위와 session-id queue       |
+| `handleTopFrameEvent → queueSegmentRolloverEvent`, `flushQueuedSegmentRolloverEvent → handleTopFrameEvent` | 버퍼 진입·재생과 stop 경쟁              |
+| `applyStructuredRowsEvent → reconcileLiveCapture/commitLiveRow`                                            | 행 보정·commit 및 state 변경            |
+| `readObservedSubtitleRows ← dom-probe/injected-observer`                                                   | 실제 DOM 선택자와 발언자·미확정 분류    |
+| `queueExitPersistRecord/list/clear ← page exit/startup/store`                                              | 복구 인덱스·메모리 merge·삭제 영향      |
+| `exportSessionData/exportSessionLineageData ← service-worker`                                              | 세션 기반 출력 조립, 선택·시간 필터     |
+| `importSessionRecords ← History`                                                                           | UI validation 이후 저장, 취소·부분 성공 |
+| `closeRunningSessionsOnStartup ← runStartupPersistenceMaintenance`                                         | replay 후 cleanup 순서                  |
 
 MCP 응답에는 크기 제한에 따른 생략 구간이 있었다. 그 구간의 handler 본문, UI disabled 조건, migration·worker listener·설정 구현은 `rg`와 직접 열람으로 보완했다. 그래프의 이름 매칭은 모호한 후보나 facade import를 caller로 포함할 수 있다. 따라서 그래프가 “테스트 없음”이라고 출력한 것만으로 테스트 부재를 단정하지 않았고 실제 테스트 파일도 확인했다.
 
 ### 실행 결과
 
-| 검증 | 결과 / 의미 |
-|---|---|
-| `npm run test -- --reporter=dot` | **69 files / 375 tests passed**, 38.61초. jsdom/fake-indexeddb 및 UI/API 대역 기반 |
-| `npm run lint` | 성공, 오류 출력 없음 |
-| `npm run check:version` | 1.0.13 일치 |
-| `npm run check:injected` | 성공, 생성 observer와 소스 일치 |
-| `npm run typecheck` | **실행 실패**: `Cannot find module 'typescript-7/package.json'` |
-| `node node_modules/typescript/bin/tsc --noEmit` | 설치된 **TypeScript 5.9.3**로 보조 검사 성공. 프로젝트 지정 TS7 검사 통과를 의미하지 않음 |
-| `node node_modules/vite/bin/vite.js build --outDir <TEMP>/assembly-audit-build-20260909` | 성공, Vite 표시 2.07초. 기존 `dist`를 덮어쓰지 않는 임시 production build |
-| 임시 재현 harness | 실제 저장 모듈을 esbuild로 메모리 번들링하여 아래 4가지 잘못된 결과 재현; DOM 파서 호환 확인 |
-| 공식 사이트 브라우저 검사 | 당일 중계 목록, 법사위 player, 자막 활성화와 시간차 갱신 확인 |
+| 검증                                                                                     | 결과 / 의미                                                                                  |
+| ---------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `npm run test -- --reporter=dot`                                                         | **69 files / 375 tests passed**, 38.61초. jsdom/fake-indexeddb 및 UI/API 대역 기반           |
+| `npm run lint`                                                                           | 성공, 오류 출력 없음                                                                         |
+| `npm run check:version`                                                                  | 1.0.13 일치                                                                                  |
+| `npm run check:injected`                                                                 | 성공, 생성 observer와 소스 일치                                                              |
+| `npm run typecheck`                                                                      | **실행 실패**: `Cannot find module 'typescript-7/package.json'`                              |
+| `node node_modules/typescript/bin/tsc --noEmit`                                          | 설치된 **TypeScript 5.9.3**로 보조 검사 성공. 프로젝트 지정 TS7 검사 통과를 의미하지 않음    |
+| `node node_modules/vite/bin/vite.js build --outDir <TEMP>/assembly-audit-build-20260909` | 성공, Vite 표시 2.07초. 기존 `dist`를 덮어쓰지 않는 임시 production build                    |
+| 임시 재현 harness                                                                        | 실제 저장 모듈을 esbuild로 메모리 번들링하여 아래 4가지 잘못된 결과 재현; DOM 파서 호환 확인 |
+| 공식 사이트 브라우저 검사                                                                | 당일 중계 목록, 법사위 player, 자막 활성화와 시간차 갱신 확인                                |
 
 `npm run verify`, `npm run build` 전체 script, TS6/TS7 정식 검증, coverage 측정, `verify:e2e`, `test:e2e:extension`은 통과했다고 주장하지 않는다. 표의 임시 Vite 빌드는 별도 명령이다. dependency 설치는 하지 않았다. 로컬 Node는 **v24.19.0**, CI는 Node 20이므로 환경도 동일하지 않다.
 
@@ -264,13 +264,13 @@ MCP 응답에는 크기 제한에 따른 생략 구간이 있었다. 그 구간�
 
 현재 버그와 분리하여 기능·안정성 보완 후보를 기록한다.
 
-| 분류 | 항목 | 근거와 필요한 결정 |
-|---|---|---|
-| Confirmed Gap | 실제 확장 다중 실행 환경을 연결한 자동 검증 | 현 테스트는 각 모듈 helper와 대역 중심이다. `content-runtime.test.ts`도 helper 테스트이며 실제 runtime-core start/stop/rollover 전체를 실행하지 않는다. 이번 4개 저장 재현은 기존 suite가 모두 통과하는 상태에서 발생했다. |
-| Confirmed Gap | 큰 export의 transport-level streaming | `service-worker.ts:324`는 문자열을 부분 배열로 나누지만 배열 전체를 **한 번의** runtime message로 보낸다. chunk 배열은 메시지 총량을 줄이지 않는다. 실제 메시지 제한 초과 재현은 하지 않았으므로 현재 모든 대형 export가 실패한다고 분류하지 않는다. segment 분할 내보내기는 workaround다. |
-| Likely Gap | 종료 직전 durable 저장 기회 확보 | `persistQueuedPageExitRecord`는 진단 쓰기를 await한 뒤 queue 쓰기, 그 뒤 background persist를 수행한다. 페이지 파괴 시 비동기 완료는 검증되지 않았다. 진단을 핵심 저장보다 먼저 기다릴 필요와 사전 checkpoint 전략을 검토할 가치가 있다. |
-| Likely Gap | 복구 완료를 보장하는 재시도 정책 | startup/install 시 복구는 있지만 첫 replay 실패 후 성공할 때까지의 주기적 복구 보장은 확인하지 못했다. transient queue/storage 오류 뒤의 재실행 시점을 제품 정책으로 정해야 한다. |
-| 추정 | 이전 자막 전체 회수·영상 시간과의 정밀 동기화 | 현 목적은 접속 후 DOM에 제공되는 자막 수집이며 SRT/VTT는 세션 시작 기준 시간이다. 중계 처음부터 회수하거나 영상 시간에 정밀 정렬하는 기능이 필요한지는 별도 요구사항 결정 사항이다. 누락 구현 버그로 단정하지 않는다. |
+| 분류          | 항목                                          | 근거와 필요한 결정                                                                                                                                                                                                                                                                         |
+| ------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Confirmed Gap | 실제 확장 다중 실행 환경을 연결한 자동 검증   | 현 테스트는 각 모듈 helper와 대역 중심이다. `content-runtime.test.ts`도 helper 테스트이며 실제 runtime-core start/stop/rollover 전체를 실행하지 않는다. 이번 4개 저장 재현은 기존 suite가 모두 통과하는 상태에서 발생했다.                                                                 |
+| Confirmed Gap | 큰 export의 transport-level streaming         | `service-worker.ts:324`는 문자열을 부분 배열로 나누지만 배열 전체를 **한 번의** runtime message로 보낸다. chunk 배열은 메시지 총량을 줄이지 않는다. 실제 메시지 제한 초과 재현은 하지 않았으므로 현재 모든 대형 export가 실패한다고 분류하지 않는다. segment 분할 내보내기는 workaround다. |
+| Likely Gap    | 종료 직전 durable 저장 기회 확보              | `persistQueuedPageExitRecord`는 진단 쓰기를 await한 뒤 queue 쓰기, 그 뒤 background persist를 수행한다. 페이지 파괴 시 비동기 완료는 검증되지 않았다. 진단을 핵심 저장보다 먼저 기다릴 필요와 사전 checkpoint 전략을 검토할 가치가 있다.                                                   |
+| Likely Gap    | 복구 완료를 보장하는 재시도 정책              | startup/install 시 복구는 있지만 첫 replay 실패 후 성공할 때까지의 주기적 복구 보장은 확인하지 못했다. transient queue/storage 오류 뒤의 재실행 시점을 제품 정책으로 정해야 한다.                                                                                                          |
+| 추정          | 이전 자막 전체 회수·영상 시간과의 정밀 동기화 | 현 목적은 접속 후 DOM에 제공되는 자막 수집이며 SRT/VTT는 세션 시작 기준 시간이다. 중계 처음부터 회수하거나 영상 시간에 정밀 정렬하는 기능이 필요한지는 별도 요구사항 결정 사항이다. 누락 구현 버그로 단정하지 않는다.                                                                      |
 
 ## 6. Documentation Mismatches
 
@@ -310,38 +310,38 @@ MCP 응답에는 크기 제한에 따른 생략 구간이 있었다. 그 구간�
 
 아래는 **추가 권장 테스트**이며 실행 결과가 아니다. 현재 실행한 검사는 §3에만 기재했다.
 
-| 종류 | 입력·실행 조건 | 기대 결과 |
-|---|---|---|
-| Unit / Regression — 001 | e1 수정·행 메모·중요 표시 뒤 e1+e2 autosave | 사용자 편집과 e2 동시 보존 또는 편집 거부. 성공 후 조용한 rollback 금지 |
-| Integration / Concurrency — 002 | 두 독립 모듈/History·worker가 같은 버전을 읽도록 barrier, note/star/entries 별도 갱신 | 서로 다른 변경 모두 보존; 같은 필드 충돌은 revision 오류/명시적 정책 |
-| Concurrency — 003 | anchor 큐 존재, A/B enqueue 동시 완료, 작성 메모리 폐기 | 새 reader/replay가 anchor/A/B 모두 발견 |
-| Regression — 003 | 레코드 set 성공 후 index set 실패, 비어 있지 않은 stale index, enqueue와 clear 경쟁 | durable 레코드 발견·복구; 오래된 cleanup이 새 record를 제거하지 않음 |
-| Integration — 004 | 낮은 분할 임계, persist promise 보류, stable B/C 이벤트, Stop, 응답 해제 | 세그먼트 합계에 A/B/C 각 1회, status stopped, 버퍼 손실 없음 |
-| Regression — 005 | pending exit snapshot 존재 후 개별/lineage/전체 삭제, 새 모듈 replay | 삭제 기록 재등장 없음; 관련 없는 queue 정상 복구 |
-| End-to-End — 실중계 | 별도 테스트 프로필에 최신 빌드 로드, 중계 중 접속, 자막 2회 이상 보정·화자 전환 관찰 | stable 행만 정확히 수집, 보정은 제자리 갱신, panel 수와 저장/export의 관계 일치 |
-| End-to-End — 재시작 | 확정 N행 수집, 정상 종료 및 테스트 프로필 강제 종료를 분리, 재시작 | 정상 종료 최종 스냅샷 복구; 강제 종료는 마지막 durable checkpoint 범위 명시·진단 |
-| Integration — IDB | 구 schema 데이터/청크를 test DB에 seed, v5 open; chunk put 중간 실패 주입 | lineage 기본값·메타·본문 보존; transaction 실패 시 부분 청크 노출 없음 |
-| Integration — fallback | IDB open 실패 → chrome.storage 성공, 이어 quota 실패, 30초 뒤 IDB 복구 | 실패를 저장 성공으로 표시하지 않음; 이전 메모리 rollback; 최신본 선택·복귀 |
-| Integration — import | 구 JSON v3, 잘못된 날짜, 미지원 URL, 중복 ID, 25 MiB 초과, 진행 중 취소 | 유효 레코드만 정규화; URL 제거; 크기 초과 명시 실패; 취소 시 정확한 부분 완료 수 |
-| Concurrency — import | import compare 이후 다른 writer가 더 최신 record 저장 | import가 최신 변경을 과거 snapshot으로 덮어쓰지 않음; 최신성 판단을 쓰기 경계에서 재확인 |
-| Unit / Export | 한글·emoji·CRLF·CSV `= + - @` 접두, speaker on/off, 선택 entry, 시간 경계 | 형식 파싱 가능, BOM/CRLF 및 수식 중화, speaker 옵션 일치, 원본 기준 시간 유지 |
-| End-to-End — 큰 export | 메시지 직렬화 한도를 넘는 synthetic lineage, offscreen 실패, 분할 export | 가능한 경로는 정상 파일 생성; 불가능한 요청은 명시 오류, 중복 다운로드 없음 |
-| Integration — UI 연결 | active tab 변경/닫힘, unsupported URL 이동, runtime port 일시 단절 | 현재 supported 탭으로 재연결 또는 안내; 영구 invalidation으로 오판하지 않음 |
-| Platform-specific | Windows Chrome/Edge·macOS Chrome·Linux Chromium, 한글 파일명·이모지·금지문자·UTC/KST | 파일명·인코딩 정상, SRT/VTT 상대 시간 일치; UI 시간은 해당 로컬 시간 정책 준수 |
-| Security / Regression | 외부 sender 명령, 잘못된 token/nonce, malformed import, sourceUrl `javascript:` | 거부/정규화, UI 실행 없음, 캡처 전체가 영구 정지하지 않음 |
+| 종류                            | 입력·실행 조건                                                                        | 기대 결과                                                                                |
+| ------------------------------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Unit / Regression — 001         | e1 수정·행 메모·중요 표시 뒤 e1+e2 autosave                                           | 사용자 편집과 e2 동시 보존 또는 편집 거부. 성공 후 조용한 rollback 금지                  |
+| Integration / Concurrency — 002 | 두 독립 모듈/History·worker가 같은 버전을 읽도록 barrier, note/star/entries 별도 갱신 | 서로 다른 변경 모두 보존; 같은 필드 충돌은 revision 오류/명시적 정책                     |
+| Concurrency — 003               | anchor 큐 존재, A/B enqueue 동시 완료, 작성 메모리 폐기                               | 새 reader/replay가 anchor/A/B 모두 발견                                                  |
+| Regression — 003                | 레코드 set 성공 후 index set 실패, 비어 있지 않은 stale index, enqueue와 clear 경쟁   | durable 레코드 발견·복구; 오래된 cleanup이 새 record를 제거하지 않음                     |
+| Integration — 004               | 낮은 분할 임계, persist promise 보류, stable B/C 이벤트, Stop, 응답 해제              | 세그먼트 합계에 A/B/C 각 1회, status stopped, 버퍼 손실 없음                             |
+| Regression — 005                | pending exit snapshot 존재 후 개별/lineage/전체 삭제, 새 모듈 replay                  | 삭제 기록 재등장 없음; 관련 없는 queue 정상 복구                                         |
+| End-to-End — 실중계             | 별도 테스트 프로필에 최신 빌드 로드, 중계 중 접속, 자막 2회 이상 보정·화자 전환 관찰  | stable 행만 정확히 수집, 보정은 제자리 갱신, panel 수와 저장/export의 관계 일치          |
+| End-to-End — 재시작             | 확정 N행 수집, 정상 종료 및 테스트 프로필 강제 종료를 분리, 재시작                    | 정상 종료 최종 스냅샷 복구; 강제 종료는 마지막 durable checkpoint 범위 명시·진단         |
+| Integration — IDB               | 구 schema 데이터/청크를 test DB에 seed, v5 open; chunk put 중간 실패 주입             | lineage 기본값·메타·본문 보존; transaction 실패 시 부분 청크 노출 없음                   |
+| Integration — fallback          | IDB open 실패 → chrome.storage 성공, 이어 quota 실패, 30초 뒤 IDB 복구                | 실패를 저장 성공으로 표시하지 않음; 이전 메모리 rollback; 최신본 선택·복귀               |
+| Integration — import            | 구 JSON v3, 잘못된 날짜, 미지원 URL, 중복 ID, 25 MiB 초과, 진행 중 취소               | 유효 레코드만 정규화; URL 제거; 크기 초과 명시 실패; 취소 시 정확한 부분 완료 수         |
+| Concurrency — import            | import compare 이후 다른 writer가 더 최신 record 저장                                 | import가 최신 변경을 과거 snapshot으로 덮어쓰지 않음; 최신성 판단을 쓰기 경계에서 재확인 |
+| Unit / Export                   | 한글·emoji·CRLF·CSV `= + - @` 접두, speaker on/off, 선택 entry, 시간 경계             | 형식 파싱 가능, BOM/CRLF 및 수식 중화, speaker 옵션 일치, 원본 기준 시간 유지            |
+| End-to-End — 큰 export          | 메시지 직렬화 한도를 넘는 synthetic lineage, offscreen 실패, 분할 export              | 가능한 경로는 정상 파일 생성; 불가능한 요청은 명시 오류, 중복 다운로드 없음              |
+| Integration — UI 연결           | active tab 변경/닫힘, unsupported URL 이동, runtime port 일시 단절                    | 현재 supported 탭으로 재연결 또는 안내; 영구 invalidation으로 오판하지 않음              |
+| Platform-specific               | Windows Chrome/Edge·macOS Chrome·Linux Chromium, 한글 파일명·이모지·금지문자·UTC/KST  | 파일명·인코딩 정상, SRT/VTT 상대 시간 일치; UI 시간은 해당 로컬 시간 정책 준수           |
+| Security / Regression           | 외부 sender 명령, 잘못된 token/nonce, malformed import, sourceUrl `javascript:`       | 거부/정규화, UI 실행 없음, 캡처 전체가 영구 정지하지 않음                                |
 
 기존 `verify:e2e`는 HTML 페이지 제목을 확인하는 smoke이고, `test:e2e:extension`은 요청을 fixture HTML로 대체한다. 둘의 통과를 “실중계 정확도와 저장 복구까지 통과”로 해석하면 안 된다.
 
 ## 9. Final Assessment
 
-| 평가 항목 | 판정 | 근거 |
-|---|---|---|
-| Functional Correctness | **Needs Work** | 기본 기능과 실사이트 DOM 대응은 양호하지만 수집 중 편집 보존과 삭제 후 복구 의미론이 깨짐 |
-| Runtime Stability | **Needs Work** | observer/polling·오류 fallback은 있으나 lifecycle과 자동 rollover의 종료 경쟁이 남음 |
-| Data Integrity | **High Risk** | 순차 편집 덮어쓰기, 독립 context 동시 변경 유실, 재시작 queue 누락을 재현 |
-| Error Resilience | **Needs Work** | TTL/retry/rollback/diagnostics 기반은 있으나 durable queue의 불완전 인덱스가 복구를 우회함 |
-| Cross-platform Robustness | **Acceptable** | 브라우저 API 중심, UTF-8 CSV·파일명 보호·보조 타입검사/빌드 확인. macOS/Linux 실실행은 미검증 |
-| Test Confidence | **Needs Work** | 375개 테스트 통과에도 context 간 경쟁과 실제 runtime lifecycle 연결을 놓침. 지정 TS7 검사도 환경상 미완료 |
+| 평가 항목                 | 판정           | 근거                                                                                                      |
+| ------------------------- | -------------- | --------------------------------------------------------------------------------------------------------- |
+| Functional Correctness    | **Needs Work** | 기본 기능과 실사이트 DOM 대응은 양호하지만 수집 중 편집 보존과 삭제 후 복구 의미론이 깨짐                 |
+| Runtime Stability         | **Needs Work** | observer/polling·오류 fallback은 있으나 lifecycle과 자동 rollover의 종료 경쟁이 남음                      |
+| Data Integrity            | **High Risk**  | 순차 편집 덮어쓰기, 독립 context 동시 변경 유실, 재시작 queue 누락을 재현                                 |
+| Error Resilience          | **Needs Work** | TTL/retry/rollback/diagnostics 기반은 있으나 durable queue의 불완전 인덱스가 복구를 우회함                |
+| Cross-platform Robustness | **Acceptable** | 브라우저 API 중심, UTF-8 CSV·파일명 보호·보조 타입검사/빌드 확인. macOS/Linux 실실행은 미검증             |
+| Test Confidence           | **Needs Work** | 375개 테스트 통과에도 context 간 경쟁과 실제 runtime lifecycle 연결을 놓침. 지정 TS7 검사도 환경상 미완료 |
 
 **실제로 먼저 수정할 세 문제:**
 

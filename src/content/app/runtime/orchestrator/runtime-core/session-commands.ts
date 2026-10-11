@@ -1,18 +1,30 @@
-
-
-import { cloneEntry, type ExportFormat } from "../../../../../core/subtitle-models";
+import {
+  cloneEntry,
+  type ExportFormat,
+} from "../../../../../core/subtitle-models";
 
 import { mapDownloadErrorMessage } from "../../../../../shared/download-errors";
 import { applyPersistSuccess } from "../../../../autosave";
 
 import { sendRuntimeMessage } from "../../../../../shared/chrome-api";
-import { buildCopyText, copyTextToClipboard, selectCopyEntries } from "../../../../../shared/copy-utils";
+import {
+  buildCopyText,
+  copyTextToClipboard,
+  selectCopyEntries,
+} from "../../../../../shared/copy-utils";
 
 import { clearAutoStartCooldown } from "../../../../runtime/autostart-cooldown";
 
-import { clearFailedStoppedSessionGuard, rememberFailedStoppedSession } from "../../../../failed-stopped-session";
+import {
+  clearFailedStoppedSessionGuard,
+  rememberFailedStoppedSession,
+} from "../../../../failed-stopped-session";
 
-import { buildSegmentCapacityWarningNotice, resolveRuntimeSessionSegmentationThresholds, resolveSegmentCapacityWarning } from "../../../../runtime/segmentation-policy";
+import {
+  buildSegmentCapacityWarningNotice,
+  resolveRuntimeSessionSegmentationThresholds,
+  resolveSegmentCapacityWarning,
+} from "../../../../runtime/segmentation-policy";
 
 import { isTopFrame } from "../../constants";
 
@@ -20,13 +32,19 @@ import { deriveCommitteeName } from "../helpers";
 import type { RuntimeCoreContext } from "./context";
 import { reportRuntimeError, setPanelNotice } from "./notices";
 import { syncUserInterfaces } from "./panel-status";
-import { buildPreparedSessionState, buildVisibleOutputEntries, buildVisibleSessionRecord } from "./snapshots";
+import {
+  buildPreparedSessionState,
+  buildVisibleOutputEntries,
+  buildVisibleSessionRecord,
+} from "./snapshots";
 import { persistSessionRecord, scheduleRunningPersist } from "./persistence";
 import { dispatchObserverConfig } from "./observer-bridge";
 import { resetRuntimeState } from "./session-lifecycle";
 
 /** 저장·내보내기·복사 등 사용자 명령 (단일 책임: 명령 실행). */
-export async function saveCurrentSessionSnapshotUnlocked(ctx: RuntimeCoreContext): Promise<{
+export async function saveCurrentSessionSnapshotUnlocked(
+  ctx: RuntimeCoreContext,
+): Promise<{
   saved: boolean;
   message?: string;
 }> {
@@ -63,51 +81,66 @@ export async function saveCurrentSessionSnapshotUnlocked(ctx: RuntimeCoreContext
     };
   } catch (error) {
     if (ctx.state.status !== "running") {
-      ctx.failedStoppedSessionGuard = rememberFailedStoppedSession(record, error);
+      ctx.failedStoppedSessionGuard = rememberFailedStoppedSession(
+        record,
+        error,
+      );
     }
     reportRuntimeError(ctx, "세션 저장에 실패했습니다.", error);
     throw error;
   }
 }
 
-export async function saveCurrentSessionSnapshot(ctx: RuntimeCoreContext): Promise<{
+export async function saveCurrentSessionSnapshot(
+  ctx: RuntimeCoreContext,
+): Promise<{
   saved: boolean;
   message?: string;
 }> {
-  return ctx.captureLifecycleLock.run("save", () => saveCurrentSessionSnapshotUnlocked(ctx));
+  return ctx.captureLifecycleLock.run("save", () =>
+    saveCurrentSessionSnapshotUnlocked(ctx),
+  );
 }
 
-export async function saveAndStartNewSession(ctx: RuntimeCoreContext): Promise<void> {
+export async function saveAndStartNewSession(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   return ctx.captureLifecycleLock.run("save_and_new", async () => {
-  if (ctx.state.status !== "running") {
-    setPanelNotice(ctx, "수집 중일 때만 중간 저장 후 새 세션을 시작할 수 있습니다.");
-    syncUserInterfaces(ctx);
-    return;
-  }
+    if (ctx.state.status !== "running") {
+      setPanelNotice(
+        ctx,
+        "수집 중일 때만 중간 저장 후 새 세션을 시작할 수 있습니다.",
+      );
+      syncUserInterfaces(ctx);
+      return;
+    }
 
-  const result = await saveCurrentSessionSnapshotUnlocked(ctx);
-  if (!result.saved) {
-    syncUserInterfaces(ctx);
-    return;
-  }
+    const result = await saveCurrentSessionSnapshotUnlocked(ctx);
+    if (!result.saved) {
+      syncUserInterfaces(ctx);
+      return;
+    }
 
-  resetRuntimeState(ctx);
-  ctx.lastSegmentCapacityWarningReason = null;
-  clearAutoStartCooldown(isTopFrame);
-  const now = new Date().toISOString();
-  ctx.state.status = "running";
-  ctx.state.createdAt = now;
-  ctx.state.startedAt = now;
-  ctx.state.updatedAt = now;
-  ctx.state.title = document.title;
-  ctx.state.committeeName = deriveCommitteeName(document.title);
-  setPanelNotice(ctx, "중간 저장을 마치고 새 세션으로 계속 수집합니다.");
-  dispatchObserverConfig(ctx);
-  syncUserInterfaces(ctx);
+    resetRuntimeState(ctx);
+    ctx.lastSegmentCapacityWarningReason = null;
+    clearAutoStartCooldown(isTopFrame);
+    const now = new Date().toISOString();
+    ctx.state.status = "running";
+    ctx.state.createdAt = now;
+    ctx.state.startedAt = now;
+    ctx.state.updatedAt = now;
+    ctx.state.title = document.title;
+    ctx.state.committeeName = deriveCommitteeName(document.title);
+    setPanelNotice(ctx, "중간 저장을 마치고 새 세션으로 계속 수집합니다.");
+    dispatchObserverConfig(ctx);
+    syncUserInterfaces(ctx);
   });
 }
 
-export function maybeEmitSegmentCapacityWarning(ctx: RuntimeCoreContext, now = Date.now()): void {
+export function maybeEmitSegmentCapacityWarning(
+  ctx: RuntimeCoreContext,
+  now = Date.now(),
+): void {
   const warning = resolveSegmentCapacityWarning(
     ctx.state,
     now,
@@ -126,7 +159,9 @@ export function maybeEmitSegmentCapacityWarning(ctx: RuntimeCoreContext, now = D
   setPanelNotice(ctx, buildSegmentCapacityWarningNotice(warning));
 }
 
-export async function highlightLatestCommittedEntry(ctx: RuntimeCoreContext): Promise<void> {
+export async function highlightLatestCommittedEntry(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   const latestEntry = ctx.state.entries[ctx.state.entries.length - 1];
   if (!latestEntry) {
     setPanelNotice(ctx, "중요 표시할 확정 자막이 아직 없습니다.");
@@ -159,7 +194,8 @@ export async function highlightLatestCommittedEntry(ctx: RuntimeCoreContext): Pr
   }
 
   try {
-    const saved = await persistSessionRecord(ctx, 
+    const saved = await persistSessionRecord(
+      ctx,
       buildVisibleSessionRecord(ctx, "stopped"),
     );
     ctx.state = applyPersistSuccess(ctx.state, saved.updatedAt);
@@ -169,12 +205,21 @@ export async function highlightLatestCommittedEntry(ctx: RuntimeCoreContext): Pr
   syncUserInterfaces(ctx);
 }
 
-export async function exportCurrentSession(ctx: RuntimeCoreContext, format: ExportFormat): Promise<void> {
-  return ctx.captureLifecycleLock.run("export", () => exportCurrentSessionUnlocked(ctx, format));
+export async function exportCurrentSession(
+  ctx: RuntimeCoreContext,
+  format: ExportFormat,
+): Promise<void> {
+  return ctx.captureLifecycleLock.run("export", () =>
+    exportCurrentSessionUnlocked(ctx, format),
+  );
 }
 
-export async function exportCurrentSessionUnlocked(ctx: RuntimeCoreContext, format: ExportFormat): Promise<void> {
-  const record = buildVisibleSessionRecord(ctx, 
+export async function exportCurrentSessionUnlocked(
+  ctx: RuntimeCoreContext,
+  format: ExportFormat,
+): Promise<void> {
+  const record = buildVisibleSessionRecord(
+    ctx,
     ctx.state.status === "running" ? "running" : "stopped",
   );
   if (!record.entries.length) {
@@ -204,7 +249,9 @@ export async function exportCurrentSessionUnlocked(ctx: RuntimeCoreContext, form
   syncUserInterfaces(ctx);
 }
 
-export async function copyRecentSessionLines(ctx: RuntimeCoreContext): Promise<void> {
+export async function copyRecentSessionLines(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   const prepared = buildPreparedSessionState(ctx);
   // 실시간 세션에는 speakerLabels 맵이 없으므로 entry channel/label 만 사용
   const copyOptions = {
@@ -243,7 +290,9 @@ export async function openOptionsPage(ctx: RuntimeCoreContext): Promise<void> {
   syncUserInterfaces(ctx);
 }
 
-export async function openDiagnosticsPage(ctx: RuntimeCoreContext): Promise<void> {
+export async function openDiagnosticsPage(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   const response = await sendRuntimeMessage({ type: "OPEN_DIAGNOSTICS_PAGE" });
   if (!response.ok) {
     throw new Error(response.error);

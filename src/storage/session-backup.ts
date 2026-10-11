@@ -10,7 +10,10 @@ import {
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../core/subtitle-models";
-import { SESSION_RECORD_VERSION, isSupportedAssemblyUrl } from "../shared/constants";
+import {
+  SESSION_RECORD_VERSION,
+  isSupportedAssemblyUrl,
+} from "../shared/constants";
 
 export const SESSION_BACKUP_KIND = "assembly-subtitle-session-backup";
 export const SESSION_BACKUP_VERSION = "1";
@@ -32,14 +35,22 @@ function isNumberArray(value: unknown): value is number[] {
 }
 
 function isValidDateString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    !Number.isNaN(Date.parse(value))
+  );
 }
 
 function sanitizeOptionalString(value: unknown, fallback = ""): string {
   return typeof value === "string" ? value : fallback;
 }
 
-function sanitizeStringList(value: unknown, maxItems = 50, maxLength = 80): string[] {
+function sanitizeStringList(
+  value: unknown,
+  maxItems = 50,
+  maxLength = 80,
+): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -60,12 +71,16 @@ function sanitizeSpeakerLabels(value: unknown): SpeakerLabels {
   }
 
   const labels: SpeakerLabels = {};
-  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach((channel) => {
-    const label = (value as Partial<Record<SpeakerChannel, unknown>>)[channel];
-    if (typeof label === "string" && label.trim()) {
-      labels[channel] = label.trim().slice(0, 80);
-    }
-  });
+  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach(
+    (channel) => {
+      const label = (value as Partial<Record<SpeakerChannel, unknown>>)[
+        channel
+      ];
+      if (typeof label === "string" && label.trim()) {
+        labels[channel] = label.trim().slice(0, 80);
+      }
+    },
+  );
   return labels;
 }
 
@@ -77,11 +92,7 @@ function sanitizeQualityStats(value: unknown): SessionQualityStats | undefined {
   const stats = value as Partial<Record<keyof SessionQualityStats, unknown>>;
   const health = stats.health;
   const lastComputedAt = stats.lastComputedAt;
-  if (
-    health !== "good" &&
-    health !== "warning" &&
-    health !== "unstable"
-  ) {
+  if (health !== "good" && health !== "warning" && health !== "unstable") {
     return undefined;
   }
   if (!isValidDateString(lastComputedAt)) {
@@ -110,7 +121,9 @@ function sanitizeQualityStats(value: unknown): SessionQualityStats | undefined {
   };
 }
 
-function sanitizeOptionalNullableDateString(value: unknown): string | null | undefined {
+function sanitizeOptionalNullableDateString(
+  value: unknown,
+): string | null | undefined {
   if (value === undefined) {
     return undefined;
   }
@@ -120,8 +133,12 @@ function sanitizeOptionalNullableDateString(value: unknown): string | null | und
   return isValidDateString(value) ? value : undefined;
 }
 
-function sanitizePersistedStatus(value: unknown): PersistedSessionStatus | undefined {
-  return value === "running" || value === "stopped" || value === "saved" ? value : undefined;
+function sanitizePersistedStatus(
+  value: unknown,
+): PersistedSessionStatus | undefined {
+  return value === "running" || value === "stopped" || value === "saved"
+    ? value
+    : undefined;
 }
 
 function sanitizeLineageId(value: unknown): string | undefined {
@@ -131,7 +148,9 @@ function sanitizeLineageId(value: unknown): string | undefined {
 
 function sanitizeSegmentNumber(value: unknown): number | undefined {
   const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : undefined;
+  return Number.isFinite(parsed) && parsed >= 1
+    ? Math.floor(parsed)
+    : undefined;
 }
 
 function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
@@ -141,10 +160,19 @@ function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
 
   const id = sanitizeOptionalString(value.id);
   const text = sanitizeOptionalString(value.text);
-  const timestamp = isValidDateString(value.timestamp) ? value.timestamp : undefined;
-  const startTime = isValidDateString(value.startTime) ? value.startTime : undefined;
+  const timestamp = isValidDateString(value.timestamp)
+    ? value.timestamp
+    : undefined;
+  const startTime = isValidDateString(value.startTime)
+    ? value.startTime
+    : undefined;
   const endTime = isValidDateString(value.endTime) ? value.endTime : undefined;
-  if (!id || timestamp === undefined || startTime === undefined || endTime === undefined) {
+  if (
+    !id ||
+    timestamp === undefined ||
+    startTime === undefined ||
+    endTime === undefined
+  ) {
     return undefined;
   }
 
@@ -155,7 +183,9 @@ function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
     startTime,
     endTime,
     sourceSelector:
-      "sourceSelector" in value ? sanitizeOptionalString(value.sourceSelector, "") || undefined : undefined,
+      "sourceSelector" in value
+        ? sanitizeOptionalString(value.sourceSelector, "") || undefined
+        : undefined,
     sourceFramePath:
       "sourceFramePath" in value && value.sourceFramePath !== undefined
         ? isNumberArray(value.sourceFramePath)
@@ -163,13 +193,18 @@ function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
           : undefined
         : undefined,
     sourceNodeKey:
-      "sourceNodeKey" in value ? sanitizeOptionalString(value.sourceNodeKey, "") || undefined : undefined,
+      "sourceNodeKey" in value
+        ? sanitizeOptionalString(value.sourceNodeKey, "") || undefined
+        : undefined,
     sourceCaptureMode:
-      value.sourceCaptureMode === "structured" || value.sourceCaptureMode === "fallback"
+      value.sourceCaptureMode === "structured" ||
+      value.sourceCaptureMode === "fallback"
         ? value.sourceCaptureMode
         : undefined,
     speakerColor:
-      "speakerColor" in value ? sanitizeOptionalString(value.speakerColor, "") || undefined : undefined,
+      "speakerColor" in value
+        ? sanitizeOptionalString(value.speakerColor, "") || undefined
+        : undefined,
     speakerChannel:
       value.speakerChannel === "primary" ||
       value.speakerChannel === "secondary" ||
@@ -177,21 +212,36 @@ function sanitizeSubtitleEntry(value: unknown): SubtitleEntry | undefined {
         ? value.speakerChannel
         : undefined,
     speakerChanged:
-      typeof value.speakerChanged === "boolean" ? value.speakerChanged : undefined,
+      typeof value.speakerChanged === "boolean"
+        ? value.speakerChanged
+        : undefined,
     originalText:
-      "originalText" in value ? sanitizeOptionalString(value.originalText, "") || undefined : undefined,
-    highlighted: typeof value.highlighted === "boolean" ? value.highlighted : undefined,
+      "originalText" in value
+        ? sanitizeOptionalString(value.originalText, "") || undefined
+        : undefined,
+    highlighted:
+      typeof value.highlighted === "boolean" ? value.highlighted : undefined,
     entryNote:
-      "entryNote" in value ? sanitizeOptionalString(value.entryNote, "") || undefined : undefined,
+      "entryNote" in value
+        ? sanitizeOptionalString(value.entryNote, "") || undefined
+        : undefined,
     labels: sanitizeStringList(value.labels),
     speakerLabel:
-      "speakerLabel" in value ? sanitizeOptionalString(value.speakerLabel, "") || undefined : undefined,
+      "speakerLabel" in value
+        ? sanitizeOptionalString(value.speakerLabel, "") || undefined
+        : undefined,
     sourceEntryIds: sanitizeStringList(value.sourceEntryIds, 200, 160),
   };
 }
 
-function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | undefined {
-  if (!isRecordLike(value) || typeof value.id !== "string" || !Array.isArray(value.entries)) {
+function sanitizeStoredSessionRecord(
+  value: unknown,
+): StoredSessionRecord | undefined {
+  if (
+    !isRecordLike(value) ||
+    typeof value.id !== "string" ||
+    !Array.isArray(value.entries)
+  ) {
     return undefined;
   }
 
@@ -205,11 +255,21 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     return undefined;
   }
 
-  const startedAt = isValidDateString(value.startedAt) ? value.startedAt : undefined;
-  const createdAt = isValidDateString(value.createdAt) ? value.createdAt : undefined;
-  const updatedAt = isValidDateString(value.updatedAt) ? value.updatedAt : undefined;
+  const startedAt = isValidDateString(value.startedAt)
+    ? value.startedAt
+    : undefined;
+  const createdAt = isValidDateString(value.createdAt)
+    ? value.createdAt
+    : undefined;
+  const updatedAt = isValidDateString(value.updatedAt)
+    ? value.updatedAt
+    : undefined;
   const endedAt = sanitizeOptionalNullableDateString(value.endedAt);
-  if (startedAt === undefined || createdAt === undefined || updatedAt === undefined) {
+  if (
+    startedAt === undefined ||
+    createdAt === undefined ||
+    updatedAt === undefined
+  ) {
     return undefined;
   }
   if ("endedAt" in value && endedAt === undefined) {
@@ -221,16 +281,24 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     return undefined;
   }
 
-  if ("pinnedAt" in value && sanitizeOptionalNullableDateString(value.pinnedAt) === undefined) {
+  if (
+    "pinnedAt" in value &&
+    sanitizeOptionalNullableDateString(value.pinnedAt) === undefined
+  ) {
     return undefined;
   }
 
   const sourceUrlCandidate = sanitizeOptionalString(value.sourceUrl);
-  const sourceUrl = isSupportedAssemblyUrl(sourceUrlCandidate) ? sourceUrlCandidate : "";
+  const sourceUrl = isSupportedAssemblyUrl(sourceUrlCandidate)
+    ? sourceUrlCandidate
+    : "";
 
   return {
     id,
-    version: typeof value.version === "string" && value.version ? value.version : SESSION_RECORD_VERSION,
+    version:
+      typeof value.version === "string" && value.version
+        ? value.version
+        : SESSION_RECORD_VERSION,
     title: sanitizeOptionalString(value.title, "국회 자막 세션"),
     committeeName: sanitizeOptionalString(value.committeeName),
     sourceUrl,
@@ -239,7 +307,8 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     createdAt,
     updatedAt,
     subtitleCount:
-      typeof value.subtitleCount === "number" && Number.isFinite(value.subtitleCount)
+      typeof value.subtitleCount === "number" &&
+      Number.isFinite(value.subtitleCount)
         ? value.subtitleCount
         : entries.length,
     charCount:
@@ -252,7 +321,9 @@ function sanitizeStoredSessionRecord(value: unknown): StoredSessionRecord | unde
     note: typeof value.note === "string" ? value.note : undefined,
     tags: sanitizeStringList(value.tags),
     category:
-      typeof value.category === "string" ? value.category.trim().slice(0, 120) : undefined,
+      typeof value.category === "string"
+        ? value.category.trim().slice(0, 120)
+        : undefined,
     speakerLabels: sanitizeSpeakerLabels(value.speakerLabels),
     qualityStats: sanitizeQualityStats(value.qualityStats),
     lineageId: sanitizeLineageId(value.lineageId),
@@ -280,7 +351,9 @@ function cloneImportedRecord(record: StoredSessionRecord): StoredSessionRecord {
     note: record.note,
     tags: record.tags ? [...record.tags] : undefined,
     category: record.category,
-    speakerLabels: record.speakerLabels ? { ...record.speakerLabels } : undefined,
+    speakerLabels: record.speakerLabels
+      ? { ...record.speakerLabels }
+      : undefined,
     qualityStats: record.qualityStats ? { ...record.qualityStats } : undefined,
     lineageId: record.lineageId,
     segmentNumber: record.segmentNumber,
@@ -345,7 +418,9 @@ export function buildSessionBackupFilename(exportedAt = new Date()): string {
   return `assembly_subtitle_backup_${year}${month}${date}_${hours}${minutes}${seconds}.json`;
 }
 
-export function parseSessionImportPayload(value: unknown): ParsedSessionImportPayload {
+export function parseSessionImportPayload(
+  value: unknown,
+): ParsedSessionImportPayload {
   const singleRecord = sanitizeStoredSessionRecord(value);
   if (singleRecord) {
     return {

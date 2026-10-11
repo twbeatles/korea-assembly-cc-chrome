@@ -60,7 +60,9 @@ const SAFE_SPEAKER_COLOR_PATTERN =
 export function sanitizeSpeakerColorForCss(
   speakerColor: string | undefined | null,
 ): string {
-  const color = String(speakerColor ?? "").trim().replace(/\s+/g, " ");
+  const color = String(speakerColor ?? "")
+    .trim()
+    .replace(/\s+/g, " ");
   if (!color || color.length > 64) {
     return "";
   }
@@ -71,7 +73,10 @@ export function sanitizeSpeakerColorForCss(
     .replace(/\s*,\s*/g, ", ")
     .replace(/\(\s+/g, "(")
     .replace(/\s+\)/g, ")");
-  if (SAFE_SPEAKER_COLOR_PATTERN.test(normalized) || SAFE_SPEAKER_COLOR_PATTERN.test(compact)) {
+  if (
+    SAFE_SPEAKER_COLOR_PATTERN.test(normalized) ||
+    SAFE_SPEAKER_COLOR_PATTERN.test(compact)
+  ) {
     return normalized.startsWith("#") ? compact : normalized;
   }
   return "";

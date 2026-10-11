@@ -1,5 +1,8 @@
 import type { CaptureMode } from "../../core/live-capture";
-import { getSessionCharCount, type SessionState } from "../../core/subtitle-models";
+import {
+  getSessionCharCount,
+  type SessionState,
+} from "../../core/subtitle-models";
 import { buildCaptureDiagnostics } from "../../shared/capture-diagnostics";
 import { isSupportedAssemblyUrl } from "../../shared/constants";
 import type {
@@ -35,7 +38,10 @@ interface BuildContentStatusSnapshotOptions {
   latestPersistabilityState: PersistabilityState;
   rowDiagnostics?: Pick<
     CaptureDiagnostics,
-    "stableRowCount" | "unstableRowCount" | "filteredUnconfirmedCount" | "rowKeySources"
+    | "stableRowCount"
+    | "unstableRowCount"
+    | "filteredUnconfirmedCount"
+    | "rowKeySources"
   >;
   fallbackCommitState?: FallbackCommitState;
   includeExportEstimates?: boolean;
@@ -53,15 +59,13 @@ interface CanClearCurrentSessionStateOptions {
 export function resolveContentPersistabilityDiagnostics(
   options: ResolvePersistabilityDiagnosticsOptions,
 ): PersistabilityDiagnostics {
-  const {
-    status,
-    entryCount,
-    livePreviewText,
-    latestPersistabilityState,
-  } = options;
+  const { status, entryCount, livePreviewText, latestPersistabilityState } =
+    options;
 
   if (status !== "running") {
-    return buildPersistabilityDiagnostics(entryCount > 0 ? "persistable" : "idle");
+    return buildPersistabilityDiagnostics(
+      entryCount > 0 ? "persistable" : "idle",
+    );
   }
 
   if (latestPersistabilityState !== "idle") {
@@ -102,7 +106,10 @@ export function buildContentStatusSnapshot(
     livePreviewText: livePreviewTextRaw,
     latestPersistabilityState,
   });
-  const exportEstimates = buildExportEstimateDiagnostics(sessionState, settings);
+  const exportEstimates = buildExportEstimateDiagnostics(
+    sessionState,
+    settings,
+  );
   const estimatedBytes = Math.max(
     exportEstimates.txtBytes,
     exportEstimates.srtBytes,
@@ -154,11 +161,11 @@ export function buildContentStatusSnapshot(
 export function canClearCurrentSessionState(
   options: CanClearCurrentSessionStateOptions,
 ): boolean {
-  const {
-    status,
-    entryCount,
-    livePreviewText,
-    showNotice,
-  } = options;
-  return status === "running" || entryCount > 0 || Boolean(livePreviewText.trim()) || showNotice;
+  const { status, entryCount, livePreviewText, showNotice } = options;
+  return (
+    status === "running" ||
+    entryCount > 0 ||
+    Boolean(livePreviewText.trim()) ||
+    showNotice
+  );
 }

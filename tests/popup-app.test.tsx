@@ -1,4 +1,10 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const chromeApiMocks = vi.hoisted(() => ({
@@ -185,11 +191,17 @@ describe("popup app", () => {
     await waitFor(() => {
       expect(screen.getByText("저장할 자막이 아직 없습니다.")).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: "지금 저장" }).hasAttribute("disabled")).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "지금 저장" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
   });
 
   it("shows a user-facing error when opening history fails", async () => {
-    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(new Error("history failed"));
+    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(
+      new Error("history failed"),
+    );
 
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "저장된 기록" }));
@@ -200,7 +212,9 @@ describe("popup app", () => {
   });
 
   it("shows a user-facing error when opening options fails", async () => {
-    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(new Error("options failed"));
+    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(
+      new Error("options failed"),
+    );
 
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "환경 설정" }));
@@ -211,7 +225,9 @@ describe("popup app", () => {
   });
 
   it("shows a user-facing error when opening diagnostics fails", async () => {
-    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(new Error("diagnostics failed"));
+    chromeApiMocks.sendRuntimeMessage.mockRejectedValueOnce(
+      new Error("diagnostics failed"),
+    );
 
     render(<App />);
     fireEvent.click(screen.getByRole("button", { name: "상태 확인" }));
@@ -298,10 +314,16 @@ describe("popup app", () => {
         ),
       ).toBeTruthy();
     });
-    expect(screen.getByRole("button", { name: "수집 시작" }).hasAttribute("disabled")).toBe(true);
-    expect(screen.getByRole("button", { name: "페이지 패널 열기" }).hasAttribute("disabled")).toBe(
-      false,
-    );
+    expect(
+      screen
+        .getByRole("button", { name: "수집 시작" })
+        .hasAttribute("disabled"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByRole("button", { name: "페이지 패널 열기" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
   });
 
   it("renders side panel subtitles without the manual start button", async () => {
@@ -397,18 +419,21 @@ describe("popup app", () => {
     expect(screen.queryByRole("button", { name: "수집 시작" })).toBeNull();
     expect(screen.queryByRole("button", { name: "수집 종료" })).toBeNull();
     expect(screen.queryByRole("button", { name: "사이드 패널" })).toBeNull();
-    expect(screen.getByRole("button", { name: "지금 저장" }).hasAttribute("disabled")).toBe(
-      false,
-    );
+    expect(
+      screen
+        .getByRole("button", { name: "지금 저장" })
+        .hasAttribute("disabled"),
+    ).toBe(false);
   });
 
   it("reconnects to the current active tab when the active tab changes", async () => {
     let activatedListener:
-      | ((activeInfo: chrome.tabs.OnActivatedInfo) => void)
-      | undefined;
-    chromeApiMocks.addTabActivatedListener.mockImplementationOnce((listener) => {
-      activatedListener = listener;
-    });
+      ((activeInfo: chrome.tabs.OnActivatedInfo) => void) | undefined;
+    chromeApiMocks.addTabActivatedListener.mockImplementationOnce(
+      (listener) => {
+        activatedListener = listener;
+      },
+    );
 
     const firstPort = {
       onMessage: {
@@ -463,6 +488,10 @@ describe("popup app", () => {
       expect(chromeApiMocks.connectToTab).toHaveBeenCalledTimes(2);
     });
     expect(firstPort.disconnect).toHaveBeenCalled();
-    expect(chromeApiMocks.connectToTab).toHaveBeenLastCalledWith(2, 0, "assembly-subtitle-popup");
+    expect(chromeApiMocks.connectToTab).toHaveBeenLastCalledWith(
+      2,
+      0,
+      "assembly-subtitle-popup",
+    );
   });
 });

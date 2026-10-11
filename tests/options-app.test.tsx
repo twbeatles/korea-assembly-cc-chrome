@@ -225,7 +225,9 @@ describe("options app", () => {
     render(<App />);
     await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
 
-    expect(screen.getByText(/필요한 문장이 빠진다면 이 옵션을 끄세요/)).toBeTruthy();
+    expect(
+      screen.getByText(/필요한 문장이 빠진다면 이 옵션을 끄세요/),
+    ).toBeTruthy();
   });
 
   it("saves speaker export/copy, panel highlight, and entry note options", async () => {
@@ -408,11 +410,15 @@ describe("options app", () => {
     await waitFor(() => {
       expect(screen.getByText("4문장")).toBeTruthy();
       expect(screen.getByText("자막을 정상적으로 모으는 중")).toBeTruthy();
-      expect(screen.queryByText("저장 가능한 확정 자막이 누적되고 있습니다.")).toBeNull();
+      expect(
+        screen.queryByText("저장 가능한 확정 자막이 누적되고 있습니다."),
+      ).toBeNull();
       expect(screen.queryByText("4문장 / 2000문장 (0.2%)")).toBeNull();
       expect(screen.queryByText("240 B")).toBeNull();
     });
-    expect(port.postMessage).toHaveBeenCalledWith({ type: "GET_DIAGNOSTICS_STATUS" });
+    expect(port.postMessage).toHaveBeenCalledWith({
+      type: "GET_DIAGNOSTICS_STATUS",
+    });
   });
 
   it("falls back to another supported tab when the requested diagnostics tab disappears", async () => {

@@ -48,9 +48,11 @@ describe("copy utils", () => {
     });
 
     expect(copied).toBe(
-      ["[09:00:01] 두 번째 문장", "[09:00:03] 네 번째 문장", "[09:00:04] 다섯 번째 문장"].join(
-        "\n",
-      ),
+      [
+        "[09:00:01] 두 번째 문장",
+        "[09:00:03] 네 번째 문장",
+        "[09:00:04] 다섯 번째 문장",
+      ].join("\n"),
     );
   });
 
@@ -93,7 +95,11 @@ describe("copy utils", () => {
         speakerChannel: "primary",
       },
       {
-        ...buildEntry("s2", "의사일정 말씀드리겠습니다", "2026-03-10T09:00:01.000"),
+        ...buildEntry(
+          "s2",
+          "의사일정 말씀드리겠습니다",
+          "2026-03-10T09:00:01.000",
+        ),
         speakerChannel: "secondary",
         speakerLabel: "위원장",
       },
@@ -111,7 +117,9 @@ describe("copy utils", () => {
     );
 
     expect(buildCopyText(withSpeaker)).toBe(
-      ["[09:00:00] 본회의 개의", "[09:00:01] 의사일정 말씀드리겠습니다"].join("\n"),
+      ["[09:00:00] 본회의 개의", "[09:00:01] 의사일정 말씀드리겠습니다"].join(
+        "\n",
+      ),
     );
   });
 

@@ -16,7 +16,9 @@ export interface HistoryHeroProps {
   globalSearchQuery: string;
   tagFilter: string;
   categoryFilter: string;
-  importInputRef: React.RefObject<HTMLInputElement | null> | React.MutableRefObject<HTMLInputElement | null>;
+  importInputRef:
+    | React.RefObject<HTMLInputElement | null>
+    | React.MutableRefObject<HTMLInputElement | null>;
   onRefresh: () => void;
   onToggleStarredOnly: () => void;
   onBackupAll: () => void;

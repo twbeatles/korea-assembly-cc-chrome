@@ -80,7 +80,11 @@ describe("capture ownership", () => {
     ).toBe(false);
     expect(
       isLiveCaptureOwnershipForSession(
-        { ownerId: "tab-a", updatedAt: now - 60_000, sessionId: "session_live" },
+        {
+          ownerId: "tab-a",
+          updatedAt: now - 60_000,
+          sessionId: "session_live",
+        },
         "session_live",
         now,
       ),

@@ -36,7 +36,10 @@ function buildStoppedRecord(id = "session_failed"): SessionRecord {
 
 describe("failed stopped session guard", () => {
   it("retries and clears the guard when the retry succeeds", async () => {
-    const guard = rememberFailedStoppedSession(buildStoppedRecord(), new Error("초기 저장 실패"));
+    const guard = rememberFailedStoppedSession(
+      buildStoppedRecord(),
+      new Error("초기 저장 실패"),
+    );
 
     const result = await resolveFailedStoppedSessionGuard({
       actionLabel: "새 수집 시작",
@@ -55,7 +58,10 @@ describe("failed stopped session guard", () => {
   });
 
   it("keeps the guard when retry fails and discard is cancelled", async () => {
-    const guard = rememberFailedStoppedSession(buildStoppedRecord(), new Error("초기 저장 실패"));
+    const guard = rememberFailedStoppedSession(
+      buildStoppedRecord(),
+      new Error("초기 저장 실패"),
+    );
     const confirmDiscard = vi.fn().mockReturnValue(false);
 
     const result = await resolveFailedStoppedSessionGuard({
@@ -71,14 +77,19 @@ describe("failed stopped session guard", () => {
     expect(result.guard.record?.id).toBe("session_failed");
     expect(result.guard.errorMessage).toBe("재시도 실패");
     expect(confirmDiscard).toHaveBeenCalledOnce();
-    expect(confirmDiscard.mock.calls[0][0]).toContain("저장되지 않은 자막이 버려지고 화면 비우기를 진행합니다.");
+    expect(confirmDiscard.mock.calls[0][0]).toContain(
+      "저장되지 않은 자막이 버려지고 화면 비우기를 진행합니다.",
+    );
     expect(result.notice).toBe("저장 실패한 이전 세션을 유지했습니다.");
   });
 
   it("clears the guard when retry fails and discard is confirmed", async () => {
     const result = await resolveFailedStoppedSessionGuard({
       actionLabel: "새 수집 시작",
-      guard: rememberFailedStoppedSession(buildStoppedRecord("session_discard"), "저장 실패"),
+      guard: rememberFailedStoppedSession(
+        buildStoppedRecord("session_discard"),
+        "저장 실패",
+      ),
       persistRecord: async () => {
         throw new Error("재시도 실패");
       },

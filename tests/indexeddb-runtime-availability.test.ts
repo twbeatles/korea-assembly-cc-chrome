@@ -22,11 +22,17 @@ describe("IndexedDB runtime availability", () => {
     disableIndexedDb({ now, reason: "blocked", permanent: false });
 
     expect(storeRuntime.indexedDbAvailable).toBe(false);
-    expect(storeRuntime.indexedDbDisabledUntil).toBe(now + INDEXED_DB_DISABLE_TTL_MS);
+    expect(storeRuntime.indexedDbDisabledUntil).toBe(
+      now + INDEXED_DB_DISABLE_TTL_MS,
+    );
     expect(storeRuntime.lastIndexedDbOpenError).toBe("blocked");
 
-    expect(isIndexedDbRuntimeAvailable(now + INDEXED_DB_DISABLE_TTL_MS - 1)).toBe(false);
-    expect(isIndexedDbRuntimeAvailable(now + INDEXED_DB_DISABLE_TTL_MS)).toBe(true);
+    expect(
+      isIndexedDbRuntimeAvailable(now + INDEXED_DB_DISABLE_TTL_MS - 1),
+    ).toBe(false);
+    expect(isIndexedDbRuntimeAvailable(now + INDEXED_DB_DISABLE_TTL_MS)).toBe(
+      true,
+    );
     expect(storeRuntime.indexedDbAvailable).toBe(true);
     expect(storeRuntime.indexedDbDisabledUntil).toBe(0);
   });

@@ -11,7 +11,10 @@ export function cloneStateStructure(state: SessionState): SessionState {
   };
 }
 
-export function cloneEntryAtIndex(state: SessionState, index: number): SubtitleEntry | undefined {
+export function cloneEntryAtIndex(
+  state: SessionState,
+  index: number,
+): SubtitleEntry | undefined {
   const current = state.entries[index];
   if (!current) {
     return undefined;
@@ -19,7 +22,9 @@ export function cloneEntryAtIndex(state: SessionState, index: number): SubtitleE
 
   const cloned: SubtitleEntry = {
     ...current,
-    sourceFramePath: current.sourceFramePath ? [...current.sourceFramePath] : undefined,
+    sourceFramePath: current.sourceFramePath
+      ? [...current.sourceFramePath]
+      : undefined,
   };
   state.entries[index] = cloned;
   return cloned;
@@ -42,7 +47,10 @@ export function updateStateMetadata(
   return next;
 }
 
-export function applySourceMeta(entry: SubtitleEntry, meta?: PipelineSourceMeta): void {
+export function applySourceMeta(
+  entry: SubtitleEntry,
+  meta?: PipelineSourceMeta,
+): void {
   if (!meta) {
     return;
   }

@@ -18,10 +18,7 @@ import {
   selectAllSessionIds,
 } from "../../history-view-state";
 import { HISTORY_PAGE_SIZE } from "../helpers";
-import {
-  confirmDeleteSession,
-  confirmDeleteSessions,
-} from "../helpers";
+import { confirmDeleteSession, confirmDeleteSessions } from "../helpers";
 
 /**
  * 기록 목록 도메인 (단일 책임: 목록 페이징·선택·라이브러리 액션).
@@ -34,7 +31,9 @@ export function useHistoryLibrary() {
   const preserveMessageOnRefreshRef = useRef(false);
   const [pageLineages, setPageLineages] = useState<SessionLineageSummary[]>([]);
   const [totalSessionCount, setTotalSessionCount] = useState(0);
-  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(null);
+  const [selectedSession, setSelectedSession] = useState<SessionRecord | null>(
+    null,
+  );
   const [selectedLineageSummary, setSelectedLineageSummary] =
     useState<SessionLineageSummary | null>(null);
   const [selectedId, setSelectedId] = useState<string>("");
@@ -60,7 +59,8 @@ export function useHistoryLibrary() {
     Math.ceil(totalSessionCount / HISTORY_PAGE_SIZE),
   );
   const currentPageSessionsChecked =
-    pageLineages.length > 0 && pageLineages.every((lineage) => checkedIdSet.has(lineage.lineageId));
+    pageLineages.length > 0 &&
+    pageLineages.every((lineage) => checkedIdSet.has(lineage.lineageId));
   const searchModeActive =
     Boolean(globalSearchQuery.trim()) ||
     Boolean(tagFilter.trim()) ||
@@ -159,13 +159,20 @@ export function useHistoryLibrary() {
         }
 
         if (checkedIdsRef.current.length > 0) {
-          const visibleLineageIds = new Set(pageResult.lineages.map((lineage) => lineage.lineageId));
-          setCheckedIds((current) => current.filter((lineageId) => visibleLineageIds.has(lineageId)));
+          const visibleLineageIds = new Set(
+            pageResult.lineages.map((lineage) => lineage.lineageId),
+          );
+          setCheckedIds((current) =>
+            current.filter((lineageId) => visibleLineageIds.has(lineageId)),
+          );
         }
 
-        let nextSelectedId = selectedIdRef.current || pageResult.lineages[0]?.lineageId || "";
+        let nextSelectedId =
+          selectedIdRef.current || pageResult.lineages[0]?.lineageId || "";
         let nextSelectedLineage =
-          pageResult.lineages.find((lineage) => lineage.lineageId === nextSelectedId) ?? null;
+          pageResult.lineages.find(
+            (lineage) => lineage.lineageId === nextSelectedId,
+          ) ?? null;
 
         if (!nextSelectedLineage && pageResult.lineages.length > 0) {
           nextSelectedLineage = pageResult.lineages[0];
@@ -279,7 +286,9 @@ export function useHistoryLibrary() {
     }
 
     try {
-      const result = await deleteLineageIds(targetLineages.map((lineage) => lineage.lineageId));
+      const result = await deleteLineageIds(
+        targetLineages.map((lineage) => lineage.lineageId),
+      );
       setCheckedIds([]);
       requestRefresh(
         buildSelectedDeleteMessage(
@@ -302,7 +311,9 @@ export function useHistoryLibrary() {
   const handleToggleCheckAll = (): void => {
     setCheckedIds((current) =>
       currentPageSessionsChecked
-        ? current.filter((id) => !pageLineages.some((lineage) => lineage.lineageId === id))
+        ? current.filter(
+            (id) => !pageLineages.some((lineage) => lineage.lineageId === id),
+          )
         : [
             ...new Set([
               ...current,
@@ -314,14 +325,18 @@ export function useHistoryLibrary() {
     );
   };
 
-  const handleToggleFavorite = async (lineage: SessionLineageSummary): Promise<void> => {
+  const handleToggleFavorite = async (
+    lineage: SessionLineageSummary,
+  ): Promise<void> => {
     try {
       await updateSessionLineageMetadata(lineage.lineageId, {
         starred: !lineage.starred,
         pinnedAt: lineage.starred ? null : new Date().toISOString(),
       });
       requestRefresh(
-        lineage.starred ? "즐겨찾기를 해제했습니다." : "즐겨찾기에 추가했습니다.",
+        lineage.starred
+          ? "즐겨찾기를 해제했습니다."
+          : "즐겨찾기에 추가했습니다.",
       );
     } catch (error) {
       setMessage(

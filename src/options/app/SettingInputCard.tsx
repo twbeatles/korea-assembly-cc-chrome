@@ -22,7 +22,9 @@ export function SettingInputCard(props: {
       </div>
       <div className="number-input-group">
         {props.children}
-        {props.error ? <span className="field-error">{props.error}</span> : null}
+        {props.error ? (
+          <span className="field-error">{props.error}</span>
+        ) : null}
       </div>
     </label>
   );

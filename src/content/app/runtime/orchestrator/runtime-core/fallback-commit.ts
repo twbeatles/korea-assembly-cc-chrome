@@ -1,25 +1,38 @@
-
 import { applyPreview } from "../../../../../core/subtitle-pipeline";
 
 import type { FallbackCommitState } from "../../../../../shared/message-types";
 
-import { resolveRuntimeSessionSegmentationReason, resolveRuntimeSessionSegmentationThresholds } from "../../../../runtime/segmentation-policy";
+import {
+  resolveRuntimeSessionSegmentationReason,
+  resolveRuntimeSessionSegmentationThresholds,
+} from "../../../../runtime/segmentation-policy";
 
 import { resolveRuntimeCaptureNotice } from "../../../../subtitle-event-handler";
-import { buildPersistabilityDiagnostics, resolvePreviewPersistabilityState } from "../../../../persistability";
-import { FALLBACK_COMMIT_OBSERVATION_THRESHOLD, FALLBACK_COMMIT_STABLE_MS } from "../../constants";
+import {
+  buildPersistabilityDiagnostics,
+  resolvePreviewPersistabilityState,
+} from "../../../../persistability";
+import {
+  FALLBACK_COMMIT_OBSERVATION_THRESHOLD,
+  FALLBACK_COMMIT_STABLE_MS,
+} from "../../constants";
 import type { FallbackCommitCandidate } from "../../types";
 
 import type { RuntimeCoreContext } from "./context";
 import { clearFallbackCommitTimer } from "./timers";
 import { setPanelNotice } from "./notices";
-import { setFallbackCommitState, setPersistabilityState, syncUserInterfaces } from "./panel-status";
+import {
+  setFallbackCommitState,
+  setPersistabilityState,
+  syncUserInterfaces,
+} from "./panel-status";
 import { scheduleRunningPersist } from "./persistence";
 import { rollOverRunningSessionSegment } from "./session-lifecycle";
 import { maybeEmitSegmentCapacityWarning } from "./session-commands";
 
 /** fallback 텍스트 안정 관측 후 commit (단일 책임: fallback 확정). */
-export function clearFallbackCommitCandidate(ctx: RuntimeCoreContext, 
+export function clearFallbackCommitCandidate(
+  ctx: RuntimeCoreContext,
   nextState: FallbackCommitState = "idle",
 ): void {
   clearFallbackCommitTimer(ctx);
@@ -27,7 +40,8 @@ export function clearFallbackCommitCandidate(ctx: RuntimeCoreContext,
   setFallbackCommitState(ctx, nextState);
 }
 
-export function scheduleFallbackCommitCandidate(ctx: RuntimeCoreContext, 
+export function scheduleFallbackCommitCandidate(
+  ctx: RuntimeCoreContext,
   candidate: FallbackCommitCandidate,
 ): void {
   clearFallbackCommitTimer(ctx);
@@ -41,7 +55,10 @@ export function scheduleFallbackCommitCandidate(ctx: RuntimeCoreContext,
   }, delayMs);
 }
 
-export function resolveFallbackResultState(ctx: RuntimeCoreContext, reason?: string): FallbackCommitState {
+export function resolveFallbackResultState(
+  ctx: RuntimeCoreContext,
+  reason?: string,
+): FallbackCommitState {
   if (reason?.includes("duplicate")) {
     return "duplicate";
   }
@@ -51,9 +68,17 @@ export function resolveFallbackResultState(ctx: RuntimeCoreContext, reason?: str
   return "stable";
 }
 
-export function commitFallbackCandidate(ctx: RuntimeCoreContext, token: number, now = Date.now()): boolean {
+export function commitFallbackCandidate(
+  ctx: RuntimeCoreContext,
+  token: number,
+  now = Date.now(),
+): boolean {
   const candidate = ctx.fallbackCommitCandidate;
-  if (!candidate || candidate.token !== token || ctx.state.status !== "running") {
+  if (
+    !candidate ||
+    candidate.token !== token ||
+    ctx.state.status !== "running"
+  ) {
     return false;
   }
 
@@ -67,10 +92,12 @@ export function commitFallbackCandidate(ctx: RuntimeCoreContext, token: number, 
     ctx.state = result.state;
   }
 
-  clearFallbackCommitCandidate(ctx, 
+  clearFallbackCommitCandidate(
+    ctx,
     committed ? "committed" : resolveFallbackResultState(ctx, result.reason),
   );
-  setPersistabilityState(ctx, 
+  setPersistabilityState(
+    ctx,
     committed
       ? "persistable"
       : resolvePreviewPersistabilityState(result.reason),
@@ -78,7 +105,8 @@ export function commitFallbackCandidate(ctx: RuntimeCoreContext, token: number, 
   const persistability = buildPersistabilityDiagnostics(
     ctx.latestPersistabilityState,
   );
-  setPanelNotice(ctx, 
+  setPanelNotice(
+    ctx,
     resolveRuntimeCaptureNotice({
       captureMode: "fallback",
       observerActive: ctx.state.observerActive,
@@ -101,11 +129,13 @@ export function commitFallbackCandidate(ctx: RuntimeCoreContext, token: number, 
       // 큐를 비우지 않는다 — 이전 잔여·경합 이벤트는 롤오버 후 flush 로 재생한다.
       ctx.segmentRolloverInFlight = true;
       const rolloverToken = ++ctx.segmentRolloverToken;
-      setPanelNotice(ctx, 
+      setPanelNotice(
+        ctx,
         "현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.",
       );
       syncUserInterfaces(ctx);
-      void rollOverRunningSessionSegment(ctx, 
+      void rollOverRunningSessionSegment(
+        ctx,
         segmentationReason,
         now,
         rolloverToken,
@@ -120,7 +150,8 @@ export function commitFallbackCandidate(ctx: RuntimeCoreContext, token: number, 
   return committed;
 }
 
-export function observeFallbackCommitCandidate(ctx: RuntimeCoreContext, 
+export function observeFallbackCommitCandidate(
+  ctx: RuntimeCoreContext,
   raw: string,
   now: number,
   selector?: string,

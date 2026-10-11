@@ -20,8 +20,16 @@ describe("capture lifecycle lock", () => {
       return "stopped";
     });
 
-    await expect(Promise.all([first, second])).resolves.toEqual(["started", "stopped"]);
-    expect(order).toEqual(["start-begin", "start-end", "stop-begin", "stop-end"]);
+    await expect(Promise.all([first, second])).resolves.toEqual([
+      "started",
+      "stopped",
+    ]);
+    expect(order).toEqual([
+      "start-begin",
+      "start-end",
+      "stop-begin",
+      "stop-end",
+    ]);
     expect(lock.isBusy()).toBe(false);
   });
 
@@ -34,9 +42,7 @@ describe("capture lifecycle lock", () => {
       }),
     ).rejects.toThrow("boom");
 
-    await expect(
-      lock.run("stop", async () => "ok"),
-    ).resolves.toBe("ok");
+    await expect(lock.run("stop", async () => "ok")).resolves.toBe("ok");
   });
 
   it("queues fire-and-forget start after an in-flight reconcile without interleaving", async () => {
@@ -58,6 +64,11 @@ describe("capture lifecycle lock", () => {
       order.push("stop");
     });
 
-    expect(order).toEqual(["reconcile-begin", "reconcile-end", "start", "stop"]);
+    expect(order).toEqual([
+      "reconcile-begin",
+      "reconcile-end",
+      "start",
+      "stop",
+    ]);
   });
 });

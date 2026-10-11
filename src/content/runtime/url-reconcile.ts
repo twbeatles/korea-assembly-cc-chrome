@@ -4,15 +4,23 @@
  */
 
 export interface UrlReconcileController {
-  schedule: (getCurrentUrl: () => string, reconcile: (url: string) => Promise<void>) => void;
+  schedule: (
+    getCurrentUrl: () => string,
+    reconcile: (url: string) => Promise<void>,
+  ) => void;
   /** 테스트/강제 실행용 즉시 실행 */
-  runNow: (url: string, reconcile: (url: string) => Promise<void>) => Promise<void>;
+  runNow: (
+    url: string,
+    reconcile: (url: string) => Promise<void>,
+  ) => Promise<void>;
   getLastKnownUrl: () => string;
   setLastKnownUrl: (url: string) => void;
   isInFlight: () => boolean;
 }
 
-export function createUrlReconcileController(initialUrl: string): UrlReconcileController {
+export function createUrlReconcileController(
+  initialUrl: string,
+): UrlReconcileController {
   let lastKnownUrl = initialUrl;
   let inFlight: Promise<void> | null = null;
   let pendingUrl: string | null = null;
@@ -25,7 +33,9 @@ export function createUrlReconcileController(initialUrl: string): UrlReconcileCo
     }
   };
 
-  const flush = async (reconcile: (url: string) => Promise<void>): Promise<void> => {
+  const flush = async (
+    reconcile: (url: string) => Promise<void>,
+  ): Promise<void> => {
     while (pendingUrl !== null) {
       const nextUrl = pendingUrl;
       pendingUrl = null;

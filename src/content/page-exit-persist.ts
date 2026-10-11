@@ -18,9 +18,11 @@ export async function persistQueuedPageExitRecord(
   } catch (error) {
     options.onQueueError?.(error);
     if (options.queueRecordInBackground) {
-      void Promise.resolve(options.queueRecordInBackground(record)).catch((backgroundError) => {
-        options.onQueueError?.(backgroundError);
-      });
+      void Promise.resolve(options.queueRecordInBackground(record)).catch(
+        (backgroundError) => {
+          options.onQueueError?.(backgroundError);
+        },
+      );
     }
   }
 

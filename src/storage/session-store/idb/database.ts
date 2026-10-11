@@ -45,9 +45,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../../session-backup";
+import { buildSessionBackupFilename } from "../../session-backup";
 import { createRandomToken } from "../../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -110,12 +108,8 @@ import type {
   IndexedDbSessionRecord,
   SourcedSessionRecord,
 } from "../globals";
-import {
-  logStoreError,
-} from "../utils";
-import {
-  buildSessionSortKey,
-} from "./records";
+import { logStoreError } from "../utils";
+import { buildSessionSortKey } from "./records";
 
 /**
  * IndexedDB 사용 가능 여부. 일시 disable TTL 이 지나면 재시도를 허용한다.
@@ -139,7 +133,8 @@ export function isIndexedDbRuntimeAvailable(now = Date.now()): boolean {
 export function withRequest<T>(request: IDBRequest<T>): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB request failed"));
+    request.onerror = () =>
+      reject(request.error ?? new Error("IndexedDB request failed"));
   });
 }
 
@@ -162,7 +157,11 @@ export async function withTransaction<T>(
         return;
       }
       settled = true;
-      reject(error instanceof Error ? error : new Error("IndexedDB transaction failed"));
+      reject(
+        error instanceof Error
+          ? error
+          : new Error("IndexedDB transaction failed"),
+      );
     };
 
     const resolveIfReady = (): void => {
@@ -182,9 +181,15 @@ export async function withTransaction<T>(
       resolveIfReady();
     };
     transaction.onerror = () =>
-      rejectOnce(transaction.error ?? new Error("IndexedDB transaction failed"));
+      rejectOnce(
+        transaction.error ?? new Error("IndexedDB transaction failed"),
+      );
     transaction.onabort = () =>
-      rejectOnce(transaction.error ?? callbackError ?? new Error("IndexedDB transaction aborted"));
+      rejectOnce(
+        transaction.error ??
+          callbackError ??
+          new Error("IndexedDB transaction aborted"),
+      );
 
     try {
       void callback(store)
@@ -244,7 +249,11 @@ export async function withSessionStoresTransaction<T>(
         return;
       }
       settled = true;
-      reject(error instanceof Error ? error : new Error("IndexedDB transaction failed"));
+      reject(
+        error instanceof Error
+          ? error
+          : new Error("IndexedDB transaction failed"),
+      );
     };
 
     const resolveIfReady = (): void => {
@@ -264,9 +273,15 @@ export async function withSessionStoresTransaction<T>(
       resolveIfReady();
     };
     transaction.onerror = () =>
-      rejectOnce(transaction.error ?? new Error("IndexedDB transaction failed"));
+      rejectOnce(
+        transaction.error ?? new Error("IndexedDB transaction failed"),
+      );
     transaction.onabort = () =>
-      rejectOnce(transaction.error ?? callbackError ?? new Error("IndexedDB transaction aborted"));
+      rejectOnce(
+        transaction.error ??
+          callbackError ??
+          new Error("IndexedDB transaction aborted"),
+      );
 
     try {
       void callback(stores)
@@ -326,7 +341,11 @@ export function openDb(): Promise<IDBDatabase> {
       try {
         request = indexedDB.open(SESSION_DB_NAME, SESSION_DB_SCHEMA_VERSION);
       } catch (error) {
-        reject(error instanceof Error ? error : new Error("Failed to open session database"));
+        reject(
+          error instanceof Error
+            ? error
+            : new Error("Failed to open session database"),
+        );
         return;
       }
 
@@ -335,9 +354,13 @@ export function openDb(): Promise<IDBDatabase> {
         const store = db.objectStoreNames.contains(SESSION_STORE_NAME)
           ? request.transaction?.objectStore(SESSION_STORE_NAME)
           : db.createObjectStore(SESSION_STORE_NAME, { keyPath: "id" });
-        const chunkStore = db.objectStoreNames.contains(SESSION_ENTRY_CHUNK_STORE_NAME)
+        const chunkStore = db.objectStoreNames.contains(
+          SESSION_ENTRY_CHUNK_STORE_NAME,
+        )
           ? request.transaction?.objectStore(SESSION_ENTRY_CHUNK_STORE_NAME)
-          : db.createObjectStore(SESSION_ENTRY_CHUNK_STORE_NAME, { keyPath: "id" });
+          : db.createObjectStore(SESSION_ENTRY_CHUNK_STORE_NAME, {
+              keyPath: "id",
+            });
         if (!store) {
           return;
         }
@@ -360,7 +383,10 @@ export function openDb(): Promise<IDBDatabase> {
           store.createIndex("lineageId", "lineageId");
         }
         if (!chunkStore.indexNames.contains(SESSION_ENTRY_CHUNK_INDEX_NAME)) {
-          chunkStore.createIndex(SESSION_ENTRY_CHUNK_INDEX_NAME, ["sessionId", "chunkIndex"]);
+          chunkStore.createIndex(SESSION_ENTRY_CHUNK_INDEX_NAME, [
+            "sessionId",
+            "chunkIndex",
+          ]);
         }
 
         const cursorRequest = store.openCursor();
@@ -376,13 +402,16 @@ export function openDb(): Promise<IDBDatabase> {
           const expectedLineageId = sessionId
             ? resolveSessionLineageId(sessionId, value.lineageId)
             : value.lineageId;
-          const expectedSegmentNumber = resolveSessionSegmentNumber(value.segmentNumber);
+          const expectedSegmentNumber = resolveSessionSegmentNumber(
+            value.segmentNumber,
+          );
           const expectedSortKey =
             sessionId && typeof value.updatedAt === "string"
               ? buildSessionSortKey({
                   id: sessionId,
                   starred: Boolean(value.starred),
-                  pinnedAt: typeof value.pinnedAt === "string" ? value.pinnedAt : null,
+                  pinnedAt:
+                    typeof value.pinnedAt === "string" ? value.pinnedAt : null,
                   updatedAt: value.updatedAt,
                 })
               : "";
@@ -411,10 +440,13 @@ export function openDb(): Promise<IDBDatabase> {
       };
       request.onerror = () =>
         reject(request.error ?? new Error("Failed to open session database"));
-      request.onblocked = () => reject(new Error("Session database open request was blocked"));
+      request.onblocked = () =>
+        reject(new Error("Session database open request was blocked"));
     }).catch((error) => {
       const reason =
-        error instanceof Error ? error.message : "Failed to open session database";
+        error instanceof Error
+          ? error.message
+          : "Failed to open session database";
       // 일시 오류/blocked 는 TTL 후 재시도. capability 완전 부재는 typeof 검사로 이미 걸러짐.
       disableIndexedDb({ reason, permanent: false });
       throw error instanceof Error ? error : new Error(reason);
@@ -424,7 +456,9 @@ export function openDb(): Promise<IDBDatabase> {
   return storeRuntime.dbPromise;
 }
 
-export async function tryIndexedDb<T>(operation: () => Promise<T>): Promise<IndexedDbAttempt<T>> {
+export async function tryIndexedDb<T>(
+  operation: () => Promise<T>,
+): Promise<IndexedDbAttempt<T>> {
   if (!isIndexedDbRuntimeAvailable() || typeof indexedDB === "undefined") {
     return {
       ok: false,

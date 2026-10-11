@@ -11,7 +11,9 @@ export function SettingToggleCard(props: {
       <div>
         <strong>{props.title}</strong>
         <span>{props.description}</span>
-        {props.caution ? <span className="setting-caution">{props.caution}</span> : null}
+        {props.caution ? (
+          <span className="setting-caution">{props.caution}</span>
+        ) : null}
       </div>
       <input
         type="checkbox"

@@ -33,7 +33,10 @@ function splitSubtitlePipeline() {
   const lines = src.replace(/\r\n/g, "\n").split("\n");
 
   // Keep original as safety copy only if not already a facade
-  if (src.includes('from "./subtitle-pipeline/') || src.includes('from "./subtitle-pipeline"')) {
+  if (
+    src.includes('from "./subtitle-pipeline/') ||
+    src.includes('from "./subtitle-pipeline"')
+  ) {
     console.log("subtitle-pipeline already facaded, skip A");
     return;
   }
@@ -322,7 +325,9 @@ function splitPublicApi() {
   const lines = src.split("\n");
 
   // Shared imports block (lines 1-157) ends before first export async function saveSession
-  const firstExportIdx = lines.findIndex((l) => l.startsWith("export async function saveSession"));
+  const firstExportIdx = lines.findIndex((l) =>
+    l.startsWith("export async function saveSession"),
+  );
   if (firstExportIdx < 0) throw new Error("saveSession not found");
 
   const sharedImports = lines.slice(0, firstExportIdx).join("\n").trimEnd();
@@ -397,7 +402,7 @@ function splitPublicApi() {
 
   for (const [file, names] of Object.entries(groups)) {
     const bodies = names.map(bodyOf).join("\n\n");
-    // Adjust import paths: from public-api/ folder, ../ becomes ../../ for core? 
+    // Adjust import paths: from public-api/ folder, ../ becomes ../../ for core?
     // Original was in session-store/, now in session-store/public-api/
     // So:
     //   ../session-write-queue → ../../session-write-queue? No: session-write-queue is at storage/session-write-queue
@@ -411,8 +416,14 @@ function splitPublicApi() {
     //   ./fallback → ../fallback
 
     let imports = sharedImports
-      .replace(/from "\.\.\/session-write-queue"/g, 'from "../../session-write-queue"')
-      .replace(/from "\.\.\/persist-recovery"/g, 'from "../../persist-recovery"')
+      .replace(
+        /from "\.\.\/session-write-queue"/g,
+        'from "../../session-write-queue"',
+      )
+      .replace(
+        /from "\.\.\/persist-recovery"/g,
+        'from "../../persist-recovery"',
+      )
       .replace(/from "\.\.\/session-backup"/g, 'from "../../session-backup"')
       .replace(/from "\.\.\/types"/g, 'from "../../types"')
       .replace(/from "\.\.\/\.\.\/core\//g, 'from "../../../core/')
@@ -540,7 +551,10 @@ export {
 // C) orchestrator state bag + domain modules
 // ---------------------------------------------------------------------------
 function splitOrchestrator() {
-  const implPath = path.join(root, "src/content/app/runtime/orchestrator/impl.ts");
+  const implPath = path.join(
+    root,
+    "src/content/app/runtime/orchestrator/impl.ts",
+  );
   const outDir = path.join(root, "src/content/app/runtime/orchestrator");
   if (fs.existsSync(path.join(outDir, "state.ts"))) {
     console.log("orchestrator state.ts exists, skip C deepen");
@@ -552,7 +566,9 @@ function splitOrchestrator() {
 
   // Find state region: first `let settings` through last state const/let before first function isCapturePage
   const settingsLine = lines.findIndex((l) => l.startsWith("let settings:"));
-  const firstFnLine = lines.findIndex((l) => l.startsWith("function isCapturePage"));
+  const firstFnLine = lines.findIndex((l) =>
+    l.startsWith("function isCapturePage"),
+  );
   if (settingsLine < 0 || firstFnLine < 0) {
     throw new Error("orchestrator markers missing");
   }
@@ -820,9 +836,7 @@ function splitOrchestrator() {
       propLines.push("");
       continue;
     }
-    let m = line.match(
-      /^(let|const) ([A-Za-z0-9_]+)(: [^=]+)? = ([\s\S]*);$/,
-    );
+    let m = line.match(/^(let|const) ([A-Za-z0-9_]+)(: [^=]+)? = ([\s\S]*);$/);
     if (m) {
       const name = m[2];
       const type = m[3] || "";
@@ -835,7 +849,9 @@ function splitOrchestrator() {
         );
         continue;
       }
-      propLines.push(`  ${name}${type} = ${value},`.replace(" = ", ": ").replace(/,$/, ",") );
+      propLines.push(
+        `  ${name}${type} = ${value},`.replace(" = ", ": ").replace(/,$/, ","),
+      );
       // Fix: we produced `name: Type: value,` if type present — redo carefully
       continue;
     }
@@ -879,13 +895,22 @@ function splitOrchestrator() {
     .replace(/\blet localPollingTimer\b/, "let _localPollingTimer")
     .replace(/\blet topFallbackTimer\b/, "let _topFallbackTimer")
     .replace(/\blet persistTimer\b/, "let _persistTimer")
-    .replace(/\blet pendingRunningPersistSince\b/, "let _pendingRunningPersistSince")
-    .replace(/\blet pendingRunningPersistTrigger\b/, "let _pendingRunningPersistTrigger")
+    .replace(
+      /\blet pendingRunningPersistSince\b/,
+      "let _pendingRunningPersistSince",
+    )
+    .replace(
+      /\blet pendingRunningPersistTrigger\b/,
+      "let _pendingRunningPersistTrigger",
+    )
     .replace(/\blet pendingResetTimer\b/, "let _pendingResetTimer")
     .replace(/\blet localLastProbeSignature\b/, "let _localLastProbeSignature")
     .replace(/\blet localHadProbeText\b/, "let _localHadProbeText")
     .replace(/\blet topFallbackMissStreak\b/, "let _topFallbackMissStreak")
-    .replace(/\blet lastSuccessfulFallbackFramePath\b/, "let _lastSuccessfulFallbackFramePath")
+    .replace(
+      /\blet lastSuccessfulFallbackFramePath\b/,
+      "let _lastSuccessfulFallbackFramePath",
+    )
     .replace(
       /\blet localPollingUnconfirmedFallbackBlockStreak\b/,
       "let _localPollingUnconfirmedFallbackBlockStreak",
@@ -899,7 +924,10 @@ function splitOrchestrator() {
     .replace(/\blet panelNotice\b/, "let _panelNotice")
     .replace(/\blet inPagePanel\b/, "let _inPagePanel")
     .replace(/\blet frameForwardNonce\b/, "let _frameForwardNonce")
-    .replace(/\blet frameForwardNonceRefreshTimer\b/, "let _frameForwardNonceRefreshTimer")
+    .replace(
+      /\blet frameForwardNonceRefreshTimer\b/,
+      "let _frameForwardNonceRefreshTimer",
+    )
     .replace(
       /\blet frameForwardNonceRefreshInFlight\b/,
       "let _frameForwardNonceRefreshInFlight",
@@ -909,16 +937,37 @@ function splitOrchestrator() {
       /\blet lastSubtitleActivationAttemptAt\b/,
       "let _lastSubtitleActivationAttemptAt",
     )
-    .replace(/\blet lastNavigationSnapshotAt\b/, "let _lastNavigationSnapshotAt")
+    .replace(
+      /\blet lastNavigationSnapshotAt\b/,
+      "let _lastNavigationSnapshotAt",
+    )
     .replace(/\blet liveCaptureLedger\b/, "let _liveCaptureLedger")
-    .replace(/\blet extensionContextInvalidated\b/, "let _extensionContextInvalidated")
-    .replace(/\blet failedStoppedSessionGuard\b/, "let _failedStoppedSessionGuard")
-    .replace(/\blet latestPersistabilityState\b/, "let _latestPersistabilityState")
+    .replace(
+      /\blet extensionContextInvalidated\b/,
+      "let _extensionContextInvalidated",
+    )
+    .replace(
+      /\blet failedStoppedSessionGuard\b/,
+      "let _failedStoppedSessionGuard",
+    )
+    .replace(
+      /\blet latestPersistabilityState\b/,
+      "let _latestPersistabilityState",
+    )
     .replace(/\blet latestRowDiagnostics\b/, "let _latestRowDiagnostics")
-    .replace(/\blet latestFallbackCommitState\b/, "let _latestFallbackCommitState")
+    .replace(
+      /\blet latestFallbackCommitState\b/,
+      "let _latestFallbackCommitState",
+    )
     .replace(/\blet segmentRolloverInFlight\b/, "let _segmentRolloverInFlight")
-    .replace(/\blet queuedSegmentRolloverEvents\b/, "let _queuedSegmentRolloverEvents")
-    .replace(/\blet flushingSegmentRolloverEvents\b/, "let _flushingSegmentRolloverEvents")
+    .replace(
+      /\blet queuedSegmentRolloverEvents\b/,
+      "let _queuedSegmentRolloverEvents",
+    )
+    .replace(
+      /\blet flushingSegmentRolloverEvents\b/,
+      "let _flushingSegmentRolloverEvents",
+    )
     .replace(/\blet segmentRolloverToken\b/, "let _segmentRolloverToken")
     .replace(/\blet fallbackCommitCandidate\b/, "let _fallbackCommitCandidate")
     .replace(/\blet fallbackCommitTimer\b/, "let _fallbackCommitTimer")
@@ -963,7 +1012,7 @@ function splitOrchestrator() {
   //    BUT those functions are not exported from runtime-core currently...
 
   // Best content-preserving solid split for orchestrator:
-  // Keep full body in runtime-core.ts, extract pure helpers (done), 
+  // Keep full body in runtime-core.ts, extract pure helpers (done),
   // and add domain documentation index that points to logical sections.
   // For REAL function extraction without bag rewrite: move entire function text
   // into domain files but they need access to shared state → bag rewrite required.
@@ -1034,10 +1083,7 @@ function splitOrchestrator() {
   let coreBody = bodyBlock;
   // Remove pure function definitions that exist in helpers
   for (const pure of pureNames) {
-    const re = new RegExp(
-      `function ${pure}\\([\\s\\S]*?\\n\\}\\n\\n`,
-      "m",
-    );
+    const re = new RegExp(`function ${pure}\\([\\s\\S]*?\\n\\}\\n\\n`, "m");
     // only remove if simple enough - carefully
   }
 

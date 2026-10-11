@@ -80,7 +80,11 @@ function pruneLedgerRows(
   }
 
   const keepKeys = new Set<string>(activeRowKeys);
-  for (let index = order.length - 1; index >= 0 && keepKeys.size < maxRows; index -= 1) {
+  for (
+    let index = order.length - 1;
+    index >= 0 && keepKeys.size < maxRows;
+    index -= 1
+  ) {
     const key = order[index];
     if (rows[key]) {
       keepKeys.add(key);
@@ -102,7 +106,10 @@ function pruneLedgerRows(
   };
 }
 
-export function buildLiveRowKey(nodeKey: string, framePath: number[] = []): string {
+export function buildLiveRowKey(
+  nodeKey: string,
+  framePath: number[] = [],
+): string {
   const path = framePath.length ? framePath.join(".") : "top";
   return `${path}::${nodeKey}`;
 }
@@ -125,14 +132,17 @@ export function resetLiveCaptureLedgerForNewSegment(
   ledger: LiveCaptureLedger,
   fallbackBaselineCompact = "",
 ): LiveCaptureLedger {
-  const normalizedFallbackBaseline = normalizeSubtitleText(fallbackBaselineCompact);
+  const normalizedFallbackBaseline = normalizeSubtitleText(
+    fallbackBaselineCompact,
+  );
   const nextRows = Object.fromEntries(
     Object.entries(ledger.rows).map(([key, row]) => [
       key,
       {
         ...row,
         committedEntryId: null,
-        baselineCompact: row.baselineCompact ?? normalizedFallbackBaseline ?? null,
+        baselineCompact:
+          row.baselineCompact ?? normalizedFallbackBaseline ?? null,
       },
     ]),
   );
@@ -150,7 +160,9 @@ export function normalizeCaptureEvent(input: {
   framePath?: number[];
   timestamp: number;
 }): NormalizedCaptureEvent {
-  const rows = (input.rows ?? []).filter((row) => normalizeSubtitleText(row.text));
+  const rows = (input.rows ?? []).filter((row) =>
+    normalizeSubtitleText(row.text),
+  );
   const previewFromRows = rows
     .map((row) => normalizeSubtitleText(row.text))
     .filter(Boolean)
@@ -369,7 +381,9 @@ export function reconcileLiveCapture(
     }));
 
   const activeRowKey = nextActiveRowKeys.at(-1);
-  const activeRow = activeRowKey ? cloneRow(nextLedger.rows[activeRowKey]) : null;
+  const activeRow = activeRowKey
+    ? cloneRow(nextLedger.rows[activeRowKey])
+    : null;
 
   const changed =
     rowChanges.length > 0 ||

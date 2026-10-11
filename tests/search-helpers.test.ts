@@ -35,8 +35,14 @@ describe("session search metadata filters", () => {
   });
 
   it("requires entry hydration only for text or highlighted search", () => {
-    expect(searchRequiresEntryHydration({ highlightedOnly: false }, "")).toBe(false);
-    expect(searchRequiresEntryHydration({ highlightedOnly: true }, "")).toBe(true);
-    expect(searchRequiresEntryHydration({ highlightedOnly: false }, "민생")).toBe(true);
+    expect(searchRequiresEntryHydration({ highlightedOnly: false }, "")).toBe(
+      false,
+    );
+    expect(searchRequiresEntryHydration({ highlightedOnly: true }, "")).toBe(
+      true,
+    );
+    expect(
+      searchRequiresEntryHydration({ highlightedOnly: false }, "민생"),
+    ).toBe(true);
   });
 });

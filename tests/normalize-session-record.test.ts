@@ -15,9 +15,9 @@ describe("normalizeSessionRecord hardening", () => {
     expect(sanitizeSessionId("  session_1  ")).toBe("session_1");
     expect(sanitizeSessionId(123)).toBe("");
     expect(sanitizeSessionId(null)).toBe("");
-    expect(sanitizeSessionId("x".repeat(SESSION_ID_MAX_LENGTH + 20))).toHaveLength(
-      SESSION_ID_MAX_LENGTH,
-    );
+    expect(
+      sanitizeSessionId("x".repeat(SESSION_ID_MAX_LENGTH + 20)),
+    ).toHaveLength(SESSION_ID_MAX_LENGTH);
   });
 
   it("drops invalid qualityStats shapes", () => {
@@ -64,7 +64,11 @@ describe("normalizeSessionRecord hardening", () => {
   });
 });
 
-function buildEntry(id: string, text: string, extra: Partial<SubtitleEntry> = {}): SubtitleEntry {
+function buildEntry(
+  id: string,
+  text: string,
+  extra: Partial<SubtitleEntry> = {},
+): SubtitleEntry {
   return {
     id,
     text,
@@ -121,9 +125,11 @@ describe("mergeCaptureEntriesWithUserEdits", () => {
     const stored = [buildEntry("e1", "kept"), buildEntry("gone", "deleted")];
     const capture = [buildEntry("e1", "kept")];
 
-    expect(mergeCaptureEntriesWithUserEdits(capture, stored).map((entry) => entry.id)).toEqual([
-      "e1",
-    ]);
+    expect(
+      mergeCaptureEntriesWithUserEdits(capture, stored).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(["e1"]);
   });
 });
 
@@ -145,7 +151,9 @@ describe("isStructuralEntryPatch", () => {
     const existing = [buildEntry("e1", "a"), buildEntry("e2", "b")];
 
     expect(isStructuralEntryPatch(existing, [existing[0]])).toBe(true);
-    expect(isStructuralEntryPatch(existing, [existing[1], existing[0]])).toBe(true);
+    expect(isStructuralEntryPatch(existing, [existing[1], existing[0]])).toBe(
+      true,
+    );
     expect(
       isStructuralEntryPatch(existing, [
         buildEntry("merged", "ab", { sourceEntryIds: ["e1", "e2"] }),

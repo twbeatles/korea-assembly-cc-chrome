@@ -29,7 +29,9 @@ const sourceCandidates = [
   path.join(runtimeDir, "orchestrator.ts"),
 ];
 
-const sourcePath = sourceCandidates.find((p) => fs.existsSync(p) && fs.statSync(p).isFile());
+const sourcePath = sourceCandidates.find(
+  (p) => fs.existsSync(p) && fs.statSync(p).isFile(),
+);
 if (!sourcePath) {
   console.error("orchestrator source not found");
   process.exit(1);
@@ -425,7 +427,11 @@ export const rt = createContentRuntimeBag();
 
 // PLUS extract pipeline and history in other scripts.
 
-fs.writeFileSync(path.join(outDir, "helpers.ts"), pureHelpers.trimStart(), "utf8");
+fs.writeFileSync(
+  path.join(outDir, "helpers.ts"),
+  pureHelpers.trimStart(),
+  "utf8",
+);
 
 // Write full impl as-is (original content) for behavior preservation
 fs.writeFileSync(path.join(outDir, "impl.ts"), src, "utf8");

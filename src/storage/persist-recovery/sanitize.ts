@@ -1,6 +1,15 @@
-import { cloneSessionRecord, type SessionRecord } from "../../core/subtitle-models";
-import type { PersistReplayDiagnostics, QueuedExitPersistRecord } from "../types";
-import { EXIT_PERSIST_INDEX_STORAGE_KEY, EXIT_PERSIST_RECORD_PREFIX } from "./keys";
+import {
+  cloneSessionRecord,
+  type SessionRecord,
+} from "../../core/subtitle-models";
+import type {
+  PersistReplayDiagnostics,
+  QueuedExitPersistRecord,
+} from "../types";
+import {
+  EXIT_PERSIST_INDEX_STORAGE_KEY,
+  EXIT_PERSIST_RECORD_PREFIX,
+} from "./keys";
 
 /** 순수 정규화·비교·병합 헬퍼 (단일 책임: 입력 검증과 병합 의미론). */
 export function sanitizeExitPersistIndex(value: unknown): string[] {
@@ -9,18 +18,24 @@ export function sanitizeExitPersistIndex(value: unknown): string[] {
   }
   return [
     ...new Set(
-      value.filter((item): item is string => typeof item === "string" && item.trim().length > 0),
+      value.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0,
+      ),
     ),
   ];
 }
 
-export function collectExitPersistSessionIdsFromSnapshot(snapshot: Record<string, unknown>): string[] {
+export function collectExitPersistSessionIdsFromSnapshot(
+  snapshot: Record<string, unknown>,
+): string[] {
   return [
     ...new Set(
       Object.keys(snapshot)
         .filter(
           (key) =>
-            key.startsWith(EXIT_PERSIST_RECORD_PREFIX) && key !== EXIT_PERSIST_INDEX_STORAGE_KEY,
+            key.startsWith(EXIT_PERSIST_RECORD_PREFIX) &&
+            key !== EXIT_PERSIST_INDEX_STORAGE_KEY,
         )
         .map((key) => key.slice(EXIT_PERSIST_RECORD_PREFIX.length))
         .filter((id) => id.length > 0),
@@ -28,7 +43,9 @@ export function collectExitPersistSessionIdsFromSnapshot(snapshot: Record<string
   ];
 }
 
-export function cloneQueuedRecord(record: QueuedExitPersistRecord): QueuedExitPersistRecord {
+export function cloneQueuedRecord(
+  record: QueuedExitPersistRecord,
+): QueuedExitPersistRecord {
   return {
     sessionId: record.sessionId,
     queuedAt: record.queuedAt,
@@ -40,7 +57,9 @@ export function compareQueuedRecordFreshness(
   left: QueuedExitPersistRecord,
   right: QueuedExitPersistRecord,
 ): number {
-  const updatedAtCompare = left.record.updatedAt.localeCompare(right.record.updatedAt);
+  const updatedAtCompare = left.record.updatedAt.localeCompare(
+    right.record.updatedAt,
+  );
   if (updatedAtCompare !== 0) {
     return updatedAtCompare;
   }
@@ -64,7 +83,9 @@ export function mergeQueuedRecordCollections(
   return [...merged.values()];
 }
 
-export function resolvePersistReplayLastError(diagnostics: PersistReplayDiagnostics): string | null {
+export function resolvePersistReplayLastError(
+  diagnostics: PersistReplayDiagnostics,
+): string | null {
   return (
     diagnostics.lastCleanupError ??
     diagnostics.lastReplayError ??
@@ -75,7 +96,11 @@ export function resolvePersistReplayLastError(diagnostics: PersistReplayDiagnost
 }
 
 export function isValidDateString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    !Number.isNaN(Date.parse(value))
+  );
 }
 
 export function isSessionRecordLike(value: unknown): value is SessionRecord {
@@ -88,7 +113,9 @@ export function isSessionRecordLike(value: unknown): value is SessionRecord {
   );
 }
 
-export function isQueuedExitPersistRecordLike(value: unknown): value is QueuedExitPersistRecord {
+export function isQueuedExitPersistRecordLike(
+  value: unknown,
+): value is QueuedExitPersistRecord {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -103,7 +130,9 @@ export function isQueuedExitPersistRecordLike(value: unknown): value is QueuedEx
   );
 }
 
-export function sanitizeQueuedRecord(value: unknown): QueuedExitPersistRecord | undefined {
+export function sanitizeQueuedRecord(
+  value: unknown,
+): QueuedExitPersistRecord | undefined {
   if (!isQueuedExitPersistRecordLike(value)) {
     return undefined;
   }
@@ -137,46 +166,66 @@ export function createEmptyPersistReplayDiagnostics(): PersistReplayDiagnostics 
   };
 }
 
-export function sanitizePersistReplayDiagnostics(value: unknown): PersistReplayDiagnostics {
+export function sanitizePersistReplayDiagnostics(
+  value: unknown,
+): PersistReplayDiagnostics {
   if (!value || typeof value !== "object") {
     return createEmptyPersistReplayDiagnostics();
   }
 
   const candidate = value as Partial<PersistReplayDiagnostics>;
   return {
-    lastReplayAt: isValidDateString(candidate.lastReplayAt) ? candidate.lastReplayAt : null,
+    lastReplayAt: isValidDateString(candidate.lastReplayAt)
+      ? candidate.lastReplayAt
+      : null,
     lastReplayQueuedCount:
-      typeof candidate.lastReplayQueuedCount === "number" ? candidate.lastReplayQueuedCount : 0,
+      typeof candidate.lastReplayQueuedCount === "number"
+        ? candidate.lastReplayQueuedCount
+        : 0,
     lastReplayReplayedCount:
       typeof candidate.lastReplayReplayedCount === "number"
         ? candidate.lastReplayReplayedCount
         : 0,
     lastReplaySkippedCount:
-      typeof candidate.lastReplaySkippedCount === "number" ? candidate.lastReplaySkippedCount : 0,
+      typeof candidate.lastReplaySkippedCount === "number"
+        ? candidate.lastReplaySkippedCount
+        : 0,
     lastReplayFailedCount:
-      typeof candidate.lastReplayFailedCount === "number" ? candidate.lastReplayFailedCount : 0,
+      typeof candidate.lastReplayFailedCount === "number"
+        ? candidate.lastReplayFailedCount
+        : 0,
     lastReplayError:
       typeof candidate.lastReplayError === "string" && candidate.lastReplayError
         ? candidate.lastReplayError
         : null,
-    lastCleanupAt: isValidDateString(candidate.lastCleanupAt) ? candidate.lastCleanupAt : null,
+    lastCleanupAt: isValidDateString(candidate.lastCleanupAt)
+      ? candidate.lastCleanupAt
+      : null,
     lastCleanupDetectedCount:
       typeof candidate.lastCleanupDetectedCount === "number"
         ? candidate.lastCleanupDetectedCount
         : 0,
     lastCleanupClosedCount:
-      typeof candidate.lastCleanupClosedCount === "number" ? candidate.lastCleanupClosedCount : 0,
+      typeof candidate.lastCleanupClosedCount === "number"
+        ? candidate.lastCleanupClosedCount
+        : 0,
     lastCleanupFailedCount:
-      typeof candidate.lastCleanupFailedCount === "number" ? candidate.lastCleanupFailedCount : 0,
+      typeof candidate.lastCleanupFailedCount === "number"
+        ? candidate.lastCleanupFailedCount
+        : 0,
     lastCleanupError:
-      typeof candidate.lastCleanupError === "string" && candidate.lastCleanupError
+      typeof candidate.lastCleanupError === "string" &&
+      candidate.lastCleanupError
         ? candidate.lastCleanupError
         : null,
     lastQueueWriteError:
-      typeof candidate.lastQueueWriteError === "string" && candidate.lastQueueWriteError
+      typeof candidate.lastQueueWriteError === "string" &&
+      candidate.lastQueueWriteError
         ? candidate.lastQueueWriteError
         : null,
-    lastPageExitPersistAttemptAt: isValidDateString(candidate.lastPageExitPersistAttemptAt)
+    lastPageExitPersistAttemptAt: isValidDateString(
+      candidate.lastPageExitPersistAttemptAt,
+    )
       ? candidate.lastPageExitPersistAttemptAt
       : null,
     lastPageExitPersistSessionId:
@@ -189,9 +238,13 @@ export function sanitizePersistReplayDiagnostics(value: unknown): PersistReplayD
         ? candidate.lastPageExitPersistEntryCount
         : 0,
     lastPageExitPersistError:
-      typeof candidate.lastPageExitPersistError === "string" && candidate.lastPageExitPersistError
+      typeof candidate.lastPageExitPersistError === "string" &&
+      candidate.lastPageExitPersistError
         ? candidate.lastPageExitPersistError
         : null,
-    lastError: typeof candidate.lastError === "string" && candidate.lastError ? candidate.lastError : null,
+    lastError:
+      typeof candidate.lastError === "string" && candidate.lastError
+        ? candidate.lastError
+        : null,
   };
 }

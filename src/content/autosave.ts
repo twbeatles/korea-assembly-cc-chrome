@@ -12,7 +12,11 @@ export function shouldScheduleRunningPersist(
   state: Pick<SessionState, "status" | "entries" | "previewText">,
   settings: Pick<ExtensionSettings, "runningAutoSaveEnabled">,
 ): boolean {
-  return isTopFrame && settings.runningAutoSaveEnabled && hasPersistableRunningContent(state);
+  return (
+    isTopFrame &&
+    settings.runningAutoSaveEnabled &&
+    hasPersistableRunningContent(state)
+  );
 }
 
 export function resolveRunningPersistDebounceMs(
@@ -41,7 +45,10 @@ export function shouldWarnBeforeUnload(
   return isTopFrame && hasPersistableRunningContent(state);
 }
 
-export function applyPersistSuccess(state: SessionState, persistedAt: string): SessionState {
+export function applyPersistSuccess(
+  state: SessionState,
+  persistedAt: string,
+): SessionState {
   return {
     ...state,
     entries: [...state.entries],
@@ -92,7 +99,8 @@ export function resolveRunningPersistDelayMs(
     const lastPersistedAtMs = parsePersistedAtMs(options.lastPersistedAt);
     if (
       lastPersistedAtMs !== null &&
-      options.now - lastPersistedAtMs < RUNNING_PERSIST_KEEPALIVE_MIN_INTERVAL_MS
+      options.now - lastPersistedAtMs <
+        RUNNING_PERSIST_KEEPALIVE_MIN_INTERVAL_MS
     ) {
       return null;
     }
@@ -125,7 +133,10 @@ export function scheduleRunningPersistTimer(
   options: RunningPersistSchedulerOptions,
 ): number | null {
   if (!options.shouldSchedule) {
-    return clearScheduledRunningPersist(options.currentTimer, options.clearTimer);
+    return clearScheduledRunningPersist(
+      options.currentTimer,
+      options.clearTimer,
+    );
   }
 
   if (options.currentTimer !== null) {
@@ -138,7 +149,8 @@ export function scheduleRunningPersistTimer(
       return;
     }
 
-    void options.persistRecord(snapshot.record)
+    void options
+      .persistRecord(snapshot.record)
       .then(options.onPersisted)
       .catch(options.onError);
   }, options.delayMs);

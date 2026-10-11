@@ -38,14 +38,18 @@ if (!(window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY]) {
   });
 
   window.addEventListener(OBSERVER_STOP_EVENT, () => {
-    const state = (window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY];
+    const state = (window as Window & { [BRIDGE_KEY]?: BridgeState })[
+      BRIDGE_KEY
+    ];
     if (state) {
       teardownBridge(state);
     }
   });
 
   window.addEventListener(OBSERVER_ACTIVATE_EVENT, () => {
-    const state = (window as Window & { [BRIDGE_KEY]?: BridgeState })[BRIDGE_KEY];
+    const state = (window as Window & { [BRIDGE_KEY]?: BridgeState })[
+      BRIDGE_KEY
+    ];
     const activated = ensureSubtitleLayerVisible();
     if (state && activated) {
       installBridge({

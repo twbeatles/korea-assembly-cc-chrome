@@ -223,9 +223,10 @@ describe("in-page panel", () => {
     const shadowRoot = document.getElementById(
       IN_PAGE_PANEL_HOST_ID,
     )?.shadowRoot;
-    const markdownButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
-      (button) => button.textContent === "회의록(MD)",
-    ) as HTMLButtonElement | undefined;
+    const markdownButton = [
+      ...(shadowRoot?.querySelectorAll("button") ?? []),
+    ].find((button) => button.textContent === "회의록(MD)") as
+      HTMLButtonElement | undefined;
     const csvButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (button) => button.textContent === "표(CSV)",
     ) as HTMLButtonElement | undefined;
@@ -295,8 +296,12 @@ describe("in-page panel", () => {
       heroCard!.compareDocumentPosition(statRow!) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(buttons.some((button) => button.textContent === "수집 시작")).toBe(true);
-    expect(buttons.some((button) => button.textContent === "수집 종료")).toBe(true);
+    expect(buttons.some((button) => button.textContent === "수집 시작")).toBe(
+      true,
+    );
+    expect(buttons.some((button) => button.textContent === "수집 종료")).toBe(
+      true,
+    );
 
     controller.destroy();
   });
@@ -436,8 +441,7 @@ describe("in-page panel", () => {
     const collapseButton = [
       ...(shadowRoot?.querySelectorAll("button") ?? []),
     ].find((element) => element.textContent === "접기") as
-      | HTMLButtonElement
-      | undefined;
+      HTMLButtonElement | undefined;
     collapseButton?.click();
 
     expect(collapsed).toBe(true);
@@ -782,7 +786,9 @@ describe("in-page panel", () => {
     const shadowRoot = document.getElementById(
       IN_PAGE_PANEL_HOST_ID,
     )?.shadowRoot;
-    const liveRow = shadowRoot?.querySelector(".live-row") as HTMLElement | null;
+    const liveRow = shadowRoot?.querySelector(
+      ".live-row",
+    ) as HTMLElement | null;
     const badge = liveRow?.querySelector(".speaker-badge");
 
     expect(liveRow?.classList.contains("speaker-highlight")).toBe(true);
@@ -800,7 +806,9 @@ describe("in-page panel", () => {
     );
 
     const hiddenBadge = shadowRoot?.querySelector(".live-row .speaker-badge");
-    const plainRow = shadowRoot?.querySelector(".live-row") as HTMLElement | null;
+    const plainRow = shadowRoot?.querySelector(
+      ".live-row",
+    ) as HTMLElement | null;
     expect(plainRow?.classList.contains("speaker-highlight")).toBe(false);
     expect(hiddenBadge).toBeNull();
 
@@ -936,8 +944,7 @@ describe("in-page panel", () => {
     const clearButton = [
       ...(shadowRoot?.querySelectorAll("button") ?? []),
     ].find((element) => element.textContent === "화면 비우기") as
-      | HTMLButtonElement
-      | undefined;
+      HTMLButtonElement | undefined;
     const saveButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (element) => element.textContent === "지금 저장",
     ) as HTMLButtonElement | undefined;
@@ -947,11 +954,11 @@ describe("in-page panel", () => {
     const highlightButton = [
       ...(shadowRoot?.querySelectorAll("button") ?? []),
     ].find((element) => element.textContent === "최신 중요 표시") as
-      | HTMLButtonElement
-      | undefined;
-    const markdownButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
-      (element) => element.textContent === "회의록(MD)",
-    ) as HTMLButtonElement | undefined;
+      HTMLButtonElement | undefined;
+    const markdownButton = [
+      ...(shadowRoot?.querySelectorAll("button") ?? []),
+    ].find((element) => element.textContent === "회의록(MD)") as
+      HTMLButtonElement | undefined;
     const csvButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (element) => element.textContent === "표(CSV)",
     ) as HTMLButtonElement | undefined;
@@ -980,8 +987,7 @@ describe("in-page panel", () => {
     const highlightButton = [
       ...(shadowRoot?.querySelectorAll("button") ?? []),
     ].find((element) => element.textContent === "최신 중요 표시") as
-      | HTMLButtonElement
-      | undefined;
+      HTMLButtonElement | undefined;
 
     expect(highlightButton?.disabled).toBe(false);
     highlightButton?.click();
@@ -1029,8 +1035,7 @@ describe("in-page panel", () => {
     const clearButton = [
       ...(shadowRoot?.querySelectorAll("button") ?? []),
     ].find((element) => element.textContent === "화면 비우기") as
-      | HTMLButtonElement
-      | undefined;
+      HTMLButtonElement | undefined;
     const saveButton = [...(shadowRoot?.querySelectorAll("button") ?? [])].find(
       (element) => element.textContent === "지금 저장",
     ) as HTMLButtonElement | undefined;

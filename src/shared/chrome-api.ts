@@ -18,7 +18,9 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-function callbackPromise<T>(executor: (callback: (value: T) => void) => void): Promise<T> {
+function callbackPromise<T>(
+  executor: (callback: (value: T) => void) => void,
+): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     executor((value) => {
       const lastError = chrome.runtime.lastError;
@@ -43,7 +45,9 @@ export async function sendRuntimeMessage(
   let lastError: unknown;
   for (let attempt = 0; attempt <= RUNTIME_MESSAGE_RETRY_COUNT; attempt += 1) {
     try {
-      return await callbackPromise((callback) => chrome.runtime.sendMessage(message, callback));
+      return await callbackPromise((callback) =>
+        chrome.runtime.sendMessage(message, callback),
+      );
     } catch (error) {
       lastError = error;
       if (
@@ -56,11 +60,18 @@ export async function sendRuntimeMessage(
       await sleep(RUNTIME_MESSAGE_RETRY_DELAY_MS * (attempt + 1));
     }
   }
-  throw lastError instanceof Error ? lastError : new Error(String(lastError ?? "runtime message failed"));
+  throw lastError instanceof Error
+    ? lastError
+    : new Error(String(lastError ?? "runtime message failed"));
 }
 
-export function sendTabMessage<T>(tabId: number, message: PopupToContentMessage): Promise<T> {
-  return callbackPromise((callback) => chrome.tabs.sendMessage(tabId, message, callback));
+export function sendTabMessage<T>(
+  tabId: number,
+  message: PopupToContentMessage,
+): Promise<T> {
+  return callbackPromise((callback) =>
+    chrome.tabs.sendMessage(tabId, message, callback),
+  );
 }
 
 export async function queryActiveTab(): Promise<chrome.tabs.Tab | undefined> {
@@ -70,7 +81,9 @@ export async function queryActiveTab(): Promise<chrome.tabs.Tab | undefined> {
   return tabs[0];
 }
 
-export function queryTabs(queryInfo: chrome.tabs.QueryInfo): Promise<chrome.tabs.Tab[]> {
+export function queryTabs(
+  queryInfo: chrome.tabs.QueryInfo,
+): Promise<chrome.tabs.Tab[]> {
   return callbackPromise((callback) => chrome.tabs.query(queryInfo, callback));
 }
 
@@ -131,7 +144,9 @@ export function removeTabRemovedListener(
 }
 
 export async function openOptionsPage(): Promise<void> {
-  await callbackPromise<void>((callback) => chrome.runtime.openOptionsPage(callback));
+  await callbackPromise<void>((callback) =>
+    chrome.runtime.openOptionsPage(callback),
+  );
 }
 
 export async function createTab(url: string): Promise<chrome.tabs.Tab> {

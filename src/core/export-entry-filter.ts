@@ -25,7 +25,8 @@ export function filterEntriesByTimeRange(
     return entries;
   }
 
-  const fromRaw = typeof timeRange.from === "string" ? timeRange.from.trim() : "";
+  const fromRaw =
+    typeof timeRange.from === "string" ? timeRange.from.trim() : "";
   const toRaw = typeof timeRange.to === "string" ? timeRange.to.trim() : "";
   if (!fromRaw && !toRaw) {
     return entries;

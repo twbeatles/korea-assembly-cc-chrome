@@ -61,7 +61,10 @@ export function buildCaptureDiagnostics(input: {
     observerActive: input.observerActive,
     currentSelector: input.currentSelector,
     currentFramePath: [...input.currentFramePath],
-    sourceLabel: resolveCaptureSourceLabel(input.captureMode, input.observerActive),
+    sourceLabel: resolveCaptureSourceLabel(
+      input.captureMode,
+      input.observerActive,
+    ),
     persistabilityState: input.persistabilityState ?? "idle",
     persistabilityHint: input.persistabilityHint ?? "",
     health,
@@ -100,7 +103,10 @@ export function buildCaptureDiagnostics(input: {
   };
 }
 
-export function getPersistabilityUserMessage(state?: PersistabilityState, hint = ""): string {
+export function getPersistabilityUserMessage(
+  state?: PersistabilityState,
+  hint = "",
+): string {
   switch (state) {
     case "persistable":
       return "저장 가능한 확정 자막이 있습니다.";
@@ -109,9 +115,14 @@ export function getPersistabilityUserMessage(state?: PersistabilityState, hint =
     case "unstable_only":
       return hint || "인식 중인 자막만 있어 확정될 때까지 기다리고 있습니다.";
     case "filtered":
-      return hint || "필터가 현재 자막을 제외했습니다. 필요하면 환경 설정에서 필터를 조정하세요.";
+      return (
+        hint ||
+        "필터가 현재 자막을 제외했습니다. 필요하면 환경 설정에서 필터를 조정하세요."
+      );
     case "duplicate":
-      return hint || "최근 자막과 중복으로 판단되어 새 기록으로 저장하지 않았습니다.";
+      return (
+        hint || "최근 자막과 중복으로 판단되어 새 기록으로 저장하지 않았습니다."
+      );
     default:
       return hint || "아직 저장할 확정 자막이 없습니다.";
   }
@@ -137,13 +148,23 @@ export function resolveCaptureHealth(input: {
   if (input.estimatedBytes >= 8 * 1024 * 1024) {
     return "unstable";
   }
-  if (input.persistabilityState === "filtered" || input.persistabilityState === "duplicate") {
+  if (
+    input.persistabilityState === "filtered" ||
+    input.persistabilityState === "duplicate"
+  ) {
     return input.entryCount > 0 ? "warning" : "unstable";
   }
-  if (input.persistabilityState === "preview_only" || input.persistabilityState === "unstable_only") {
+  if (
+    input.persistabilityState === "preview_only" ||
+    input.persistabilityState === "unstable_only"
+  ) {
     return input.entryCount > 0 ? "warning" : "unstable";
   }
-  if (input.captureMode === "fallback" || !input.observerActive || input.estimatedBytes >= 4 * 1024 * 1024) {
+  if (
+    input.captureMode === "fallback" ||
+    !input.observerActive ||
+    input.estimatedBytes >= 4 * 1024 * 1024
+  ) {
     return "warning";
   }
   return "good";

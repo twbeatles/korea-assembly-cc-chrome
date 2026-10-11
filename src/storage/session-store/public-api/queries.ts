@@ -46,9 +46,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../../session-backup";
+import { buildSessionBackupFilename } from "../../session-backup";
 import { createRandomToken } from "../../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -186,7 +184,9 @@ export async function getSessionLibraryOverview(
 
   const [indexedDbIdsResult, previewSessions] = await Promise.all([
     tryIndexedDb(async () => listIndexedDbSessionIds()),
-    safePreviewLimit > 0 ? listSessions({ limit: safePreviewLimit }) : Promise.resolve([]),
+    safePreviewLimit > 0
+      ? listSessions({ limit: safePreviewLimit })
+      : Promise.resolve([]),
   ]);
   const uniqueIds = new Set<string>(fallbackSessionIds);
   if (indexedDbIdsResult.ok && indexedDbIdsResult.value) {
@@ -195,7 +195,9 @@ export async function getSessionLibraryOverview(
 
   return {
     totalCount: uniqueIds.size,
-    previewSessions: previewSessions.slice(0, safePreviewLimit).map(toSessionLibraryPreview),
+    previewSessions: previewSessions
+      .slice(0, safePreviewLimit)
+      .map(toSessionLibraryPreview),
   };
 }
 
@@ -221,28 +223,29 @@ export async function buildSessionLibraryBackupExport(
   });
 
   const now = new Date();
-  const { content, sessionCount } = await stringifySessionBackupBundleIncrementally({
-    exportedAt: now.toISOString(),
-    pageSize,
-    signal: options.signal,
-    listSessionsPage: async ({ page, pageSize: nextPageSize }) =>
-      listSessionsPage({
-        page,
-        pageSize: nextPageSize,
-      }),
-    loadSessionsByIds,
-    onProgress: (completed, total) => {
-      emitLongTaskProgress(options.onProgress, {
-        kind: "backup",
-        phase: "package",
-        completed,
-        total,
-        message: total
-          ? `전체 JSON 백업 파일을 생성하고 있습니다. (${completed} / ${total})`
-          : "백업 파일을 생성하고 있습니다.",
-      });
-    },
-  });
+  const { content, sessionCount } =
+    await stringifySessionBackupBundleIncrementally({
+      exportedAt: now.toISOString(),
+      pageSize,
+      signal: options.signal,
+      listSessionsPage: async ({ page, pageSize: nextPageSize }) =>
+        listSessionsPage({
+          page,
+          pageSize: nextPageSize,
+        }),
+      loadSessionsByIds,
+      onProgress: (completed, total) => {
+        emitLongTaskProgress(options.onProgress, {
+          kind: "backup",
+          phase: "package",
+          completed,
+          total,
+          message: total
+            ? `전체 JSON 백업 파일을 생성하고 있습니다. (${completed} / ${total})`
+            : "백업 파일을 생성하고 있습니다.",
+        });
+      },
+    });
   throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
 
   return {
@@ -256,7 +259,9 @@ export async function buildSessionLibraryBackupExport(
   };
 }
 
-export async function listSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
+export async function listSessions(
+  options: SessionListOptions = {},
+): Promise<SessionRecord[]> {
   const [indexedDbResult, fallbackRecords] = await Promise.all([
     tryIndexedDb(async () => listIndexedDbSessions(options)),
     listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
@@ -266,7 +271,9 @@ export async function listSessions(options: SessionListOptions = {}): Promise<Se
     mergeSessionCollections(
       indexedDbResult.ok && indexedDbResult.value
         ? indexedDbResult.value.map((record) =>
-            normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+            normalizeSessionRecord(record as StoredSessionRecord, {
+              preserveTimestamps: true,
+            }),
           )
         : [],
       fallbackRecords.map(toSessionMetadataOnly),
@@ -275,7 +282,9 @@ export async function listSessions(options: SessionListOptions = {}): Promise<Se
   );
 }
 
-export async function listSessionLineageSegments(lineageId: string): Promise<SessionRecord[]> {
+export async function listSessionLineageSegments(
+  lineageId: string,
+): Promise<SessionRecord[]> {
   const safeLineageId = typeof lineageId === "string" ? lineageId.trim() : "";
   if (!safeLineageId) {
     return [];
@@ -286,7 +295,11 @@ export async function listSessionLineageSegments(lineageId: string): Promise<Ses
     listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
   const fallbackLineageIds = fallbackRecords
-    .filter((session) => resolveSessionLineageId(session.id, session.lineageId) === safeLineageId)
+    .filter(
+      (session) =>
+        resolveSessionLineageId(session.id, session.lineageId) ===
+        safeLineageId,
+    )
     .map((session) => session.id);
   const fallbackLineageRecords = await Promise.all(
     fallbackLineageIds.map((sessionId) => loadFallbackRecord(sessionId)),
@@ -295,7 +308,9 @@ export async function listSessionLineageSegments(lineageId: string): Promise<Ses
   return sortSessionSegments(
     mergeSessionCollections(
       indexedDbResult.ok && indexedDbResult.value ? indexedDbResult.value : [],
-      fallbackLineageRecords.filter((record): record is SessionRecord => Boolean(record)),
+      fallbackLineageRecords.filter((record): record is SessionRecord =>
+        Boolean(record),
+      ),
     ),
   );
 }
@@ -305,14 +320,18 @@ export async function listSessionsPage(
 ): Promise<SessionPageResult> {
   const fallbackIds = await listFallbackSessionIds();
   if (!fallbackIds.length) {
-    const indexedDbResult = await tryIndexedDb(async () => listIndexedDbSessionPage(options));
+    const indexedDbResult = await tryIndexedDb(async () =>
+      listIndexedDbSessionPage(options),
+    );
     if (indexedDbResult.ok && indexedDbResult.value) {
       return indexedDbResult.value;
     }
   }
 
   const [indexedDbMetadataResult, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () => listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER })),
+    tryIndexedDb(async () =>
+      listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER }),
+    ),
     listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
   const metadataSessions = sortSessions(
@@ -346,7 +365,9 @@ export async function listSessionLineagesPage(
   options: SessionPageOptions,
 ): Promise<SessionLineagePageResult> {
   const [indexedDbResult, fallbackRecords] = await Promise.all([
-    tryIndexedDb(async () => listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER })),
+    tryIndexedDb(async () =>
+      listIndexedDbSessions({ limit: Number.MAX_SAFE_INTEGER }),
+    ),
     listFallbackMetadataRecords({ limit: Number.MAX_SAFE_INTEGER }),
   ]);
   const allSessions = mergeSessionCollections(
@@ -366,7 +387,9 @@ export async function listSessionLineagesPage(
   const start = (page - 1) * pageSize;
 
   return {
-    lineages: filteredSummaries.slice(start, start + pageSize).map(cloneLineageSummary),
+    lineages: filteredSummaries
+      .slice(start, start + pageSize)
+      .map(cloneLineageSummary),
     totalCount,
     page,
     pageSize,
@@ -385,7 +408,9 @@ export async function searchSessions(
   ]);
   const metadataSessions =
     indexedDbResult.ok && indexedDbResult.value
-      ? indexedDbResult.value.filter((session) => sessionMatchesMetadataFilters(session, options))
+      ? indexedDbResult.value.filter((session) =>
+          sessionMatchesMetadataFilters(session, options),
+        )
       : [];
   const indexedDbSessions = searchRequiresEntryHydration(options, token)
     ? await loadSessionsByIds(metadataSessions.map((session) => session.id))
@@ -393,10 +418,14 @@ export async function searchSessions(
   const allSessions = sortSessions(
     mergeSessionCollections(
       indexedDbSessions.map((record) =>
-        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+        normalizeSessionRecord(record as StoredSessionRecord, {
+          preserveTimestamps: true,
+        }),
       ),
       fallbackRecords.map((record) =>
-        normalizeSessionRecord(record as StoredSessionRecord, { preserveTimestamps: true }),
+        normalizeSessionRecord(record as StoredSessionRecord, {
+          preserveTimestamps: true,
+        }),
       ),
     ),
     { limit: Number.MAX_SAFE_INTEGER },

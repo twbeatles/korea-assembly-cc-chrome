@@ -6,7 +6,10 @@ import {
   buildDeleteAllFailureMessage,
   buildDeleteAllSuccessMessage,
 } from "../history-view-state";
-import { confirmDeleteSessionLibrary, confirmDiscardUnsavedNote } from "./helpers";
+import {
+  confirmDeleteSessionLibrary,
+  confirmDiscardUnsavedNote,
+} from "./helpers";
 import { useHistoryLibrary } from "./hooks/useHistoryLibrary";
 import { useHistoryDetail } from "./hooks/useHistoryDetail";
 import { useHistoryEntries } from "./hooks/useHistoryEntries";
@@ -61,7 +64,10 @@ export default function App() {
     library.busyAction !== null || transfer.longTask !== null;
 
   const handleRefreshClick = async (): Promise<void> => {
-    if (detail.hasUnsavedSessionDraft && !(await confirmDiscardUnsavedNote("목록 새로고침"))) {
+    if (
+      detail.hasUnsavedSessionDraft &&
+      !(await confirmDiscardUnsavedNote("목록 새로고침"))
+    ) {
       library.setMessage("새로고침을 취소했습니다.");
       return;
     }
@@ -85,10 +91,14 @@ export default function App() {
       }
 
       const nextSelectedLineage =
-        library.pageLineages.find((lineage) => lineage.lineageId === lineageId) ?? null;
+        library.pageLineages.find(
+          (lineage) => lineage.lineageId === lineageId,
+        ) ?? null;
       library.setSelectedId(lineageId);
       library.setSelectedLineageSummary(nextSelectedLineage);
-      library.setSelectedSession(nextSelectedLineage?.representativeSession ?? null);
+      library.setSelectedSession(
+        nextSelectedLineage?.representativeSession ?? null,
+      );
     })();
   };
 
@@ -104,7 +114,9 @@ export default function App() {
       }
 
       const nextSelectedSession =
-        detail.availableLineageSessions.find((session) => session.id === sessionId) ?? null;
+        detail.availableLineageSessions.find(
+          (session) => session.id === sessionId,
+        ) ?? null;
       if (!nextSelectedSession) {
         return;
       }

@@ -13,10 +13,18 @@ describe("frame forward nonce lifecycle", () => {
     expect(shouldRotateFrameForwardNonce({ status: "loading" })).toBe(true);
     expect(shouldRotateFrameForwardNonce({ status: "complete" })).toBe(false);
 
-    await handleFrameForwardNonceTabUpdated(14, { status: "complete" }, rotateNonce);
+    await handleFrameForwardNonceTabUpdated(
+      14,
+      { status: "complete" },
+      rotateNonce,
+    );
     expect(rotateNonce).not.toHaveBeenCalled();
 
-    await handleFrameForwardNonceTabUpdated(14, { status: "loading" }, rotateNonce);
+    await handleFrameForwardNonceTabUpdated(
+      14,
+      { status: "loading" },
+      rotateNonce,
+    );
     expect(rotateNonce).toHaveBeenCalledWith(14);
   });
 

@@ -11,12 +11,17 @@ import {
   shouldScheduleRunningPersist,
   shouldWarnBeforeUnload,
 } from "../src/content/autosave";
-import { createEmptySessionState, toSessionRecord } from "../src/core/subtitle-models";
+import {
+  createEmptySessionState,
+  toSessionRecord,
+} from "../src/core/subtitle-models";
 import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
 
 describe("content autosave policy", () => {
   it("schedules running autosave when enabled", () => {
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
     state.entries.push({
       id: "entry_1",
@@ -31,11 +36,15 @@ describe("content autosave policy", () => {
         runningAutoSaveEnabled: true,
       }),
     ).toBe(true);
-    expect(resolveRunningPersistDebounceMs({ runningAutoSaveDebounceMs: 800 })).toBe(800);
+    expect(
+      resolveRunningPersistDebounceMs({ runningAutoSaveDebounceMs: 800 }),
+    ).toBe(800);
   });
 
   it("skips running autosave when disabled", () => {
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
 
     expect(
@@ -46,7 +55,9 @@ describe("content autosave policy", () => {
   });
 
   it("does not schedule running autosave without committed entries", () => {
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
     state.previewText = "실시간 미리보기만 있음";
 
@@ -64,7 +75,9 @@ describe("content autosave policy", () => {
   });
 
   it("does not treat preview-only content as persistable before navigation", () => {
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
     state.previewText = "새 자막";
 
@@ -72,7 +85,9 @@ describe("content autosave policy", () => {
   });
 
   it("warns before unload only when a running session has content", () => {
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
     state.entries.push({
       id: "entry_1",
@@ -90,7 +105,9 @@ describe("content autosave policy", () => {
   });
 
   it("does not warn before unload for preview-only content", () => {
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
     state.previewText = "페이지에만 보이는 자막";
 
@@ -99,7 +116,9 @@ describe("content autosave policy", () => {
   });
 
   it("still rejects empty final saves even when previewText is present", () => {
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
     state.previewText = "123456"; // numeric-only → filtered by noise filter
     const record = toSessionRecord(state, "saved");
@@ -111,7 +130,9 @@ describe("content autosave policy", () => {
   });
 
   it("updates lastPersistedAt after a successful save", () => {
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     const persisted = applyPersistSuccess(state, "2026-03-10T09:00:01.000Z");
 
     expect(persisted.lastPersistedAt).toBe("2026-03-10T09:00:01.000Z");
@@ -121,10 +142,13 @@ describe("content autosave policy", () => {
   it("uses the minimum debounce fallback", () => {
     expect(
       resolveRunningPersistDebounceMs({
-        runningAutoSaveDebounceMs: DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+        runningAutoSaveDebounceMs:
+          DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
       }),
     ).toBe(DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs);
-    expect(resolveRunningPersistDebounceMs({ runningAutoSaveDebounceMs: 100 })).toBe(250);
+    expect(
+      resolveRunningPersistDebounceMs({ runningAutoSaveDebounceMs: 100 }),
+    ).toBe(250);
   });
 
   it("caps commit-triggered autosave delay during continuous updates", () => {
@@ -137,7 +161,8 @@ describe("content autosave policy", () => {
         pendingSince: base,
         lastPersistedAt: null,
         settings: {
-          runningAutoSaveDebounceMs: DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+          runningAutoSaveDebounceMs:
+            DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
         },
       }),
     ).toBe(500);
@@ -153,7 +178,8 @@ describe("content autosave policy", () => {
         pendingSince: base,
         lastPersistedAt: new Date(base).toISOString(),
         settings: {
-          runningAutoSaveDebounceMs: DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+          runningAutoSaveDebounceMs:
+            DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
         },
       }),
     ).toBeNull();
@@ -169,7 +195,8 @@ describe("content autosave policy", () => {
         pendingSince: base,
         lastPersistedAt: new Date(base).toISOString(),
         settings: {
-          runningAutoSaveDebounceMs: DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
+          runningAutoSaveDebounceMs:
+            DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs,
         },
       }),
     ).toBe(DEFAULT_EXTENSION_SETTINGS.runningAutoSaveDebounceMs);
@@ -184,13 +211,17 @@ describe("content autosave policy", () => {
 
   it("skips persisting when the session stops before debounce fires", async () => {
     vi.useFakeTimers();
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
     state.startedAt = "2026-03-10T09:00:00.000Z";
     state.createdAt = "2026-03-10T09:00:00.000Z";
     state.updatedAt = "2026-03-10T09:00:00.000Z";
 
-    const persistRecord = vi.fn().mockResolvedValue(toSessionRecord(state, "running"));
+    const persistRecord = vi
+      .fn()
+      .mockResolvedValue(toSessionRecord(state, "running"));
     const onPersisted = vi.fn();
     const onError = vi.fn();
 
@@ -222,14 +253,18 @@ describe("content autosave policy", () => {
 
   it("skips persisting when the running snapshot has no committed entries", async () => {
     vi.useFakeTimers();
-    const state = createEmptySessionState("https://assembly.webcast.go.kr/main/player.asp");
+    const state = createEmptySessionState(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     state.status = "running";
     state.startedAt = "2026-03-10T09:00:00.000Z";
     state.createdAt = "2026-03-10T09:00:00.000Z";
     state.updatedAt = "2026-03-10T09:00:00.000Z";
     state.previewText = "실시간 텍스트만 있음";
 
-    const persistRecord = vi.fn().mockResolvedValue(toSessionRecord(state, "running"));
+    const persistRecord = vi
+      .fn()
+      .mockResolvedValue(toSessionRecord(state, "running"));
     const onPersisted = vi.fn();
     const onError = vi.fn();
 

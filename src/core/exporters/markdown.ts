@@ -37,7 +37,9 @@ export function exportMarkdown(
     lines.push(`- 카테고리: ${escapeMarkdownInline(session.category)}`);
   }
   if (session.tags?.length) {
-    lines.push(`- 태그: ${session.tags.map((tag) => `#${escapeMarkdownInline(tag)}`).join(" ")}`);
+    lines.push(
+      `- 태그: ${session.tags.map((tag) => `#${escapeMarkdownInline(tag)}`).join(" ")}`,
+    );
   }
   if (session.note.trim()) {
     lines.push("", "## 메모", "", escapeMarkdownBlock(session.note));
@@ -52,14 +54,22 @@ export function exportMarkdown(
       "| --- | --- | --- | --- |",
     );
   } else {
-    lines.push("", "## 자막", "", "| 시간 | 내용 | 비고 |", "| --- | --- | --- |");
+    lines.push(
+      "",
+      "## 자막",
+      "",
+      "| 시간 | 내용 | 비고 |",
+      "| --- | --- | --- |",
+    );
   }
 
   session.entries.forEach((entry) => {
     const flags = [
       entry.highlighted ? "중요" : "",
       entry.entryNote?.trim() ? entry.entryNote.trim() : "",
-      entry.labels?.length ? entry.labels.map((label) => `#${label}`).join(" ") : "",
+      entry.labels?.length
+        ? entry.labels.map((label) => `#${label}`).join(" ")
+        : "",
     ].filter(Boolean);
     const time = formatClockTime(entry.startTime || entry.timestamp);
     const text = escapeMarkdownInline(entry.text);

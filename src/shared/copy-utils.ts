@@ -20,7 +20,10 @@ function normalizeQuery(query: string): string {
   return query.trim().toLocaleLowerCase();
 }
 
-export function filterEntriesByQuery(entries: SubtitleEntry[], query = ""): SubtitleEntry[] {
+export function filterEntriesByQuery(
+  entries: SubtitleEntry[],
+  query = "",
+): SubtitleEntry[] {
   const normalizedQuery = normalizeQuery(query);
   if (!normalizedQuery) {
     return [...entries];
@@ -50,7 +53,9 @@ function formatCopyLine(
   const timestamp = formatClockTime(entry.startTime || entry.timestamp);
   const speakerPrefix =
     options.includeSpeaker === true
-      ? formatSpeakerPrefix(resolveSpeakerLabelForOutput(entry, options.session))
+      ? formatSpeakerPrefix(
+          resolveSpeakerLabelForOutput(entry, options.session),
+        )
       : "";
   return `[${timestamp}] ${speakerPrefix}${entry.text}`;
 }
@@ -62,7 +67,10 @@ export function selectCopyEntries(
   const normalizedEntries = normalizeEntriesForOutput(entries, {
     stripSpeakerMetadata: options.includeSpeaker !== true,
   });
-  const selectedEntries = filterEntriesByIds(normalizedEntries, options.selectedIds);
+  const selectedEntries = filterEntriesByIds(
+    normalizedEntries,
+    options.selectedIds,
+  );
   const filteredEntries = filterEntriesByQuery(selectedEntries, options.query);
   return typeof options.limit === "number" && options.limit > 0
     ? filteredEntries.slice(-options.limit)

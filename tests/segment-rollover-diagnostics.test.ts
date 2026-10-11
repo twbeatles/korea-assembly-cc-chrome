@@ -24,7 +24,9 @@ describe("segment rollover diagnostics and queue capacity", () => {
   });
 
   it("keeps at least 128 events before dropping (audit M1 capacity)", () => {
-    expect(DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX).toBeGreaterThanOrEqual(128);
+    expect(DEFAULT_SEGMENT_ROLLOVER_EVENT_QUEUE_MAX).toBeGreaterThanOrEqual(
+      128,
+    );
 
     let queue: number[] = [];
     let dropped = 0;

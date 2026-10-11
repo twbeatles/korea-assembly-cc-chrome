@@ -2,7 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import { createEmptySessionState } from "../src/core/subtitle-models";
 import { DEFAULT_EXTENSION_SETTINGS } from "../src/shared/constants";
-import { formatPreviewForDisplay, resolveLivePreviewText } from "../src/content/runtime/preview";
+import {
+  formatPreviewForDisplay,
+  resolveLivePreviewText,
+} from "../src/content/runtime/preview";
 import {
   buildRolledOverRunningSessionState,
   buildSegmentRolloverNotice,
@@ -206,7 +209,9 @@ describe("content runtime helpers", () => {
       DEFAULT_EXTENSION_SETTINGS.maxEntriesPerSegment,
     );
     expect(snapshot.diagnostics.exportEstimates).toBeUndefined();
-    expect(diagnosticsSnapshot.diagnostics.exportEstimates?.jsonBytes).toBeGreaterThan(0);
+    expect(
+      diagnosticsSnapshot.diagnostics.exportEstimates?.jsonBytes,
+    ).toBeGreaterThan(0);
   });
 
   it("keeps clear-session availability rules isolated from UI orchestration", () => {
@@ -256,8 +261,12 @@ describe("content runtime helpers", () => {
   });
 
   it("formats rollout notices by boundary reason", () => {
-    expect(buildSegmentRolloverNotice(2, "entry_limit")).toContain("세그먼트 2");
-    expect(buildSegmentRolloverNotice(3, "duration_limit")).toContain("장시간 수집 안정성");
+    expect(buildSegmentRolloverNotice(2, "entry_limit")).toContain(
+      "세그먼트 2",
+    );
+    expect(buildSegmentRolloverNotice(3, "duration_limit")).toContain(
+      "장시간 수집 안정성",
+    );
   });
 
   it("guards duplicate capture start requests while already running", () => {

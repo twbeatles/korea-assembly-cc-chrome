@@ -1,31 +1,69 @@
-
-import { applyKeepalive, applyReset, commitLiveRow } from "../../../../../core/subtitle-pipeline";
-import { clearLiveCaptureLedger, getLiveRow, markLiveRowCommitted, normalizeCaptureEvent, reconcileLiveCapture, setLiveRowBaseline } from "../../../../../core/live-capture";
+import {
+  applyKeepalive,
+  applyReset,
+  commitLiveRow,
+} from "../../../../../core/subtitle-pipeline";
+import {
+  clearLiveCaptureLedger,
+  getLiveRow,
+  markLiveRowCommitted,
+  normalizeCaptureEvent,
+  reconcileLiveCapture,
+  setLiveRowBaseline,
+} from "../../../../../core/live-capture";
 import { cloneState } from "../../../../../core/subtitle-models";
 import { OBSERVER_BRIDGE_SOURCE } from "../../../../../shared/constants";
 
-import type { ObservedSubtitleRow, ObserverBridgeEvent } from "../../../../../shared/message-types";
+import type {
+  ObservedSubtitleRow,
+  ObserverBridgeEvent,
+} from "../../../../../shared/message-types";
 
 import { RESET_CAPTURE_NOTICE } from "../../../../capture-notice";
 
 import { forwardFrameEvent } from "../../../../frame-coordinator";
 
-import { SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX, drainSegmentEventQueue, enqueueBoundedSegmentEvent } from "../../../../runtime/segment-event-queue";
+import {
+  SEGMENT_ROLLOVER_EVENT_QUEUE_SAFETY_MAX,
+  drainSegmentEventQueue,
+  enqueueBoundedSegmentEvent,
+} from "../../../../runtime/segment-event-queue";
 
-import { resolveRuntimeSessionSegmentationReason, resolveRuntimeSessionSegmentationThresholds } from "../../../../runtime/segmentation-policy";
+import {
+  resolveRuntimeSessionSegmentationReason,
+  resolveRuntimeSessionSegmentationThresholds,
+} from "../../../../runtime/segmentation-policy";
 
-import { analyzeCaptureCommit, resolveRuntimeCaptureNotice } from "../../../../subtitle-event-handler";
+import {
+  analyzeCaptureCommit,
+  resolveRuntimeCaptureNotice,
+} from "../../../../subtitle-event-handler";
 import { buildPersistabilityDiagnostics } from "../../../../persistability";
-import { SUBTITLE_RESET_GRACE_MS, isTopFrame, localFramePath } from "../../constants";
+import {
+  SUBTITLE_RESET_GRACE_MS,
+  isTopFrame,
+  localFramePath,
+} from "../../constants";
 
-import { cloneObserverBridgeEventForReplay, deriveCommitteeName } from "../helpers";
+import {
+  cloneObserverBridgeEventForReplay,
+  deriveCommitteeName,
+} from "../helpers";
 import type { RuntimeCoreContext } from "./context";
 import { clearPendingReset } from "./timers";
 import { logDebug, reportRuntimeError, setPanelNotice } from "./notices";
-import { createEmptyRowDiagnostics, setPersistabilityState, syncUserInterfaces, updateRowDiagnostics } from "./panel-status";
+import {
+  createEmptyRowDiagnostics,
+  setPersistabilityState,
+  syncUserInterfaces,
+  updateRowDiagnostics,
+} from "./panel-status";
 import { resolvePreviewPersistability } from "./snapshots";
 import { scheduleRunningPersist } from "./persistence";
-import { clearFallbackCommitCandidate, observeFallbackCommitCandidate } from "./fallback-commit";
+import {
+  clearFallbackCommitCandidate,
+  observeFallbackCommitCandidate,
+} from "./fallback-commit";
 import { rollOverRunningSessionSegment } from "./session-lifecycle";
 import { maybeEmitSegmentCapacityWarning } from "./session-commands";
 
@@ -37,7 +75,11 @@ interface StructuredRowsApplyResult {
   sawFiltered: boolean;
 }
 
-export function applyPreviewStateOnly(ctx: RuntimeCoreContext, previewText: string, now: number): boolean {
+export function applyPreviewStateOnly(
+  ctx: RuntimeCoreContext,
+  previewText: string,
+  now: number,
+): boolean {
   if (previewText === ctx.state.previewText) {
     return false;
   }
@@ -51,7 +93,8 @@ export function applyPreviewStateOnly(ctx: RuntimeCoreContext, previewText: stri
   return true;
 }
 
-export function applyStructuredRowsEvent(ctx: RuntimeCoreContext, 
+export function applyStructuredRowsEvent(
+  ctx: RuntimeCoreContext,
   rows: ObservedSubtitleRow[],
   previewText: string,
   now: number,
@@ -65,7 +108,10 @@ export function applyStructuredRowsEvent(ctx: RuntimeCoreContext,
     framePath,
     timestamp: now,
   });
-  const reconciliation = reconcileLiveCapture(ctx.liveCaptureLedger, captureEvent);
+  const reconciliation = reconcileLiveCapture(
+    ctx.liveCaptureLedger,
+    captureEvent,
+  );
   ctx.liveCaptureLedger = reconciliation.ledger;
 
   let changed =
@@ -169,7 +215,10 @@ export function scheduleDeferredSubtitleReset(ctx: RuntimeCoreContext): void {
   }, SUBTITLE_RESET_GRACE_MS);
 }
 
-export function queueSegmentRolloverEvent(ctx: RuntimeCoreContext, event: ObserverBridgeEvent): void {
+export function queueSegmentRolloverEvent(
+  ctx: RuntimeCoreContext,
+  event: ObserverBridgeEvent,
+): void {
   const enqueued = enqueueBoundedSegmentEvent(
     ctx.queuedSegmentRolloverEvents,
     cloneObserverBridgeEventForReplay(event),
@@ -178,7 +227,8 @@ export function queueSegmentRolloverEvent(ctx: RuntimeCoreContext, event: Observ
   ctx.queuedSegmentRolloverEvents = enqueued.queue;
   if (enqueued.droppedCount > 0) {
     ctx.segmentRolloverEventsDroppedTotal += enqueued.droppedCount;
-    setPanelNotice(ctx, 
+    setPanelNotice(
+      ctx,
       `세그먼트 전환 중 이벤트가 많아 ${enqueued.droppedCount}건을 버퍼에서 비웠습니다. (누적 ${ctx.segmentRolloverEventsDroppedTotal}건)`,
     );
     logDebug(ctx, "segment rollover event queue overflow", {
@@ -203,7 +253,10 @@ export function flushQueuedSegmentRolloverEvent(ctx: RuntimeCoreContext): void {
   );
 }
 
-export function forwardToTop(ctx: RuntimeCoreContext, event: ObserverBridgeEvent): void {
+export function forwardToTop(
+  ctx: RuntimeCoreContext,
+  event: ObserverBridgeEvent,
+): void {
   forwardFrameEvent(event, {
     isTopFrame,
     frameForwardNonce: ctx.frameForwardNonce,
@@ -211,7 +264,10 @@ export function forwardToTop(ctx: RuntimeCoreContext, event: ObserverBridgeEvent
   });
 }
 
-export function handleTopFrameEvent(ctx: RuntimeCoreContext, event: ObserverBridgeEvent): void {
+export function handleTopFrameEvent(
+  ctx: RuntimeCoreContext,
+  event: ObserverBridgeEvent,
+): void {
   if (!isTopFrame) {
     return;
   }
@@ -271,7 +327,8 @@ export function handleTopFrameEvent(ctx: RuntimeCoreContext, event: ObserverBrid
     }
 
     const captureCommit = analyzeCaptureCommit(captureEvent);
-    updateRowDiagnostics(ctx, 
+    updateRowDiagnostics(
+      ctx,
       captureEvent.rows,
       event.filteredUnconfirmedCount ?? 0,
     );
@@ -280,7 +337,8 @@ export function handleTopFrameEvent(ctx: RuntimeCoreContext, event: ObserverBrid
       clearFallbackCommitCandidate(ctx);
       ctx.localPollingUnconfirmedFallbackBlockStreak = 0;
       ctx.topFallbackUnconfirmedFallbackBlockStreak = 0;
-      const structuredResult = applyStructuredRowsEvent(ctx, 
+      const structuredResult = applyStructuredRowsEvent(
+        ctx,
         captureCommit.stableRows,
         captureCommit.previewText,
         now,
@@ -299,7 +357,8 @@ export function handleTopFrameEvent(ctx: RuntimeCoreContext, event: ObserverBrid
       setPersistabilityState(ctx, persistabilityState);
       const persistability =
         buildPersistabilityDiagnostics(persistabilityState);
-      const noticeChanged = setPanelNotice(ctx, 
+      const noticeChanged = setPanelNotice(
+        ctx,
         resolveRuntimeCaptureNotice({
           captureMode: captureEvent.captureMode,
           observerActive: ctx.state.observerActive,
@@ -332,11 +391,13 @@ export function handleTopFrameEvent(ctx: RuntimeCoreContext, event: ObserverBrid
           // 큐를 비우지 않는다 — 이전 잔여·경합 이벤트는 롤오버 후 flush 로 재생한다.
           ctx.segmentRolloverInFlight = true;
           const rolloverToken = ++ctx.segmentRolloverToken;
-          setPanelNotice(ctx, 
+          setPanelNotice(
+            ctx,
             "현재 세그먼트를 저장하고 다음 구간으로 전환하고 있습니다.",
           );
           syncUserInterfaces(ctx);
-          void rollOverRunningSessionSegment(ctx, 
+          void rollOverRunningSessionSegment(
+            ctx,
             segmentationReason,
             now,
             rolloverToken,
@@ -358,7 +419,8 @@ export function handleTopFrameEvent(ctx: RuntimeCoreContext, event: ObserverBrid
         : resolvePreviewPersistability(ctx, captureEvent.previewText, now);
     setPersistabilityState(ctx, persistabilityState);
     const persistability = buildPersistabilityDiagnostics(persistabilityState);
-    const noticeChanged = setPanelNotice(ctx, 
+    const noticeChanged = setPanelNotice(
+      ctx,
       resolveRuntimeCaptureNotice({
         captureMode: captureEvent.captureMode,
         observerActive: ctx.state.observerActive,
@@ -397,7 +459,8 @@ export function handleTopFrameEvent(ctx: RuntimeCoreContext, event: ObserverBrid
     }
 
     const previewChanged = applyPreviewStateOnly(ctx, normalized, now);
-    const fallbackCommitted = observeFallbackCommitCandidate(ctx, 
+    const fallbackCommitted = observeFallbackCommitCandidate(
+      ctx,
       normalized,
       now,
       event.selector,
@@ -410,11 +473,16 @@ export function handleTopFrameEvent(ctx: RuntimeCoreContext, event: ObserverBrid
       return;
     }
   } catch (error) {
-    reportRuntimeError(ctx, "자막 파이프라인 처리 중 오류가 발생했습니다.", error);
+    reportRuntimeError(
+      ctx,
+      "자막 파이프라인 처리 중 오류가 발생했습니다.",
+      error,
+    );
   }
 }
 
-export function emitLocalProbeEvent(ctx: RuntimeCoreContext, 
+export function emitLocalProbeEvent(
+  ctx: RuntimeCoreContext,
   kind: "subtitle:update" | "subtitle:reset",
   raw?: string,
   selector?: string,

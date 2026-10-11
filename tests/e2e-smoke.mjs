@@ -17,7 +17,9 @@ try {
     ],
   });
 
-  const worker = context.serviceWorkers()[0] ?? (await context.waitForEvent("serviceworker"));
+  const worker =
+    context.serviceWorkers()[0] ??
+    (await context.waitForEvent("serviceworker"));
   const extensionId = worker.url().split("/")[2];
 
   for (const pageName of ["history.html", "options.html", "sidepanel.html"]) {
@@ -34,4 +36,3 @@ try {
   await context?.close();
   await rm(userDataDir, { recursive: true, force: true });
 }
-

@@ -12,7 +12,9 @@ export interface HistoryViewSettings {
 }
 
 export function buildHistoryRefreshMessage(sessionCount: number): string {
-  return sessionCount ? "최신 기록부터 보여주고 있습니다." : "저장된 기록이 없습니다.";
+  return sessionCount
+    ? "최신 기록부터 보여주고 있습니다."
+    : "저장된 기록이 없습니다.";
 }
 
 export function buildSelectedDeleteMessage(
@@ -36,7 +38,8 @@ export function buildDeleteAllSuccessMessage(totalCount: number): string {
 }
 
 export function buildDeleteAllFailureMessage(detail?: string): string {
-  const base = "저장된 기록 전체 삭제를 완료하지 못했습니다. 남은 기록을 다시 확인해주세요.";
+  const base =
+    "저장된 기록 전체 삭제를 완료하지 못했습니다. 남은 기록을 다시 확인해주세요.";
   return detail ? `${base} ${detail}` : base;
 }
 
@@ -75,11 +78,14 @@ export function selectHistoryViewSettings(
     txtExportTimestampsEnabled: settings.txtExportTimestampsEnabled,
     txtExportSpeakerEnabled: settings.txtExportSpeakerEnabled ?? false,
     txtExportEntryNotesEnabled: settings.txtExportEntryNotesEnabled ?? false,
-    panelSpeakerHighlightEnabled: settings.panelSpeakerHighlightEnabled ?? false,
+    panelSpeakerHighlightEnabled:
+      settings.panelSpeakerHighlightEnabled ?? false,
   };
 }
 
-export function extractHistoryViewSettings(storedValue: unknown): HistoryViewSettings {
+export function extractHistoryViewSettings(
+  storedValue: unknown,
+): HistoryViewSettings {
   const sanitized = sanitizeSettings(
     (storedValue && typeof storedValue === "object"
       ? storedValue
@@ -170,5 +176,7 @@ export function areEntryIdsContiguous(
     return false;
   }
 
-  return indexes.every((index, offset) => offset === 0 || index === indexes[offset - 1] + 1);
+  return indexes.every(
+    (index, offset) => offset === 0 || index === indexes[offset - 1] + 1,
+  );
 }

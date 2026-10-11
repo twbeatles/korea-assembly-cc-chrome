@@ -41,12 +41,25 @@ function cloneOutputEntry(
 ): SubtitleEntry {
   const cloned: SubtitleEntry = {
     ...entry,
-    text: normalizeSubtitleText(entry.text).slice(0, SESSION_ENTRY_TEXT_MAX_LENGTH),
-    originalText: clampOptionalText(entry.originalText, SESSION_ENTRY_TEXT_MAX_LENGTH),
-    entryNote: clampOptionalText(entry.entryNote, SESSION_ENTRY_NOTE_MAX_LENGTH),
-    sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
+    text: normalizeSubtitleText(entry.text).slice(
+      0,
+      SESSION_ENTRY_TEXT_MAX_LENGTH,
+    ),
+    originalText: clampOptionalText(
+      entry.originalText,
+      SESSION_ENTRY_TEXT_MAX_LENGTH,
+    ),
+    entryNote: clampOptionalText(
+      entry.entryNote,
+      SESSION_ENTRY_NOTE_MAX_LENGTH,
+    ),
+    sourceFramePath: entry.sourceFramePath
+      ? [...entry.sourceFramePath]
+      : undefined,
     labels: entry.labels ? [...entry.labels] : undefined,
-    sourceEntryIds: entry.sourceEntryIds ? [...entry.sourceEntryIds] : undefined,
+    sourceEntryIds: entry.sourceEntryIds
+      ? [...entry.sourceEntryIds]
+      : undefined,
   };
 
   if (options.stripSpeakerMetadata) {
@@ -62,13 +75,18 @@ function cloneOutputEntry(
  * 영속화(저장/업데이트) 전용 structural sanitize.
  * export/copy의 carry-over exact duplicate 제거는 수행하지 않는다.
  */
-export function sanitizeEntriesForStorage(entries: SubtitleEntry[]): SubtitleEntry[] {
+export function sanitizeEntriesForStorage(
+  entries: SubtitleEntry[],
+): SubtitleEntry[] {
   if (!Array.isArray(entries)) {
     return [];
   }
 
   return entries
-    .filter((entry): entry is SubtitleEntry => Boolean(entry) && typeof entry === "object")
+    .filter(
+      (entry): entry is SubtitleEntry =>
+        Boolean(entry) && typeof entry === "object",
+    )
     .map((entry) => cloneOutputEntry(entry))
     .filter((entry) => Boolean(entry.id) && Boolean(entry.text));
 }
@@ -102,7 +120,10 @@ function isExactCarryOverDuplicate(
       Boolean(previous.sourceNodeKey) &&
       entry.sourceNodeKey === previous.sourceNodeKey;
 
-    if (sameSourceNode || (compact.length >= OUTPUT_DUPLICATE_MIN_LENGTH && withinShortWindow)) {
+    if (
+      sameSourceNode ||
+      (compact.length >= OUTPUT_DUPLICATE_MIN_LENGTH && withinShortWindow)
+    ) {
       return true;
     }
   }
@@ -148,7 +169,10 @@ function findCarryOverOverlap(
   return 0;
 }
 
-function trimCarryOverText(text: string, recentEntries: SubtitleEntry[]): string {
+function trimCarryOverText(
+  text: string,
+  recentEntries: SubtitleEntry[],
+): string {
   const normalizedText = normalizeSubtitleText(text);
   const compact = compactSubtitleText(normalizedText);
   if (!compact) {
@@ -163,7 +187,10 @@ function trimCarryOverText(text: string, recentEntries: SubtitleEntry[]): string
     return normalizedText;
   }
 
-  if (compact.length >= OUTPUT_DUPLICATE_MIN_LENGTH && historyCompact.includes(compact)) {
+  if (
+    compact.length >= OUTPUT_DUPLICATE_MIN_LENGTH &&
+    historyCompact.includes(compact)
+  ) {
     return "";
   }
 

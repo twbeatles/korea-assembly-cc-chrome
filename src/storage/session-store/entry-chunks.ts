@@ -17,7 +17,10 @@ export interface SessionEntryChunkRecord {
   entries: SubtitleEntry[];
 }
 
-export interface ChunkedSessionMetadataRecord extends Omit<SessionRecord, "entries"> {
+export interface ChunkedSessionMetadataRecord extends Omit<
+  SessionRecord,
+  "entries"
+> {
   entries: [];
   entryChunkCount?: number;
   entryChunkSize?: number;
@@ -55,7 +58,10 @@ function buildChunkDigest(entries: SubtitleEntry[]): string {
   );
 }
 
-export function buildSessionEntryChunkKey(sessionId: string, chunkIndex: number): string {
+export function buildSessionEntryChunkKey(
+  sessionId: string,
+  chunkIndex: number,
+): string {
   return `${sessionId}::chunk::${String(chunkIndex).padStart(6, "0")}`;
 }
 
@@ -69,7 +75,9 @@ export function buildSessionEntryChunks(
 
   for (let index = 0; index < entries.length; index += safeChunkSize) {
     const chunkIndex = Math.floor(index / safeChunkSize);
-    const chunkEntries = entries.slice(index, index + safeChunkSize).map(cloneEntry);
+    const chunkEntries = entries
+      .slice(index, index + safeChunkSize)
+      .map(cloneEntry);
     chunks.push({
       id: buildSessionEntryChunkKey(sessionId, chunkIndex),
       sessionId,
@@ -98,7 +106,9 @@ export function stripSessionEntries(
 export function hasChunkedSessionEntries(
   record: Partial<ChunkedSessionMetadataRecord>,
 ): boolean {
-  return typeof record.entryChunkCount === "number" && record.entryChunkCount >= 0;
+  return (
+    typeof record.entryChunkCount === "number" && record.entryChunkCount >= 0
+  );
 }
 
 export function getChunkDigests(
@@ -109,7 +119,8 @@ export function getChunkDigests(
   }
 
   return record.entryChunkDigests.filter(
-    (digest): digest is string => typeof digest === "string" && digest.length > 0,
+    (digest): digest is string =>
+      typeof digest === "string" && digest.length > 0,
   );
 }
 

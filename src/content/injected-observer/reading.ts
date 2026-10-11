@@ -26,9 +26,13 @@ export function shouldBlockContainerFallbackForUnconfirmed(
     return hasUnconfirmedSubtitleBackground(document);
   }
 
-  const confirmedRows = readObservedSubtitleRows(document, "#viewSubtit .smi_word", {
-    filterUnconfirmedEnabled: true,
-  });
+  const confirmedRows = readObservedSubtitleRows(
+    document,
+    "#viewSubtit .smi_word",
+    {
+      filterUnconfirmedEnabled: true,
+    },
+  );
   if (confirmedRows.length === 0) {
     return true;
   }
@@ -87,7 +91,9 @@ export function readSubtitleText(
 
   for (const selector of orderedSelectors) {
     if (selector.includes(".smi_word")) {
-      const rows = readObservedSubtitleRows(document, selector, { filterUnconfirmedEnabled });
+      const rows = readObservedSubtitleRows(document, selector, {
+        filterUnconfirmedEnabled,
+      });
       const smiText = buildObservedSubtitlePreview(rows);
       if (smiText) {
         return {

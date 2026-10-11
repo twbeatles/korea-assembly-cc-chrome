@@ -102,34 +102,48 @@ describe("persist recovery", () => {
   });
 
   it("keeps the memory queue when storage writes fail and clears the error after later success", async () => {
-    const storageSet = chrome.storage.local.set as unknown as ReturnType<typeof vi.fn>;
+    const storageSet = chrome.storage.local.set as unknown as ReturnType<
+      typeof vi.fn
+    >;
     storageSet.mockRejectedValueOnce(new Error("queue write failed"));
 
     await expect(
-      queueExitPersistRecord(buildSession("session_queue_failure", "2026-03-10T09:00:02.000Z")),
+      queueExitPersistRecord(
+        buildSession("session_queue_failure", "2026-03-10T09:00:02.000Z"),
+      ),
     ).rejects.toThrow("queue write failed");
 
     const listedAfterFailure = await listQueuedExitPersistRecords();
-    expect(listedAfterFailure.map((record) => record.sessionId)).toContain("session_queue_failure");
+    expect(listedAfterFailure.map((record) => record.sessionId)).toContain(
+      "session_queue_failure",
+    );
 
     let diagnostics = await readPersistReplayDiagnostics();
     expect(diagnostics.lastQueueWriteError).toBe("queue write failed");
     expect(diagnostics.lastError).toBe("queue write failed");
 
-    await queueExitPersistRecord(buildSession("session_queue_failure", "2026-03-10T09:00:03.000Z"));
+    await queueExitPersistRecord(
+      buildSession("session_queue_failure", "2026-03-10T09:00:03.000Z"),
+    );
     diagnostics = await readPersistReplayDiagnostics();
     expect(diagnostics.lastQueueWriteError).toBeNull();
   });
 
   it("merges storage and memory queues and keeps the freshest snapshot", async () => {
-    await queueExitPersistRecord(buildSession("session_merge", "2026-03-10T09:00:02.000Z", "older"));
+    await queueExitPersistRecord(
+      buildSession("session_merge", "2026-03-10T09:00:02.000Z", "older"),
+    );
 
     const storageKey = "assembly-subtitle-exit-persist:session_merge";
     await chrome.storage.local.set({
       [storageKey]: {
         sessionId: "session_merge",
         queuedAt: "2026-03-10T09:00:04.000Z",
-        record: buildSession("session_merge", "2026-03-10T09:00:05.000Z", "newer"),
+        record: buildSession(
+          "session_merge",
+          "2026-03-10T09:00:05.000Z",
+          "newer",
+        ),
       },
     });
 
@@ -139,19 +153,31 @@ describe("persist recovery", () => {
   });
 
   it("discovers concurrently queued records after the writer memory is discarded", async () => {
-    await queueExitPersistRecord(buildSession("anchor", "2026-03-10T09:00:01.000Z", "anchor"));
+    await queueExitPersistRecord(
+      buildSession("anchor", "2026-03-10T09:00:01.000Z", "anchor"),
+    );
     await Promise.all([
-      queueExitPersistRecord(buildSession("queue-a", "2026-03-10T09:00:02.000Z", "queue-a")),
-      queueExitPersistRecord(buildSession("queue-b", "2026-03-10T09:00:03.000Z", "queue-b")),
+      queueExitPersistRecord(
+        buildSession("queue-a", "2026-03-10T09:00:02.000Z", "queue-a"),
+      ),
+      queueExitPersistRecord(
+        buildSession("queue-b", "2026-03-10T09:00:03.000Z", "queue-b"),
+      ),
     ]);
 
     resetPersistRecoveryMemoryForTests();
     const listed = await listQueuedExitPersistRecords();
-    expect(listed.map((item) => item.sessionId).sort()).toEqual(["anchor", "queue-a", "queue-b"]);
+    expect(listed.map((item) => item.sessionId).sort()).toEqual([
+      "anchor",
+      "queue-a",
+      "queue-b",
+    ]);
   });
 
   it("still lists a durable record when the shared index omits it", async () => {
-    await queueExitPersistRecord(buildSession("queue-orphan", "2026-03-10T09:00:02.000Z", "orphan"));
+    await queueExitPersistRecord(
+      buildSession("queue-orphan", "2026-03-10T09:00:02.000Z", "orphan"),
+    );
     await chrome.storage.local.set({
       "assembly-subtitle-exit-persist:index": ["unrelated"],
     });
@@ -171,7 +197,9 @@ describe("persist recovery", () => {
   });
 
   it("keeps a queue record inserted during storage snapshot reconciliation", async () => {
-    const storageGet = chrome.storage.local.get as unknown as ReturnType<typeof vi.fn>;
+    const storageGet = chrome.storage.local.get as unknown as ReturnType<
+      typeof vi.fn
+    >;
     const deferred = createDeferred<Record<string, unknown>>();
 
     storageGet.mockImplementationOnce(async () => deferred.promise);
@@ -180,13 +208,21 @@ describe("persist recovery", () => {
     await Promise.resolve();
 
     await queueExitPersistRecord(
-      buildSession("session_inserted_during_list", "2026-03-10T09:00:06.000Z", "during-list"),
+      buildSession(
+        "session_inserted_during_list",
+        "2026-03-10T09:00:06.000Z",
+        "during-list",
+      ),
     );
     deferred.resolve({});
 
     const listed = await listedPromise;
-    expect(listed.map((record) => record.sessionId)).toContain("session_inserted_during_list");
-    expect((await listQueuedExitPersistRecords())[0]?.record.title).toBe("during-list");
+    expect(listed.map((record) => record.sessionId)).toContain(
+      "session_inserted_during_list",
+    );
+    expect((await listQueuedExitPersistRecords())[0]?.record.title).toBe(
+      "during-list",
+    );
   });
 
   it("clears queue entries from memory and storage independently", async () => {
@@ -194,7 +230,10 @@ describe("persist recovery", () => {
     const record = buildSession(sessionId, "2026-03-10T09:00:02.000Z");
 
     await queueExitPersistRecord(record);
-    await clearQueuedExitPersistRecordsUpTo(sessionId, "2026-03-10T09:00:02.000Z");
+    await clearQueuedExitPersistRecordsUpTo(
+      sessionId,
+      "2026-03-10T09:00:02.000Z",
+    );
     expect(await listQueuedExitPersistRecords()).toEqual([]);
 
     await queueExitPersistRecord(record);
@@ -208,8 +247,12 @@ describe("persist recovery", () => {
 
   it("keeps both session ids when two queues write the index concurrently", async () => {
     await Promise.all([
-      queueExitPersistRecord(buildSession("session_race_a", "2026-03-10T09:00:02.000Z")),
-      queueExitPersistRecord(buildSession("session_race_b", "2026-03-10T09:00:03.000Z")),
+      queueExitPersistRecord(
+        buildSession("session_race_a", "2026-03-10T09:00:02.000Z"),
+      ),
+      queueExitPersistRecord(
+        buildSession("session_race_b", "2026-03-10T09:00:03.000Z"),
+      ),
     ]);
 
     const listed = await listQueuedExitPersistRecords();
@@ -220,9 +263,15 @@ describe("persist recovery", () => {
   });
 
   it("recovers an orphaned storage record that is missing from the index", async () => {
-    await queueExitPersistRecord(buildSession("session_indexed_live", "2026-03-10T09:00:02.000Z"));
+    await queueExitPersistRecord(
+      buildSession("session_indexed_live", "2026-03-10T09:00:02.000Z"),
+    );
 
-    const orphan = buildSession("session_orphan", "2026-03-10T09:00:04.000Z", "orphan");
+    const orphan = buildSession(
+      "session_orphan",
+      "2026-03-10T09:00:04.000Z",
+      "orphan",
+    );
     await chrome.storage.local.set({
       "assembly-subtitle-exit-persist:session_orphan": {
         sessionId: "session_orphan",
@@ -232,7 +281,10 @@ describe("persist recovery", () => {
     });
 
     const recoveredIds = await recoverOrphanedExitPersistRecords();
-    expect(recoveredIds.sort()).toEqual(["session_indexed_live", "session_orphan"]);
+    expect(recoveredIds.sort()).toEqual([
+      "session_indexed_live",
+      "session_orphan",
+    ]);
 
     const afterRecover = await listQueuedExitPersistRecords();
     expect(afterRecover.map((record) => record.sessionId).sort()).toEqual([
@@ -257,6 +309,8 @@ describe("persist recovery", () => {
     expect(diagnostics.lastError).toBe("page-exit failed");
 
     await recordPageExitPersistAttempt(record);
-    expect((await readPersistReplayDiagnostics()).lastPageExitPersistError).toBeNull();
+    expect(
+      (await readPersistReplayDiagnostics()).lastPageExitPersistError,
+    ).toBeNull();
   });
 });

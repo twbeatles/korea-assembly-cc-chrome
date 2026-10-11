@@ -24,14 +24,18 @@ function buildSession(): SessionRecord {
 
 describe("timeline export filename", () => {
   it("builds filenames from a valid pattern", () => {
-    expect(buildExportFilename(buildSession(), "txt", "{committee}_{date}_{time}")).toBe(
-      "정무위원회_20260310_090000.txt",
-    );
+    expect(
+      buildExportFilename(buildSession(), "txt", "{committee}_{date}_{time}"),
+    ).toBe("정무위원회_20260310_090000.txt");
   });
 
   it("sanitizes every invalid character from the final basename", () => {
-    expect(buildExportFilename(buildSession(), "json", "{committee}/archive:bad|name?")).toBe(
-      "정무위원회archivebadname.json",
-    );
+    expect(
+      buildExportFilename(
+        buildSession(),
+        "json",
+        "{committee}/archive:bad|name?",
+      ),
+    ).toBe("정무위원회archivebadname.json");
   });
 });

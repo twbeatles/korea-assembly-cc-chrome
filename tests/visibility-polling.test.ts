@@ -19,6 +19,8 @@ describe("visibility polling interval", () => {
 
   it("enforces a minimum base interval", () => {
     expect(resolvePollingIntervalMs(10, "visible")).toBe(50);
-    expect(resolvePollingIntervalMs(10, "hidden")).toBe(50 * HIDDEN_TAB_POLLING_MULTIPLIER);
+    expect(resolvePollingIntervalMs(10, "hidden")).toBe(
+      50 * HIDDEN_TAB_POLLING_MULTIPLIER,
+    );
   });
 });

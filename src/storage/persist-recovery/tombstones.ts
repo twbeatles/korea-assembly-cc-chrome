@@ -1,4 +1,8 @@
-import { getDeletedSessionStorageKey, getQueuedRecordStorageKey, hasChromeStorageLocal } from "./keys";
+import {
+  getDeletedSessionStorageKey,
+  getQueuedRecordStorageKey,
+  hasChromeStorageLocal,
+} from "./keys";
 import { removeSessionIdFromExitPersistIndex } from "./index-store";
 import { memoryDeletedSessionTombstones, memoryQueuedRecords } from "./state";
 
@@ -39,7 +43,10 @@ export async function isSessionDeleted(
 
   const memoryDeletedAt = memoryDeletedSessionTombstones.get(sessionId);
   if (memoryDeletedAt) {
-    if (!snapshotUpdatedAt || snapshotUpdatedAt.localeCompare(memoryDeletedAt) <= 0) {
+    if (
+      !snapshotUpdatedAt ||
+      snapshotUpdatedAt.localeCompare(memoryDeletedAt) <= 0
+    ) {
       return true;
     }
   }
@@ -53,7 +60,10 @@ export async function isSessionDeleted(
     const snapshot = await chrome.storage.local.get(key);
     const storageDeletedAt = snapshot[key];
     if (typeof storageDeletedAt === "string" && storageDeletedAt) {
-      if (!snapshotUpdatedAt || snapshotUpdatedAt.localeCompare(storageDeletedAt) <= 0) {
+      if (
+        !snapshotUpdatedAt ||
+        snapshotUpdatedAt.localeCompare(storageDeletedAt) <= 0
+      ) {
         return true;
       }
     }

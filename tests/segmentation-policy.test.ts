@@ -40,11 +40,15 @@ describe("runtime segmentation policy", () => {
     const state = buildRunningState();
 
     expect(
-      resolveRuntimeSessionSegmentationReason(state, Date.parse("2026-03-10T09:10:00.000Z"), {
-        maxEntriesPerSegment: 2,
-        maxCharsPerSegment: 1000,
-        maxDurationMs: 1000 * 60 * 60,
-      }),
+      resolveRuntimeSessionSegmentationReason(
+        state,
+        Date.parse("2026-03-10T09:10:00.000Z"),
+        {
+          maxEntriesPerSegment: 2,
+          maxCharsPerSegment: 1000,
+          maxDurationMs: 1000 * 60 * 60,
+        },
+      ),
     ).toBe("entry_limit");
   });
 
@@ -52,19 +56,27 @@ describe("runtime segmentation policy", () => {
     const state = buildRunningState();
 
     expect(
-      resolveRuntimeSessionSegmentationReason(state, Date.parse("2026-03-10T09:10:00.000Z"), {
-        maxEntriesPerSegment: 100,
-        maxCharsPerSegment: 4,
-        maxDurationMs: 1000 * 60 * 60,
-      }),
+      resolveRuntimeSessionSegmentationReason(
+        state,
+        Date.parse("2026-03-10T09:10:00.000Z"),
+        {
+          maxEntriesPerSegment: 100,
+          maxCharsPerSegment: 4,
+          maxDurationMs: 1000 * 60 * 60,
+        },
+      ),
     ).toBe("char_limit");
 
     expect(
-      resolveRuntimeSessionSegmentationReason(state, Date.parse("2026-03-10T11:00:00.000Z"), {
-        maxEntriesPerSegment: 100,
-        maxCharsPerSegment: 1000,
-        maxDurationMs: 1000,
-      }),
+      resolveRuntimeSessionSegmentationReason(
+        state,
+        Date.parse("2026-03-10T11:00:00.000Z"),
+        {
+          maxEntriesPerSegment: 100,
+          maxCharsPerSegment: 1000,
+          maxDurationMs: 1000,
+        },
+      ),
     ).toBe("duration_limit");
   });
 
@@ -86,19 +98,27 @@ describe("runtime segmentation policy", () => {
     const state = buildRunningState();
     // entries=2, threshold=2 → 이미 분할 대상이므로 warning null
     expect(
-      resolveSegmentCapacityWarning(state, Date.parse("2026-03-10T09:10:00.000Z"), {
-        maxEntriesPerSegment: 2,
-        maxCharsPerSegment: 10000,
-        maxDurationMs: 1000 * 60 * 60,
-      }),
+      resolveSegmentCapacityWarning(
+        state,
+        Date.parse("2026-03-10T09:10:00.000Z"),
+        {
+          maxEntriesPerSegment: 2,
+          maxCharsPerSegment: 10000,
+          maxDurationMs: 1000 * 60 * 60,
+        },
+      ),
     ).toBeNull();
 
     expect(
-      resolveSegmentCapacityWarning(state, Date.parse("2026-03-10T09:10:00.000Z"), {
-        maxEntriesPerSegment: 3,
-        maxCharsPerSegment: 10000,
-        maxDurationMs: 1000 * 60 * 60,
-      }),
+      resolveSegmentCapacityWarning(
+        state,
+        Date.parse("2026-03-10T09:10:00.000Z"),
+        {
+          maxEntriesPerSegment: 3,
+          maxCharsPerSegment: 10000,
+          maxDurationMs: 1000 * 60 * 60,
+        },
+      ),
     ).toBe("entry_limit");
 
     expect(buildSegmentCapacityWarningNotice("char_limit")).toContain("분량");

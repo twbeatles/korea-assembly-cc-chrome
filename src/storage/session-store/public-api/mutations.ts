@@ -46,9 +46,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../../session-backup";
+import { buildSessionBackupFilename } from "../../session-backup";
 import { createRandomToken } from "../../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -166,7 +164,9 @@ import { listSessionLineageSegments } from "./queries";
 export const LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR =
   "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.";
 
-export async function saveSession(session: SessionRecord): Promise<SessionRecord> {
+export async function saveSession(
+  session: SessionRecord,
+): Promise<SessionRecord> {
   if (hasExtensionContextInvalidated()) {
     throw createExtensionContextInvalidatedError();
   }
@@ -186,7 +186,9 @@ export async function saveSession(session: SessionRecord): Promise<SessionRecord
   });
 }
 
-export async function updateRunningSession(session: SessionRecord): Promise<SessionRecord> {
+export async function updateRunningSession(
+  session: SessionRecord,
+): Promise<SessionRecord> {
   if (hasExtensionContextInvalidated()) {
     throw createExtensionContextInvalidatedError();
   }
@@ -206,7 +208,9 @@ export async function updateRunningSession(session: SessionRecord): Promise<Sess
   });
 }
 
-export async function upsertSessionRecord(session: SessionRecord): Promise<SessionRecord> {
+export async function upsertSessionRecord(
+  session: SessionRecord,
+): Promise<SessionRecord> {
   if (hasExtensionContextInvalidated()) {
     throw createExtensionContextInvalidatedError();
   }
@@ -257,7 +261,8 @@ export async function updateSessionLineageMetadata(
       // 세그먼트별 session id 큐로 직렬화 (lineage 큐와 id 가 달라 중첩 가능)
       const saved = await writeMutatedSessionRecord(
         segment.id,
-        (latest) => applySessionMetadataPatch(latest ?? segment, patch, updatedAt),
+        (latest) =>
+          applySessionMetadataPatch(latest ?? segment, patch, updatedAt),
         {
           notifyRevision: false,
         },

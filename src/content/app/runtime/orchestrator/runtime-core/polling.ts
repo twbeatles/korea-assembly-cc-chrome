@@ -1,16 +1,23 @@
-
-
 import { OBSERVER_BRIDGE_SOURCE } from "../../../../../shared/constants";
 
-import { probeBestAccessibleSubtitle, probeFramePath } from "../../../../frame-probe";
+import {
+  probeBestAccessibleSubtitle,
+  probeFramePath,
+} from "../../../../frame-probe";
 
 import { shouldEmitLocalProbeUpdate } from "../../../../local-polling";
 import { estimateRecentRaw } from "../../../../dom-probe";
-import { shouldAllowUnconfirmedContainerFallback, updateUnconfirmedFallbackBlockStreak } from "../../../../unconfirmed-fallback";
+import {
+  shouldAllowUnconfirmedContainerFallback,
+  updateUnconfirmedFallbackBlockStreak,
+} from "../../../../unconfirmed-fallback";
 
 import { resolveTopFallbackDelayMs } from "../../../../frame-coordinator";
 
-import { readDocumentVisibilityState, resolvePollingIntervalMs } from "../../../../runtime/visibility-polling";
+import {
+  readDocumentVisibilityState,
+  resolvePollingIntervalMs,
+} from "../../../../runtime/visibility-polling";
 
 import { buildPersistabilityDiagnostics } from "../../../../persistability";
 import { isTopFrame } from "../../constants";
@@ -19,9 +26,16 @@ import { isCapturePage } from "../helpers";
 import type { RuntimeCoreContext } from "./context";
 import { clearLocalPolling, clearTopFallbackTimer } from "./timers";
 import { reportRuntimeError, setPanelNotice } from "./notices";
-import { setPersistabilityState, syncUserInterfaces, updateRowDiagnostics } from "./panel-status";
+import {
+  setPersistabilityState,
+  syncUserInterfaces,
+  updateRowDiagnostics,
+} from "./panel-status";
 import { emitLocalProbeEvent, handleTopFrameEvent } from "./capture-events";
-import { dispatchObserverConfig, requestSubtitleLayerActivation } from "./observer-bridge";
+import {
+  dispatchObserverConfig,
+  requestSubtitleLayerActivation,
+} from "./observer-bridge";
 
 /** 로컬 폴링과 top 프레임 fallback 틱 (단일 책임: 폴링 루프). */
 export function getEffectivePollingIntervalMs(ctx: RuntimeCoreContext): number {
@@ -31,7 +45,9 @@ export function getEffectivePollingIntervalMs(ctx: RuntimeCoreContext): number {
   );
 }
 
-export function refreshPollingAfterVisibilityChange(ctx: RuntimeCoreContext): void {
+export function refreshPollingAfterVisibilityChange(
+  ctx: RuntimeCoreContext,
+): void {
   if (ctx.extensionContextInvalidated) {
     return;
   }
@@ -84,7 +100,8 @@ export function startLocalPolling(ctx: RuntimeCoreContext): void {
         if (ctx.localHadProbeText) {
           ctx.localHadProbeText = false;
           ctx.localLastProbeSignature = "";
-          emitLocalProbeEvent(ctx, 
+          emitLocalProbeEvent(
+            ctx,
             "subtitle:reset",
             undefined,
             undefined,
@@ -105,7 +122,8 @@ export function startLocalPolling(ctx: RuntimeCoreContext): void {
 
       ctx.localHadProbeText = true;
       ctx.localLastProbeSignature = decision.signature;
-      emitLocalProbeEvent(ctx, 
+      emitLocalProbeEvent(
+        ctx,
         "subtitle:update",
         probe.text,
         probe.matchedSelector,
@@ -118,7 +136,10 @@ export function startLocalPolling(ctx: RuntimeCoreContext): void {
   }, pollingIntervalMs);
 }
 
-export function scheduleTopFrameFallbackTick(ctx: RuntimeCoreContext, delayMs: number): void {
+export function scheduleTopFrameFallbackTick(
+  ctx: RuntimeCoreContext,
+  delayMs: number,
+): void {
   if (!isTopFrame || ctx.extensionContextInvalidated) {
     return;
   }
@@ -138,7 +159,8 @@ export function runTopFrameFallbackTick(ctx: RuntimeCoreContext): void {
 
   if (ctx.state.status !== "running") {
     ctx.topFallbackMissStreak = 0;
-    scheduleTopFrameFallbackTick(ctx, 
+    scheduleTopFrameFallbackTick(
+      ctx,
       resolveTopFallbackDelayMs(
         ctx.topFallbackMissStreak,
         getEffectivePollingIntervalMs(ctx),
@@ -153,7 +175,8 @@ export function runTopFrameFallbackTick(ctx: RuntimeCoreContext): void {
     : Number.MAX_SAFE_INTEGER;
   if (staleFor < getEffectivePollingIntervalMs(ctx) * 2) {
     ctx.topFallbackMissStreak = 0;
-    scheduleTopFrameFallbackTick(ctx, 
+    scheduleTopFrameFallbackTick(
+      ctx,
       resolveTopFallbackDelayMs(
         ctx.topFallbackMissStreak,
         getEffectivePollingIntervalMs(ctx),
@@ -175,7 +198,11 @@ export function runTopFrameFallbackTick(ctx: RuntimeCoreContext): void {
     const cachedFramePath = ctx.lastSuccessfulFallbackFramePath;
     const cachedProbe =
       cachedFramePath && cachedFramePath.length
-        ? probeFramePath(cachedFramePath, ctx.state.currentSelector, probeOptions)
+        ? probeFramePath(
+            cachedFramePath,
+            ctx.state.currentSelector,
+            probeOptions,
+          )
         : null;
     const probe =
       cachedProbe && cachedProbe.found && cachedProbe.text
@@ -197,7 +224,8 @@ export function runTopFrameFallbackTick(ctx: RuntimeCoreContext): void {
       if (now - ctx.lastSubtitleActivationAttemptAt >= 2000) {
         requestSubtitleLayerActivation(ctx);
       }
-      scheduleTopFrameFallbackTick(ctx, 
+      scheduleTopFrameFallbackTick(
+        ctx,
         resolveTopFallbackDelayMs(
           ctx.topFallbackMissStreak,
           getEffectivePollingIntervalMs(ctx),
@@ -223,13 +251,15 @@ export function runTopFrameFallbackTick(ctx: RuntimeCoreContext): void {
     });
   } catch (error) {
     ctx.topFallbackMissStreak += 1;
-    reportRuntimeError(ctx, 
+    reportRuntimeError(
+      ctx,
       "프레임 자막 fallback 탐색 중 오류가 발생했습니다.",
       error,
     );
   }
 
-  scheduleTopFrameFallbackTick(ctx, 
+  scheduleTopFrameFallbackTick(
+    ctx,
     resolveTopFallbackDelayMs(
       ctx.topFallbackMissStreak,
       getEffectivePollingIntervalMs(ctx),
@@ -244,7 +274,8 @@ export function startTopFrameFallback(ctx: RuntimeCoreContext): void {
   }
 
   ctx.topFallbackMissStreak = 0;
-  scheduleTopFrameFallbackTick(ctx, 
+  scheduleTopFrameFallbackTick(
+    ctx,
     resolveTopFallbackDelayMs(
       ctx.topFallbackMissStreak,
       getEffectivePollingIntervalMs(ctx),

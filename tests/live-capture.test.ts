@@ -33,7 +33,11 @@ describe("live capture reducer", () => {
         timestamp: 1,
       }),
     );
-    ledger = setLiveRowBaseline(first.ledger, first.liveRows[0].key, "기준이력");
+    ledger = setLiveRowBaseline(
+      first.ledger,
+      first.liveRows[0].key,
+      "기준이력",
+    );
     ledger = markLiveRowCommitted(ledger, first.liveRows[0].key, "entry_1");
 
     const second = reconcileLiveCapture(
@@ -58,8 +62,12 @@ describe("live capture reducer", () => {
     expect(second.liveRows[0].key).toBe(first.liveRows[0].key);
     expect(second.rowChanges).toHaveLength(1);
     expect(second.rowChanges[0].isNew).toBe(false);
-    expect(getLiveRow(second.ledger, second.liveRows[0].key)?.committedEntryId).toBe("entry_1");
-    expect(getLiveRow(second.ledger, second.liveRows[0].key)?.baselineCompact).toBe("기준이력");
+    expect(
+      getLiveRow(second.ledger, second.liveRows[0].key)?.committedEntryId,
+    ).toBe("entry_1");
+    expect(
+      getLiveRow(second.ledger, second.liveRows[0].key)?.baselineCompact,
+    ).toBe("기준이력");
   });
 
   it("clears only the active live rows when fallback preview is used", () => {
@@ -94,7 +102,9 @@ describe("live capture reducer", () => {
     expect(fallback.liveRows).toHaveLength(0);
     expect(fallback.ledger.activeRowKeys).toHaveLength(0);
     expect(fallback.ledger.previewText).toBe("fallback preview");
-    expect(getLiveRow(fallback.ledger, structured.liveRows[0].key)?.text).toBe("현재 row");
+    expect(getLiveRow(fallback.ledger, structured.liveRows[0].key)?.text).toBe(
+      "현재 row",
+    );
     expect(listLivePanelRows(fallback.ledger)).toEqual([
       {
         ...structured.liveRows[0],
@@ -128,9 +138,10 @@ describe("live capture reducer", () => {
     expect(ledger.order.length).toBe(PIPELINE_DEFAULTS.liveLedgerMaxRows);
     expect(ledger.activeRowKeys).toHaveLength(1);
     expect(getLiveRow(ledger, "top::row_0")).toBeNull();
-    expect(getLiveRow(ledger, `top::row_${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`)?.text).toBe(
-      `문장-${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`,
-    );
+    expect(
+      getLiveRow(ledger, `top::row_${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`)
+        ?.text,
+    ).toBe(`문장-${PIPELINE_DEFAULTS.liveLedgerMaxRows + 19}`);
   });
 
   it("keeps row baselines while clearing committed entry ids for a new segment", () => {
@@ -162,8 +173,12 @@ describe("live capture reducer", () => {
       "fallback 기준",
     );
 
-    expect(getLiveRow(resetLedger, first.liveRows[0].key)?.committedEntryId).toBeNull();
-    expect(getLiveRow(resetLedger, first.liveRows[0].key)?.baselineCompact).toBe("기존기준");
+    expect(
+      getLiveRow(resetLedger, first.liveRows[0].key)?.committedEntryId,
+    ).toBeNull();
+    expect(
+      getLiveRow(resetLedger, first.liveRows[0].key)?.baselineCompact,
+    ).toBe("기존기준");
     expect(resetLedger.previewText).toBe(baselineLedger.previewText);
   });
 });

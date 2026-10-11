@@ -6,16 +6,37 @@ import { getSettings } from "../../../../../storage/settings-store";
 
 import { isTopFrame, localFramePath } from "../../constants";
 
-import { isCapturePage, resolveDefaultPanelNotice, deriveCommitteeName } from "../helpers";
+import {
+  isCapturePage,
+  resolveDefaultPanelNotice,
+  deriveCommitteeName,
+} from "../helpers";
 import type { RuntimeCoreContext } from "./context";
 import { clearRunningPersistTimer } from "./timers";
 import { logDebug, reportRuntimeError, setPanelNotice } from "./notices";
 import { syncUserInterfaces, updateInPagePanel } from "./panel-status";
-import { ensureFrameForwardNonce, startFrameForwardNonceRefresh } from "./observer-bridge";
-import { bindVisibilityPollingAdjust, startLocalPolling, startTopFrameFallback } from "./polling";
-import { startCapture, startCapturePipelineForCurrentPage, stopCapture, stopCapturePipelineForCurrentPage } from "./session-lifecycle";
+import {
+  ensureFrameForwardNonce,
+  startFrameForwardNonceRefresh,
+} from "./observer-bridge";
+import {
+  bindVisibilityPollingAdjust,
+  startLocalPolling,
+  startTopFrameFallback,
+} from "./polling";
+import {
+  startCapture,
+  startCapturePipelineForCurrentPage,
+  stopCapture,
+  stopCapturePipelineForCurrentPage,
+} from "./session-lifecycle";
 import { bindPopupPort, mountInPagePanel } from "./panel-host";
-import { bindBridgeMessages, bindNavigationGuards, bindSettingsChanges, bindUrlChangeDetection } from "./bindings";
+import {
+  bindBridgeMessages,
+  bindNavigationGuards,
+  bindSettingsChanges,
+  bindUrlChangeDetection,
+} from "./bindings";
 import { createRuntimeCoreContext } from "./context";
 
 /** 부트스트랩과 공개 진입 (단일 책임: 조립 루트). */
@@ -31,7 +52,8 @@ export async function bootstrap(ctx: RuntimeCoreContext): Promise<void> {
   try {
     ctx.settings = await getSettings();
   } catch (error) {
-    reportRuntimeError(ctx, 
+    reportRuntimeError(
+      ctx,
       "확장 설정을 불러오지 못해 기본값으로 계속 진행합니다.",
       error,
     );
@@ -43,7 +65,11 @@ export async function bootstrap(ctx: RuntimeCoreContext): Promise<void> {
   try {
     await ensureFrameForwardNonce(ctx);
   } catch (error) {
-    reportRuntimeError(ctx, "프레임 전달 보안 토큰 준비에 실패했습니다.", error);
+    reportRuntimeError(
+      ctx,
+      "프레임 전달 보안 토큰 준비에 실패했습니다.",
+      error,
+    );
   }
   if (ctx.extensionContextInvalidated) {
     return;
@@ -80,8 +106,15 @@ export async function bootstrap(ctx: RuntimeCoreContext): Promise<void> {
   });
 }
 
-export function handleBootstrapError(ctx: RuntimeCoreContext, error: unknown): void {
-  reportRuntimeError(ctx, "content script 초기화 중 오류가 발생했습니다.", error);
+export function handleBootstrapError(
+  ctx: RuntimeCoreContext,
+  error: unknown,
+): void {
+  reportRuntimeError(
+    ctx,
+    "content script 초기화 중 오류가 발생했습니다.",
+    error,
+  );
   if (ctx.extensionContextInvalidated) {
     return;
   }
@@ -93,11 +126,14 @@ export function handleBootstrapError(ctx: RuntimeCoreContext, error: unknown): v
   }
 }
 
-function createContentRuntimeServices(ctx: RuntimeCoreContext): ContentRuntimeServices {
+function createContentRuntimeServices(
+  ctx: RuntimeCoreContext,
+): ContentRuntimeServices {
   return {
     ui: {
       updateInPagePanel: () => updateInPagePanel(ctx),
-      syncUserInterfaces: (requiresReload) => syncUserInterfaces(ctx, requiresReload),
+      syncUserInterfaces: (requiresReload) =>
+        syncUserInterfaces(ctx, requiresReload),
     },
     persistence: {
       clearRunningPersistTimer: () => clearRunningPersistTimer(ctx),

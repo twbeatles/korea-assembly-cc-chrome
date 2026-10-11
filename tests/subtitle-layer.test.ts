@@ -134,7 +134,9 @@ describe("subtitle layer helpers", () => {
       if (layer) {
         layer.style.display = "block";
       }
-      const textContainer = document.querySelector<HTMLElement>("#viewSubtit .incont");
+      const textContainer = document.querySelector<HTMLElement>(
+        "#viewSubtit .incont",
+      );
       if (textContainer) {
         textContainer.textContent = "실시간 자막입니다.";
       }
@@ -243,7 +245,9 @@ describe("subtitle layer helpers", () => {
       </div>
     `;
     const layer = frameDoc.querySelector<HTMLElement>("#viewSubtit");
-    const textContainer = frameDoc.querySelector<HTMLElement>("#viewSubtit .incont");
+    const textContainer = frameDoc.querySelector<HTMLElement>(
+      "#viewSubtit .incont",
+    );
     expect(layer).not.toBeNull();
     mockVisibleRects(layer!);
 

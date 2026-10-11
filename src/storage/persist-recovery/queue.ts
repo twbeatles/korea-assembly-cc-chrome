@@ -1,14 +1,34 @@
-import { cloneSessionRecord, type SessionRecord } from "../../core/subtitle-models";
+import {
+  cloneSessionRecord,
+  type SessionRecord,
+} from "../../core/subtitle-models";
 import type { QueuedExitPersistRecord } from "../types";
-import { EXIT_PERSIST_INDEX_STORAGE_KEY, EXIT_PERSIST_RECORD_PREFIX, SESSION_DELETED_PREFIX, getQueuedRecordStorageKey, hasChromeStorageLocal } from "./keys";
-import { addSessionIdToExitPersistIndex, removeSessionIdFromExitPersistIndex, writeExitPersistIndex } from "./index-store";
+import {
+  EXIT_PERSIST_INDEX_STORAGE_KEY,
+  EXIT_PERSIST_RECORD_PREFIX,
+  SESSION_DELETED_PREFIX,
+  getQueuedRecordStorageKey,
+  hasChromeStorageLocal,
+} from "./keys";
+import {
+  addSessionIdToExitPersistIndex,
+  removeSessionIdFromExitPersistIndex,
+  writeExitPersistIndex,
+} from "./index-store";
 import { isSessionDeleted } from "./tombstones";
 import { updatePersistReplayDiagnostics } from "./diagnostics";
 import { memoryDeletedSessionTombstones, memoryQueuedRecords } from "./state";
-import { cloneQueuedRecord, compareQueuedRecordFreshness, mergeQueuedRecordCollections, sanitizeQueuedRecord } from "./sanitize";
+import {
+  cloneQueuedRecord,
+  compareQueuedRecordFreshness,
+  mergeQueuedRecordCollections,
+  sanitizeQueuedRecord,
+} from "./sanitize";
 
 /** 종료 복구 큐 enqueue/list/clear (단일 책임: durable 큐 연산). */
-export async function queueExitPersistRecord(record: SessionRecord): Promise<void> {
+export async function queueExitPersistRecord(
+  record: SessionRecord,
+): Promise<void> {
   if (!record.id || record.status !== "stopped") {
     return;
   }
@@ -42,7 +62,10 @@ export async function queueExitPersistRecord(record: SessionRecord): Promise<voi
   } catch (error) {
     await updatePersistReplayDiagnostics((current) => ({
       ...current,
-      lastQueueWriteError: error instanceof Error ? error.message : "queued exit persist write failed",
+      lastQueueWriteError:
+        error instanceof Error
+          ? error.message
+          : "queued exit persist write failed",
     })).catch(() => {
       // Preserve the original queue write failure even if diagnostics cannot be updated.
     });
@@ -50,12 +73,16 @@ export async function queueExitPersistRecord(record: SessionRecord): Promise<voi
   }
 }
 
-export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistRecord[]> {
+export async function listQueuedExitPersistRecords(): Promise<
+  QueuedExitPersistRecord[]
+> {
   if (!hasChromeStorageLocal()) {
     return [...memoryQueuedRecords.values()].map(cloneQueuedRecord);
   }
 
-  const memorySnapshotBeforeRead = [...memoryQueuedRecords.values()].map(cloneQueuedRecord);
+  const memorySnapshotBeforeRead = [...memoryQueuedRecords.values()].map(
+    cloneQueuedRecord,
+  );
 
   // storage 전체에서 durable queue records와 tombstone을 스캔 (인덱스 누락 및 orphan 방지)
   const allStorage = await chrome.storage.local.get(null);
@@ -73,13 +100,21 @@ export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistR
   const orphanedKeysToRemove: string[] = [];
 
   for (const [key, value] of Object.entries(allStorage)) {
-    if (key.startsWith(EXIT_PERSIST_RECORD_PREFIX) && key !== EXIT_PERSIST_INDEX_STORAGE_KEY) {
+    if (
+      key.startsWith(EXIT_PERSIST_RECORD_PREFIX) &&
+      key !== EXIT_PERSIST_INDEX_STORAGE_KEY
+    ) {
       const sessionId = key.slice(EXIT_PERSIST_RECORD_PREFIX.length);
       const sanitized = sanitizeQueuedRecord(value);
       const deletedAt =
-        deletedTombstones.get(sessionId) ?? memoryDeletedSessionTombstones.get(sessionId);
+        deletedTombstones.get(sessionId) ??
+        memoryDeletedSessionTombstones.get(sessionId);
 
-      if (deletedAt && sanitized && sanitized.record.updatedAt.localeCompare(deletedAt) <= 0) {
+      if (
+        deletedAt &&
+        sanitized &&
+        sanitized.record.updatedAt.localeCompare(deletedAt) <= 0
+      ) {
         orphanedKeysToRemove.push(key);
         continue;
       }
@@ -103,14 +138,23 @@ export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistR
     // best-effort
   });
 
-  const memorySnapshotAfterRead = [...memoryQueuedRecords.values()].map(cloneQueuedRecord);
-  const mergedRecords = mergeQueuedRecordCollections(storageRecords, memorySnapshotBeforeRead);
-  const freshestRecords = mergeQueuedRecordCollections(mergedRecords, memorySnapshotAfterRead);
+  const memorySnapshotAfterRead = [...memoryQueuedRecords.values()].map(
+    cloneQueuedRecord,
+  );
+  const mergedRecords = mergeQueuedRecordCollections(
+    storageRecords,
+    memorySnapshotBeforeRead,
+  );
+  const freshestRecords = mergeQueuedRecordCollections(
+    mergedRecords,
+    memorySnapshotAfterRead,
+  );
 
   // deleted tombstones 필터링
   const activeRecords = freshestRecords.filter((record) => {
     const deletedAt =
-      deletedTombstones.get(record.sessionId) ?? memoryDeletedSessionTombstones.get(record.sessionId);
+      deletedTombstones.get(record.sessionId) ??
+      memoryDeletedSessionTombstones.get(record.sessionId);
     if (deletedAt && record.record.updatedAt.localeCompare(deletedAt) <= 0) {
       memoryQueuedRecords.delete(record.sessionId);
       return false;
@@ -128,7 +172,9 @@ export async function listQueuedExitPersistRecords(): Promise<QueuedExitPersistR
   return activeRecords.map(cloneQueuedRecord);
 }
 
-export async function clearQueuedExitPersistRecord(sessionId: string): Promise<void> {
+export async function clearQueuedExitPersistRecord(
+  sessionId: string,
+): Promise<void> {
   if (!sessionId) {
     return;
   }

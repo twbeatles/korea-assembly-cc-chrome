@@ -22,7 +22,9 @@ function ownSender(
   return { id: TEST_EXTENSION_ID, ...extra };
 }
 
-function buildSession(status: SessionRecord["status"] = "saved"): SessionRecord {
+function buildSession(
+  status: SessionRecord["status"] = "saved",
+): SessionRecord {
   return {
     id: "session_background",
     version: "3",
@@ -59,7 +61,9 @@ function createDependencies(): BackgroundCommandDependencies {
     onInjectConfiguredContentScriptsError: vi.fn(),
     getOrCreateStoredFrameForwardNonce: vi.fn(async () => "nonce_1"),
     queueExitPersistRecord: vi.fn(async () => undefined),
-    persistSessionRecord: vi.fn(async () => ({ updatedAt: "2026-03-10T09:00:03.000Z" })),
+    persistSessionRecord: vi.fn(async () => ({
+      updatedAt: "2026-03-10T09:00:03.000Z",
+    })),
     deleteSessionRecord: vi.fn(async () => undefined),
     loadSessionRecord: vi.fn(async () => buildSession("saved")),
     exportSessionRecordData: vi.fn(async () => ({
@@ -94,22 +98,32 @@ describe("service worker command helpers", () => {
 
   it("requires a matching sender extension id", () => {
     expect(isMessageFromOwnExtension(ownSender())).toBe(true);
-    expect(isMessageFromOwnExtension({} as chrome.runtime.MessageSender)).toBe(false);
+    expect(isMessageFromOwnExtension({} as chrome.runtime.MessageSender)).toBe(
+      false,
+    );
     expect(isMessageFromOwnExtension({ id: "other-extension" })).toBe(false);
   });
 
   it("recognizes supported background command messages", () => {
-    expect(isBackgroundCommandMessage({ type: "OPEN_HISTORY_PAGE" })).toBe(true);
+    expect(isBackgroundCommandMessage({ type: "OPEN_HISTORY_PAGE" })).toBe(
+      true,
+    );
     expect(isBackgroundCommandMessage({ type: "UNKNOWN" })).toBe(false);
     expect(isBackgroundCommandMessage(null)).toBe(false);
   });
 
   it("validates persist session record payloads at the SW boundary", () => {
-    expect(isValidPersistSessionRecordPayload(buildSession("stopped"))).toBe(true);
-    expect(isValidPersistSessionRecordPayload(null)).toBe(false);
-    expect(isValidPersistSessionRecordPayload({ id: "", status: "stopped", entries: [] })).toBe(
-      false,
+    expect(isValidPersistSessionRecordPayload(buildSession("stopped"))).toBe(
+      true,
     );
+    expect(isValidPersistSessionRecordPayload(null)).toBe(false);
+    expect(
+      isValidPersistSessionRecordPayload({
+        id: "",
+        status: "stopped",
+        entries: [],
+      }),
+    ).toBe(false);
     expect(
       isValidPersistSessionRecordPayload({
         id: "x",
@@ -183,7 +197,9 @@ describe("service worker command helpers", () => {
 
   it("rejects non-assembly pages before reinjection", async () => {
     const dependencies = createDependencies();
-    (dependencies.supportsAssemblyPage as ReturnType<typeof vi.fn>).mockReturnValue(false);
+    (
+      dependencies.supportsAssemblyPage as ReturnType<typeof vi.fn>
+    ).mockReturnValue(false);
 
     const response = await handleBackgroundCommand(
       {
@@ -204,7 +220,9 @@ describe("service worker command helpers", () => {
 
   it("requests reload when the page still is not ready after reinjection", async () => {
     const dependencies = createDependencies();
-    (dependencies.waitForTopFrameReady as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    (
+      dependencies.waitForTopFrameReady as ReturnType<typeof vi.fn>
+    ).mockResolvedValue(false);
 
     const response = await handleBackgroundCommand(
       {
@@ -217,14 +235,20 @@ describe("service worker command helpers", () => {
     );
 
     expect(response).toEqual({ ok: true, ready: false, requiresReload: true });
-    expect(dependencies.injectConfiguredContentScripts).toHaveBeenCalledTimes(1);
+    expect(dependencies.injectConfiguredContentScripts).toHaveBeenCalledTimes(
+      1,
+    );
   });
 
   it("rejects oversized DOWNLOAD_REQUEST payloads", async () => {
     const dependencies = createDependencies();
-    const oversized = "가".repeat(Math.ceil(DOWNLOAD_REQUEST_MAX_BYTES / 2) + 1);
+    const oversized = "가".repeat(
+      Math.ceil(DOWNLOAD_REQUEST_MAX_BYTES / 2) + 1,
+    );
 
-    expect(getUtf8ContentByteLength(oversized)).toBeGreaterThan(DOWNLOAD_REQUEST_MAX_BYTES);
+    expect(getUtf8ContentByteLength(oversized)).toBeGreaterThan(
+      DOWNLOAD_REQUEST_MAX_BYTES,
+    );
 
     const response = await handleBackgroundCommand(
       {
@@ -301,7 +325,10 @@ describe("service worker command helpers", () => {
     expect(dependencies.queueExitPersistRecord).toHaveBeenCalledWith(
       expect.objectContaining({ status: "stopped" }),
     );
-    expect(persisted).toEqual({ ok: true, updatedAt: "2026-03-10T09:00:03.000Z" });
+    expect(persisted).toEqual({
+      ok: true,
+      updatedAt: "2026-03-10T09:00:03.000Z",
+    });
     expect(dependencies.persistSessionRecord).toHaveBeenCalledWith(record);
     expect(diagnostics).toEqual({ ok: true });
     expect(dependencies.openDiagnosticsPage).toHaveBeenCalledWith(77);
@@ -324,7 +351,9 @@ describe("service worker command helpers", () => {
     );
 
     expect(response).toEqual({ ok: true, downloadId: 11 });
-    expect(dependencies.loadSessionRecord).toHaveBeenCalledWith("session_background");
+    expect(dependencies.loadSessionRecord).toHaveBeenCalledWith(
+      "session_background",
+    );
     expect(dependencies.exportSessionRecordData).toHaveBeenCalledWith(
       expect.objectContaining({ id: "session_background" }),
       "txt",
@@ -384,13 +413,18 @@ describe("service worker command helpers", () => {
     const downloadByUrl = vi.fn(async () => 33);
     const persistBlobDownload = vi.fn(async () => undefined);
 
-    const downloadId = await downloadExportWithFallback("session.json", "{}", "application/json", {
-      requestBlobUrl,
-      downloadByUrl,
-      persistBlobDownload,
-      revokeBlobUrl: vi.fn(async () => undefined),
-      toDataUrl: vi.fn(() => "data:test"),
-    });
+    const downloadId = await downloadExportWithFallback(
+      "session.json",
+      "{}",
+      "application/json",
+      {
+        requestBlobUrl,
+        downloadByUrl,
+        persistBlobDownload,
+        revokeBlobUrl: vi.fn(async () => undefined),
+        toDataUrl: vi.fn(() => "data:test"),
+      },
+    );
 
     expect(downloadId).toBe(33);
     expect(downloadByUrl).toHaveBeenCalledWith("blob:test", "session.json");
@@ -403,14 +437,19 @@ describe("service worker command helpers", () => {
     const revokeBlobUrl = vi.fn(async () => undefined);
     const onBlobFallbackError = vi.fn();
 
-    const downloadId = await downloadExportWithFallback("session.json", "{}", "application/json", {
-      requestBlobUrl: vi.fn(async () => "blob:test"),
-      downloadByUrl,
-      persistBlobDownload: vi.fn(async () => undefined),
-      revokeBlobUrl,
-      toDataUrl: vi.fn(() => "data:application/json;base64,e30="),
-      onBlobFallbackError,
-    });
+    const downloadId = await downloadExportWithFallback(
+      "session.json",
+      "{}",
+      "application/json",
+      {
+        requestBlobUrl: vi.fn(async () => "blob:test"),
+        downloadByUrl,
+        persistBlobDownload: vi.fn(async () => undefined),
+        revokeBlobUrl,
+        toDataUrl: vi.fn(() => "data:application/json;base64,e30="),
+        onBlobFallbackError,
+      },
+    );
 
     expect(downloadId).toBe(34);
     expect(revokeBlobUrl).toHaveBeenCalledWith("blob:test");
@@ -429,14 +468,19 @@ describe("service worker command helpers", () => {
     });
     const toDataUrl = vi.fn(() => "data:test");
 
-    const downloadId = await downloadExportWithFallback("session.json", "{}", "application/json", {
-      requestBlobUrl,
-      downloadByUrl,
-      persistBlobDownload,
-      revokeBlobUrl: vi.fn(async () => undefined),
-      toDataUrl,
-      onBlobFallbackError: vi.fn(),
-    });
+    const downloadId = await downloadExportWithFallback(
+      "session.json",
+      "{}",
+      "application/json",
+      {
+        requestBlobUrl,
+        downloadByUrl,
+        persistBlobDownload,
+        revokeBlobUrl: vi.fn(async () => undefined),
+        toDataUrl,
+        onBlobFallbackError: vi.fn(),
+      },
+    );
 
     expect(downloadId).toBe(35);
     expect(downloadByUrl).toHaveBeenCalledTimes(1);
@@ -448,19 +492,24 @@ describe("service worker command helpers", () => {
     const toDataUrl = vi.fn(() => "data:test");
 
     await expect(
-      downloadExportWithFallback("session.json", "가".repeat(1024 * 1024), "application/json", {
-        requestBlobUrl: vi.fn(async () => {
-          throw new Error("blob unavailable");
-        }),
-        downloadByUrl: vi.fn(async () => 36),
-        persistBlobDownload: vi.fn(async () => undefined),
-        revokeBlobUrl: vi.fn(async () => undefined),
-        toDataUrl,
-        getByteLength: () => 3 * 1024 * 1024,
-        dataUrlFallbackMaxBytes: 2 * 1024 * 1024,
-        createDataUrlFallbackDisabledError: () =>
-          new Error("Data URL fallback disabled for large export"),
-      }),
+      downloadExportWithFallback(
+        "session.json",
+        "가".repeat(1024 * 1024),
+        "application/json",
+        {
+          requestBlobUrl: vi.fn(async () => {
+            throw new Error("blob unavailable");
+          }),
+          downloadByUrl: vi.fn(async () => 36),
+          persistBlobDownload: vi.fn(async () => undefined),
+          revokeBlobUrl: vi.fn(async () => undefined),
+          toDataUrl,
+          getByteLength: () => 3 * 1024 * 1024,
+          dataUrlFallbackMaxBytes: 2 * 1024 * 1024,
+          createDataUrlFallbackDisabledError: () =>
+            new Error("Data URL fallback disabled for large export"),
+        },
+      ),
     ).rejects.toThrow("Data URL fallback disabled for large export");
 
     expect(toDataUrl).not.toHaveBeenCalled();
@@ -491,12 +540,15 @@ describe("service worker command helpers", () => {
       },
     ];
 
-    expect(commands.every((command) => isBackgroundCommandMessage(command))).toBe(true);
+    expect(
+      commands.every((command) => isBackgroundCommandMessage(command)),
+    ).toBe(true);
   });
 
   it("rejects commands from senders whose extension id does not match this extension", async () => {
     const dependencies = createDependencies();
-    const originalRuntime = (globalThis as { chrome?: typeof chrome }).chrome?.runtime;
+    const originalRuntime = (globalThis as { chrome?: typeof chrome }).chrome
+      ?.runtime;
     (globalThis as { chrome?: { runtime?: { id?: string } } }).chrome = {
       runtime: { id: "expected-extension-id" },
     } as unknown as typeof chrome;
@@ -508,11 +560,16 @@ describe("service worker command helpers", () => {
         dependencies,
       );
 
-      expect(response).toEqual({ ok: false, error: "외부 발신자의 명령을 거부했습니다." });
+      expect(response).toEqual({
+        ok: false,
+        error: "외부 발신자의 명령을 거부했습니다.",
+      });
       expect(dependencies.openHistoryPage).not.toHaveBeenCalled();
     } finally {
       if (originalRuntime) {
-        (globalThis as { chrome?: { runtime?: typeof chrome.runtime } }).chrome = {
+        (
+          globalThis as { chrome?: { runtime?: typeof chrome.runtime } }
+        ).chrome = {
           runtime: originalRuntime,
         } as unknown as typeof chrome;
       } else {

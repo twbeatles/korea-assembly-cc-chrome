@@ -143,7 +143,9 @@ export function getSessionSegmentLabel(
   return `세그먼트 ${resolveSessionSegmentNumber(session.segmentNumber)}`;
 }
 
-export function canReopenSourceUrl(sourceUrl: string | null | undefined): sourceUrl is string {
+export function canReopenSourceUrl(
+  sourceUrl: string | null | undefined,
+): sourceUrl is string {
   return typeof sourceUrl === "string" && isSupportedAssemblyUrl(sourceUrl);
 }
 
@@ -166,11 +168,17 @@ export function estimateSessionExportBytes(
     getUtf8ByteLength(exportSrt(normalized, { includeSpeaker })),
     getUtf8ByteLength(exportVtt(normalized, { includeSpeaker })),
     // JSON 은 항상 발언자 메타를 포함하므로 원본 세션 기준
-    getUtf8ByteLength(exportJson(normalizeSessionForExport(session, { stripSpeakerMetadata: false }))),
+    getUtf8ByteLength(
+      exportJson(
+        normalizeSessionForExport(session, { stripSpeakerMetadata: false }),
+      ),
+    ),
   );
 }
 
-export async function confirmDeleteSession(target: SessionRecord): Promise<boolean> {
+export async function confirmDeleteSession(
+  target: SessionRecord,
+): Promise<boolean> {
   const title = target.committeeName || target.title;
   return confirmDestructiveAction(`선택한 기록을 삭제할까요?\n${title}`, {
     title: "기록 삭제",
@@ -230,7 +238,9 @@ export async function confirmDeleteSessionLibrary(
   );
 }
 
-export async function confirmDiscardUnsavedNote(actionLabel: string): Promise<boolean> {
+export async function confirmDiscardUnsavedNote(
+  actionLabel: string,
+): Promise<boolean> {
   return confirmDestructiveAction(
     `저장하지 않은 메모가 있습니다. ${actionLabel} 전에 변경 내용을 버릴까요?`,
     {

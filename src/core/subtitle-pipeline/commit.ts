@@ -31,7 +31,11 @@ import {
   softResyncHistory,
 } from "./history";
 import { extractIncrementalTextWithRecentHistory } from "./extract";
-import type { LiveRowCommitMeta, PipelineResult, PipelineSourceMeta } from "./types";
+import type {
+  LiveRowCommitMeta,
+  PipelineResult,
+  PipelineSourceMeta,
+} from "./types";
 
 function sanitizeCommittedText(
   text: string,
@@ -60,7 +64,9 @@ function updateEntryById(
   nowIso: string,
   meta?: PipelineSourceMeta,
 ): { entry: SubtitleEntry | undefined; changed: boolean } {
-  const entryIndex = state.entries.findIndex((candidate) => candidate.id === entryId);
+  const entryIndex = state.entries.findIndex(
+    (candidate) => candidate.id === entryId,
+  );
   if (entryIndex < 0) {
     return {
       entry: undefined,
@@ -104,23 +110,24 @@ function appendOrMergeEntry(
   meta?: PipelineSourceMeta,
 ): SubtitleEntry {
   const lastEntryIndex = state.entries.length - 1;
-  const lastEntry = lastEntryIndex >= 0 ? state.entries[lastEntryIndex] : undefined;
+  const lastEntry =
+    lastEntryIndex >= 0 ? state.entries[lastEntryIndex] : undefined;
 
   if (lastEntry && !state.lastCommittedResetAt && !meta?.forceNewEntry) {
     const structuredBoundary = Boolean(
       meta?.sourceNodeKey &&
-        lastEntry.sourceNodeKey &&
-        lastEntry.sourceNodeKey !== meta.sourceNodeKey,
+      lastEntry.sourceNodeKey &&
+      lastEntry.sourceNodeKey !== meta.sourceNodeKey,
     );
     const speakerChannelBoundary = Boolean(
       meta?.speakerChannel &&
-        lastEntry.speakerChannel &&
-        meta.speakerChannel !== lastEntry.speakerChannel,
+      lastEntry.speakerChannel &&
+      meta.speakerChannel !== lastEntry.speakerChannel,
     );
     const speakerColorBoundary = Boolean(
       meta?.speakerColor &&
-        lastEntry.speakerColor &&
-        meta.speakerColor !== lastEntry.speakerColor,
+      lastEntry.speakerColor &&
+      meta.speakerColor !== lastEntry.speakerColor,
     );
     // structured node key 가 없는 fallback 은 더 짧은 merge gap 을 쓴다.
     const isFallbackPath =
@@ -155,12 +162,12 @@ function appendOrMergeEntry(
 
   const speakerChanged = Boolean(
     lastEntry &&
-      ((meta?.speakerChannel &&
-        lastEntry.speakerChannel &&
-        meta.speakerChannel !== lastEntry.speakerChannel) ||
-        (meta?.speakerColor &&
-          lastEntry.speakerColor &&
-          meta.speakerColor !== lastEntry.speakerColor)),
+    ((meta?.speakerChannel &&
+      lastEntry.speakerChannel &&
+      meta.speakerChannel !== lastEntry.speakerChannel) ||
+      (meta?.speakerColor &&
+        lastEntry.speakerColor &&
+        meta.speakerColor !== lastEntry.speakerColor)),
   );
 
   const entry: SubtitleEntry = {
@@ -195,12 +202,18 @@ export function flushPendingPreviews(
 
   preparedState.pendingPreviews = [];
   pendingPreviews.forEach((preview, index) => {
-    preparedState = applyPreview(preparedState, preview, now + index, settings, {
-      selector: preparedState.currentSelector || undefined,
-      framePath: preparedState.currentFramePath.length
-        ? preparedState.currentFramePath
-        : undefined,
-    }).state;
+    preparedState = applyPreview(
+      preparedState,
+      preview,
+      now + index,
+      settings,
+      {
+        selector: preparedState.currentSelector || undefined,
+        framePath: preparedState.currentFramePath.length
+          ? preparedState.currentFramePath
+          : undefined,
+      },
+    ).state;
   });
 
   return preparedState;
@@ -243,7 +256,8 @@ export function applyPreview(
   if (
     next.entries.length > 0 &&
     (next.previewDesyncCount >= PIPELINE_DEFAULTS.previewResyncThreshold ||
-      next.previewAmbiguousSkipCount >= PIPELINE_DEFAULTS.previewAmbiguousResyncThreshold)
+      next.previewAmbiguousSkipCount >=
+        PIPELINE_DEFAULTS.previewAmbiguousResyncThreshold)
   ) {
     softResyncHistory(next, settings);
   }
@@ -275,7 +289,13 @@ export function applyPreview(
     };
   }
 
-  const appendedEntry = appendOrMergeEntry(next, candidateText, now, toIsoString(now), meta);
+  const appendedEntry = appendOrMergeEntry(
+    next,
+    candidateText,
+    now,
+    toIsoString(now),
+    meta,
+  );
   next.lastProcessedRaw = normalizedRaw;
   next.lastCommittedResetAt = null;
   next.previewDesyncCount = 0;
@@ -299,7 +319,8 @@ export function commitLiveRow(
   meta?: LiveRowCommitMeta,
 ): PipelineResult {
   const next = updateStateMetadata(state, now, meta);
-  const normalizedPreview = normalizeRawText(previewText) || normalizeRawText(rowText);
+  const normalizedPreview =
+    normalizeRawText(previewText) || normalizeRawText(rowText);
   const previewChanged = next.previewText !== normalizedPreview;
   const baselineCompact = meta?.baselineCompact ?? next.confirmedCompact;
   const recentBaselineCompact = compactSubtitleText(baselineCompact).slice(
@@ -328,7 +349,13 @@ export function commitLiveRow(
   const nowIso = toIsoString(now);
 
   if (meta?.entryId) {
-    const updated = updateEntryById(next, meta.entryId, candidateText, nowIso, meta);
+    const updated = updateEntryById(
+      next,
+      meta.entryId,
+      candidateText,
+      nowIso,
+      meta,
+    );
     if (!updated.entry) {
       return {
         state: next,
@@ -380,7 +407,9 @@ export function applyStructuredEntry(
     lastEntry?.sourceNodeKey === meta.sourceNodeKey &&
     !meta.forceNewEntry
   ) {
-    const baselineCompact = buildConfirmedCompactHistory(state.entries.slice(0, -1));
+    const baselineCompact = buildConfirmedCompactHistory(
+      state.entries.slice(0, -1),
+    );
     return commitLiveRow(state, text, previewText, now, settings, {
       ...meta,
       entryId: lastEntry.id,

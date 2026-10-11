@@ -1,7 +1,8 @@
 import type { ExtensionSettings } from "../storage/types";
 
 export const EXTENSION_STORAGE_KEY = "assembly-extension-settings";
-export const SESSION_LIBRARY_REVISION_STORAGE_KEY = "assembly-subtitle-session-library-revision";
+export const SESSION_LIBRARY_REVISION_STORAGE_KEY =
+  "assembly-subtitle-session-library-revision";
 export const SESSION_DB_NAME = "assembly-subtitle-sessions";
 export const SESSION_STORE_NAME = "sessions";
 export const SESSION_RECORD_VERSION = "4";
@@ -12,7 +13,8 @@ export const OBSERVER_STOP_EVENT = "assembly-subtitle-observer:stop";
 export const OBSERVER_ACTIVATE_EVENT = "assembly-subtitle-observer:activate";
 export const OBSERVER_BRIDGE_SOURCE = "assembly-subtitle-observer";
 export const FRAME_FORWARD_SOURCE = "assembly-subtitle-frame-forward";
-export const FRAME_FORWARD_NONCE_SOURCE = "assembly-subtitle-frame-forward:nonce";
+export const FRAME_FORWARD_NONCE_SOURCE =
+  "assembly-subtitle-frame-forward:nonce";
 export const POPUP_PORT_NAME = "assembly-subtitle-popup";
 export const OFFSCREEN_DOCUMENT_PATH = "offscreen.html";
 export const DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES = 2000;
@@ -27,7 +29,8 @@ export const SESSION_SEGMENT_PRESETS = {
   balanced: {
     maxEntriesPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
     maxCharsPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS,
-    maxSegmentDurationMinutes: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
+    maxSegmentDurationMinutes:
+      DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
   },
   capacity: {
     maxEntriesPerSegment: 4000,
@@ -55,7 +58,8 @@ export const DEFAULT_EXTENSION_SETTINGS: ExtensionSettings = {
   maxBufferLength: 50000,
   maxEntriesPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
   maxCharsPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS,
-  maxSegmentDurationMinutes: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
+  maxSegmentDurationMinutes:
+    DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
   noiseFilterEnabled: true,
   recentDuplicateMinLength: 8,
   filenamePattern: "{date}_{committee}_{time}",
@@ -182,7 +186,10 @@ export function isAssemblyPlenaryUrl(url?: string): boolean {
     const parsed = new URL(url);
     const xcode = parsed.searchParams.get("xcode")?.trim().toUpperCase();
     const xcgcd = parsed.searchParams.get("xcgcd")?.trim().toUpperCase();
-    return xcode === PLENARY_XCODE || Boolean(xcgcd?.startsWith(PLENARY_XCGCD_PREFIX));
+    return (
+      xcode === PLENARY_XCODE ||
+      Boolean(xcgcd?.startsWith(PLENARY_XCGCD_PREFIX))
+    );
   } catch {
     return false;
   }

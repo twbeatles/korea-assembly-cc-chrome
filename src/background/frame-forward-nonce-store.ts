@@ -1,4 +1,5 @@
-const FRAME_FORWARD_NONCE_STORAGE_PREFIX = "assembly-subtitle-frame-forward-nonce:";
+const FRAME_FORWARD_NONCE_STORAGE_PREFIX =
+  "assembly-subtitle-frame-forward-nonce:";
 
 export interface FrameForwardNonceStorage {
   get: (keys?: string | string[] | null) => Promise<Record<string, unknown>>;
@@ -35,7 +36,10 @@ export async function getOrCreatePersistedFrameForwardNonce(options: {
     return cached;
   }
 
-  const persisted = await readPersistedFrameForwardNonce(options.storage, options.tabId);
+  const persisted = await readPersistedFrameForwardNonce(
+    options.storage,
+    options.tabId,
+  );
   if (persisted) {
     options.cache.set(options.tabId, persisted);
     return persisted;

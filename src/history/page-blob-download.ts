@@ -35,23 +35,26 @@ export function downloadPageBlobExport(
   payload: Pick<ExportPayload, "filename" | "mimeType" | "content">,
   dependencies: PageBlobDownloadDependencies = {},
 ): Promise<number | null> {
-  const createObjectUrl = dependencies.createObjectUrl ?? URL.createObjectURL.bind(URL);
-  const revokeObjectUrl = dependencies.revokeObjectUrl ?? URL.revokeObjectURL.bind(URL);
+  const createObjectUrl =
+    dependencies.createObjectUrl ?? URL.createObjectURL.bind(URL);
+  const revokeObjectUrl =
+    dependencies.revokeObjectUrl ?? URL.revokeObjectURL.bind(URL);
   const setTimeoutFn =
     dependencies.setTimeoutFn ??
     ((callback, delayMs) => window.setTimeout(callback, delayMs));
   const clearTimeoutFn =
-    dependencies.clearTimeoutFn ??
-    ((timerId) => window.clearTimeout(timerId));
+    dependencies.clearTimeoutFn ?? ((timerId) => window.clearTimeout(timerId));
   const documentRef =
-    dependencies.documentRef ?? (typeof document !== "undefined" ? document : undefined);
+    dependencies.documentRef ??
+    (typeof document !== "undefined" ? document : undefined);
   const chromeDownloads =
     dependencies.chromeDownloads ??
     (typeof chrome !== "undefined" ? chrome.downloads : undefined);
   const chromeRuntime =
     dependencies.chromeRuntime ??
     (typeof chrome !== "undefined" ? chrome.runtime : undefined);
-  const revokeTimeoutMs = dependencies.revokeTimeoutMs ?? DEFAULT_REVOKE_TIMEOUT_MS;
+  const revokeTimeoutMs =
+    dependencies.revokeTimeoutMs ?? DEFAULT_REVOKE_TIMEOUT_MS;
   const anchorRevokeTimeoutMs =
     dependencies.anchorRevokeTimeoutMs ?? ANCHOR_FALLBACK_REVOKE_TIMEOUT_MS;
   const blob = new Blob([payload.content], { type: payload.mimeType });
@@ -107,12 +110,21 @@ export function downloadPageBlobExport(
       reject(error);
     };
 
-    function handleDownloadChanged(delta: chrome.downloads.DownloadDelta): void {
-      if (downloadId === null || delta.id !== downloadId || !delta.state?.current) {
+    function handleDownloadChanged(
+      delta: chrome.downloads.DownloadDelta,
+    ): void {
+      if (
+        downloadId === null ||
+        delta.id !== downloadId ||
+        !delta.state?.current
+      ) {
         return;
       }
       // complete/interrupted 이전에는 Blob URL 을 유지한다.
-      if (delta.state.current === "complete" || delta.state.current === "interrupted") {
+      if (
+        delta.state.current === "complete" ||
+        delta.state.current === "interrupted"
+      ) {
         cleanup();
       }
     }

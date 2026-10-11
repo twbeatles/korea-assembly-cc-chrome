@@ -5,12 +5,12 @@
 
 ## 1. 신뢰 경계
 
-| 영역 | 신뢰 |
-|------|------|
-| 확장 isolated world (content script, service worker, popup/history/options) | 자사 코드 |
-| 페이지 world (`injected-observer.js`) | **의사중계 호스트와 동일 origin** — 호스트 XSS 가 있으면 신뢰 붕괴 |
-| 로컬 저장 (IndexedDB / `chrome.storage.local`) | 사용자 브라우저 프로필 보호에 위임 |
-| 외부 네트워크 | 자막·설정을 개발자/제3자 서버로 **전송하지 않음** (제품 설계) |
+| 영역                                                                        | 신뢰                                                               |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| 확장 isolated world (content script, service worker, popup/history/options) | 자사 코드                                                          |
+| 페이지 world (`injected-observer.js`)                                       | **의사중계 호스트와 동일 origin** — 호스트 XSS 가 있으면 신뢰 붕괴 |
+| 로컬 저장 (IndexedDB / `chrome.storage.local`)                              | 사용자 브라우저 프로필 보호에 위임                                 |
+| 외부 네트워크                                                               | 자막·설정을 개발자/제3자 서버로 **전송하지 않음** (제품 설계)      |
 
 **지원 범위 밖:** 의사중계 페이지에 임의 악성 스크립트가 이미 주입된 환경.  
 이 경우 page world 브리지 token·CustomEvent·DOM 자막 위조가 가능하다.

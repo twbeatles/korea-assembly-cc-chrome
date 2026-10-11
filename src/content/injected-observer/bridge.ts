@@ -37,7 +37,10 @@ export function emit(
   );
 }
 
-export function selectTarget(selectors: string[]): { selector: string; element: HTMLElement | null } {
+export function selectTarget(selectors: string[]): {
+  selector: string;
+  element: HTMLElement | null;
+} {
   const queue = uniqueSelectors([...CONTAINER_PRIORITY, ...selectors]);
   for (const selector of queue) {
     const element = queryOne(selector);
@@ -68,10 +71,14 @@ export function teardownBridge(state: BridgeState): void {
   state.observerActive = false;
 }
 
-export function emitCurrentSubtitle(state: BridgeState, observerActive: boolean): void {
-  const allowUnconfirmedContainerFallback = shouldAllowUnconfirmedContainerFallback(
-    state.unconfirmedFallbackBlockStreak,
-  );
+export function emitCurrentSubtitle(
+  state: BridgeState,
+  observerActive: boolean,
+): void {
+  const allowUnconfirmedContainerFallback =
+    shouldAllowUnconfirmedContainerFallback(
+      state.unconfirmedFallbackBlockStreak,
+    );
   const current = readSubtitleText(
     state.selectors,
     state.observerSelector,
@@ -107,7 +114,10 @@ export function emitCurrentSubtitle(state: BridgeState, observerActive: boolean)
 
   if (current.rows.length > 0) {
     const rowSignature = buildRowSignature(current.rows);
-    if (compact === state.lastCompact && rowSignature === state.lastRowSignature) {
+    if (
+      compact === state.lastCompact &&
+      rowSignature === state.lastRowSignature
+    ) {
       return;
     }
 
@@ -126,7 +136,10 @@ export function emitCurrentSubtitle(state: BridgeState, observerActive: boolean)
 
   // fallback: rows가 없는 경우 (container text) - 기존 방식 유지
   const rowSignature = buildRowSignature(current.rows);
-  if (compact === state.lastCompact && rowSignature === state.lastRowSignature) {
+  if (
+    compact === state.lastCompact &&
+    rowSignature === state.lastRowSignature
+  ) {
     return;
   }
 

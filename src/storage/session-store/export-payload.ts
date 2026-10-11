@@ -48,9 +48,7 @@ export function createSessionExportPayload(
   const sourceEntries = entries ?? session.entries;
   const rangedEntries = filterEntriesByTimeRange(sourceEntries, timeRange);
   const baseSession =
-    entries || timeRange
-      ? withSessionEntries(session, rangedEntries)
-      : session;
+    entries || timeRange ? withSessionEntries(session, rangedEntries) : session;
   // json: 복원용으로 발언자 메타 항상 유지.
   // 그 외 형식: 옵션 off 시 channel/color 메타 strip (본문 접두·표 칸은 includeSpeaker 로 제어).
   const stripSpeakerMetadata =

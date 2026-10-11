@@ -38,7 +38,10 @@ describe("session lineage helpers", () => {
       },
     ]);
 
-    expect(sorted.map((session) => session.id)).toEqual(["segment_1", "segment_2"]);
+    expect(sorted.map((session) => session.id)).toEqual([
+      "segment_1",
+      "segment_2",
+    ]);
 
     const entries = mergeSessionSegmentEntries([
       {
@@ -134,7 +137,10 @@ describe("session lineage helpers", () => {
     expect(merged.startedAt).toBe("2026-03-10T09:00:00.000Z");
     expect(merged.endedAt).toBe("2026-03-10T09:12:00.000Z");
     expect(merged.starred).toBe(true);
-    expect(merged.entries.map((entry) => entry.id)).toEqual(["entry_1", "entry_2"]);
+    expect(merged.entries.map((entry) => entry.id)).toEqual([
+      "entry_1",
+      "entry_2",
+    ]);
     expect(merged.note).toBe("segment 1");
   });
 

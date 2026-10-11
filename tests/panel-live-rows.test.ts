@@ -60,10 +60,12 @@ describe("panel live rows", () => {
   });
 
   it("caps panel rows to the latest configured committed-entry window", () => {
-    const entries = Array.from({ length: PIPELINE_DEFAULTS.liveLedgerMaxRows + 5 }, (_, index) =>
-      createEntry(`entry_${index + 1}`, `${index + 1}번째 자막`, {
-        endTime: `2026-03-20T08:${String(index % 60).padStart(2, "0")}:09.000Z`,
-      }),
+    const entries = Array.from(
+      { length: PIPELINE_DEFAULTS.liveLedgerMaxRows + 5 },
+      (_, index) =>
+        createEntry(`entry_${index + 1}`, `${index + 1}번째 자막`, {
+          endTime: `2026-03-20T08:${String(index % 60).padStart(2, "0")}:09.000Z`,
+        }),
     );
 
     const rows = resolvePanelLiveRows({
@@ -75,6 +77,8 @@ describe("panel live rows", () => {
 
     expect(rows).toHaveLength(PIPELINE_DEFAULTS.liveLedgerMaxRows);
     expect(rows[0]?.key).toBe("entry::entry_6");
-    expect(rows.at(-1)?.key).toBe(`entry::entry_${PIPELINE_DEFAULTS.liveLedgerMaxRows + 5}`);
+    expect(rows.at(-1)?.key).toBe(
+      `entry::entry_${PIPELINE_DEFAULTS.liveLedgerMaxRows + 5}`,
+    );
   });
 });

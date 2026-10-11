@@ -45,9 +45,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../../session-backup";
+import { buildSessionBackupFilename } from "../../session-backup";
 import { createRandomToken } from "../../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -114,11 +112,11 @@ import {
   withTransaction,
   withSessionStoresTransaction,
 } from "./database";
-import {
-  sortSessions,
-} from "../lineage-helpers";
+import { sortSessions } from "../lineage-helpers";
 
-export function toIndexedDbRecord(record: SessionRecord): IndexedDbSessionRecord {
+export function toIndexedDbRecord(
+  record: SessionRecord,
+): IndexedDbSessionRecord {
   const metadata = stripSessionEntries(record);
   return {
     ...metadata,
@@ -149,7 +147,8 @@ export function readChunkRecordsBySessionId(
       chunks.push(cursor.value as SessionEntryChunkRecord);
       cursor.continue();
     };
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB chunk read failed"));
+    request.onerror = () =>
+      reject(request.error ?? new Error("IndexedDB chunk read failed"));
   });
 }
 
@@ -194,7 +193,10 @@ export async function hydrateIndexedDbSessionRecord(
     });
   }
 
-  const chunks = await readChunkRecordsBySessionId(chunkStore, metadataRecord.id);
+  const chunks = await readChunkRecordsBySessionId(
+    chunkStore,
+    metadataRecord.id,
+  );
   if (chunks.length !== metadataRecord.entryChunkCount) {
     throw new Error(`Session chunk count mismatch for ${metadataRecord.id}`);
   }
@@ -211,17 +213,15 @@ export async function hydrateIndexedDbSessionRecord(
 export function normalizeIndexedDbSessionMetadataRecord(
   record: IndexedDbSessionRecord,
 ): SessionRecord {
-  const normalized = normalizeSessionRecord(
-    toEntrylessSessionRecord(record),
-    {
-      preserveTimestamps: true,
-      forceStatus: record.status,
-    },
-  );
+  const normalized = normalizeSessionRecord(toEntrylessSessionRecord(record), {
+    preserveTimestamps: true,
+    forceStatus: record.status,
+  });
   return {
     ...normalized,
     subtitleCount:
-      typeof record.subtitleCount === "number" && Number.isFinite(record.subtitleCount)
+      typeof record.subtitleCount === "number" &&
+      Number.isFinite(record.subtitleCount)
         ? Math.max(0, Math.floor(record.subtitleCount))
         : normalized.subtitleCount,
     charCount:
@@ -280,26 +280,35 @@ export function readCursorRecords(
       }
       cursor.continue();
     };
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB cursor request failed"));
+    request.onerror = () =>
+      reject(request.error ?? new Error("IndexedDB cursor request failed"));
   });
 }
 
-export async function listIndexedDbSessions(options: SessionListOptions = {}): Promise<SessionRecord[]> {
+export async function listIndexedDbSessions(
+  options: SessionListOptions = {},
+): Promise<SessionRecord[]> {
   return withTransaction("readonly", async (store) => {
     const limit = Math.max(1, options.limit ?? 100);
     if (store.indexNames.contains("paging")) {
-      return (await readCursorRecords(store.index("paging"), {
-        direction: "prev",
-        limit,
-      })).map((record) =>
-        normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
+      return (
+        await readCursorRecords(store.index("paging"), {
+          direction: "prev",
+          limit,
+        })
+      ).map((record) =>
+        normalizeIndexedDbSessionMetadataRecord(
+          record as IndexedDbSessionRecord,
+        ),
       );
     }
 
-    return (await readCursorRecords(store.index("updatedAt"), {
-      direction: "prev",
-      limit,
-    })).map((record) =>
+    return (
+      await readCursorRecords(store.index("updatedAt"), {
+        direction: "prev",
+        limit,
+      })
+    ).map((record) =>
       normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
     );
   });
@@ -312,8 +321,8 @@ export async function listIndexedDbSessionPage(
     const pageSize = Math.max(1, options.pageSize);
     if (!store.indexNames.contains("paging")) {
       const allSessions = sortSessions(
-        ((await withRequest(store.getAll())) as IndexedDbSessionRecord[]).map((record) =>
-          normalizeIndexedDbSessionMetadataRecord(record),
+        ((await withRequest(store.getAll())) as IndexedDbSessionRecord[]).map(
+          (record) => normalizeIndexedDbSessionMetadataRecord(record),
         ),
         { limit: Number.MAX_SAFE_INTEGER },
       );
@@ -326,7 +335,9 @@ export async function listIndexedDbSessionPage(
       const start = (page - 1) * pageSize;
 
       return {
-        sessions: filteredSessions.slice(start, start + pageSize).map(cloneSessionRecord),
+        sessions: filteredSessions
+          .slice(start, start + pageSize)
+          .map(cloneSessionRecord),
         totalCount,
         page,
         pageSize,
@@ -353,7 +364,9 @@ export async function listIndexedDbSessionPage(
 
     return {
       sessions: sessions.map((record) =>
-        normalizeIndexedDbSessionMetadataRecord(record as IndexedDbSessionRecord),
+        normalizeIndexedDbSessionMetadataRecord(
+          record as IndexedDbSessionRecord,
+        ),
       ),
       totalCount,
       page,
@@ -362,33 +375,53 @@ export async function listIndexedDbSessionPage(
   });
 }
 
-export async function listIndexedDbLineageSessions(lineageId: string): Promise<SessionRecord[]> {
-  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
-    const metadataRecords = sessionStore.indexNames.contains("lineageId")
-      ? ((await readCursorRecords(sessionStore.index("lineageId"), {
-          direction: "next",
-          query: lineageId,
-        })) as IndexedDbSessionRecord[])
-      : ((await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[]).filter(
-          (record) => resolveSessionLineageId(record.id, record.lineageId) === lineageId,
-        );
+export async function listIndexedDbLineageSessions(
+  lineageId: string,
+): Promise<SessionRecord[]> {
+  return withSessionStoresTransaction(
+    "readonly",
+    async ({ sessionStore, chunkStore }) => {
+      const metadataRecords = sessionStore.indexNames.contains("lineageId")
+        ? ((await readCursorRecords(sessionStore.index("lineageId"), {
+            direction: "next",
+            query: lineageId,
+          })) as IndexedDbSessionRecord[])
+        : (
+            (await withRequest(
+              sessionStore.getAll(),
+            )) as IndexedDbSessionRecord[]
+          ).filter(
+            (record) =>
+              resolveSessionLineageId(record.id, record.lineageId) ===
+              lineageId,
+          );
 
-    return Promise.all(
-      metadataRecords.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
-    );
-  });
+      return Promise.all(
+        metadataRecords.map((record) =>
+          hydrateIndexedDbSessionRecord(record, chunkStore),
+        ),
+      );
+    },
+  );
 }
 
 export async function listAllIndexedDbSessions(): Promise<SessionRecord[]> {
-  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
-    const all = (await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[];
-    return Promise.all(
-      all.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
-    );
-  });
+  return withSessionStoresTransaction(
+    "readonly",
+    async ({ sessionStore, chunkStore }) => {
+      const all = (await withRequest(
+        sessionStore.getAll(),
+      )) as IndexedDbSessionRecord[];
+      return Promise.all(
+        all.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
+      );
+    },
+  );
 }
 
-export async function listIndexedDbSessionMetadataRecords(): Promise<SessionRecord[]> {
+export async function listIndexedDbSessionMetadataRecords(): Promise<
+  SessionRecord[]
+> {
   return withTransaction("readonly", async (store) => {
     const all = (await withRequest(store.getAll())) as IndexedDbSessionRecord[];
     return all.map((record) => normalizeIndexedDbSessionMetadataRecord(record));
@@ -398,20 +431,27 @@ export async function listIndexedDbSessionMetadataRecords(): Promise<SessionReco
 export async function listIndexedDbSessionsByStatus(
   status: SessionRecord["status"],
 ): Promise<SessionRecord[]> {
-  return withSessionStoresTransaction("readonly", async ({ sessionStore, chunkStore }) => {
-    const metadataRecords = sessionStore.indexNames.contains("status")
-      ? ((await readCursorRecords(sessionStore.index("status"), {
-          direction: "next",
-          query: status,
-        })) as IndexedDbSessionRecord[])
-      : ((await withRequest(sessionStore.getAll())) as IndexedDbSessionRecord[]).filter(
-          (record) => record.status === status,
-        );
+  return withSessionStoresTransaction(
+    "readonly",
+    async ({ sessionStore, chunkStore }) => {
+      const metadataRecords = sessionStore.indexNames.contains("status")
+        ? ((await readCursorRecords(sessionStore.index("status"), {
+            direction: "next",
+            query: status,
+          })) as IndexedDbSessionRecord[])
+        : (
+            (await withRequest(
+              sessionStore.getAll(),
+            )) as IndexedDbSessionRecord[]
+          ).filter((record) => record.status === status);
 
-    return Promise.all(
-      metadataRecords.map((record) => hydrateIndexedDbSessionRecord(record, chunkStore)),
-    );
-  });
+      return Promise.all(
+        metadataRecords.map((record) =>
+          hydrateIndexedDbSessionRecord(record, chunkStore),
+        ),
+      );
+    },
+  );
 }
 
 export async function listIndexedDbSessionIds(): Promise<string[]> {
@@ -425,7 +465,9 @@ export async function listIndexedDbSessionIds(): Promise<string[]> {
       return keys.filter((key): key is string => typeof key === "string");
     }
 
-    const records = await withRequest(store.getAll() as IDBRequest<Array<{ id?: unknown }>>);
+    const records = await withRequest(
+      store.getAll() as IDBRequest<Array<{ id?: unknown }>>,
+    );
     return (records as Array<{ id?: unknown }>)
       .map((record) => record.id)
       .filter((id): id is string => typeof id === "string");

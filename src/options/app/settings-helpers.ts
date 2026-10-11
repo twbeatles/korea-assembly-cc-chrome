@@ -9,7 +9,10 @@ import type {
   ExtensionSettings,
   SegmentPreset,
 } from "../../storage/types";
-import { ADVANCED_NUMBER_FIELDS, BASIC_NUMBER_FIELDS } from "../settings-fields";
+import {
+  ADVANCED_NUMBER_FIELDS,
+  BASIC_NUMBER_FIELDS,
+} from "../settings-fields";
 
 export type OptionsView = "settings" | "diagnostics";
 export type NumberField =
@@ -80,7 +83,8 @@ export function getToggleCopy(field: SettingsToggleKey): {
     case "autoStartEnabled":
       return {
         title: "플레이어 열면 바로 수집",
-        description: "플레이어 페이지에 들어오면 수집을 시작합니다. 직접 시작만 원하면 끄세요.",
+        description:
+          "플레이어 페이지에 들어오면 수집을 시작합니다. 직접 시작만 원하면 끄세요.",
         caution: "다른 회의로 이동해도 다시 시작할 수 있습니다.",
       };
     case "runningAutoSaveEnabled":
@@ -242,14 +246,19 @@ export function getCaptureModeSummary(snapshot: StatusSnapshot | null): string {
     return "자막을 정상적으로 모으는 중";
   }
 
-  if (snapshot.diagnostics.captureMode === "fallback" || !snapshot.diagnostics.observerActive) {
+  if (
+    snapshot.diagnostics.captureMode === "fallback" ||
+    !snapshot.diagnostics.observerActive
+  ) {
     return "화면을 다시 확인하며 모으는 중";
   }
 
   return snapshot.status === "idle" ? "대기 중" : "준비 중";
 }
 
-export function buildNumberDraftState(settings: ExtensionSettings): NumberDraftState {
+export function buildNumberDraftState(
+  settings: ExtensionSettings,
+): NumberDraftState {
   return NUMBER_FIELDS.reduce(
     (drafts, field) => ({
       ...drafts,
@@ -259,7 +268,10 @@ export function buildNumberDraftState(settings: ExtensionSettings): NumberDraftS
   );
 }
 
-export function validateNumberDraft(field: NumberField, value: string): string | undefined {
+export function validateNumberDraft(
+  field: NumberField,
+  value: string,
+): string | undefined {
   const trimmed = value.trim();
   if (!trimmed) {
     return "값을 입력하세요.";
@@ -306,7 +318,11 @@ export function updateUrl(view: OptionsView, tabId: number | null): void {
     url.searchParams.delete("tabId");
   }
 
-  window.history.replaceState(null, "", `${url.pathname}${url.search}${url.hash}`);
+  window.history.replaceState(
+    null,
+    "",
+    `${url.pathname}${url.search}${url.hash}`,
+  );
 }
 
 export async function resolveDiagnosticsTab(
@@ -345,7 +361,10 @@ export async function resolveDiagnosticsTab(
 
 export function mergeSnapshot(
   current: StatusSnapshot | null,
-  message: Exclude<ContentToPopupMessage, { type: "ERROR" } | { type: "POPUP_FEEDBACK" }>,
+  message: Exclude<
+    ContentToPopupMessage,
+    { type: "ERROR" } | { type: "POPUP_FEEDBACK" }
+  >,
 ): StatusSnapshot | null {
   switch (message.type) {
     case "CAPTURE_STATUS":

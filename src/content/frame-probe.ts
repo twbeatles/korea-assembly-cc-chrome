@@ -27,15 +27,16 @@ export function computeCurrentFramePath(win: Window = window): number[] {
   while (currentWindow && currentWindow !== currentWindow.top) {
     try {
       const parentWin: Window = currentWindow.parent;
-      const frameElement = currentWindow.frameElement as HTMLIFrameElement | HTMLFrameElement | null;
+      const frameElement = currentWindow.frameElement as
+        HTMLIFrameElement | HTMLFrameElement | null;
       if (!frameElement) {
         break;
       }
 
       const siblings = Array.from(
-        parentWin.document.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
-          "iframe, frame",
-        ),
+        parentWin.document.querySelectorAll<
+          HTMLIFrameElement | HTMLFrameElement
+        >("iframe, frame"),
       );
       const index = siblings.indexOf(frameElement);
       if (index < 0) {
@@ -52,7 +53,10 @@ export function computeCurrentFramePath(win: Window = window): number[] {
   return path;
 }
 
-function scoreFrameResult(result: FrameProbeResult, selectors: string[]): number {
+function scoreFrameResult(
+  result: FrameProbeResult,
+  selectors: string[],
+): number {
   if (!result.found || !result.text) {
     return -1;
   }
@@ -73,7 +77,8 @@ function chooseBetterResult(
   candidate: FrameProbeResult,
   selectors: string[],
 ): FrameProbeResult {
-  return scoreFrameResult(candidate, selectors) > scoreFrameResult(current, selectors)
+  return scoreFrameResult(candidate, selectors) >
+    scoreFrameResult(current, selectors)
     ? candidate
     : current;
 }
@@ -87,7 +92,10 @@ function probeDocumentRoots(
   if (rootDocument.body) {
     rootCandidates.push(rootDocument.body);
   }
-  if (rootDocument.documentElement && rootDocument.documentElement !== rootDocument.body) {
+  if (
+    rootDocument.documentElement &&
+    rootDocument.documentElement !== rootDocument.body
+  ) {
     rootCandidates.push(rootDocument.documentElement);
   }
 
@@ -144,7 +152,9 @@ function walkDocuments(
   }
 
   const frames = Array.from(
-    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+    rootDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
+      "iframe, frame",
+    ),
   );
 
   frames.forEach((frameElement, index) => {
@@ -157,7 +167,15 @@ function walkDocuments(
       if (!childDocument) {
         return;
       }
-      walkDocuments(childDocument, selectors, [...path, index], depth + 1, results, flags, options);
+      walkDocuments(
+        childDocument,
+        selectors,
+        [...path, index],
+        depth + 1,
+        results,
+        flags,
+        options,
+      );
     } catch {
       // Cross-origin frame access is intentionally ignored.
     }
@@ -169,7 +187,9 @@ function getDocumentByFramePath(framePath: number[]): Document | null {
 
   for (const index of framePath) {
     const frames = Array.from(
-      currentDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>("iframe, frame"),
+      currentDocument.querySelectorAll<HTMLIFrameElement | HTMLFrameElement>(
+        "iframe, frame",
+      ),
     );
     const frame = frames[index];
     if (!frame) {
@@ -200,10 +220,16 @@ export function probeAccessibleFrames(
   if (!results.length && flags.blockedByUnconfirmedFilter) {
     return [{ ...emptyFrameProbe(), blockedByUnconfirmedFilter: true }];
   }
-  return results.sort((left, right) => scoreFrameResult(right, selectors) - scoreFrameResult(left, selectors));
+  return results.sort(
+    (left, right) =>
+      scoreFrameResult(right, selectors) - scoreFrameResult(left, selectors),
+  );
 }
 
-export function probeTopDocument(primarySelector = "", options?: DomProbeOptions): FrameProbeResult {
+export function probeTopDocument(
+  primarySelector = "",
+  options?: DomProbeOptions,
+): FrameProbeResult {
   const selectors = getSubtitleSelectorCandidates(primarySelector);
   const direct = estimateRecentRaw(document, primarySelector, options);
   if (direct.found) {

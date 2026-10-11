@@ -32,7 +32,9 @@ export function buildPersistabilityDiagnostics(
   };
 }
 
-export function resolvePreviewPersistabilityState(reason?: string): PersistabilityState {
+export function resolvePreviewPersistabilityState(
+  reason?: string,
+): PersistabilityState {
   if (reason?.includes("duplicate")) {
     return "duplicate";
   }

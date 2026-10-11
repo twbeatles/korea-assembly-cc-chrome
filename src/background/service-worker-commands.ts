@@ -92,7 +92,9 @@ export async function downloadExportWithFallback(
     getByteLength() <= dependencies.dataUrlFallbackMaxBytes;
   const resolveDataUrlFallbackError = (): Error =>
     dependencies.createDataUrlFallbackDisabledError?.(getByteLength()) ??
-    new Error(`Data URL fallback disabled for large export (${getByteLength()} bytes)`);
+    new Error(
+      `Data URL fallback disabled for large export (${getByteLength()} bytes)`,
+    );
 
   let blobUrl = "";
   try {
@@ -102,7 +104,10 @@ export async function downloadExportWithFallback(
     if (!canUseDataUrlFallback()) {
       throw resolveDataUrlFallbackError();
     }
-    return dependencies.downloadByUrl(dependencies.toDataUrl(content, mimeType), filename);
+    return dependencies.downloadByUrl(
+      dependencies.toDataUrl(content, mimeType),
+      filename,
+    );
   }
 
   let downloadId: number;
@@ -114,7 +119,10 @@ export async function downloadExportWithFallback(
     if (!canUseDataUrlFallback()) {
       throw resolveDataUrlFallbackError();
     }
-    return dependencies.downloadByUrl(dependencies.toDataUrl(content, mimeType), filename);
+    return dependencies.downloadByUrl(
+      dependencies.toDataUrl(content, mimeType),
+      filename,
+    );
   }
 
   try {
@@ -136,7 +144,9 @@ export interface BackgroundCommandDependencies {
   onInjectConfiguredContentScriptsError?: (error: unknown) => void;
   getOrCreateStoredFrameForwardNonce: (tabId: number) => Promise<string>;
   queueExitPersistRecord: (record: SessionRecord) => Promise<void>;
-  persistSessionRecord: (record: SessionRecord) => Promise<{ updatedAt: string }>;
+  persistSessionRecord: (
+    record: SessionRecord,
+  ) => Promise<{ updatedAt: string }>;
   deleteSessionRecord: (sessionId: string) => Promise<void>;
   loadSessionRecord: (sessionId: string) => Promise<SessionRecord | undefined>;
   exportSessionRecordData: (
@@ -149,14 +159,20 @@ export interface BackgroundCommandDependencies {
     format: ExportFormat,
     options?: SessionExportOptions,
   ) => Promise<ExportPayload>;
-  downloadExport: (filename: string, content: string, mimeType: string) => Promise<number>;
+  downloadExport: (
+    filename: string,
+    content: string,
+    mimeType: string,
+  ) => Promise<number>;
   openHistoryPage: () => Promise<void>;
   openOptionsPage: () => Promise<void>;
   openSidePanel?: (tabId?: number) => Promise<void>;
   openDiagnosticsPage: (tabId?: number) => Promise<void>;
 }
 
-export function isBackgroundCommandMessage(message: unknown): message is BackgroundCommandMessage {
+export function isBackgroundCommandMessage(
+  message: unknown,
+): message is BackgroundCommandMessage {
   if (!message || typeof message !== "object" || !("type" in message)) {
     return false;
   }
@@ -178,7 +194,9 @@ export function isBackgroundCommandMessage(message: unknown): message is Backgro
   );
 }
 
-export function isMessageFromOwnExtension(sender: chrome.runtime.MessageSender): boolean {
+export function isMessageFromOwnExtension(
+  sender: chrome.runtime.MessageSender,
+): boolean {
   // 운영 빌드에서는 확장 id 가 반드시 있다. sender.id 가 없거나 다르면 거부.
   const ownId = typeof chrome !== "undefined" ? chrome.runtime?.id : undefined;
   if (!ownId) {
@@ -227,14 +245,23 @@ export async function handleBackgroundCommand(
       if (typeof tabId !== "number") {
         return { ok: false, error: "탭 정보를 확인하지 못했습니다." };
       }
-      return { ok: true, nonce: await dependencies.getOrCreateStoredFrameForwardNonce(tabId) };
+      return {
+        ok: true,
+        nonce: await dependencies.getOrCreateStoredFrameForwardNonce(tabId),
+      };
     }
     case "QUEUE_EXIT_PERSIST_RECORD":
       if (!isValidPersistSessionRecordPayload(message.record)) {
-        return { ok: false, error: "종료 저장 큐 페이로드가 올바르지 않습니다." };
+        return {
+          ok: false,
+          error: "종료 저장 큐 페이로드가 올바르지 않습니다.",
+        };
       }
       if (message.record.status !== "stopped") {
-        return { ok: false, error: "종료 저장 큐는 stopped 세션만 허용합니다." };
+        return {
+          ok: false,
+          error: "종료 저장 큐는 stopped 세션만 허용합니다.",
+        };
       }
       await dependencies.queueExitPersistRecord(message.record);
       return { ok: true };
@@ -252,7 +279,8 @@ export async function handleBackgroundCommand(
       await dependencies.deleteSessionRecord(message.sessionId);
       return { ok: true };
     case "DOWNLOAD_REQUEST": {
-      const content = typeof message.content === "string" ? message.content : "";
+      const content =
+        typeof message.content === "string" ? message.content : "";
       const byteLength = getUtf8ContentByteLength(content);
       if (byteLength > DOWNLOAD_REQUEST_MAX_BYTES) {
         return {
@@ -274,17 +302,23 @@ export async function handleBackgroundCommand(
       }
 
       const selectedEntries = Array.isArray(message.entryIds)
-        ? session.entries.filter((entry) => message.entryIds?.includes(entry.id))
+        ? session.entries.filter((entry) =>
+            message.entryIds?.includes(entry.id),
+          )
         : undefined;
-      const payload = await dependencies.exportSessionRecordData(session, message.format, {
-        filenamePattern: message.filenamePattern,
-        txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
-        txtExportSpeakerEnabled: message.txtExportSpeakerEnabled,
-        txtExportEntryNotesEnabled: message.txtExportEntryNotesEnabled,
-        filenameSuffix: message.filenameSuffix,
-        entries: selectedEntries,
-        timeRange: message.timeRange,
-      });
+      const payload = await dependencies.exportSessionRecordData(
+        session,
+        message.format,
+        {
+          filenamePattern: message.filenamePattern,
+          txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
+          txtExportSpeakerEnabled: message.txtExportSpeakerEnabled,
+          txtExportEntryNotesEnabled: message.txtExportEntryNotesEnabled,
+          filenameSuffix: message.filenameSuffix,
+          entries: selectedEntries,
+          timeRange: message.timeRange,
+        },
+      );
       const downloadId = await dependencies.downloadExport(
         payload.filename,
         payload.content,
@@ -293,15 +327,19 @@ export async function handleBackgroundCommand(
       return { ok: true, downloadId };
     }
     case "DOWNLOAD_SESSION_LINEAGE_EXPORT": {
-      const payload = await dependencies.exportSessionLineageData(message.lineageId, message.format, {
-        filenamePattern: message.filenamePattern,
-        txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
-        txtExportSpeakerEnabled: message.txtExportSpeakerEnabled,
-        txtExportEntryNotesEnabled: message.txtExportEntryNotesEnabled,
-        entryIds: message.entryIds,
-        filenameSuffix: message.filenameSuffix,
-        timeRange: message.timeRange,
-      });
+      const payload = await dependencies.exportSessionLineageData(
+        message.lineageId,
+        message.format,
+        {
+          filenamePattern: message.filenamePattern,
+          txtExportTimestampsEnabled: message.txtExportTimestampsEnabled,
+          txtExportSpeakerEnabled: message.txtExportSpeakerEnabled,
+          txtExportEntryNotesEnabled: message.txtExportEntryNotesEnabled,
+          entryIds: message.entryIds,
+          filenameSuffix: message.filenameSuffix,
+          timeRange: message.timeRange,
+        },
+      );
       const downloadId = await dependencies.downloadExport(
         payload.filename,
         payload.content,

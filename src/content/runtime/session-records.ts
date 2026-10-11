@@ -22,7 +22,9 @@ export function buildPreparedSessionState(
   return buildPreparedSessionStateBase(state, settings, now);
 }
 
-export function buildVisibleOutputEntries(entries: SubtitleEntry[]): SubtitleEntry[] {
+export function buildVisibleOutputEntries(
+  entries: SubtitleEntry[],
+): SubtitleEntry[] {
   return entries.map((entry) => cloneEntry(entry));
 }
 
@@ -45,11 +47,18 @@ export function buildVisibleSessionRecord(
   now = Date.now(),
 ): SessionRecord {
   if (persistedStatus !== "stopped") {
-    return toSessionRecord(buildVisibleSessionState(state, livePreviewText), persistedStatus);
+    return toSessionRecord(
+      buildVisibleSessionState(state, livePreviewText),
+      persistedStatus,
+    );
   }
 
   return toSessionRecord(
-    finalizeSession(buildVisibleSessionState(state, livePreviewText), now, settings).state,
+    finalizeSession(
+      buildVisibleSessionState(state, livePreviewText),
+      now,
+      settings,
+    ).state,
     persistedStatus,
   );
 }
@@ -61,11 +70,20 @@ export function buildPreparedSessionRecord(
   now = Date.now(),
 ): SessionRecord {
   if (persistedStatus !== "stopped") {
-    return buildPreparedSessionRecordBase(state, settings, persistedStatus, now);
+    return buildPreparedSessionRecordBase(
+      state,
+      settings,
+      persistedStatus,
+      now,
+    );
   }
 
   return toSessionRecord(
-    finalizeSession(buildPreparedSessionState(state, settings, now), now, settings).state,
+    finalizeSession(
+      buildPreparedSessionState(state, settings, now),
+      now,
+      settings,
+    ).state,
     persistedStatus,
   );
 }

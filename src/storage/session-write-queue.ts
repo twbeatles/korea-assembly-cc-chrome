@@ -16,7 +16,10 @@ interface SessionWriteLockManager {
 const queues = new Map<string, Promise<unknown>>();
 let passthroughForTests = false;
 
-function enqueueMemoryQueue<T>(sessionId: string, task: () => Promise<T>): Promise<T> {
+function enqueueMemoryQueue<T>(
+  sessionId: string,
+  task: () => Promise<T>,
+): Promise<T> {
   const previous = queues.get(sessionId) ?? Promise.resolve();
   const next = previous.then(task, task);
   queues.set(
@@ -59,7 +62,9 @@ export function enqueueSessionWrite<T>(
 }
 
 /** 테스트 전용: 실행 환경이 다른 것처럼 in-memory 큐를 건너뛴다. */
-export function setSessionWriteQueuePassthroughForTests(enabled: boolean): void {
+export function setSessionWriteQueuePassthroughForTests(
+  enabled: boolean,
+): void {
   passthroughForTests = enabled;
 }
 

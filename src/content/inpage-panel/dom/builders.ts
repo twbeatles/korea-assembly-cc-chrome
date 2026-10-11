@@ -81,11 +81,9 @@ export function applyLiveRowSpeakerPresentation(
   badge.textContent = formatSpeakerBadge(channel);
   badge.setAttribute(
     "aria-label",
-    resolveSpeakerLabelForOutput(
-      { speakerChannel: channel },
-      null,
-      { unknownLabel: "알 수 없음" },
-    ),
+    resolveSpeakerLabelForOutput({ speakerChannel: channel }, null, {
+      unknownLabel: "알 수 없음",
+    }),
   );
 }
 
@@ -134,9 +132,13 @@ export function createInPagePanelElements(
   const shadowMode: ShadowRootMode =
     typeof import.meta !== "undefined" &&
     Boolean(
-      (import.meta as ImportMeta & { env?: { MODE?: string; VITEST?: boolean } }).env
-        ?.VITEST ||
-        (import.meta as ImportMeta & { env?: { MODE?: string } }).env?.MODE === "test",
+      (
+        import.meta as ImportMeta & {
+          env?: { MODE?: string; VITEST?: boolean };
+        }
+      ).env?.VITEST ||
+      (import.meta as ImportMeta & { env?: { MODE?: string } }).env?.MODE ===
+        "test",
     )
       ? "open"
       : "closed";
@@ -340,16 +342,16 @@ export function createInPagePanelElements(
   exportSummary.textContent = "다른 형식으로 저장";
   const exportRow = document.createElement("div");
   exportRow.className = "export-row";
-  const exportButtons = (["srt", "vtt", "json", "md", "csv"] as ExportFormat[]).map(
-    (format) => {
-      const button = createButton(getExportFormatLabel(format), () =>
-        actions.onExport(format),
-      );
-      button.title = getExportFormatLabel(format);
-      exportRow.append(button);
-      return button;
-    },
-  );
+  const exportButtons = (
+    ["srt", "vtt", "json", "md", "csv"] as ExportFormat[]
+  ).map((format) => {
+    const button = createButton(getExportFormatLabel(format), () =>
+      actions.onExport(format),
+    );
+    button.title = getExportFormatLabel(format);
+    exportRow.append(button);
+    return button;
+  });
   exportDetails.append(exportSummary, exportRow);
 
   const advancedDetails = document.createElement("details");
@@ -388,8 +390,14 @@ export function createInPagePanelElements(
 
   const footer = document.createElement("div");
   footer.className = "footer-actions";
-  const historyButton = createButton(UI_TEXT.openHistory, actions.onOpenHistory);
-  const optionsButton = createButton(UI_TEXT.openOptions, actions.onOpenOptions);
+  const historyButton = createButton(
+    UI_TEXT.openHistory,
+    actions.onOpenHistory,
+  );
+  const optionsButton = createButton(
+    UI_TEXT.openOptions,
+    actions.onOpenOptions,
+  );
   const diagnosticsButton = createButton(
     UI_TEXT.openDiagnostics,
     actions.onOpenDiagnostics,

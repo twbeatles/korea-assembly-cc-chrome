@@ -14,7 +14,8 @@ export const INVALIDATION_CLEANUP_STEPS = [
   "pendingReset",
 ] as const;
 
-export type InvalidationCleanupStep = (typeof INVALIDATION_CLEANUP_STEPS)[number];
+export type InvalidationCleanupStep =
+  (typeof INVALIDATION_CLEANUP_STEPS)[number];
 
 export function runInvalidationTimerCleanup(
   clearers: Record<InvalidationCleanupStep, () => void>,

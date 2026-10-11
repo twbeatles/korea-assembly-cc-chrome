@@ -1,4 +1,7 @@
-export function splitContentForBlobParts(content: string, chunkSize: number): string[] {
+export function splitContentForBlobParts(
+  content: string,
+  chunkSize: number,
+): string[] {
   const safeChunkSize = Math.max(1, Math.floor(chunkSize));
   if (!content) {
     return [""];

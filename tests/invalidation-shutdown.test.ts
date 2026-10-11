@@ -15,7 +15,9 @@ describe("invalidation timer cleanup", () => {
       });
     }
 
-    expect(runInvalidationTimerCleanup(clearers)).toEqual([...INVALIDATION_CLEANUP_STEPS]);
+    expect(runInvalidationTimerCleanup(clearers)).toEqual([
+      ...INVALIDATION_CLEANUP_STEPS,
+    ]);
     expect(calls).toEqual([...INVALIDATION_CLEANUP_STEPS]);
     INVALIDATION_CLEANUP_STEPS.forEach((step) => {
       expect(clearers[step]).toHaveBeenCalledOnce();

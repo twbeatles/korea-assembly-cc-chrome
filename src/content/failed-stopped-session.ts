@@ -24,7 +24,9 @@ function cloneSessionRecord(record: SessionRecord): SessionRecord {
     ...record,
     entries: record.entries.map((entry) => ({
       ...entry,
-      sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
+      sourceFramePath: entry.sourceFramePath
+        ? [...entry.sourceFramePath]
+        : undefined,
     })),
   };
 }
@@ -39,7 +41,10 @@ function errorMessageOf(error: unknown): string {
   return "알 수 없는 오류";
 }
 
-function buildDiscardConfirmMessage(actionLabel: string, errorMessage: string): string {
+function buildDiscardConfirmMessage(
+  actionLabel: string,
+  errorMessage: string,
+): string {
   return [
     "이전 세션 저장이 실패한 상태입니다.",
     "다시 저장을 시도했지만 실패했습니다.",

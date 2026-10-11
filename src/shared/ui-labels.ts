@@ -55,7 +55,9 @@ export function getCaptureStatusLabel(status: CaptureStatus): string {
   return CAPTURE_STATUS_LABELS[status];
 }
 
-export function getPersistedStatusLabel(status: PersistedSessionStatus): string {
+export function getPersistedStatusLabel(
+  status: PersistedSessionStatus,
+): string {
   return PERSISTED_STATUS_LABELS[status];
 }
 

@@ -1,4 +1,7 @@
-import type { PersistReplayDiagnostics, QueuedExitPersistRecord } from "../types";
+import type {
+  PersistReplayDiagnostics,
+  QueuedExitPersistRecord,
+} from "../types";
 import { createEmptyPersistReplayDiagnostics } from "./sanitize";
 
 /** 메모리 큐·tombstone·진단 스냅샷과 인덱스 뮤테이션 직렬화 큐 (단일 책임: 휘발성 상태). */
@@ -11,7 +14,9 @@ export let memoryDiagnostics = createEmptyPersistReplayDiagnostics();
 /** 인덱스 read-modify-write 를 탭/호출 간에 직렬화한다. */
 export let exitPersistIndexMutationQueue: Promise<unknown> = Promise.resolve();
 
-export function enqueueExitPersistIndexMutation<T>(task: () => Promise<T>): Promise<T> {
+export function enqueueExitPersistIndexMutation<T>(
+  task: () => Promise<T>,
+): Promise<T> {
   const next = exitPersistIndexMutationQueue.then(task, task);
   exitPersistIndexMutationQueue = next.then(
     () => undefined,

@@ -33,10 +33,17 @@ export function buildPreparedSessionRecord(
   persistedStatus: PersistedSessionStatus,
   now: number = Date.now(),
 ): SessionRecord {
-  return toSessionRecord(buildPreparedSessionState(state, settings, now), persistedStatus);
+  return toSessionRecord(
+    buildPreparedSessionState(state, settings, now),
+    persistedStatus,
+  );
 }
 
-export function createResetSessionState(sourceUrl: string, title: string, committeeName: string): SessionState {
+export function createResetSessionState(
+  sourceUrl: string,
+  title: string,
+  committeeName: string,
+): SessionState {
   return createEmptySessionState(sourceUrl, title, committeeName);
 }
 

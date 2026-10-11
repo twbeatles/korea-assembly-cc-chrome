@@ -15,15 +15,15 @@ URL·셀렉터·버튼·화자색·미확정 배경·본회의 판별 계약은 
 
 ### 1.1 검토한 것
 
-| 대상 | 방법 |
-|------|------|
-| 홈 `https://assembly.webcast.go.kr/main/` | HTTP 200, HTML + `js/main.js?v=2026090232` |
-| 생중계 목록 `service/live_list.asp` | JSON (UTF-8), 당일 19개 카드 |
-| 플레이어 `live_play.asp` | 개의 중 2건 + 예정 본회의·법사위·국방위·재경위 |
-| 기자회견 `live_press.asp` / `pressplayer.asp` | JSON + HTML |
-| 플레이어 HTML `main/player.asp?xcode=&xcgcd=` | 외통위·복지위·본회의·법사위 |
-| 자막 렌더 `js/openos_util.js`, `js/player.js` | AI WebSocket / 일반 socket.io DOM 계약 |
-| 보조 호스트 `webcast.assembly.go.kr` | DNS NXDOMAIN |
+| 대상                                          | 방법                                           |
+| --------------------------------------------- | ---------------------------------------------- |
+| 홈 `https://assembly.webcast.go.kr/main/`     | HTTP 200, HTML + `js/main.js?v=2026090232`     |
+| 생중계 목록 `service/live_list.asp`           | JSON (UTF-8), 당일 19개 카드                   |
+| 플레이어 `live_play.asp`                      | 개의 중 2건 + 예정 본회의·법사위·국방위·재경위 |
+| 기자회견 `live_press.asp` / `pressplayer.asp` | JSON + HTML                                    |
+| 플레이어 HTML `main/player.asp?xcode=&xcgcd=` | 외통위·복지위·본회의·법사위                    |
+| 자막 렌더 `js/openos_util.js`, `js/player.js` | AI WebSocket / 일반 socket.io DOM 계약         |
+| 보조 호스트 `webcast.assembly.go.kr`          | DNS NXDOMAIN                                   |
 
 ### 1.2 한계
 
@@ -48,22 +48,22 @@ URL·셀렉터·버튼·화자색·미확정 배경·본회의 판별 계약은 
 ./player.asp?xcode={xcode}&xcgcd={xcgcd}&
 ```
 
-| 위원회 | 회의 | 플레이어 | xsami |
-|---|---|---|---|
+| 위원회 | 회의                  | 플레이어                                                                          | xsami                                          |
+| ------ | --------------------- | --------------------------------------------------------------------------------- | ---------------------------------------------- |
 | 외통위 | 제01차 외교통일위원회 | https://assembly.webcast.go.kr/main/player.asp?xcode=48&xcgcd=DCM000048224390101& | `wss://smiai.webcast.go.kr:8091/aistt/oetong2` |
-| 복지위 | 제02차 보건복지위원회 | https://assembly.webcast.go.kr/main/player.asp?xcode=33&xcgcd=DCM000033224390201& | `wss://smiai.webcast.go.kr:8091/aistt/bokji` |
+| 복지위 | 제02차 보건복지위원회 | https://assembly.webcast.go.kr/main/player.asp?xcode=33&xcgcd=DCM000033224390201& | `wss://smiai.webcast.go.kr:8091/aistt/bokji`   |
 
 두 건 모두 AI 자막 서버(`smiai.webcast.go.kr`)다. content script 매칭 `https://assembly.webcast.go.kr/main/player*` 안에 들어간다.
 
 ### 2.2 같은 날 예정·종료
 
-| 상태 | 위원회 | xcode / xcgcd | xsami |
-|---|---|---|---|
-| 개의예정 | 법사위 제05차 | `25` / `DCM000025224390501` | `wss://smiai.webcast.go.kr:8091/aistt/beopsa` |
-| 13:10 중계예정 | 국방위 제03차 | `37` / `DCM000037224390301` | `wss://smiai.webcast.go.kr:8091/aistt/gukbang` |
-| 14:00 중계예정 | 본회의 제09차 | `10` / `DCM000010224390901` | `wss://smi-dw.webcast.go.kr/10` |
-| 본회의 산회 직후 속개 | 재경위 제03차 | `65` / `DCM000065224390301` | `wss://smiai.webcast.go.kr:8091/aistt/jaejeong` |
-| 산회 | 정무위, 농해수위 | — | — |
+| 상태                  | 위원회           | xcode / xcgcd               | xsami                                           |
+| --------------------- | ---------------- | --------------------------- | ----------------------------------------------- |
+| 개의예정              | 법사위 제05차    | `25` / `DCM000025224390501` | `wss://smiai.webcast.go.kr:8091/aistt/beopsa`   |
+| 13:10 중계예정        | 국방위 제03차    | `37` / `DCM000037224390301` | `wss://smiai.webcast.go.kr:8091/aistt/gukbang`  |
+| 14:00 중계예정        | 본회의 제09차    | `10` / `DCM000010224390901` | `wss://smi-dw.webcast.go.kr/10`                 |
+| 본회의 산회 직후 속개 | 재경위 제03차    | `65` / `DCM000065224390301` | `wss://smiai.webcast.go.kr:8091/aistt/jaejeong` |
+| 산회                  | 정무위, 농해수위 | —                           | —                                               |
 
 기자회견 `pressplayer.asp` 는 11:18경 `xstat=1`이었다가 11:19에 `0`으로 내려갔다. 경로 자체는 `https://assembly.webcast.go.kr/main/pressplayer.asp` 로 유지된다.
 
@@ -108,18 +108,18 @@ URL·셀렉터·버튼·화자색·미확정 배경·본회의 판별 계약은 
       p.smi_word                   ← 일반 자막(socket.io) 경로
 ```
 
-| 의존 항목 | 확장 측 | 2026-09-17 실측 |
-|-----------|---------|-----------------|
-| `#viewSubtit` | layer / probe | 유지 (player HTML id) |
-| `.smi_word` | structured row | AI/일반 렌더 모두 유지 |
-| `.incont` | container fallback | 유지 |
-| `.btn_subtit_ai` / `.btn_subtit_def` / `#smi_btn` | 자동 활성화 | 유지. 상임위는 AI, 본회의는 일반 |
-| placeholder `로딩중..` | commit/export 제외 | 유지 |
-| class `stxt{segment}` | stable `nodeKey` | AI 경로에서 계속 사용 |
-| 화자색 `#237c93` / `#1e1e1e` | `PRIMARY` / `SECONDARY` | `openos_util.js` 유지 |
-| 미확정 배경 `#cfe5f7` (`mhwa=-1`) | unconfirmed 필터 | 유지 |
-| 인식 중 `rgba(54,160,255,0.2)` | unconfirmed 후보 | 화자분리 없을 때 유지 |
-| iframe 속 자막 | frame probe 여분 | 관측 player HTML에 iframe/frame 없음 |
+| 의존 항목                                         | 확장 측                 | 2026-09-17 실측                      |
+| ------------------------------------------------- | ----------------------- | ------------------------------------ |
+| `#viewSubtit`                                     | layer / probe           | 유지 (player HTML id)                |
+| `.smi_word`                                       | structured row          | AI/일반 렌더 모두 유지               |
+| `.incont`                                         | container fallback      | 유지                                 |
+| `.btn_subtit_ai` / `.btn_subtit_def` / `#smi_btn` | 자동 활성화             | 유지. 상임위는 AI, 본회의는 일반     |
+| placeholder `로딩중..`                            | commit/export 제외      | 유지                                 |
+| class `stxt{segment}`                             | stable `nodeKey`        | AI 경로에서 계속 사용                |
+| 화자색 `#237c93` / `#1e1e1e`                      | `PRIMARY` / `SECONDARY` | `openos_util.js` 유지                |
+| 미확정 배경 `#cfe5f7` (`mhwa=-1`)                 | unconfirmed 필터        | 유지                                 |
+| 인식 중 `rgba(54,160,255,0.2)`                    | unconfirmed 후보        | 화자분리 없을 때 유지                |
+| iframe 속 자막                                    | frame probe 여분        | 관측 player HTML에 iframe/frame 없음 |
 
 회의 제목은 플레이어 JS가 `document.title = xsubj` 로 넣는다. 예: `제439회 국회(정기회) 제01차 외교통일위원회`.  
 `deriveCommitteeName()` 은 끝의 `\| 브랜드`만 떼므로 이 제목은 그대로 위원회명으로 쓰인다.
@@ -145,13 +145,13 @@ URL·셀렉터·버튼·화자색·미확정 배경·본회의 판별 계약은 
 
 확장은 본회의만 `xcode=10` / `DCM000010` 으로 판별하고, 나머지 위원회명은 페이지 제목에서 온다.
 
-| 오늘 xcode | 약칭 | 정식명 | 비고 |
-|---|---|---|---|
-| 65 | 재경위 | 재정경제기획위원회 | 구 기재위 `38` 자리 |
-| 62 | 기후노동위 | 기후에너지환경노동위원회 | 구 환노위 `34` |
-| 63 | 성평등가족위 | 성평등가족위원회 | 구 여가위 `36` |
-| 91 | 특별위 | 특별위 | 구 `ED` |
-| 97 | 청문회/공청회 | 청문회/공청회 | 구 `99` |
+| 오늘 xcode | 약칭          | 정식명                   | 비고                |
+| ---------- | ------------- | ------------------------ | ------------------- |
+| 65         | 재경위        | 재정경제기획위원회       | 구 기재위 `38` 자리 |
+| 62         | 기후노동위    | 기후에너지환경노동위원회 | 구 환노위 `34`      |
+| 63         | 성평등가족위  | 성평등가족위원회         | 구 여가위 `36`      |
+| 91         | 특별위        | 특별위                   | 구 `ED`             |
+| 97         | 청문회/공청회 | 청문회/공청회            | 구 `99`             |
 
 `player.asp?xcode=65&…` 도 `main/player*` 에 포함된다.
 
@@ -159,12 +159,12 @@ URL·셀렉터·버튼·화자색·미확정 배경·본회의 판별 계약은 
 
 ## 4. 코드 수정 판정
 
-| 우선순위 | 내용 | 판정 |
-|----------|------|------|
-| **필수** | 셀렉터 / URL / 호스트 / 화자색 / 미확정 필터 / placeholder / 본회의 판별 | **수정 불필요** |
-| **권장** | 개의 중 외통위·복지위에서 확장 실기 스모크 | `LIVE_CAPTURE_SMOKE_CHECKLIST.md` |
-| **권장** | 본회의 개의 후 일반 자막(`btn_subtit_def`) 경로 스모크 | 14:00 이후 |
-| **선택** | 보조 호스트 DNS 실패 안내 | README에 이미 있음. 호스트 목록 유지 |
+| 우선순위 | 내용                                                                     | 판정                                 |
+| -------- | ------------------------------------------------------------------------ | ------------------------------------ |
+| **필수** | 셀렉터 / URL / 호스트 / 화자색 / 미확정 필터 / placeholder / 본회의 판별 | **수정 불필요**                      |
+| **권장** | 개의 중 외통위·복지위에서 확장 실기 스모크                               | `LIVE_CAPTURE_SMOKE_CHECKLIST.md`    |
+| **권장** | 본회의 개의 후 일반 자막(`btn_subtit_def`) 경로 스모크                   | 14:00 이후                           |
+| **선택** | 보조 호스트 DNS 실패 안내                                                | README에 이미 있음. 호스트 목록 유지 |
 
 **이 검토 시점 기준, 기능 패치·셀렉터 변경·manifest 수정은 하지 않는다.**
 
@@ -172,15 +172,15 @@ URL·셀렉터·버튼·화자색·미확정 배경·본회의 판별 계약은 
 
 ## 5. 관련 코드 앵커
 
-| 영역 | 위치 |
-|------|------|
-| 호스트·URL 판별 | `src/shared/constants.ts` |
-| content_scripts matches | `manifest.json` |
-| 셀렉터 후보 | `SUBTITLE_SELECTOR_CANDIDATES` |
-| 레이어·버튼 활성화 | `src/content/subtitle-layer.ts` |
-| row / nodeKey / unconfirmed | `src/content/subtitle-rows.ts` |
-| 위원회명 | `deriveCommitteeName` in `src/content/app/runtime/orchestrator/helpers.ts` |
-| 화자색 상수 | `PRIMARY_SPEAKER_COLOR` / `SECONDARY_SPEAKER_COLOR` |
+| 영역                        | 위치                                                                       |
+| --------------------------- | -------------------------------------------------------------------------- |
+| 호스트·URL 판별             | `src/shared/constants.ts`                                                  |
+| content_scripts matches     | `manifest.json`                                                            |
+| 셀렉터 후보                 | `SUBTITLE_SELECTOR_CANDIDATES`                                             |
+| 레이어·버튼 활성화          | `src/content/subtitle-layer.ts`                                            |
+| row / nodeKey / unconfirmed | `src/content/subtitle-rows.ts`                                             |
+| 위원회명                    | `deriveCommitteeName` in `src/content/app/runtime/orchestrator/helpers.ts` |
+| 화자색 상수                 | `PRIMARY_SPEAKER_COLOR` / `SECONDARY_SPEAKER_COLOR`                        |
 
 ---
 

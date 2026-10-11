@@ -84,7 +84,9 @@ try {
   });
 
   await page.goto(playerUrl, { waitUntil: "domcontentloaded" });
-  await page.locator(`#${panelHostId}`).waitFor({ state: "attached", timeout: 10_000 });
+  await page
+    .locator(`#${panelHostId}`)
+    .waitFor({ state: "attached", timeout: 10_000 });
   await page.evaluate((hostId) => {
     const host = document.getElementById(hostId);
     if (host) {
@@ -103,7 +105,9 @@ try {
   await waitForPanelText(page, "fallback only stable text", 15_000);
 
   const historyPage = await context.newPage();
-  await historyPage.goto(`chrome-extension://${await resolveExtensionId(context)}/history.html`);
+  await historyPage.goto(
+    `chrome-extension://${await resolveExtensionId(context)}/history.html`,
+  );
   await historyPage.getByText("저장된 자막 기록").waitFor({ timeout: 10_000 });
 
   console.log("Extension smoke test passed.");
@@ -133,7 +137,10 @@ async function waitForPanelText(page, text, timeout = 10_000) {
       const surface = `${lightMirror}\n${shadowText}`;
       // 앱 이름 등은 light mirror 에 없을 수 있어 호스트 존재 + 일부 텍스트는 status 로 판별
       if (expectedText === "국회 자막 도우미") {
-        return host.dataset.assemblyPanel === "1" || Boolean(shadowText.includes(expectedText));
+        return (
+          host.dataset.assemblyPanel === "1" ||
+          Boolean(shadowText.includes(expectedText))
+        );
       }
       return surface.includes(expectedText);
     },
@@ -158,7 +165,11 @@ async function clickPanelButton(page, label) {
       );
       return true;
     },
-    { hostId: panelHostId, buttonLabel: label, commandEvent: panelCommandEvent },
+    {
+      hostId: panelHostId,
+      buttonLabel: label,
+      commandEvent: panelCommandEvent,
+    },
   );
   if (!clicked) {
     throw new Error(`Panel host not found for command: ${label}`);
@@ -168,13 +179,16 @@ async function clickPanelButton(page, label) {
 async function resolveExtensionId(browserContext) {
   let [serviceWorker] = browserContext.serviceWorkers();
   if (!serviceWorker) {
-    serviceWorker = await browserContext.waitForEvent("serviceworker", { timeout: 10_000 });
+    serviceWorker = await browserContext.waitForEvent("serviceworker", {
+      timeout: 10_000,
+    });
   }
   const url = serviceWorker.url();
   const [, extensionId] = url.match(/^chrome-extension:\/\/([^/]+)\//) ?? [];
   if (!extensionId) {
-    throw new Error(`Unable to resolve extension id from service worker URL: ${url}`);
+    throw new Error(
+      `Unable to resolve extension id from service worker URL: ${url}`,
+    );
   }
   return extensionId;
 }
-

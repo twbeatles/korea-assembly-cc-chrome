@@ -19,7 +19,9 @@ export function resolvePollingIntervalMs(
 }
 
 export function readDocumentVisibilityState(
-  doc: Pick<Document, "visibilityState"> | null | undefined = typeof document !== "undefined"
+  doc:
+    Pick<Document, "visibilityState"> | null | undefined = typeof document !==
+  "undefined"
     ? document
     : null,
 ): DocumentVisibilityState | undefined {

@@ -61,12 +61,15 @@ export function getSubtitleSelectorCandidates(
 ): string[] {
   const candidates: string[] = [];
   pushUnique(candidates, primarySelector);
-  SUBTITLE_SELECTOR_CANDIDATES.forEach((selector) => pushUnique(candidates, selector));
+  SUBTITLE_SELECTOR_CANDIDATES.forEach((selector) =>
+    pushUnique(candidates, selector),
+  );
   extras.forEach((selector) => pushUnique(candidates, selector));
 
   return [...candidates].sort(
     (left, right) =>
-      scoreSelector(left, primarySelector) - scoreSelector(right, primarySelector),
+      scoreSelector(left, primarySelector) -
+      scoreSelector(right, primarySelector),
   );
 }
 
@@ -126,9 +129,13 @@ function shouldBlockContainerFallbackForUnconfirmed(
     return hasUnconfirmedSubtitleBackground(root);
   }
 
-  const confirmedRows = readObservedSubtitleRows(root, "#viewSubtit .smi_word", {
-    filterUnconfirmedEnabled: true,
-  });
+  const confirmedRows = readObservedSubtitleRows(
+    root,
+    "#viewSubtit .smi_word",
+    {
+      filterUnconfirmedEnabled: true,
+    },
+  );
   if (confirmedRows.length === 0) {
     return true;
   }
@@ -192,12 +199,16 @@ export function readSubtitleTextBySelectors(
   selectors: string[],
   options?: DomProbeOptions,
 ): DomProbeResult {
-  const blockContainerFallback = shouldBlockContainerFallbackForUnconfirmed(root, options);
+  const blockContainerFallback = shouldBlockContainerFallbackForUnconfirmed(
+    root,
+    options,
+  );
   const filteredUnconfirmedCount = options?.filterUnconfirmedEnabled
     ? countFilteredUnconfirmedSubtitleRows(root, "#viewSubtit .smi_word")
     : 0;
   const sourceUrl =
-    options?.sourceUrl ?? (typeof window !== "undefined" ? window.location.href : undefined);
+    options?.sourceUrl ??
+    (typeof window !== "undefined" ? window.location.href : undefined);
 
   for (const selector of selectors) {
     if (selector.includes(".smi_word")) {

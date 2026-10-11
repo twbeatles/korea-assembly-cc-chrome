@@ -3,13 +3,14 @@ import {
   DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
   DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
 } from "../../shared/constants";
-import { getSessionCharCount, type SessionState } from "../../core/subtitle-models";
+import {
+  getSessionCharCount,
+  type SessionState,
+} from "../../core/subtitle-models";
 import type { ExtensionSettings } from "../../storage/types";
 
 export type RuntimeSessionSegmentationReason =
-  | "entry_limit"
-  | "char_limit"
-  | "duration_limit";
+  "entry_limit" | "char_limit" | "duration_limit";
 
 export interface RuntimeSessionSegmentationThresholds {
   maxEntriesPerSegment: number;
@@ -17,11 +18,13 @@ export interface RuntimeSessionSegmentationThresholds {
   maxDurationMs: number;
 }
 
-export const DEFAULT_RUNTIME_SESSION_SEGMENTATION_THRESHOLDS: RuntimeSessionSegmentationThresholds = {
-  maxEntriesPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
-  maxCharsPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS,
-  maxDurationMs: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES * 60 * 1000,
-};
+export const DEFAULT_RUNTIME_SESSION_SEGMENTATION_THRESHOLDS: RuntimeSessionSegmentationThresholds =
+  {
+    maxEntriesPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
+    maxCharsPerSegment: DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS,
+    maxDurationMs:
+      DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES * 60 * 1000,
+  };
 
 function resolveSafeThreshold(value: number, fallback: number): number {
   return Number.isFinite(value) && value > 0 ? Math.floor(value) : fallback;
@@ -46,7 +49,9 @@ export function resolveRuntimeSessionSegmentationThresholds(
       resolveSafeThreshold(
         settings.maxSegmentDurationMinutes,
         DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
-      ) * 60 * 1000,
+      ) *
+      60 *
+      1000,
   };
 }
 
@@ -117,7 +122,10 @@ export function resolveSegmentCapacityWarning(
     return null;
   }
 
-  const safeRatio = Number.isFinite(ratio) && ratio > 0 && ratio < 1 ? ratio : SEGMENT_CAPACITY_WARNING_RATIO;
+  const safeRatio =
+    Number.isFinite(ratio) && ratio > 0 && ratio < 1
+      ? ratio
+      : SEGMENT_CAPACITY_WARNING_RATIO;
   const maxEntries = resolveSafeThreshold(
     thresholds.maxEntriesPerSegment,
     DEFAULT_RUNTIME_SESSION_SEGMENTATION_THRESHOLDS.maxEntriesPerSegment,

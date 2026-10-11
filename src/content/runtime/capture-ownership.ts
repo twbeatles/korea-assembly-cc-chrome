@@ -20,7 +20,9 @@ export interface CaptureOwnershipStorage {
   remove: (keys: string | string[]) => Promise<void>;
 }
 
-function isOwnershipSnapshot(value: unknown): value is CaptureOwnershipSnapshot {
+function isOwnershipSnapshot(
+  value: unknown,
+): value is CaptureOwnershipSnapshot {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -86,10 +88,17 @@ export async function claimCaptureOwnership(options: {
   committeeName?: string;
   sessionId?: string;
   now?: number;
-}): Promise<{ foreignActive: boolean; previous: CaptureOwnershipSnapshot | null }> {
+}): Promise<{
+  foreignActive: boolean;
+  previous: CaptureOwnershipSnapshot | null;
+}> {
   const now = options.now ?? Date.now();
   const previous = await readCaptureOwnership(options.storage);
-  const foreignActive = isForeignActiveOwnership(previous, options.ownerId, now);
+  const foreignActive = isForeignActiveOwnership(
+    previous,
+    options.ownerId,
+    now,
+  );
 
   if (!options.storage) {
     return { foreignActive, previous };

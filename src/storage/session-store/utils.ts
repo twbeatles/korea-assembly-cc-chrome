@@ -45,9 +45,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../session-backup";
+import { buildSessionBackupFilename } from "../session-backup";
 import { createRandomToken } from "../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -133,7 +131,9 @@ export function emitLongTaskProgress(
   onProgress?.({ ...progress });
 }
 
-export function createCancelledImportError(summary: SessionImportSummary): Error & {
+export function createCancelledImportError(
+  summary: SessionImportSummary,
+): Error & {
   summary: SessionImportSummary;
 } {
   const error = createAbortError("JSON 가져오기를 취소했습니다.") as Error & {
@@ -144,7 +144,10 @@ export function createCancelledImportError(summary: SessionImportSummary): Error
 }
 
 export function logStoreError(message: string, error?: unknown): void {
-  if (hasExtensionContextInvalidated() || markExtensionContextInvalidated(error)) {
+  if (
+    hasExtensionContextInvalidated() ||
+    markExtensionContextInvalidated(error)
+  ) {
     return;
   }
   console.warn(`[session-store] ${message}`, error);

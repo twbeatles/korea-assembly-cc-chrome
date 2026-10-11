@@ -1,6 +1,10 @@
 import type { LiveCaptureLedger } from "../../../../../core/live-capture";
 import type { SessionState } from "../../../../../core/subtitle-models";
-import type { FallbackCommitState, ObserverBridgeEvent, PersistabilityState } from "../../../../../shared/message-types";
+import type {
+  FallbackCommitState,
+  ObserverBridgeEvent,
+  PersistabilityState,
+} from "../../../../../shared/message-types";
 import type { ExtensionSettings } from "../../../../../storage/types";
 import type { InPagePanelController } from "../../../../inpage-panel";
 import type { FailedStoppedSessionGuard } from "../../../../failed-stopped-session";
@@ -9,12 +13,20 @@ import type { FallbackCommitCandidate, RowDiagnosticsState } from "../../types";
 import type { RuntimeSessionSegmentationReason } from "../../../../runtime/segmentation-policy";
 import { createEmptyLiveCaptureLedger } from "../../../../../core/live-capture";
 import { createEmptySessionState } from "../../../../../core/subtitle-models";
-import { DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS, DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES, DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES, PIPELINE_DEFAULTS } from "../../../../../shared/constants";
+import {
+  DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_CHARS,
+  DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_DURATION_MINUTES,
+  DEFAULT_RUNTIME_SESSION_SEGMENT_MAX_ENTRIES,
+  PIPELINE_DEFAULTS,
+} from "../../../../../shared/constants";
 import { createRandomToken } from "../../../../../shared/random-token";
 import { createEmptyFailedStoppedSessionGuard } from "../../../../failed-stopped-session";
 import { createCaptureLifecycleLock } from "../../../../runtime/capture-lifecycle-lock";
 import { createUrlReconcileController } from "../../../../runtime/url-reconcile";
-import { createObserverBridgeToken, resolveDefaultPanelNotice } from "../helpers";
+import {
+  createObserverBridgeToken,
+  resolveDefaultPanelNotice,
+} from "../helpers";
 
 /**
  * runtime-core 가변 상태 bag. 모듈 레벨 상태 대신 인스턴스별로 소유한다.
@@ -96,10 +108,7 @@ export function createRuntimeCoreContext(): RuntimeCoreContext {
       filterUnconfirmedEnabled: true,
       presets: [],
     },
-    state: createEmptySessionState(
-      window.location.href,
-      document.title,
-    ),
+    state: createEmptySessionState(window.location.href, document.title),
     popupPorts: new Set<chrome.runtime.Port>(),
     diagnosticsPorts: new Set<chrome.runtime.Port>(),
     localPollingTimer: null,

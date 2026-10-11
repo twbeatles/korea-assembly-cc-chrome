@@ -1,4 +1,7 @@
-import { extractTailLines, normalizeSubtitleText } from "../core/text-normalizer";
+import {
+  extractTailLines,
+  normalizeSubtitleText,
+} from "../core/text-normalizer";
 import { PIPELINE_DEFAULTS, isAssemblyPlenaryUrl } from "../shared/constants";
 
 export function normalizeFallbackInternalRaw(
@@ -10,7 +13,9 @@ export function normalizeFallbackInternalRaw(
         sourceUrl?: string;
       } = PIPELINE_DEFAULTS.fallbackInternalRawMaxChars,
 ): string {
-  const raw = String(rawText ?? "").replace(/\r/g, "\n").trim();
+  const raw = String(rawText ?? "")
+    .replace(/\r/g, "\n")
+    .trim();
   if (!raw) {
     return "";
   }
@@ -18,7 +23,7 @@ export function normalizeFallbackInternalRaw(
   const maxChars =
     typeof options === "number"
       ? options
-      : options.maxChars ?? PIPELINE_DEFAULTS.fallbackInternalRawMaxChars;
+      : (options.maxChars ?? PIPELINE_DEFAULTS.fallbackInternalRawMaxChars);
   const preserveFullRaw =
     typeof options === "object" && isAssemblyPlenaryUrl(options.sourceUrl);
 

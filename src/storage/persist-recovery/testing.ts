@@ -1,4 +1,10 @@
-import { EXIT_PERSIST_INDEX_STORAGE_KEY, EXIT_PERSIST_RECORD_PREFIX, PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY, SESSION_DELETED_PREFIX, hasChromeStorageLocal } from "./keys";
+import {
+  EXIT_PERSIST_INDEX_STORAGE_KEY,
+  EXIT_PERSIST_RECORD_PREFIX,
+  PERSIST_REPLAY_DIAGNOSTICS_STORAGE_KEY,
+  SESSION_DELETED_PREFIX,
+  hasChromeStorageLocal,
+} from "./keys";
 import { resetPersistRecoveryMemoryForTests } from "./state";
 
 /** 테스트 전용 상태 초기화 (단일 책임: 테스트 격리). */

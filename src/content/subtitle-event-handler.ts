@@ -23,7 +23,9 @@ export interface StructuredCommitResult {
   sawFiltered: boolean;
 }
 
-export function analyzeCaptureCommit(input: Pick<NormalizedCaptureEvent, "captureMode" | "previewText" | "rows">): CaptureCommitAnalysis {
+export function analyzeCaptureCommit(
+  input: Pick<NormalizedCaptureEvent, "captureMode" | "previewText" | "rows">,
+): CaptureCommitAnalysis {
   if (input.captureMode !== "structured") {
     return {
       previewText: input.previewText,

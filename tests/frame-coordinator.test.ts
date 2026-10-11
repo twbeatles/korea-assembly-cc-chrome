@@ -6,12 +6,19 @@ import {
   resolveForwardedFrameNonceAction,
   resolveTopFallbackDelayMs,
 } from "../src/content/frame-coordinator";
-import { FRAME_FORWARD_SOURCE, OBSERVER_BRIDGE_SOURCE } from "../src/shared/constants";
+import {
+  FRAME_FORWARD_SOURCE,
+  OBSERVER_BRIDGE_SOURCE,
+} from "../src/shared/constants";
 
 describe("frame coordinator", () => {
   it("accepts only matching forwarded frame nonces", () => {
-    expect(resolveForwardedFrameNonceAction("nonce-a", "nonce-a")).toBe("accept");
-    expect(resolveForwardedFrameNonceAction("nonce-a", "nonce-b")).toBe("resync");
+    expect(resolveForwardedFrameNonceAction("nonce-a", "nonce-a")).toBe(
+      "accept",
+    );
+    expect(resolveForwardedFrameNonceAction("nonce-a", "nonce-b")).toBe(
+      "resync",
+    );
     expect(resolveForwardedFrameNonceAction("", "nonce-b")).toBe("resync");
   });
 

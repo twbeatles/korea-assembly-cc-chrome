@@ -9,4 +9,3 @@ createRoot(document.getElementById("root")!).render(
     <PopupApp surface="sidepanel" />
   </React.StrictMode>,
 );
-

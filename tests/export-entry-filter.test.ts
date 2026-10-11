@@ -36,9 +36,9 @@ describe("filterEntriesByTimeRange", () => {
 
   it("supports open-ended ranges", () => {
     expect(
-      filterEntriesByTimeRange(entries, { from: "2026-07-28T02:00:00.000Z" }).map(
-        (item) => item.id,
-      ),
+      filterEntriesByTimeRange(entries, {
+        from: "2026-07-28T02:00:00.000Z",
+      }).map((item) => item.id),
     ).toEqual(["b", "c"]);
     expect(
       filterEntriesByTimeRange(entries, { to: "2026-07-28T01:00:00.000Z" }).map(

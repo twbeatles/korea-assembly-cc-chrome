@@ -25,7 +25,9 @@ function extractErrorMessage(error: unknown): string {
  * 확장이 언로드/업데이트되어 content script 가 더 이상 쓸 수 없는 상태.
  * 이 경우에만 permanent invalidation 을 허용한다.
  */
-function isPermanentInvalidatedExtensionContextMessage(message: string): boolean {
+function isPermanentInvalidatedExtensionContextMessage(
+  message: string,
+): boolean {
   const normalized = message.toLowerCase();
   return (
     message.includes(INVALIDATED_EXTENSION_CONTEXT_MESSAGE) ||
@@ -46,7 +48,9 @@ export function isTransientExtensionMessagingError(error: unknown): boolean {
   return (
     message.includes("Receiving end does not exist") ||
     message.includes("Could not establish connection") ||
-    normalized.includes("the message port closed before a response was received") ||
+    normalized.includes(
+      "the message port closed before a response was received",
+    ) ||
     normalized.includes("message port closed")
   );
 }
@@ -69,7 +73,10 @@ export function markExtensionContextInvalidated(error?: unknown): boolean {
     return true;
   }
 
-  if (typeof error === "undefined" || !isExtensionContextInvalidatedError(error)) {
+  if (
+    typeof error === "undefined" ||
+    !isExtensionContextInvalidatedError(error)
+  ) {
     return false;
   }
 

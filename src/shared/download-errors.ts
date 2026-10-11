@@ -2,7 +2,8 @@ function includesAny(target: string, patterns: string[]): boolean {
   return patterns.some((pattern) => target.includes(pattern));
 }
 
-export type DownloadErrorContext = "generic" | "single-session" | "partial" | "library";
+export type DownloadErrorContext =
+  "generic" | "single-session" | "partial" | "library";
 
 const SELECT_EXPORT_HINT =
   "확장 아이콘 → '저장된 기록' 또는 페이지 패널의 '저장된 기록 보기'에서 항목을 선택해 부분 저장을 시도해 주세요.";

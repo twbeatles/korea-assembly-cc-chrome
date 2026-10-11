@@ -44,9 +44,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../../session-backup";
+import { buildSessionBackupFilename } from "../../session-backup";
 import { createRandomToken } from "../../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -208,7 +206,9 @@ export async function importSessionRecords(
   });
   const existingSessions = await loadSessionsByIds([...importedById.keys()]);
   throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
-  const existingById = new Map(existingSessions.map((session) => [session.id, session]));
+  const existingById = new Map(
+    existingSessions.map((session) => [session.id, session]),
+  );
 
   let addedCount = 0;
   let updatedCount = 0;
@@ -319,7 +319,9 @@ export async function exportSessionLineageData(
 
   const mergedSession = mergeSessionSegments(segments);
   const entries = Array.isArray(options.entryIds)
-    ? mergedSession.entries.filter((entry) => options.entryIds?.includes(entry.id))
+    ? mergedSession.entries.filter((entry) =>
+        options.entryIds?.includes(entry.id),
+      )
     : options.entries;
 
   return createSessionExportPayload({

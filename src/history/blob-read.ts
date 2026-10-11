@@ -13,7 +13,10 @@ function createAbortError(message: string): Error {
   return error;
 }
 
-function throwIfAborted(signal: AbortSignal | undefined, message: string): void {
+function throwIfAborted(
+  signal: AbortSignal | undefined,
+  message: string,
+): void {
   if (signal?.aborted) {
     throw createAbortError(message);
   }

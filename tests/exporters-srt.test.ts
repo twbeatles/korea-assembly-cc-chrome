@@ -32,9 +32,7 @@ describe("SRT exporter", () => {
   it("renders relative SRT cues with 1-based indices", () => {
     const output = exportSrt(session);
 
-    expect(output).toBe(
-      "1\n00:00:01,200 --> 00:00:04,000\n안녕하세요",
-    );
+    expect(output).toBe("1\n00:00:01,200 --> 00:00:04,000\n안녕하세요");
   });
 
   it("prefixes speaker labels when includeSpeaker is enabled", () => {

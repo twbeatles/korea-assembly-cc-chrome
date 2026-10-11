@@ -2,10 +2,12 @@ import type { SessionRecord } from "../../core/subtitle-models";
 import type { ChunkedSessionMetadataRecord } from "./entry-chunks";
 
 export const LEGACY_FALLBACK_STORAGE_KEY = "assembly-subtitle-session-fallback";
-export const FALLBACK_INDEX_STORAGE_KEY = "assembly-subtitle-session-fallback:index";
+export const FALLBACK_INDEX_STORAGE_KEY =
+  "assembly-subtitle-session-fallback:index";
 export const FALLBACK_METADATA_STORAGE_KEY =
   "assembly-subtitle-session-fallback:metadata";
-export const FALLBACK_RECORD_PREFIX = "assembly-subtitle-session-fallback:record:";
+export const FALLBACK_RECORD_PREFIX =
+  "assembly-subtitle-session-fallback:record:";
 
 /** IDB open 일시 실패 후 재시도까지 대기 시간 */
 export const INDEXED_DB_DISABLE_TTL_MS = 30_000;

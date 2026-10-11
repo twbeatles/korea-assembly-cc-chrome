@@ -97,7 +97,11 @@ export function useHistoryTransfer({
   };
 
   const handleCancelLongTask = (): void => {
-    if (!longTaskAbortControllerRef.current || !longTask || longTask.cancelRequested) {
+    if (
+      !longTaskAbortControllerRef.current ||
+      !longTask ||
+      longTask.cancelRequested
+    ) {
       return;
     }
     requestLongTaskCancel();
@@ -130,8 +134,7 @@ export function useHistoryTransfer({
   };
 
   const resolveExportTimeRange = ():
-    | { from?: string; to?: string }
-    | undefined => {
+    { from?: string; to?: string } | undefined => {
     const fromLocal = exportTimeFrom.trim();
     const toLocal = exportTimeTo.trim();
     if (!fromLocal && !toLocal) {
@@ -162,7 +165,11 @@ export function useHistoryTransfer({
     try {
       timeRange = resolveExportTimeRange();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "시간 범위가 올바르지 않습니다.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "시간 범위가 올바르지 않습니다.",
+      );
       return;
     }
 
@@ -223,7 +230,9 @@ export function useHistoryTransfer({
     }
   };
 
-  const handleSplitLineageExport = async (format: ExportFormat): Promise<void> => {
+  const handleSplitLineageExport = async (
+    format: ExportFormat,
+  ): Promise<void> => {
     if (!selectedLineageId || availableLineageSessions.length <= 1) {
       return;
     }
@@ -253,7 +262,9 @@ export function useHistoryTransfer({
         `연속 캡처 ${segments.length}개 세그먼트의 ${getExportFormatLabel(format)} 분할 저장을 시작했습니다.`,
       );
     } catch (error) {
-      setMessage(resolveDownloadErrorMessage(error, "분할 저장을 시작하지 못했습니다."));
+      setMessage(
+        resolveDownloadErrorMessage(error, "분할 저장을 시작하지 못했습니다."),
+      );
     }
   };
 

@@ -50,15 +50,23 @@ export function buildJsonExport(session: SessionRecord): JsonSessionExport {
     note: session.note,
     tags: session.tags ? [...session.tags] : undefined,
     category: session.category,
-    speakerLabels: session.speakerLabels ? { ...session.speakerLabels } : undefined,
-    qualityStats: session.qualityStats ? { ...session.qualityStats } : undefined,
+    speakerLabels: session.speakerLabels
+      ? { ...session.speakerLabels }
+      : undefined,
+    qualityStats: session.qualityStats
+      ? { ...session.qualityStats }
+      : undefined,
     lineageId: resolveSessionLineageId(session.id, session.lineageId),
     segmentNumber: resolveSessionSegmentNumber(session.segmentNumber),
     entries: session.entries.map((entry) => ({
       ...entry,
-      sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
+      sourceFramePath: entry.sourceFramePath
+        ? [...entry.sourceFramePath]
+        : undefined,
       labels: entry.labels ? [...entry.labels] : undefined,
-      sourceEntryIds: entry.sourceEntryIds ? [...entry.sourceEntryIds] : undefined,
+      sourceEntryIds: entry.sourceEntryIds
+        ? [...entry.sourceEntryIds]
+        : undefined,
     })),
   };
 }

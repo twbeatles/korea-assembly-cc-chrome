@@ -15,7 +15,10 @@ import {
   type StoredSessionRecord,
   type SubtitleEntry,
 } from "../../core/subtitle-models";
-import { SESSION_RECORD_VERSION, isSupportedAssemblyUrl } from "../../shared/constants";
+import {
+  SESSION_RECORD_VERSION,
+  isSupportedAssemblyUrl,
+} from "../../shared/constants";
 import type { SessionContentPatch, SessionMetadataPatch } from "../types";
 
 export const SESSION_NOTE_MAX_LENGTH = 4096;
@@ -55,17 +58,25 @@ export function sanitizeSpeakerLabels(value: unknown): SpeakerLabels {
   }
 
   const labels: SpeakerLabels = {};
-  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach((channel) => {
-    const label = (value as Partial<Record<SpeakerChannel, unknown>>)[channel];
-    if (typeof label === "string" && label.trim()) {
-      labels[channel] = label.trim().slice(0, 80);
-    }
-  });
+  (["primary", "secondary", "unknown"] satisfies SpeakerChannel[]).forEach(
+    (channel) => {
+      const label = (value as Partial<Record<SpeakerChannel, unknown>>)[
+        channel
+      ];
+      if (typeof label === "string" && label.trim()) {
+        labels[channel] = label.trim().slice(0, 80);
+      }
+    },
+  );
   return labels;
 }
 
 function isValidIsoDateString(value: unknown): value is string {
-  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    !Number.isNaN(Date.parse(value))
+  );
 }
 
 /** qualityStats 구조 검증. 비정상이면 undefined. */
@@ -102,7 +113,8 @@ export function sanitizeQualityStats(
     entryCount: Math.max(0, Math.floor(entryCount)),
     charCount: Math.max(0, Math.floor(charCount)),
     estimatedBytes: Math.max(0, Math.floor(estimatedBytes)),
-    fallbackOnly: typeof stats.fallbackOnly === "boolean" ? stats.fallbackOnly : undefined,
+    fallbackOnly:
+      typeof stats.fallbackOnly === "boolean" ? stats.fallbackOnly : undefined,
     lastComputedAt,
   };
 }
@@ -150,17 +162,21 @@ export function normalizeSessionRecord(
     session.updatedAt
       ? session.updatedAt
       : now;
-  const starred = typeof session.starred === "boolean" ? session.starred : false;
+  const starred =
+    typeof session.starred === "boolean" ? session.starred : false;
   const pinnedAt =
     starred && typeof session.pinnedAt === "string" && session.pinnedAt
       ? session.pinnedAt
       : starred
         ? updatedAt
         : null;
-  const note = typeof session.note === "string" ? clampSessionNote(session.note) : "";
+  const note =
+    typeof session.note === "string" ? clampSessionNote(session.note) : "";
   const tags = sanitizeStringList(session.tags);
   const category =
-    typeof session.category === "string" ? session.category.trim().slice(0, 120) : "";
+    typeof session.category === "string"
+      ? session.category.trim().slice(0, 120)
+      : "";
   const speakerLabels = sanitizeSpeakerLabels(session.speakerLabels);
   const qualityStats = sanitizeQualityStats(session.qualityStats);
   const lineageId = resolveSessionLineageId(sessionId, session.lineageId);
@@ -173,7 +189,8 @@ export function normalizeSessionRecord(
     title: session.title || "국회 자막 세션",
     committeeName: session.committeeName || "",
     sourceUrl:
-      typeof session.sourceUrl === "string" && isSupportedAssemblyUrl(session.sourceUrl)
+      typeof session.sourceUrl === "string" &&
+      isSupportedAssemblyUrl(session.sourceUrl)
         ? session.sourceUrl
         : "",
     startedAt,
@@ -284,7 +301,10 @@ export function mergeCaptureSnapshotWithStoredEdits(
   existingRecord?: SessionRecord,
 ): SessionRecord {
   const withMetadata = mergeEditableSessionMetadata(record, existingRecord);
-  const entries = mergeCaptureEntriesWithUserEdits(record.entries, existingRecord?.entries);
+  const entries = mergeCaptureEntriesWithUserEdits(
+    record.entries,
+    existingRecord?.entries,
+  );
   return {
     ...withMetadata,
     entries,
@@ -305,8 +325,13 @@ export function applySessionMetadataPatch(
       : (record.pinnedAt ?? updatedAt)
     : null;
   const note =
-    patch.note !== undefined ? clampSessionNote(patch.note) : clampSessionNote(record.note);
-  const tags = patch.tags !== undefined ? sanitizeStringList(patch.tags) : (record.tags ?? []);
+    patch.note !== undefined
+      ? clampSessionNote(patch.note)
+      : clampSessionNote(record.note);
+  const tags =
+    patch.tags !== undefined
+      ? sanitizeStringList(patch.tags)
+      : (record.tags ?? []);
   const category =
     patch.category !== undefined
       ? patch.category.trim().slice(0, 120)
@@ -339,12 +364,18 @@ export function applySessionContentPatch(
   patch: SessionContentPatch,
   updatedAt: string,
 ): SessionRecord {
-  const entries = patch.entries !== undefined ? normalizeEntries(patch.entries) : record.entries;
+  const entries =
+    patch.entries !== undefined
+      ? normalizeEntries(patch.entries)
+      : record.entries;
   return normalizeSessionRecord(
     {
       ...record,
       entries,
-      tags: patch.tags !== undefined ? sanitizeStringList(patch.tags) : (record.tags ?? []),
+      tags:
+        patch.tags !== undefined
+          ? sanitizeStringList(patch.tags)
+          : (record.tags ?? []),
       category:
         patch.category !== undefined
           ? patch.category.trim().slice(0, 120)

@@ -1,6 +1,9 @@
-
-
-import { claimCaptureOwnership, getChromeLocalOwnershipStorage, heartbeatCaptureOwnership, releaseCaptureOwnership } from "../../../../runtime/capture-ownership";
+import {
+  claimCaptureOwnership,
+  getChromeLocalOwnershipStorage,
+  heartbeatCaptureOwnership,
+  releaseCaptureOwnership,
+} from "../../../../runtime/capture-ownership";
 
 import { isTopFrame } from "../../constants";
 
@@ -27,7 +30,9 @@ export function startCaptureOwnershipHeartbeat(ctx: RuntimeCoreContext): void {
   }, 8_000);
 }
 
-export async function claimCaptureOwnershipForStart(ctx: RuntimeCoreContext): Promise<boolean> {
+export async function claimCaptureOwnershipForStart(
+  ctx: RuntimeCoreContext,
+): Promise<boolean> {
   if (!isTopFrame) {
     return false;
   }
@@ -41,7 +46,9 @@ export async function claimCaptureOwnershipForStart(ctx: RuntimeCoreContext): Pr
   return claim.foreignActive;
 }
 
-export async function releaseCaptureOwnershipForStop(ctx: RuntimeCoreContext): Promise<void> {
+export async function releaseCaptureOwnershipForStop(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   clearCaptureOwnershipHeartbeat(ctx);
   if (!isTopFrame) {
     return;

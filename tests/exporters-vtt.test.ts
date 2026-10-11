@@ -32,9 +32,7 @@ describe("VTT exporter", () => {
   it("renders relative WEBVTT output", () => {
     const output = exportVtt(session);
 
-    expect(output).toBe(
-      "WEBVTT\n\n00:00:01.200 --> 00:00:04.000\n안녕하세요",
-    );
+    expect(output).toBe("WEBVTT\n\n00:00:01.200 --> 00:00:04.000\n안녕하세요");
   });
 
   it("prefixes speaker labels when includeSpeaker is enabled", () => {

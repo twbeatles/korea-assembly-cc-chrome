@@ -39,7 +39,10 @@ import {
   SESSION_ENTRY_CHUNK_STORE_NAME,
 } from "../src/storage/session-store/entry-chunks";
 
-function buildSession(id: string, status: SessionRecord["status"]): SessionRecord {
+function buildSession(
+  id: string,
+  status: SessionRecord["status"],
+): SessionRecord {
   return {
     id,
     version: "3",
@@ -68,16 +71,23 @@ function buildSession(id: string, status: SessionRecord["status"]): SessionRecor
   };
 }
 
-function deleteIndexedDbEntryChunk(sessionId: string, chunkIndex: number): Promise<void> {
+function deleteIndexedDbEntryChunk(
+  sessionId: string,
+  chunkIndex: number,
+): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     const request = indexedDB.open(SESSION_DB_NAME);
-    request.onerror = () => reject(request.error ?? new Error("IndexedDB open failed"));
+    request.onerror = () =>
+      reject(request.error ?? new Error("IndexedDB open failed"));
     request.onsuccess = () => {
       const db = request.result;
-      const transaction = db.transaction(SESSION_ENTRY_CHUNK_STORE_NAME, "readwrite");
-      transaction.objectStore(SESSION_ENTRY_CHUNK_STORE_NAME).delete(
-        buildSessionEntryChunkKey(sessionId, chunkIndex),
+      const transaction = db.transaction(
+        SESSION_ENTRY_CHUNK_STORE_NAME,
+        "readwrite",
       );
+      transaction
+        .objectStore(SESSION_ENTRY_CHUNK_STORE_NAME)
+        .delete(buildSessionEntryChunkKey(sessionId, chunkIndex));
       transaction.oncomplete = () => {
         db.close();
         resolve();
@@ -168,7 +178,9 @@ describe("session store", () => {
 
     const segments = await listSessionLineageSegments("lineage_target");
 
-    expect(segments.map((session) => session.id)).toEqual(["session_target_segment"]);
+    expect(segments.map((session) => session.id)).toEqual([
+      "session_target_segment",
+    ]);
     expect(segments[0]?.entries).toHaveLength(1);
   });
 
@@ -191,11 +203,16 @@ describe("session store", () => {
     });
 
     const page = await listSessionLineagesPage({ page: 1, pageSize: 20 });
-    const summary = page.lineages.find((lineage) => lineage.lineageId === "lineage_summary");
+    const summary = page.lineages.find(
+      (lineage) => lineage.lineageId === "lineage_summary",
+    );
 
     expect(summary?.segmentCount).toBe(2);
     expect(summary?.subtitleCount).toBe(2);
-    expect(summary?.sessionIds).toEqual(["lineage_summary_1", "lineage_summary_2"]);
+    expect(summary?.sessionIds).toEqual([
+      "lineage_summary_1",
+      "lineage_summary_2",
+    ]);
     expect(summary?.representativeSession.entries).toEqual([]);
     expect(summary?.representativeSession.subtitleCount).toBe(1);
 
@@ -206,7 +223,9 @@ describe("session store", () => {
     const updatedSegments = await listSessionLineageSegments("lineage_summary");
 
     expect(updatedSegments.every((session) => session.starred)).toBe(true);
-    expect(updatedSegments.every((session) => session.note === "회의 전체 메모")).toBe(true);
+    expect(
+      updatedSegments.every((session) => session.note === "회의 전체 메모"),
+    ).toBe(true);
   });
 
   it("lists fallback lineage summaries without hydrating session bodies", async () => {
@@ -230,7 +249,9 @@ describe("session store", () => {
     }
 
     const page = await listSessionLineagesPage({ page: 1, pageSize: 20 });
-    const summary = page.lineages.find((lineage) => lineage.lineageId === "fallback_lineage");
+    const summary = page.lineages.find(
+      (lineage) => lineage.lineageId === "fallback_lineage",
+    );
 
     expect(summary?.representativeSession.entries).toEqual([]);
     expect(summary?.subtitleCount).toBe(1);
@@ -355,7 +376,9 @@ describe("session store", () => {
     expect(loaded?.note.length).toBe(SESSION_NOTE_MAX_LENGTH);
 
     const overlongPatch = "수".repeat(SESSION_NOTE_MAX_LENGTH + 64);
-    const updated = await updateSessionMetadata(session.id, { note: overlongPatch });
+    const updated = await updateSessionMetadata(session.id, {
+      note: overlongPatch,
+    });
 
     expect(updated.note.length).toBe(SESSION_NOTE_MAX_LENGTH);
   });
@@ -416,7 +439,9 @@ describe("session store", () => {
 
     const loaded = await loadSession(session.id);
     expect(loaded?.starred ?? meta.starred).toBe(true);
-    expect(loaded?.note === "동시 메모" || meta.note === "동시 메모").toBe(true);
+    expect(loaded?.note === "동시 메모" || meta.note === "동시 메모").toBe(
+      true,
+    );
     expect(
       loaded?.entries.some((entry) => entry.text === "편집된 자막") ||
         content.entries.some((entry) => entry.text === "편집된 자막"),
@@ -459,15 +484,23 @@ describe("session store", () => {
       "session_page_3",
       "session_page_2",
     ]);
-    expect(firstPage.sessions.every((session) => session.entries.length === 0)).toBe(true);
+    expect(
+      firstPage.sessions.every((session) => session.entries.length === 0),
+    ).toBe(true);
     expect(firstPage.sessions[0]?.subtitleCount).toBe(1);
     await expect(loadSession("session_page_3")).resolves.toMatchObject({
       id: "session_page_3",
-      entries: expect.arrayContaining([expect.objectContaining({ id: expect.any(String) })]),
+      entries: expect.arrayContaining([
+        expect.objectContaining({ id: expect.any(String) }),
+      ]),
     });
-    expect(secondPage.sessions.map((session) => session.id)).toEqual(["session_page_1"]);
+    expect(secondPage.sessions.map((session) => session.id)).toEqual([
+      "session_page_1",
+    ]);
     expect(starredOnlyPage.totalCount).toBe(1);
-    expect(starredOnlyPage.sessions.map((session) => session.id)).toEqual(["session_page_3"]);
+    expect(starredOnlyPage.sessions.map((session) => session.id)).toEqual([
+      "session_page_3",
+    ]);
   });
 
   it("merges fallback records into paged results without falling back to full IndexedDB records", async () => {
@@ -500,7 +533,9 @@ describe("session store", () => {
       "session_idb_page",
       "session_fallback_page",
     ]);
-    expect(page.sessions.every((session) => session.entries.length === 0)).toBe(true);
+    expect(page.sessions.every((session) => session.entries.length === 0)).toBe(
+      true,
+    );
   });
 
   it("fills default favorite and note fields for imported legacy records", async () => {
@@ -669,14 +704,19 @@ describe("session store", () => {
       const session = buildSession("session_fallback", "saved");
 
       await saveSession(session);
-      await updateRunningSession(buildSession("session_running_fallback", "running"));
+      await updateRunningSession(
+        buildSession("session_running_fallback", "running"),
+      );
 
       const loaded = await loadSession(session.id);
       const listed = await listSessions({ limit: 10 });
 
       expect(loaded?.id).toBe(session.id);
       expect(listed.map((item) => item.id)).toEqual(
-        expect.arrayContaining(["session_fallback", "session_running_fallback"]),
+        expect.arrayContaining([
+          "session_fallback",
+          "session_running_fallback",
+        ]),
       );
 
       await deleteSession(session.id);
@@ -746,9 +786,9 @@ describe("session store", () => {
     });
 
     try {
-      await expect(saveSession(buildSession("session_invalidated_fallback", "saved"))).rejects.toThrow(
-        "Extension context invalidated",
-      );
+      await expect(
+        saveSession(buildSession("session_invalidated_fallback", "saved")),
+      ).rejects.toThrow("Extension context invalidated");
     } finally {
       Object.defineProperty(globalThis, "indexedDB", {
         configurable: true,
@@ -788,12 +828,14 @@ describe("session store", () => {
         },
       },
     });
-    markExtensionContextInvalidated(new Error("Extension context invalidated."));
+    markExtensionContextInvalidated(
+      new Error("Extension context invalidated."),
+    );
 
     try {
-      await expect(saveSession(buildSession("session_known_invalidated", "saved"))).rejects.toThrow(
-        "Extension context invalidated",
-      );
+      await expect(
+        saveSession(buildSession("session_known_invalidated", "saved")),
+      ).rejects.toThrow("Extension context invalidated");
       expect(storageGet).not.toHaveBeenCalled();
       expect(storageSet).not.toHaveBeenCalled();
       expect(storageRemove).not.toHaveBeenCalled();
@@ -1086,7 +1128,9 @@ describe("session store", () => {
     const listed = await listSessions({ limit: 10 });
 
     expect(loaded?.title).toBe("최신 fallback 제목");
-    expect(listed.find((item) => item.id === "session_union")?.title).toBe("최신 fallback 제목");
+    expect(listed.find((item) => item.id === "session_union")?.title).toBe(
+      "최신 fallback 제목",
+    );
   });
 
   it("keeps IndexedDB usable after a transient write failure and heals fallback on later success", async () => {
@@ -1125,16 +1169,15 @@ describe("session store", () => {
 
   it("falls back during import when a transient IndexedDB write fails", async () => {
     const originalPut = IDBObjectStore.prototype.put;
-    const putSpy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(function (
-      this: IDBObjectStore,
-      value,
-    ) {
-      const record = value as SessionRecord;
-      if (record.id === "session_import_fail") {
-        throw new Error("Intentional import failure");
-      }
-      return originalPut.call(this, value);
-    });
+    const putSpy = vi
+      .spyOn(IDBObjectStore.prototype, "put")
+      .mockImplementation(function (this: IDBObjectStore, value) {
+        const record = value as SessionRecord;
+        if (record.id === "session_import_fail") {
+          throw new Error("Intentional import failure");
+        }
+        return originalPut.call(this, value);
+      });
 
     const summary = await importSessionRecords([
       buildSession("session_import_ok", "saved"),
@@ -1149,15 +1192,22 @@ describe("session store", () => {
       keptCount: 0,
       failedCount: 0,
     });
-    expect((await loadSession("session_import_ok"))?.id).toBe("session_import_ok");
-    expect((await loadSession("session_import_fail"))?.id).toBe("session_import_fail");
+    expect((await loadSession("session_import_ok"))?.id).toBe(
+      "session_import_ok",
+    );
+    expect((await loadSession("session_import_fail"))?.id).toBe(
+      "session_import_fail",
+    );
   });
 
   it("loads only the requested session ids through the targeted helper", async () => {
     await saveSession(buildSession("session_existing_a", "saved"));
     await saveSession(buildSession("session_existing_b", "saved"));
 
-    const loaded = await loadSessionsByIds(["session_existing_a", "session_missing"]);
+    const loaded = await loadSessionsByIds([
+      "session_existing_a",
+      "session_missing",
+    ]);
 
     expect(loaded.map((session) => session.id)).toEqual(["session_existing_a"]);
   });
@@ -1249,7 +1299,8 @@ describe("session store", () => {
 
   it("reports import progress and returns a partial summary when cancelled mid-write", async () => {
     const controller = new AbortController();
-    const progress: Array<{ phase: string; completed: number; total: number }> = [];
+    const progress: Array<{ phase: string; completed: number; total: number }> =
+      [];
 
     let cancelledError: unknown;
     try {
@@ -1295,8 +1346,12 @@ describe("session store", () => {
         { phase: "write", completed: 1, total: 2 },
       ]),
     );
-    expect((await loadSession("session_import_cancel_a"))?.id).toBe("session_import_cancel_a");
-    await expect(loadSession("session_import_cancel_b")).resolves.toBeUndefined();
+    expect((await loadSession("session_import_cancel_a"))?.id).toBe(
+      "session_import_cancel_a",
+    );
+    await expect(
+      loadSession("session_import_cancel_b"),
+    ).resolves.toBeUndefined();
   });
 
   it("exports selected entries without changing session-relative SRT timestamps", async () => {
@@ -1333,7 +1388,9 @@ describe("session store", () => {
       entries: [session.entries[1]],
     });
 
-    expect(payload.content).toBe("1\n00:00:05,000 --> 00:00:06,000\n두 번째 자막");
+    expect(payload.content).toBe(
+      "1\n00:00:05,000 --> 00:00:06,000\n두 번째 자막",
+    );
   });
 
   it("closes running sessions across IndexedDB and fallback backends with unique counting", async () => {
@@ -1346,7 +1403,9 @@ describe("session store", () => {
     });
 
     try {
-      await updateRunningSession(buildSession("session_fallback_only", "running"));
+      await updateRunningSession(
+        buildSession("session_fallback_only", "running"),
+      );
       await updateRunningSession(buildSession("session_shared", "running"));
     } finally {
       Object.defineProperty(globalThis, "indexedDB", {
@@ -1373,7 +1432,9 @@ describe("session store", () => {
     });
 
     try {
-      expect((await loadSession("session_fallback_only"))?.status).toBe("stopped");
+      expect((await loadSession("session_fallback_only"))?.status).toBe(
+        "stopped",
+      );
       await expect(loadSession("session_shared")).resolves.toBeUndefined();
     } finally {
       Object.defineProperty(globalThis, "indexedDB", {
@@ -1386,9 +1447,11 @@ describe("session store", () => {
   it("reports startup cleanup failures when IndexedDB running-session writes fail", async () => {
     await updateRunningSession(buildSession("session_cleanup_fail", "running"));
 
-    const putSpy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementationOnce(() => {
-      throw new Error("Intentional cleanup write failure");
-    });
+    const putSpy = vi
+      .spyOn(IDBObjectStore.prototype, "put")
+      .mockImplementationOnce(() => {
+        throw new Error("Intentional cleanup write failure");
+      });
     const summary = await closeRunningSessionsOnStartup();
     putSpy.mockRestore();
 
@@ -1430,19 +1493,24 @@ describe("session store", () => {
     await saveSession(buildSession("session_backup_b", "saved"));
 
     const backup = await buildSessionLibraryBackupExport();
-    const parsed = JSON.parse(backup.payload.content) as { sessions: SessionRecord[] };
+    const parsed = JSON.parse(backup.payload.content) as {
+      sessions: SessionRecord[];
+    };
 
     expect(backup.sessionCount).toBe(2);
     expect(backup.payload.filename.endsWith(".json")).toBe(true);
     expect(parsed.sessions).toHaveLength(2);
-    expect(parsed.sessions.every((session) => session.entries.length > 0)).toBe(true);
+    expect(parsed.sessions.every((session) => session.entries.length > 0)).toBe(
+      true,
+    );
   });
 
   it("reports backup progress and honors cancellation during page-wise packaging", async () => {
     await saveSession(buildSession("session_backup_progress_a", "saved"));
     await saveSession(buildSession("session_backup_progress_b", "saved"));
 
-    const progress: Array<{ phase: string; completed: number; total: number }> = [];
+    const progress: Array<{ phase: string; completed: number; total: number }> =
+      [];
     const controller = new AbortController();
 
     await expect(
@@ -1478,7 +1546,8 @@ describe("session store", () => {
     await saveSession(buildSession("session_backup_package_a", "saved"));
     await saveSession(buildSession("session_backup_package_b", "saved"));
 
-    const progress: Array<{ phase: string; completed: number; total: number }> = [];
+    const progress: Array<{ phase: string; completed: number; total: number }> =
+      [];
     const controller = new AbortController();
 
     await expect(
@@ -1512,7 +1581,9 @@ describe("session store", () => {
   it("fails fast when a full-library backup exceeds 25 MiB", async () => {
     // 단일 entry 텍스트는 저장 sanitize 상한이 있어, 다수 entry로 25 MiB를 넘긴다.
     const chunkText = "a".repeat(40_000);
-    const entryCount = Math.ceil((SESSION_LIBRARY_TRANSFER_LIMIT_BYTES + 1024) / chunkText.length);
+    const entryCount = Math.ceil(
+      (SESSION_LIBRARY_TRANSFER_LIMIT_BYTES + 1024) / chunkText.length,
+    );
     const entries = Array.from({ length: entryCount }, (_, index) => ({
       id: `session_backup_oversized_entry_${index}`,
       text: chunkText,
@@ -1562,7 +1633,9 @@ describe("session store", () => {
     });
 
     try {
-      await expect(loadSession("session_fallback_saved")).resolves.toBeUndefined();
+      await expect(
+        loadSession("session_fallback_saved"),
+      ).resolves.toBeUndefined();
     } finally {
       Object.defineProperty(globalThis, "indexedDB", {
         configurable: true,
@@ -1684,7 +1757,9 @@ describe("session store", () => {
   });
 
   it("keeps History row edits when the next running autosave adds a new entry", async () => {
-    const original = await updateRunningSession(buildSession("session_overlay_autosave", "running"));
+    const original = await updateRunningSession(
+      buildSession("session_overlay_autosave", "running"),
+    );
     await updateSessionContent(original.id, {
       entries: [
         {
@@ -1730,13 +1805,17 @@ describe("session store", () => {
   });
 
   it("rejects structural entry edits while a session is still being captured", async () => {
-    const original = await updateRunningSession(buildSession("session_live_structural", "running"));
+    const original = await updateRunningSession(
+      buildSession("session_live_structural", "running"),
+    );
 
     await expect(
       updateSessionContent(original.id, {
         entries: [],
       }),
-    ).rejects.toThrow("수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.");
+    ).rejects.toThrow(
+      "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.",
+    );
 
     const overlay = await updateSessionContent(original.id, {
       entries: [
@@ -1843,9 +1922,11 @@ describe("session store", () => {
       });
     }
 
-    const clearSpy = vi.spyOn(IDBObjectStore.prototype, "clear").mockImplementationOnce(() => {
-      throw new Error("Intentional clear failure");
-    });
+    const clearSpy = vi
+      .spyOn(IDBObjectStore.prototype, "clear")
+      .mockImplementationOnce(() => {
+        throw new Error("Intentional clear failure");
+      });
 
     await expect(deleteAllSessions()).rejects.toThrow("IndexedDB 정리 실패:");
     clearSpy.mockRestore();
@@ -1856,7 +1937,9 @@ describe("session store", () => {
     });
 
     try {
-      await expect(loadSession("session_fallback_saved")).resolves.toBeUndefined();
+      await expect(
+        loadSession("session_fallback_saved"),
+      ).resolves.toBeUndefined();
     } finally {
       Object.defineProperty(globalThis, "indexedDB", {
         configurable: true,

@@ -64,7 +64,9 @@ describe("subtitle row helpers", () => {
       if (id === "spk_b") {
         return "rgb(30, 30, 30)";
       }
-      const inline = String((element as HTMLElement).style?.color || "").toLowerCase();
+      const inline = String(
+        (element as HTMLElement).style?.color || "",
+      ).toLowerCase();
       if (inline.includes("35, 124, 147") || inline.includes("#237c93")) {
         return "rgb(35, 124, 147)";
       }

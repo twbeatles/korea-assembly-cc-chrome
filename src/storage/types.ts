@@ -125,13 +125,7 @@ export interface SessionContentPatch {
 }
 
 export interface SessionSearchHit {
-  field:
-    | "title"
-    | "committeeName"
-    | "note"
-    | "tag"
-    | "category"
-    | "entry";
+  field: "title" | "committeeName" | "note" | "tag" | "category" | "entry";
   entryId?: string;
   text: string;
 }
@@ -262,7 +256,9 @@ export interface SessionStoreApi {
   listSessionLineagesPage: (
     options: SessionPageOptions,
   ) => Promise<SessionLineagePageResult>;
-  getSessionLibraryOverview: (previewLimit?: number) => Promise<SessionLibraryOverview>;
+  getSessionLibraryOverview: (
+    previewLimit?: number,
+  ) => Promise<SessionLibraryOverview>;
   buildSessionLibraryBackupExport: (
     options?: BuildSessionLibraryBackupExportOptions,
   ) => Promise<LibraryBackupExport>;

@@ -15,7 +15,9 @@ describe("random-token", () => {
     vi.stubGlobal("crypto", {
       randomUUID: () => fakeUuid,
       getRandomValues: () => {
-        throw new Error("getRandomValues should not be called when randomUUID exists");
+        throw new Error(
+          "getRandomValues should not be called when randomUUID exists",
+        );
       },
     });
 

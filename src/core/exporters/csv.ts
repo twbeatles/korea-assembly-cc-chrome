@@ -12,7 +12,9 @@ function escapeCsv(value: string | boolean): string {
 }
 
 function neutralizeSpreadsheetFormula(value: string): string {
-  return DANGEROUS_SPREADSHEET_PREFIX.test(value.trimStart()) ? `'${value}` : value;
+  return DANGEROUS_SPREADSHEET_PREFIX.test(value.trimStart())
+    ? `'${value}`
+    : value;
 }
 
 /**
@@ -28,7 +30,15 @@ export function exportCsv(
   // 기본 off — 옵션/패널 토글 on 일 때만 speaker 열 포함
   const includeSpeaker = options.includeSpeaker === true;
   const header = includeSpeaker
-    ? ["startTime", "endTime", "speaker", "text", "highlighted", "note", "labels"]
+    ? [
+        "startTime",
+        "endTime",
+        "speaker",
+        "text",
+        "highlighted",
+        "note",
+        "labels",
+      ]
     : ["startTime", "endTime", "text", "highlighted", "note", "labels"];
   const rows = [
     header,
@@ -60,4 +70,3 @@ export function exportCsv(
   const body = `${rows.map((row) => row.map(escapeCsv).join(",")).join("\r\n")}\r\n`;
   return `${UTF8_BOM}${body}`;
 }
-

@@ -28,13 +28,13 @@ describe("speaker-label helpers", () => {
       "발언자 A",
     );
     expect(
-      resolveSpeakerLabelForOutput(
-        { speakerChannel: "unknown" },
-        null,
-        { unknownLabel: "알 수 없음" },
-      ),
+      resolveSpeakerLabelForOutput({ speakerChannel: "unknown" }, null, {
+        unknownLabel: "알 수 없음",
+      }),
     ).toBe("알 수 없음");
-    expect(resolveSpeakerLabelForOutput({ speakerChannel: "unknown" })).toBe("");
+    expect(resolveSpeakerLabelForOutput({ speakerChannel: "unknown" })).toBe(
+      "",
+    );
   });
 
   it("formats badge and accent colors", () => {

@@ -1,23 +1,38 @@
-
-
-import { OBSERVER_ACTIVATE_EVENT, OBSERVER_CONFIG_EVENT, SUBTITLE_SELECTOR_CANDIDATES } from "../../../../../shared/constants";
+import {
+  OBSERVER_ACTIVATE_EVENT,
+  OBSERVER_CONFIG_EVENT,
+  SUBTITLE_SELECTOR_CANDIDATES,
+} from "../../../../../shared/constants";
 
 import { sendRuntimeMessage } from "../../../../../shared/chrome-api";
 
 import { isExtensionContextInvalidatedError } from "../../../../../shared/extension-context";
 
-import { tryDomSubtitleActivation, waitForSubtitleLayer } from "../../../../subtitle-layer";
+import {
+  tryDomSubtitleActivation,
+  waitForSubtitleLayer,
+} from "../../../../subtitle-layer";
 
-import { FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS, INVALIDATED_CONTEXT_NOTICE, injectedScriptId, isTopFrame } from "../../constants";
+import {
+  FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS,
+  INVALIDATED_CONTEXT_NOTICE,
+  injectedScriptId,
+  isTopFrame,
+} from "../../constants";
 
 import { isCapturePage, createObserverBridgeToken } from "../helpers";
 import type { RuntimeCoreContext } from "./context";
 import { clearFrameForwardNonceRefresh } from "./timers";
 import { logDebug, reportRuntimeError } from "./notices";
-import { getEffectivePollingIntervalMs, scheduleTopFrameFallbackTick } from "./polling";
+import {
+  getEffectivePollingIntervalMs,
+  scheduleTopFrameFallbackTick,
+} from "./polling";
 
 /** observer 주입·자막 레이어 활성화·프레임 nonce (단일 책임: page world 연결). */
-export async function refreshFrameForwardNonce(ctx: RuntimeCoreContext): Promise<void> {
+export async function refreshFrameForwardNonce(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   const response = await sendRuntimeMessage({
     type: "GET_FRAME_FORWARD_NONCE",
   });
@@ -29,7 +44,10 @@ export async function refreshFrameForwardNonce(ctx: RuntimeCoreContext): Promise
   ctx.frameForwardNonce = response.nonce;
 }
 
-export function requestFrameForwardNonceResync(ctx: RuntimeCoreContext, quiet = true): void {
+export function requestFrameForwardNonceResync(
+  ctx: RuntimeCoreContext,
+  quiet = true,
+): void {
   if (ctx.extensionContextInvalidated || ctx.frameForwardNonceRefreshInFlight) {
     return;
   }
@@ -43,7 +61,8 @@ export function requestFrameForwardNonceResync(ctx: RuntimeCoreContext, quiet = 
       }
 
       if (!quiet) {
-        reportRuntimeError(ctx, 
+        reportRuntimeError(
+          ctx,
           "프레임 전달 보안 토큰을 다시 확인하지 못했습니다.",
           error,
         );
@@ -67,11 +86,15 @@ export function startFrameForwardNonceRefresh(ctx: RuntimeCoreContext): void {
   }, FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS);
 }
 
-export async function ensureFrameForwardNonce(ctx: RuntimeCoreContext): Promise<void> {
+export async function ensureFrameForwardNonce(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   await refreshFrameForwardNonce(ctx);
 }
 
-export function triggerImmediateTopFallbackProbe(ctx: RuntimeCoreContext): void {
+export function triggerImmediateTopFallbackProbe(
+  ctx: RuntimeCoreContext,
+): void {
   if (!isTopFrame || ctx.extensionContextInvalidated) {
     return;
   }
@@ -107,7 +130,9 @@ export function requestSubtitleLayerActivation(ctx: RuntimeCoreContext): void {
   window.dispatchEvent(new CustomEvent(OBSERVER_ACTIVATE_EVENT));
 }
 
-export async function ensureSubtitleLayerActive(ctx: RuntimeCoreContext): Promise<boolean> {
+export async function ensureSubtitleLayerActive(
+  ctx: RuntimeCoreContext,
+): Promise<boolean> {
   requestSubtitleLayerActivation(ctx);
   const layer = await waitForSubtitleLayer({
     timeoutMs: Math.max(1200, getEffectivePollingIntervalMs(ctx) * 10),
@@ -116,7 +141,9 @@ export async function ensureSubtitleLayerActive(ctx: RuntimeCoreContext): Promis
   return layer.visible && (layer.hasText || layer.controlActive);
 }
 
-export async function injectObserverScript(ctx: RuntimeCoreContext): Promise<void> {
+export async function injectObserverScript(
+  ctx: RuntimeCoreContext,
+): Promise<void> {
   if (document.getElementById(injectedScriptId)) {
     dispatchObserverConfig(ctx);
     return;

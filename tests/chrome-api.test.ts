@@ -49,16 +49,28 @@ describe("chrome api helpers", () => {
           onMessage: runtimeOnMessage,
         },
         tabs: {
-          sendMessage: vi.fn((_tabId, _message, callback) => callback({ ok: true })),
+          sendMessage: vi.fn((_tabId, _message, callback) =>
+            callback({ ok: true }),
+          ),
           query: vi.fn((queryInfo, callback) => {
             if (queryInfo.active) {
-              callback([{ id: 7, url: "https://assembly.webcast.go.kr/main/player.asp" }]);
+              callback([
+                {
+                  id: 7,
+                  url: "https://assembly.webcast.go.kr/main/player.asp",
+                },
+              ]);
               return;
             }
-            callback([{ id: 7, url: "https://assembly.webcast.go.kr/main/player.asp" }]);
+            callback([
+              { id: 7, url: "https://assembly.webcast.go.kr/main/player.asp" },
+            ]);
           }),
           get: vi.fn((_tabId, callback) =>
-            callback({ id: 7, url: "https://assembly.webcast.go.kr/main/player.asp" }),
+            callback({
+              id: 7,
+              url: "https://assembly.webcast.go.kr/main/player.asp",
+            }),
           ),
           connect: vi.fn(() => ({ name: "assembly-subtitle-popup" })),
           create: vi.fn(({ url }, callback) => callback({ id: 8, url })),
@@ -83,8 +95,12 @@ describe("chrome api helpers", () => {
   });
 
   it("wraps callback-based runtime and tab APIs in promises", async () => {
-    await expect(sendRuntimeMessage({ type: "OPEN_HISTORY_PAGE" })).resolves.toEqual({ ok: true });
-    await expect(sendTabMessage(7, { type: "PING" })).resolves.toEqual({ ok: true });
+    await expect(
+      sendRuntimeMessage({ type: "OPEN_HISTORY_PAGE" }),
+    ).resolves.toEqual({ ok: true });
+    await expect(sendTabMessage(7, { type: "PING" })).resolves.toEqual({
+      ok: true,
+    });
     await expect(queryActiveTab()).resolves.toMatchObject({ id: 7 });
     await expect(queryTabs({ currentWindow: true })).resolves.toHaveLength(1);
     await expect(getTab(7)).resolves.toMatchObject({ id: 7 });
@@ -113,7 +129,9 @@ describe("chrome api helpers", () => {
     expect(tabsOnActivated.addListener).toHaveBeenCalledWith(activatedListener);
     expect(tabsOnUpdated.addListener).toHaveBeenCalledWith(updatedListener);
     expect(tabsOnRemoved.addListener).toHaveBeenCalledWith(removedListener);
-    expect(tabsOnActivated.removeListener).toHaveBeenCalledWith(activatedListener);
+    expect(tabsOnActivated.removeListener).toHaveBeenCalledWith(
+      activatedListener,
+    );
     expect(tabsOnUpdated.removeListener).toHaveBeenCalledWith(updatedListener);
     expect(tabsOnRemoved.removeListener).toHaveBeenCalledWith(removedListener);
   });

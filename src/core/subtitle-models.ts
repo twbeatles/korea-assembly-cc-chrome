@@ -66,12 +66,24 @@ export interface SessionRecord {
 
 export type StoredSessionRecord = Omit<
   SessionRecord,
-  "starred" | "pinnedAt" | "note" | "tags" | "category" | "speakerLabels" | "qualityStats"
+  | "starred"
+  | "pinnedAt"
+  | "note"
+  | "tags"
+  | "category"
+  | "speakerLabels"
+  | "qualityStats"
 > &
   Partial<
     Pick<
       SessionRecord,
-      "starred" | "pinnedAt" | "note" | "tags" | "category" | "speakerLabels" | "qualityStats"
+      | "starred"
+      | "pinnedAt"
+      | "note"
+      | "tags"
+      | "category"
+      | "speakerLabels"
+      | "qualityStats"
     >
   >;
 
@@ -138,9 +150,13 @@ export function resolveSessionSegmentNumber(
 export function cloneEntry(entry: SubtitleEntry): SubtitleEntry {
   return {
     ...entry,
-    sourceFramePath: entry.sourceFramePath ? [...entry.sourceFramePath] : undefined,
+    sourceFramePath: entry.sourceFramePath
+      ? [...entry.sourceFramePath]
+      : undefined,
     labels: entry.labels ? [...entry.labels] : undefined,
-    sourceEntryIds: entry.sourceEntryIds ? [...entry.sourceEntryIds] : undefined,
+    sourceEntryIds: entry.sourceEntryIds
+      ? [...entry.sourceEntryIds]
+      : undefined,
   };
 }
 
@@ -150,7 +166,9 @@ export function cloneSessionRecord(record: SessionRecord): SessionRecord {
     pinnedAt: record.pinnedAt,
     note: record.note,
     tags: record.tags ? [...record.tags] : undefined,
-    speakerLabels: record.speakerLabels ? { ...record.speakerLabels } : undefined,
+    speakerLabels: record.speakerLabels
+      ? { ...record.speakerLabels }
+      : undefined,
     qualityStats: record.qualityStats ? { ...record.qualityStats } : undefined,
     entries: record.entries.map(cloneEntry),
   };
@@ -223,10 +241,12 @@ export function toSessionRecord(
   state: SessionState,
   persistedStatus: PersistedSessionStatus,
 ): SessionRecord {
-  const createdAt = state.createdAt ?? state.startedAt ?? new Date().toISOString();
+  const createdAt =
+    state.createdAt ?? state.startedAt ?? new Date().toISOString();
   const startedAt = state.startedAt ?? createdAt;
   const updatedAt = state.updatedAt ?? new Date().toISOString();
-  const endedAt = state.endedAt ?? (persistedStatus === "running" ? null : updatedAt);
+  const endedAt =
+    state.endedAt ?? (persistedStatus === "running" ? null : updatedAt);
   const entries = state.entries.map(cloneEntry);
 
   return {

@@ -40,5 +40,8 @@ export function resolvePanelLiveRows(input: {
   void input.structuredRows;
   void input.captureMode;
   void input.sourceUrl;
-  return buildCommittedEntryLiveRows(input.entries, PIPELINE_DEFAULTS.liveLedgerMaxRows);
+  return buildCommittedEntryLiveRows(
+    input.entries,
+    PIPELINE_DEFAULTS.liveLedgerMaxRows,
+  );
 }

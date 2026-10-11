@@ -45,9 +45,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../../session-backup";
+import { buildSessionBackupFilename } from "../../session-backup";
 import { createRandomToken } from "../../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -167,19 +165,26 @@ export async function deleteSession(id: string): Promise<void> {
   await markSessionDeleted(id);
 
   const indexedDbResult = await tryIndexedDb(async () => {
-    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
-      const record = (await withRequest(sessionStore.get(id))) as IndexedDbSessionRecord | undefined;
-      const chunkCount =
-        typeof record?.entryChunkCount === "number" && record.entryChunkCount >= 0
-          ? record.entryChunkCount
-          : 0;
-      await Promise.all([
-        withRequest(sessionStore.delete(id)),
-        ...Array.from({ length: chunkCount }, (_value, index) =>
-          withRequest(chunkStore.delete(buildSessionEntryChunkKey(id, index))),
-        ),
-      ]);
-    });
+    await withSessionStoresTransaction(
+      "readwrite",
+      async ({ sessionStore, chunkStore }) => {
+        const record = (await withRequest(sessionStore.get(id))) as
+          IndexedDbSessionRecord | undefined;
+        const chunkCount =
+          typeof record?.entryChunkCount === "number" &&
+          record.entryChunkCount >= 0
+            ? record.entryChunkCount
+            : 0;
+        await Promise.all([
+          withRequest(sessionStore.delete(id)),
+          ...Array.from({ length: chunkCount }, (_value, index) =>
+            withRequest(
+              chunkStore.delete(buildSessionEntryChunkKey(id, index)),
+            ),
+          ),
+        ]);
+      },
+    );
     return true;
   });
 
@@ -212,12 +217,15 @@ export async function deleteAllSessions(): Promise<void> {
   const errors: string[] = [];
   let clearedAnyStore = false;
   const indexedDbResult = await tryIndexedDb(async () => {
-    await withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
-      await Promise.all([
-        withRequest(sessionStore.clear()),
-        withRequest(chunkStore.clear()),
-      ]);
-    });
+    await withSessionStoresTransaction(
+      "readwrite",
+      async ({ sessionStore, chunkStore }) => {
+        await Promise.all([
+          withRequest(sessionStore.clear()),
+          withRequest(chunkStore.clear()),
+        ]);
+      },
+    );
     return true;
   });
 
@@ -253,7 +261,9 @@ export async function deleteAllSessions(): Promise<void> {
     await bumpSessionLibraryRevision();
   }
   if (errors.length > 0) {
-    const partialSuccessLabel = clearedAnyStore ? " 다른 저장소 정리는 완료했습니다." : "";
+    const partialSuccessLabel = clearedAnyStore
+      ? " 다른 저장소 정리는 완료했습니다."
+      : "";
     throw new Error(`${errors.join(" / ")}.${partialSuccessLabel}`);
   }
 }

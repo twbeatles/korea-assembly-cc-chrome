@@ -438,9 +438,17 @@ export function SettingsView(props: {
 
       <footer className="actions settings-actions">
         <p className="settings-save-status" role="status" aria-live="polite">
-          {isSaving ? "설정을 저장하고 있습니다." : isDirty ? "저장하지 않은 변경사항이 있습니다." : "모든 변경사항이 저장되었습니다."}
+          {isSaving
+            ? "설정을 저장하고 있습니다."
+            : isDirty
+              ? "저장하지 않은 변경사항이 있습니다."
+              : "모든 변경사항이 저장되었습니다."}
         </p>
-        <button type="button" onClick={handleSave} disabled={hasFieldErrors || isSaving || !isDirty}>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={hasFieldErrors || isSaving || !isDirty}
+        >
           {isSaving ? "저장 중…" : "저장"}
         </button>
         <button className="secondary" type="button" onClick={handleReset}>

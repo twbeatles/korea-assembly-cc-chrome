@@ -13,9 +13,13 @@ describe("dom probe unconfirmed filtering", () => {
       </div>
     `;
 
-    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
-      filterUnconfirmedEnabled: true,
-    });
+    const result = readSubtitleTextBySelectors(
+      document,
+      ["#viewSubtit .incont"],
+      {
+        filterUnconfirmedEnabled: true,
+      },
+    );
 
     expect(result.found).toBe(false);
     expect(result.text).toBe("");
@@ -32,10 +36,14 @@ describe("dom probe unconfirmed filtering", () => {
       </div>
     `;
 
-    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
-      filterUnconfirmedEnabled: true,
-      allowUnconfirmedContainerFallback: true,
-    });
+    const result = readSubtitleTextBySelectors(
+      document,
+      ["#viewSubtit .incont"],
+      {
+        filterUnconfirmedEnabled: true,
+        allowUnconfirmedContainerFallback: true,
+      },
+    );
 
     expect(result.found).toBe(true);
     expect(result.matchedSelector).toBe("#viewSubtit .incont");
@@ -53,9 +61,13 @@ describe("dom probe unconfirmed filtering", () => {
       </div>
     `;
 
-    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
-      filterUnconfirmedEnabled: false,
-    });
+    const result = readSubtitleTextBySelectors(
+      document,
+      ["#viewSubtit .incont"],
+      {
+        filterUnconfirmedEnabled: false,
+      },
+    );
 
     expect(result.found).toBe(true);
     expect(result.matchedSelector).toBe("#viewSubtit .incont");
@@ -73,9 +85,13 @@ describe("dom probe unconfirmed filtering", () => {
       </div>
     `;
 
-    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
-      filterUnconfirmedEnabled: true,
-    });
+    const result = readSubtitleTextBySelectors(
+      document,
+      ["#viewSubtit .incont"],
+      {
+        filterUnconfirmedEnabled: true,
+      },
+    );
 
     expect(result.found).toBe(false);
     expect(result.text).toBe("");
@@ -85,7 +101,8 @@ describe("dom probe unconfirmed filtering", () => {
   it("keeps the full accumulated realtime content on plenary pages", () => {
     const longLines = Array.from(
       { length: 12 },
-      (_, index) => `[P${String(index + 1).padStart(2, "0")}] 본회의 누적 문장 ${"가".repeat(32)}`,
+      (_, index) =>
+        `[P${String(index + 1).padStart(2, "0")}] 본회의 누적 문장 ${"가".repeat(32)}`,
     );
     document.body.innerHTML = `
       <div id="viewSubtit">
@@ -93,11 +110,15 @@ describe("dom probe unconfirmed filtering", () => {
       </div>
     `;
 
-    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
-      filterUnconfirmedEnabled: false,
-      sourceUrl:
-        "https://assembly.webcast.go.kr/main/player.asp?xcode=10&xcgcd=DCM000010224330202",
-    });
+    const result = readSubtitleTextBySelectors(
+      document,
+      ["#viewSubtit .incont"],
+      {
+        filterUnconfirmedEnabled: false,
+        sourceUrl:
+          "https://assembly.webcast.go.kr/main/player.asp?xcode=10&xcgcd=DCM000010224330202",
+      },
+    );
 
     expect(result.found).toBe(true);
     expect(result.text).toContain(longLines[0]);
@@ -107,7 +128,8 @@ describe("dom probe unconfirmed filtering", () => {
   it("keeps long container fallback text for internal reconciliation on committee pages", () => {
     const longLines = Array.from(
       { length: 12 },
-      (_, index) => `[C${String(index + 1).padStart(2, "0")}] 위원회 문장 ${"나".repeat(32)}`,
+      (_, index) =>
+        `[C${String(index + 1).padStart(2, "0")}] 위원회 문장 ${"나".repeat(32)}`,
     );
     document.body.innerHTML = `
       <div id="viewSubtit">
@@ -115,11 +137,15 @@ describe("dom probe unconfirmed filtering", () => {
       </div>
     `;
 
-    const result = readSubtitleTextBySelectors(document, ["#viewSubtit .incont"], {
-      filterUnconfirmedEnabled: false,
-      sourceUrl:
-        "https://assembly.webcast.go.kr/main/player.asp?xcode=25&xcgcd=DCM000025224330202",
-    });
+    const result = readSubtitleTextBySelectors(
+      document,
+      ["#viewSubtit .incont"],
+      {
+        filterUnconfirmedEnabled: false,
+        sourceUrl:
+          "https://assembly.webcast.go.kr/main/player.asp?xcode=25&xcgcd=DCM000025224330202",
+      },
+    );
 
     expect(result.found).toBe(true);
     expect(result.text).toContain(longLines[0]);

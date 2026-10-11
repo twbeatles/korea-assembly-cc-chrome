@@ -46,9 +46,7 @@ import {
   markExtensionContextInvalidated,
   resetExtensionContextInvalidationForTests,
 } from "../../../shared/extension-context";
-import {
-  buildSessionBackupFilename,
-} from "../../session-backup";
+import { buildSessionBackupFilename } from "../../session-backup";
 import { createRandomToken } from "../../../shared/random-token";
 import {
   SESSION_DB_SCHEMA_VERSION,
@@ -165,8 +163,9 @@ export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySum
   await recoverOrphanedExitPersistRecords().catch(() => {
     // 고아 복구 실패해도 기존 인덱스 기준으로 replay 를 시도한다.
   });
-  const queuedRecords = (await listQueuedExitPersistRecords()).sort((left, right) =>
-    left.record.updatedAt.localeCompare(right.record.updatedAt),
+  const queuedRecords = (await listQueuedExitPersistRecords()).sort(
+    (left, right) =>
+      left.record.updatedAt.localeCompare(right.record.updatedAt),
   );
   let replayedCount = 0;
   let skippedCount = 0;
@@ -177,7 +176,8 @@ export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySum
       const existingRecord = await loadSession(queuedRecord.sessionId);
       if (
         existingRecord &&
-        existingRecord.updatedAt.localeCompare(queuedRecord.record.updatedAt) >= 0
+        existingRecord.updatedAt.localeCompare(queuedRecord.record.updatedAt) >=
+          0
       ) {
         skippedCount += 1;
         await clearQueuedExitPersistRecord(queuedRecord.sessionId);
@@ -189,7 +189,10 @@ export async function replayQueuedExitPersistRecords(): Promise<PersistReplaySum
       await clearQueuedExitPersistRecord(queuedRecord.sessionId);
     } catch (error) {
       failedCount += 1;
-      logStoreError(`Failed to replay queued exit persist record for ${queuedRecord.sessionId}`, error);
+      logStoreError(
+        `Failed to replay queued exit persist record for ${queuedRecord.sessionId}`,
+        error,
+      );
     }
   }
 
@@ -211,7 +214,9 @@ export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSum
     indexedDbRecords.ok && indexedDbRecords.value
       ? indexedDbRecords.value.filter((record) => record.status === "running")
       : [];
-  const fallbackRunning = fallbackRecords.filter((record) => record.status === "running");
+  const fallbackRunning = fallbackRecords.filter(
+    (record) => record.status === "running",
+  );
   const statusById = new Map<
     string,
     {
@@ -242,29 +247,32 @@ export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSum
 
   if (indexedDbRunning.length) {
     const indexedDbWriteResult = await tryIndexedDb(async () =>
-      withSessionStoresTransaction("readwrite", async ({ sessionStore, chunkStore }) => {
-        await Promise.all(
-          indexedDbRunning.map(async (record) => {
-            const stoppedRecord = stopRunningRecord(record);
-            const chunks = buildSessionEntryChunks(
-              stoppedRecord.id,
-              stoppedRecord.entries,
-              SESSION_ENTRY_CHUNK_SIZE,
-            );
-            const previousRecord = (await withRequest(
-              sessionStore.get(stoppedRecord.id),
-            )) as IndexedDbSessionRecord | undefined;
-            const metadataRecord = toIndexedDbRecord(stoppedRecord);
-            await writeChunkedSessionRecord(
-              chunkStore,
-              metadataRecord,
-              chunks,
-              previousRecord,
-            );
-            await withRequest(sessionStore.put(metadataRecord));
-          }),
-        );
-      }),
+      withSessionStoresTransaction(
+        "readwrite",
+        async ({ sessionStore, chunkStore }) => {
+          await Promise.all(
+            indexedDbRunning.map(async (record) => {
+              const stoppedRecord = stopRunningRecord(record);
+              const chunks = buildSessionEntryChunks(
+                stoppedRecord.id,
+                stoppedRecord.entries,
+                SESSION_ENTRY_CHUNK_SIZE,
+              );
+              const previousRecord = (await withRequest(
+                sessionStore.get(stoppedRecord.id),
+              )) as IndexedDbSessionRecord | undefined;
+              const metadataRecord = toIndexedDbRecord(stoppedRecord);
+              await writeChunkedSessionRecord(
+                chunkStore,
+                metadataRecord,
+                chunks,
+                previousRecord,
+              );
+              await withRequest(sessionStore.put(metadataRecord));
+            }),
+          );
+        },
+      ),
     );
     if (indexedDbWriteResult.ok) {
       indexedDbRunning.forEach((record) => {
@@ -284,7 +292,10 @@ export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSum
   );
   fallbackResults.forEach((result, index) => {
     if (result.status !== "fulfilled") {
-      logStoreError(`Failed to close fallback running session ${fallbackRunning[index]?.id}`, result.reason);
+      logStoreError(
+        `Failed to close fallback running session ${fallbackRunning[index]?.id}`,
+        result.reason,
+      );
       return;
     }
     const current = statusById.get(result.value);
@@ -295,7 +306,9 @@ export async function closeRunningSessionsOnStartup(): Promise<StartupCleanupSum
 
   const detectedCount = statusById.size;
   const closedCount = [...statusById.values()].filter((status) => {
-    const indexedDbDone = status.indexedDbRequired ? status.indexedDbClosed : true;
+    const indexedDbDone = status.indexedDbRequired
+      ? status.indexedDbClosed
+      : true;
     const fallbackDone = status.fallbackRequired ? status.fallbackClosed : true;
     return indexedDbDone && fallbackDone;
   }).length;

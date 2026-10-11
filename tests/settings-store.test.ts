@@ -64,7 +64,9 @@ describe("settings store", () => {
     expect(sanitized.recentDuplicateMinLength).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
     );
-    expect(sanitized.filenamePattern).toBe(DEFAULT_EXTENSION_SETTINGS.filenamePattern);
+    expect(sanitized.filenamePattern).toBe(
+      DEFAULT_EXTENSION_SETTINGS.filenamePattern,
+    );
     expect(sanitized.txtExportTimestampsEnabled).toBe(
       DEFAULT_EXTENSION_SETTINGS.txtExportTimestampsEnabled,
     );
@@ -111,7 +113,9 @@ describe("settings store", () => {
     expect(sanitized.recentDuplicateMinLength).toBe(
       DEFAULT_EXTENSION_SETTINGS.recentDuplicateMinLength,
     );
-    expect(sanitized.keepaliveIntervalMs).toBe(DEFAULT_EXTENSION_SETTINGS.keepaliveIntervalMs);
+    expect(sanitized.keepaliveIntervalMs).toBe(
+      DEFAULT_EXTENSION_SETTINGS.keepaliveIntervalMs,
+    );
   });
 
   it("migrates legacy noiseMinLength into the new duplicate setting", () => {

@@ -25,7 +25,11 @@ import {
   createEmptyPersistReplayDiagnostics,
   readPersistReplayDiagnostics,
 } from "../../storage/persist-recovery";
-import { getSettings, resetSettings, saveSettings } from "../../storage/settings-store";
+import {
+  getSettings,
+  resetSettings,
+  saveSettings,
+} from "../../storage/settings-store";
 import type {
   AssemblyPreset,
   ExtensionSettings,
@@ -53,20 +57,28 @@ import { SettingsView } from "./SettingsView";
 
 export default function App() {
   const [settings, setSettings] = useState<ExtensionSettings | null>(null);
-  const [savedSettings, setSavedSettings] = useState<ExtensionSettings | null>(null);
-  const [numberDrafts, setNumberDrafts] = useState<NumberDraftState | null>(null);
+  const [savedSettings, setSavedSettings] = useState<ExtensionSettings | null>(
+    null,
+  );
+  const [numberDrafts, setNumberDrafts] = useState<NumberDraftState | null>(
+    null,
+  );
   const [isSaving, setIsSaving] = useState(false);
-  const [numberFieldErrors, setNumberFieldErrors] = useState<NumberFieldErrorState>({});
-  const [filenamePatternError, setFilenamePatternError] = useState<string | undefined>(undefined);
+  const [numberFieldErrors, setNumberFieldErrors] =
+    useState<NumberFieldErrorState>({});
+  const [filenamePatternError, setFilenamePatternError] = useState<
+    string | undefined
+  >(undefined);
   const [message, setMessage] = useState("설정을 불러오는 중입니다.");
   const [presetDraft, setPresetDraft] = useState(EMPTY_PRESET_DRAFT);
   const [view, setView] = useState<OptionsView>(getInitialView);
-  const [diagnosticsTabId] = useState<number | null>(getInitialDiagnosticsTabId);
+  const [diagnosticsTabId] = useState<number | null>(
+    getInitialDiagnosticsTabId,
+  );
   const [diagnosticsReloadToken, setDiagnosticsReloadToken] = useState(0);
   const [snapshot, setSnapshot] = useState<StatusSnapshot | null>(null);
-  const [persistReplayDiagnostics, setPersistReplayDiagnostics] = useState<PersistReplayDiagnostics>(
-    createEmptyPersistReplayDiagnostics(),
-  );
+  const [persistReplayDiagnostics, setPersistReplayDiagnostics] =
+    useState<PersistReplayDiagnostics>(createEmptyPersistReplayDiagnostics());
   const [diagnosticsMessage, setDiagnosticsMessage] = useState(
     "현재 탭의 수집 상태를 확인하고 있습니다.",
   );
@@ -96,7 +108,9 @@ export default function App() {
       value: persistReplayDiagnostics.lastError || "-",
     },
   ];
-  const visibleDiagnosticsErrors = diagnosticsErrorRows.filter((row) => row.value !== "-");
+  const visibleDiagnosticsErrors = diagnosticsErrorRows.filter(
+    (row) => row.value !== "-",
+  );
 
   useEffect(() => {
     void getSettings()
@@ -109,7 +123,9 @@ export default function App() {
         setMessage(SETTINGS_DEFAULT_MESSAGE);
       })
       .catch((error: unknown) => {
-        setMessage(error instanceof Error ? error.message : "설정을 읽지 못했습니다.");
+        setMessage(
+          error instanceof Error ? error.message : "설정을 읽지 못했습니다.",
+        );
       });
   }, []);
 
@@ -168,7 +184,10 @@ export default function App() {
       portToDisconnect.disconnect();
     };
 
-    const scheduleReconnect = (nextMessage: string, immediate = false): void => {
+    const scheduleReconnect = (
+      nextMessage: string,
+      immediate = false,
+    ): void => {
       if (!active) {
         return;
       }
@@ -217,7 +236,9 @@ export default function App() {
           setTabReady(false);
           setRequiresReload(false);
           clearReconnectTimer();
-          setDiagnosticsMessage("상태를 확인할 국회 의사중계 탭을 찾지 못했습니다. 해당 탭에서 다시 열어주세요.");
+          setDiagnosticsMessage(
+            "상태를 확인할 국회 의사중계 탭을 찾지 못했습니다. 해당 탭에서 다시 열어주세요.",
+          );
           return;
         }
 
@@ -242,7 +263,9 @@ export default function App() {
         setRequiresReload(Boolean(ensure.requiresReload));
         if (!ensure.ready) {
           setTabReady(false);
-          scheduleReconnect("현재 탭과 아직 연결되지 않았습니다. 자동으로 다시 연결을 시도합니다.");
+          scheduleReconnect(
+            "현재 탭과 아직 연결되지 않았습니다. 자동으로 다시 연결을 시도합니다.",
+          );
           return;
         }
 
@@ -293,20 +316,25 @@ export default function App() {
           scheduleReconnect(
             disconnectReason?.includes("Receiving end does not exist")
               ? "현재 탭과의 연결이 없습니다. 자동으로 다시 연결을 시도합니다."
-              : disconnectReason || "연결이 끊겼습니다. 자동으로 다시 연결을 시도합니다.",
+              : disconnectReason ||
+                  "연결이 끊겼습니다. 자동으로 다시 연결을 시도합니다.",
           );
         };
 
         nextPort.onMessage.addListener(onMessage);
         nextPort.onDisconnect.addListener(onDisconnect);
-        nextPort.postMessage({ type: "GET_DIAGNOSTICS_STATUS" } satisfies PopupToContentMessage);
+        nextPort.postMessage({
+          type: "GET_DIAGNOSTICS_STATUS",
+        } satisfies PopupToContentMessage);
       } catch (error: unknown) {
         if (!active) {
           return;
         }
 
         const baseMessage =
-          error instanceof Error ? error.message : "현재 탭의 상태를 준비하지 못했습니다.";
+          error instanceof Error
+            ? error.message
+            : "현재 탭의 상태를 준비하지 못했습니다.";
         scheduleReconnect(`${baseMessage} 자동으로 다시 연결을 시도합니다.`);
       } finally {
         connecting = false;
@@ -348,7 +376,9 @@ export default function App() {
         return;
       }
 
-      reconnectDiagnostics("현재 창의 활성 탭 상태가 바뀌어 다시 확인하고 있습니다.");
+      reconnectDiagnostics(
+        "현재 창의 활성 탭 상태가 바뀌어 다시 확인하고 있습니다.",
+      );
     };
 
     const handleTabRemoved = (tabId: number): void => {
@@ -356,7 +386,9 @@ export default function App() {
         if (tabId !== diagnosticsTabId) {
           return;
         }
-        reconnectDiagnostics("지정한 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.");
+        reconnectDiagnostics(
+          "지정한 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.",
+        );
         return;
       }
 
@@ -364,7 +396,9 @@ export default function App() {
         return;
       }
 
-      reconnectDiagnostics("현재 확인 대상 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.");
+      reconnectDiagnostics(
+        "현재 확인 대상 탭이 닫혀 다른 국회 의사중계 탭을 찾고 있습니다.",
+      );
     };
 
     addTabActivatedListener(handleTabActivated);
@@ -385,11 +419,18 @@ export default function App() {
   const hasNumberFieldErrors = Object.values(numberFieldErrors).some(Boolean);
   const hasFieldErrors = hasNumberFieldErrors || Boolean(filenamePatternError);
   const isDirty = Boolean(
-    settings && savedSettings && JSON.stringify(settings) !== JSON.stringify(savedSettings),
+    settings &&
+    savedSettings &&
+    JSON.stringify(settings) !== JSON.stringify(savedSettings),
   );
 
-  const updateField = <K extends keyof ExtensionSettings>(key: K, value: ExtensionSettings[K]): void => {
-    setSettings((current) => (current ? { ...current, [key]: value } : current));
+  const updateField = <K extends keyof ExtensionSettings>(
+    key: K,
+    value: ExtensionSettings[K],
+  ): void => {
+    setSettings((current) =>
+      current ? { ...current, [key]: value } : current,
+    );
   };
 
   const handlePresetDraftChange = <K extends keyof typeof EMPTY_PRESET_DRAFT>(
@@ -513,7 +554,9 @@ export default function App() {
             ...current,
             maxEntriesPerSegment: String(thresholds.maxEntriesPerSegment),
             maxCharsPerSegment: String(thresholds.maxCharsPerSegment),
-            maxSegmentDurationMinutes: String(thresholds.maxSegmentDurationMinutes),
+            maxSegmentDurationMinutes: String(
+              thresholds.maxSegmentDurationMinutes,
+            ),
           }
         : current,
     );
@@ -562,7 +605,9 @@ export default function App() {
       setFilenamePatternError(undefined);
       setMessage("설정을 저장했습니다.");
     } catch (error: unknown) {
-      setMessage(error instanceof Error ? error.message : "설정을 저장하지 못했습니다.");
+      setMessage(
+        error instanceof Error ? error.message : "설정을 저장하지 못했습니다.",
+      );
     } finally {
       setIsSaving(false);
     }
@@ -578,7 +623,11 @@ export default function App() {
       setFilenamePatternError(undefined);
       setMessage("기본값으로 되돌렸습니다.");
     } catch (error: unknown) {
-      setMessage(error instanceof Error ? error.message : "기본값으로 되돌리지 못했습니다.");
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "기본값으로 되돌리지 못했습니다.",
+      );
     }
   };
 
@@ -605,14 +654,18 @@ export default function App() {
       <header className="hero">
         <div>
           <h1>{view === "diagnostics" ? "수집 진단" : "환경 설정"}</h1>
-          <p className="hero-message">{view === "diagnostics" ? diagnosticsMessage : message}</p>
+          <p className="hero-message">
+            {view === "diagnostics" ? diagnosticsMessage : message}
+          </p>
         </div>
         <div className="view-toggle" role="tablist" aria-label="환경 설정 메뉴">
           <button
             type="button"
             role="tab"
             aria-selected={view === "settings"}
-            className={view === "settings" ? "view-button" : "view-button secondary"}
+            className={
+              view === "settings" ? "view-button" : "view-button secondary"
+            }
             onClick={() => handleViewChange("settings")}
           >
             설정
@@ -621,7 +674,9 @@ export default function App() {
             type="button"
             role="tab"
             aria-selected={view === "diagnostics"}
-            className={view === "diagnostics" ? "view-button" : "view-button secondary"}
+            className={
+              view === "diagnostics" ? "view-button" : "view-button secondary"
+            }
             onClick={() => handleViewChange("diagnostics")}
           >
             수집 진단
@@ -669,11 +724,19 @@ export default function App() {
           <div className="meta-grid">
             <div className="meta-row">
               <span>작동 상태</span>
-              <strong>{unsupported ? "지원되지 않음" : tabReady ? "연결됨" : "대기 중"}</strong>
+              <strong>
+                {unsupported
+                  ? "지원되지 않음"
+                  : tabReady
+                    ? "연결됨"
+                    : "대기 중"}
+              </strong>
             </div>
             <div className="meta-row">
               <span>회의 이름</span>
-              <strong>{snapshot?.committeeName || snapshot?.title || "-"}</strong>
+              <strong>
+                {snapshot?.committeeName || snapshot?.title || "-"}
+              </strong>
             </div>
             <div className="meta-row">
               <span>모인 자막</span>
@@ -689,7 +752,11 @@ export default function App() {
             </div>
             <div className="meta-row">
               <span>최근 저장</span>
-              <strong>{snapshot?.lastPersistedAt ? new Date(snapshot.lastPersistedAt).toLocaleString("ko-KR") : "-"}</strong>
+              <strong>
+                {snapshot?.lastPersistedAt
+                  ? new Date(snapshot.lastPersistedAt).toLocaleString("ko-KR")
+                  : "-"}
+              </strong>
             </div>
             <div className="meta-row">
               <span>세그먼트 전환</span>
@@ -738,7 +805,9 @@ export default function App() {
                 <span>마지막 확인</span>
                 <strong>
                   {persistReplayDiagnostics.lastReplayAt
-                    ? new Date(persistReplayDiagnostics.lastReplayAt).toLocaleString("ko-KR")
+                    ? new Date(
+                        persistReplayDiagnostics.lastReplayAt,
+                      ).toLocaleString("ko-KR")
                     : "-"}
                 </strong>
               </div>
@@ -750,26 +819,33 @@ export default function App() {
               </div>
               <div className="meta-row">
                 <span>정리된 이전 수집</span>
-                <strong>{persistReplayDiagnostics.lastCleanupClosedCount}건</strong>
+                <strong>
+                  {persistReplayDiagnostics.lastCleanupClosedCount}건
+                </strong>
               </div>
               <div className="meta-row">
                 <span>실패한 복구</span>
                 <strong>
-                  {persistReplayDiagnostics.lastReplayFailedCount + persistReplayDiagnostics.lastCleanupFailedCount}건
+                  {persistReplayDiagnostics.lastReplayFailedCount +
+                    persistReplayDiagnostics.lastCleanupFailedCount}
+                  건
                 </strong>
               </div>
               <div className="meta-row">
                 <span>마지막 종료 전 저장</span>
                 <strong>
                   {persistReplayDiagnostics.lastPageExitPersistAttemptAt
-                    ? new Date(persistReplayDiagnostics.lastPageExitPersistAttemptAt).toLocaleString("ko-KR")
+                    ? new Date(
+                        persistReplayDiagnostics.lastPageExitPersistAttemptAt,
+                      ).toLocaleString("ko-KR")
                     : "-"}
                 </strong>
               </div>
               <div className="meta-row">
                 <span>종료 전 저장 내용</span>
                 <strong>
-                  {persistReplayDiagnostics.lastPageExitPersistSessionId ?? "-"} / {persistReplayDiagnostics.lastPageExitPersistEntryCount}
+                  {persistReplayDiagnostics.lastPageExitPersistSessionId ?? "-"}{" "}
+                  / {persistReplayDiagnostics.lastPageExitPersistEntryCount}
                 </strong>
               </div>
               {visibleDiagnosticsErrors.map((row) => (
@@ -789,7 +865,10 @@ export default function App() {
 
           <footer className="actions">
             <button onClick={handleDiagnosticsRefresh}>다시 확인</button>
-            <button className="secondary" onClick={() => handleViewChange("settings")}>
+            <button
+              className="secondary"
+              onClick={() => handleViewChange("settings")}
+            >
               설정으로
             </button>
           </footer>

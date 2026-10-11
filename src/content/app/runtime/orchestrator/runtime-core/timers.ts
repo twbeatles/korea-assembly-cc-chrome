@@ -1,5 +1,3 @@
-
-
 import { clearScheduledRunningPersist } from "../../../../autosave";
 
 import type { RuntimeCoreContext } from "./context";

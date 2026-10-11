@@ -1,15 +1,20 @@
-
-
 import { EXTENSION_STORAGE_KEY } from "../../../../../shared/constants";
 
 import { shouldWarnBeforeUnload } from "../../../../autosave";
 
-import type { FrameForwardMessage, ObserverBridgeEvent } from "../../../../../shared/message-types";
+import type {
+  FrameForwardMessage,
+  ObserverBridgeEvent,
+} from "../../../../../shared/message-types";
 
 import { sanitizeSettings } from "../../../../../storage/settings-store";
 import type { ExtensionSettings } from "../../../../../storage/types";
 
-import { isForwardedFrameMessage, isObserverBridgeEventMessage, resolveForwardedFrameNonceAction } from "../../../../frame-coordinator";
+import {
+  isForwardedFrameMessage,
+  isObserverBridgeEventMessage,
+  resolveForwardedFrameNonceAction,
+} from "../../../../frame-coordinator";
 
 import { isTopFrame, localFramePath } from "../../constants";
 
@@ -17,9 +22,16 @@ import type { RuntimeCoreContext } from "./context";
 import { clearRunningPersistTimer, clearUrlChangePolling } from "./timers";
 import { reportRuntimeError } from "./notices";
 import { syncUserInterfaces } from "./panel-status";
-import { persistRunningSnapshotForVisibilityChange, persistStoppedSnapshotForPageExit } from "./persistence";
+import {
+  persistRunningSnapshotForVisibilityChange,
+  persistStoppedSnapshotForPageExit,
+} from "./persistence";
 import { forwardToTop, handleTopFrameEvent } from "./capture-events";
-import { dispatchObserverConfig, requestFrameForwardNonceResync, triggerImmediateTopFallbackProbe } from "./observer-bridge";
+import {
+  dispatchObserverConfig,
+  requestFrameForwardNonceResync,
+  triggerImmediateTopFallbackProbe,
+} from "./observer-bridge";
 import { startLocalPolling, startTopFrameFallback } from "./polling";
 import { performUrlReconcile } from "./session-lifecycle";
 
@@ -40,8 +52,7 @@ export function bindSettingsChanges(ctx: RuntimeCoreContext): void {
     const previousSettings = ctx.settings;
     ctx.settings = sanitizeSettings(
       (changes[EXTENSION_STORAGE_KEY].newValue as
-        | Partial<ExtensionSettings>
-        | undefined) ?? {},
+        Partial<ExtensionSettings> | undefined) ?? {},
     );
 
     // Reset heuristic streaks tied to options that just changed so the new
@@ -145,7 +156,8 @@ export function bindUrlChangeDetection(ctx: RuntimeCoreContext): void {
             performUrlReconcile(ctx, url),
           );
         } catch (error) {
-          reportRuntimeError(ctx, 
+          reportRuntimeError(
+            ctx,
             "페이지 주소 변경 후 캡처 상태를 갱신하지 못했습니다.",
             error,
           );
@@ -186,9 +198,7 @@ export function bindUrlChangeDetection(ctx: RuntimeCoreContext): void {
 export function bindBridgeMessages(ctx: RuntimeCoreContext): void {
   window.addEventListener("message", (event) => {
     const data = event.data as
-      | Partial<ObserverBridgeEvent>
-      | Partial<FrameForwardMessage>
-      | undefined;
+      Partial<ObserverBridgeEvent> | Partial<FrameForwardMessage> | undefined;
     if (!data || typeof data !== "object") {
       return;
     }

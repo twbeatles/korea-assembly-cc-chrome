@@ -7,7 +7,8 @@ import {
 
 describe("page blob download helper", () => {
   it("downloads a page-created blob URL and revokes it when the download completes", async () => {
-    const listeners: Array<(delta: chrome.downloads.DownloadDelta) => void> = [];
+    const listeners: Array<(delta: chrome.downloads.DownloadDelta) => void> =
+      [];
     const chromeDownloads = {
       download: vi.fn(
         (
@@ -72,7 +73,8 @@ describe("page blob download helper", () => {
   });
 
   it("does not revoke on in-progress download state updates", async () => {
-    const listeners: Array<(delta: chrome.downloads.DownloadDelta) => void> = [];
+    const listeners: Array<(delta: chrome.downloads.DownloadDelta) => void> =
+      [];
     const chromeDownloads = {
       download: vi.fn(
         (

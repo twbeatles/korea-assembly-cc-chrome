@@ -20,7 +20,8 @@ export interface StartupPersistenceResult {
   replaySummary: PersistReplaySummary;
 }
 
-const startupPersistenceGuard = createStartupPersistenceGuard<StartupPersistenceResult>();
+const startupPersistenceGuard =
+  createStartupPersistenceGuard<StartupPersistenceResult>();
 
 async function runStartupPersistenceMaintenanceOnce(
   dependencies: {
@@ -33,8 +34,10 @@ async function runStartupPersistenceMaintenanceOnce(
 ): Promise<StartupPersistenceResult> {
   const replay = dependencies.replay ?? replayQueuedExitPersistRecords;
   const cleanup = dependencies.cleanup ?? closeRunningSessionsOnStartup;
-  const readDiagnostics = dependencies.readDiagnostics ?? readPersistReplayDiagnostics;
-  const writeDiagnostics = dependencies.writeDiagnostics ?? writePersistReplayDiagnostics;
+  const readDiagnostics =
+    dependencies.readDiagnostics ?? readPersistReplayDiagnostics;
+  const writeDiagnostics =
+    dependencies.writeDiagnostics ?? writePersistReplayDiagnostics;
   const now = dependencies.now ?? (() => new Date().toISOString());
 
   const emptyReplaySummary: PersistReplaySummary = {
@@ -58,16 +61,21 @@ async function runStartupPersistenceMaintenanceOnce(
     replaySummary = await replay();
   } catch (error) {
     lastReplayError =
-      error instanceof Error ? error.message : "queued exit persistence replay failed";
+      error instanceof Error
+        ? error.message
+        : "queued exit persistence replay failed";
   }
 
   try {
     cleanupSummary = await cleanup();
   } catch (error) {
-    lastCleanupError = error instanceof Error ? error.message : "startup cleanup failed";
+    lastCleanupError =
+      error instanceof Error ? error.message : "startup cleanup failed";
   }
 
-  const existingDiagnostics = await readDiagnostics().catch(() => createEmptyPersistReplayDiagnostics());
+  const existingDiagnostics = await readDiagnostics().catch(() =>
+    createEmptyPersistReplayDiagnostics(),
+  );
   const diagnostics: PersistReplayDiagnostics = {
     ...existingDiagnostics,
     lastReplayAt: now(),

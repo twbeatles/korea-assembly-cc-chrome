@@ -39,7 +39,9 @@ export function compareSessionSegments(
   return left.id.localeCompare(right.id);
 }
 
-export function sortSessionSegments<T extends SessionLineageLike>(sessions: T[]): T[] {
+export function sortSessionSegments<T extends SessionLineageLike>(
+  sessions: T[],
+): T[] {
   return [...sessions].sort(compareSessionSegments);
 }
 
@@ -65,7 +67,9 @@ function resolvePreferredString(
 }
 
 /** 공통 메모면 유지하고, 다르면 가장 앞 세그먼트 메모를 쓴다. */
-export function resolveMergedSessionNote(sessions: Array<Pick<SessionRecord, "note">>): string {
+export function resolveMergedSessionNote(
+  sessions: Array<Pick<SessionRecord, "note">>,
+): string {
   const notes = sessions.map((session) =>
     typeof session.note === "string" ? session.note : "",
   );
@@ -94,7 +98,10 @@ export function mergeSessionSegments(sessions: SessionRecord[]): SessionRecord {
     ...cloneSessionRecord(last),
     id: lineageId,
     title: resolvePreferredString([last.title, first.title], "국회 자막 세션"),
-    committeeName: resolvePreferredString([last.committeeName, first.committeeName]),
+    committeeName: resolvePreferredString([
+      last.committeeName,
+      first.committeeName,
+    ]),
     sourceUrl: resolvePreferredString([last.sourceUrl, first.sourceUrl]),
     startedAt: first.startedAt,
     endedAt: last.endedAt ?? last.updatedAt,
@@ -124,7 +131,8 @@ export function createContinuedSessionState(
     currentState.sessionId,
     currentState.lineageId,
   );
-  nextState.segmentNumber = resolveSessionSegmentNumber(currentState.segmentNumber) + 1;
+  nextState.segmentNumber =
+    resolveSessionSegmentNumber(currentState.segmentNumber) + 1;
   nextState.status = "running";
   nextState.createdAt = nowIso;
   nextState.startedAt = nowIso;

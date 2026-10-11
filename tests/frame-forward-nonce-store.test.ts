@@ -51,7 +51,9 @@ describe("frame forward nonce store", () => {
     expect(nonce).toBe("persisted-nonce");
     expect(cache.get(tabId)).toBe("persisted-nonce");
     expect(storage.set).not.toHaveBeenCalled();
-    await expect(readPersistedFrameForwardNonce(storage, tabId)).resolves.toBe("persisted-nonce");
+    await expect(readPersistedFrameForwardNonce(storage, tabId)).resolves.toBe(
+      "persisted-nonce",
+    );
   });
 
   it("rotates and clears stored nonces for a tab", async () => {
@@ -67,7 +69,9 @@ describe("frame forward nonce store", () => {
     });
 
     expect(rotated).toBe("rotated-nonce");
-    expect(snapshot[getFrameForwardNonceStorageKey(tabId)]).toBe("rotated-nonce");
+    expect(snapshot[getFrameForwardNonceStorageKey(tabId)]).toBe(
+      "rotated-nonce",
+    );
 
     await clearPersistedFrameForwardNonce({
       tabId,

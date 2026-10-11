@@ -19,7 +19,11 @@ describe("session lifecycle helpers", () => {
     state.previewText = "첫 번째 미리보기 자막";
     state.pendingPreviews = ["아직 확정되지 않은 미리보기 A", "미리보기 B"];
 
-    const prepared = buildPreparedSessionState(state, DEFAULT_EXTENSION_SETTINGS, Date.parse("2026-03-10T09:00:00.000Z"));
+    const prepared = buildPreparedSessionState(
+      state,
+      DEFAULT_EXTENSION_SETTINGS,
+      Date.parse("2026-03-10T09:00:00.000Z"),
+    );
 
     expect(prepared.entries).toHaveLength(0);
     expect(prepared.pendingPreviews).toEqual([]);
@@ -46,7 +50,9 @@ describe("session lifecycle helpers", () => {
     expect(record.status).toBe("saved");
     expect(record.subtitleCount).toBe(0);
     expect(record.entries).toEqual([]);
-    expect(record.entries.some((entry) => entry.text.includes("preview-only"))).toBe(false);
+    expect(
+      record.entries.some((entry) => entry.text.includes("preview-only")),
+    ).toBe(false);
   });
 
   it("keeps already committed entries while still clearing pending previews", () => {
@@ -86,7 +92,9 @@ describe("session lifecycle helpers", () => {
     );
 
     expect(resetState.status).toBe("idle");
-    expect(resetState.sourceUrl).toBe("https://assembly.webcast.go.kr/main/player.asp");
+    expect(resetState.sourceUrl).toBe(
+      "https://assembly.webcast.go.kr/main/player.asp",
+    );
     expect(resetState.title).toBe("국회 본회의");
     expect(resetState.committeeName).toBe("정무위원회");
     expect(resetState.entries).toEqual([]);

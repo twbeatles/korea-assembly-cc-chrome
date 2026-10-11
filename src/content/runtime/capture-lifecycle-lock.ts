@@ -4,16 +4,13 @@
  */
 
 export type CaptureLifecycleAction =
-  | "start"
-  | "stop"
-  | "clear"
-  | "save"
-  | "save_and_new"
-  | "export"
-  | "reconcile";
+  "start" | "stop" | "clear" | "save" | "save_and_new" | "export" | "reconcile";
 
 export interface CaptureLifecycleLock {
-  run: <T>(action: CaptureLifecycleAction, task: () => Promise<T>) => Promise<T>;
+  run: <T>(
+    action: CaptureLifecycleAction,
+    task: () => Promise<T>,
+  ) => Promise<T>;
   isBusy: () => boolean;
   getCurrentAction: () => CaptureLifecycleAction | null;
 }

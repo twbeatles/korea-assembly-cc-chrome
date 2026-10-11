@@ -1,17 +1,24 @@
 import { EXIT_PERSIST_INDEX_STORAGE_KEY, hasChromeStorageLocal } from "./keys";
 import { enqueueExitPersistIndexMutation, memoryQueuedRecords } from "./state";
-import { collectExitPersistSessionIdsFromSnapshot, sanitizeExitPersistIndex } from "./sanitize";
+import {
+  collectExitPersistSessionIdsFromSnapshot,
+  sanitizeExitPersistIndex,
+} from "./sanitize";
 
 /** exit persist 인덱스 read/write와 고아 레코드 복구 (단일 책임: 인덱스 정합성). */
 export async function readExitPersistIndex(): Promise<string[]> {
   if (!hasChromeStorageLocal()) {
     return [];
   }
-  const snapshot = await chrome.storage.local.get(EXIT_PERSIST_INDEX_STORAGE_KEY);
+  const snapshot = await chrome.storage.local.get(
+    EXIT_PERSIST_INDEX_STORAGE_KEY,
+  );
   return sanitizeExitPersistIndex(snapshot[EXIT_PERSIST_INDEX_STORAGE_KEY]);
 }
 
-export async function writeExitPersistIndex(sessionIds: string[]): Promise<void> {
+export async function writeExitPersistIndex(
+  sessionIds: string[],
+): Promise<void> {
   if (!hasChromeStorageLocal()) {
     return;
   }
@@ -20,7 +27,9 @@ export async function writeExitPersistIndex(sessionIds: string[]): Promise<void>
   });
 }
 
-export async function addSessionIdToExitPersistIndex(sessionId: string): Promise<void> {
+export async function addSessionIdToExitPersistIndex(
+  sessionId: string,
+): Promise<void> {
   return enqueueExitPersistIndexMutation(async () => {
     const current = await readExitPersistIndex();
     if (current.includes(sessionId)) {
@@ -30,7 +39,9 @@ export async function addSessionIdToExitPersistIndex(sessionId: string): Promise
   });
 }
 
-export async function removeSessionIdFromExitPersistIndex(sessionId: string): Promise<void> {
+export async function removeSessionIdFromExitPersistIndex(
+  sessionId: string,
+): Promise<void> {
   return enqueueExitPersistIndexMutation(async () => {
     const current = await readExitPersistIndex();
     if (!current.includes(sessionId)) {
@@ -52,9 +63,14 @@ export async function recoverOrphanedExitPersistRecords(): Promise<string[]> {
   return enqueueExitPersistIndexMutation(async () => {
     const snapshot = await chrome.storage.local.get(null);
     const scannedIds = collectExitPersistSessionIdsFromSnapshot(snapshot);
-    const current = sanitizeExitPersistIndex(snapshot[EXIT_PERSIST_INDEX_STORAGE_KEY]);
+    const current = sanitizeExitPersistIndex(
+      snapshot[EXIT_PERSIST_INDEX_STORAGE_KEY],
+    );
     const merged = sanitizeExitPersistIndex([...current, ...scannedIds]);
-    if (merged.length !== current.length || merged.some((id) => !current.includes(id))) {
+    if (
+      merged.length !== current.length ||
+      merged.some((id) => !current.includes(id))
+    ) {
       await writeExitPersistIndex(merged);
     }
     return merged;
