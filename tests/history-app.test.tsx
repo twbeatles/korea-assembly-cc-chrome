@@ -646,7 +646,7 @@ describe("history app", () => {
   });
 
   it("shows a cancellation message when import is aborted during the read phase", async () => {
-    const firstChunk = createDeferred<string>();
+    const firstChunk = createDeferred<ArrayBuffer>();
 
     render(<App />);
     await screen.findByRole("button", { name: "JSON 가져오기" });
@@ -661,11 +661,11 @@ describe("history app", () => {
       type: "application/json",
       size: 8,
       slice: vi.fn((start: number, end: number) => ({
-        text: vi.fn(() => {
+        arrayBuffer: vi.fn(() => {
           if (start === 0 && end === 8) {
             return firstChunk.promise;
           }
-          return Promise.resolve("");
+          return Promise.resolve(new ArrayBuffer(0));
         }),
       })),
       text: vi.fn(),
@@ -679,7 +679,7 @@ describe("history app", () => {
 
     await screen.findByRole("button", { name: "취소" });
     fireEvent.click(screen.getByRole("button", { name: "취소" }));
-    firstChunk.resolve('{"a":1}');
+    firstChunk.resolve(new TextEncoder().encode('{"a":1}').buffer);
 
     await waitFor(() => {
       expect(screen.getByText("JSON 가져오기를 취소했습니다.")).toBeTruthy();

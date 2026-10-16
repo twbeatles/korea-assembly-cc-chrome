@@ -59,3 +59,29 @@ jobs:
 
       - name: Production build
         run: npm run build
+
+  extension-e2e:
+    name: Extension browser workflow
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TZ: UTC
+      EXTENSION_E2E_HEADLESS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Install Chromium and system dependencies
+        run: npx playwright install --with-deps chromium
+      - name: Capture, persist, reload, and download real exports
+        run: npm run test:e2e:extension
+      - name: Upload browser failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: extension-e2e-failure
+          path: test-results/
+          if-no-files-found: ignore

@@ -30,6 +30,7 @@ export async function readBlobTextWithProgress(
     onProgress?: (progress: BlobReadProgress) => void;
   } = {},
 ): Promise<string> {
+  throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
   const total = Math.max(0, blob.size || 0);
   const chunkSize = Math.max(1, options.chunkSize ?? 256 * 1024);
 
@@ -40,19 +41,23 @@ export async function readBlobTextWithProgress(
 
   if (total > 0 && typeof blob.slice === "function") {
     const parts: string[] = [];
+    const decoder = new TextDecoder();
 
     for (let offset = 0; offset < total; offset += chunkSize) {
       throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
       const nextOffset = Math.min(total, offset + chunkSize);
-      const chunkText = await blob.slice(offset, nextOffset).text();
+      const chunkBytes = await blob.slice(offset, nextOffset).arrayBuffer();
       throwIfAborted(options.signal, "JSON 가져오기를 취소했습니다.");
-      parts.push(chunkText);
+      // A byte boundary can split a Korean character or emoji. Keep incomplete
+      // UTF-8 sequences in the decoder until the next chunk arrives.
+      parts.push(decoder.decode(chunkBytes, { stream: true }));
       options.onProgress?.({
         completed: nextOffset,
         total,
       });
     }
 
+    parts.push(decoder.decode());
     return parts.join("");
   }
 

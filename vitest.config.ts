@@ -15,6 +15,9 @@ export default defineConfig({
     environment: "jsdom",
     globals: true,
     setupFiles: ["./tests/setup.ts"],
+    // Each worker creates a jsdom instance. Bound concurrency so high-core
+    // machines do not exhaust memory before any test can report a result.
+    maxWorkers: 4,
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],

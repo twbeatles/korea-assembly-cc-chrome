@@ -80,7 +80,13 @@ export function readSubtitleText(
   filterUnconfirmedEnabled = true,
   allowUnconfirmedContainerFallback = false,
 ): SubtitleReadResult {
-  const orderedSelectors = uniqueSelectors([preferredSelector, ...selectors]);
+  const candidates = uniqueSelectors([preferredSelector, ...selectors]);
+  // The observed container is not necessarily the best text source. Prefer
+  // structured rows so the bridge retains node identity and speaker metadata.
+  const orderedSelectors = [
+    ...candidates.filter((selector) => selector.includes(".smi_word")),
+    ...candidates.filter((selector) => !selector.includes(".smi_word")),
+  ];
   const blockContainerFallback = shouldBlockContainerFallbackForUnconfirmed(
     filterUnconfirmedEnabled,
     allowUnconfirmedContainerFallback,

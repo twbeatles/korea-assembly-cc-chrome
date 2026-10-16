@@ -203,16 +203,22 @@ npm run build        # dist/ 생성
 npm run verify       # version · injected · lint · typecheck · test · build
 ```
 
-| 명령                         | 설명                                                                      |
-| ---------------------------- | ------------------------------------------------------------------------- |
-| `npm run typecheck`          | TypeScript 7 typecheck                                                    |
-| `npm run test`               | Vitest 단위 테스트                                                        |
-| `npm run test:e2e:extension` | 빌드 후 Playwright 확장 smoke (closed shadow · `data-assembly-e2e` 미러)  |
-| `npm run verify:e2e`         | 빌드 후 확장 페이지 smoke (`history`/`options`/`sidepanel`)               |
-| `npm run build:inject`       | `public/injected-observer.js` 생성 (gitignore · 클린 클론/CI에서 필요)    |
-| `npm run verify`             | version · **inject 생성** · inject 검사 · lint · typecheck · test · build |
+| 명령                         | 설명                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------ |
+| `npm run typecheck`          | TypeScript 7 typecheck                                                         |
+| `npm run test`               | Vitest 단위 테스트                                                             |
+| `npm run test:e2e:extension` | 실제 확장 로드 → DOM/iframe 수집 → 저장/재조회 → 6종 다운로드 → JSON 복원 검증 |
+| `npm run verify:e2e`         | `test:e2e:extension`과 동일한 전체 브라우저 검증                               |
+| `npm run build:inject`       | `public/injected-observer.js` 생성 (gitignore · 클린 클론/CI에서 필요)         |
+| `npm run verify`             | version · **inject 생성** · inject 검사 · lint · typecheck · test · build      |
 
-CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 inject 생성 후 lint · typecheck(TS7/TS6) · coverage · prod audit · build 를 실행합니다.
+CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 inject 생성 후 lint · typecheck(TS7/TS6) · coverage · prod audit · build 를 실행합니다. 별도 Chromium 작업에서 위 확장 브라우저 검증도 실행합니다.
+
+브라우저 검증은 `npx playwright install chromium`으로 브라우저를 설치한 뒤 실행합니다.
+CI나 화면 없는 환경에서는 `EXTENSION_E2E_HEADLESS=1`을 지정합니다(PowerShell: `$env:EXTENSION_E2E_HEADLESS='1'; npm run test:e2e:extension`).
+국회 페이지 응답만 로컬 fixture로 대체하며, 확장 코드·메시징·IndexedDB·Blob·다운로드·JSON 가져오기는 실제 Chromium에서 실행합니다.
+각 실행은 임시 프로필과 다운로드 경로를 사용하고 종료 시 정리합니다. 실패 시 `test-results/extension-smoke/`에 화면을 남기며 CI에서도 아티팩트로 보관합니다.
+단위 테스트는 `MutationObserver` 변경·재연결·종료, 발언자 변경과 미확정 자막 필터, Blob 바이트·해제·실패 처리, UTF-8 청크 경계와 가져오기 취소를 검증합니다. 테스트 워커는 jsdom 메모리 사용을 제한하도록 최대 4개입니다.
 
 자세한 배포 절차·툴체인·안정성·보안 문서는 아래를 참고하세요.
 
