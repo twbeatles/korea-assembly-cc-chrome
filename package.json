@@ -3,6 +3,9 @@
   "version": "1.0.15",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": ">=26.0.0"
+  },
   "scripts": {
     "build:inject": "node scripts/build-injected.mjs",
     "check:version": "node scripts/check-version.mjs",
