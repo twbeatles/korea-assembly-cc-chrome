@@ -36,7 +36,7 @@ npm run verify:e2e
 
 `npm run build` 는 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 먼저 생성한 뒤 확장 번들을 만듭니다. 전체 검증은 `npm run verify` (CI: `.github/workflows/ci.yml`), 로컬 Chrome 확장 smoke 는 `npm run test:e2e:extension` (closed shadow · light DOM 미러) 기준입니다.
 
-**보안·검증 문서:** `SECURITY.md` · `LIVE_CAPTURE_SMOKE_CHECKLIST.md` · `SITE_COMPATIBILITY_REVIEW_2026-09-17.md`. 상세 Sync Delta 는 `CLAUDE.md` 를 우선합니다.
+**보안·검증 문서:** `SECURITY.md` · `LIVE_CAPTURE_SMOKE_CHECKLIST.md` · `SITE_COMPATIBILITY_REVIEW_2026-09-17.md` · 데스크톱 정합 `DESKTOP_PARITY.md` / `parity/`. 상세 Sync Delta 는 `CLAUDE.md` 를 우선합니다.
 
 ### 3.1 TypeScript dual-track (2026-07-13)
 

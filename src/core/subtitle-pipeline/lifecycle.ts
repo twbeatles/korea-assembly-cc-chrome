@@ -1,17 +1,27 @@
 import type { ExtensionSettings } from "../../storage/types";
 import type { SessionState } from "../subtitle-models";
 import { toIsoString } from "../timeline";
+import { shouldApplyKeepalive } from "./entry-policy";
 import { cloneEntryAtIndex, updateStateMetadata } from "./state-helpers";
 import type { PipelineResult } from "./types";
 
 export function applyKeepalive(
   state: SessionState,
   now: number,
+  raw?: string,
 ): PipelineResult {
   const next = updateStateMetadata(state, now);
   const lastEntryIndex = next.entries.length - 1;
-  const lastEntry =
-    lastEntryIndex >= 0 ? cloneEntryAtIndex(next, lastEntryIndex) : undefined;
+  const currentLastEntry =
+    lastEntryIndex >= 0 ? next.entries[lastEntryIndex] : undefined;
+  if (!currentLastEntry) {
+    return { state: next, changed: false, reason: "no_entries" };
+  }
+  if (!shouldApplyKeepalive(raw, currentLastEntry.text)) {
+    return { state: next, changed: false, reason: "raw_mismatch" };
+  }
+
+  const lastEntry = cloneEntryAtIndex(next, lastEntryIndex);
   if (!lastEntry) {
     return { state: next, changed: false, reason: "no_entries" };
   }

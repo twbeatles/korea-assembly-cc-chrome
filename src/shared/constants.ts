@@ -87,6 +87,7 @@ export const PIPELINE_DEFAULTS = {
   unconfirmedFallbackAllowStreak: 6,
   recentDuplicateMinLength: 8,
   mergeGapSeconds: 5,
+  fallbackMergeGapFactor: 0.4,
   mergeMaxChars: 1000,
   keepaliveIntervalMs: 1000,
   recentHistoryEntries: 12,

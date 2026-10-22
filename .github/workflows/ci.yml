@@ -36,6 +36,9 @@ jobs:
       - name: Check injected observer up to date
         run: npm run check:injected
 
+      - name: Check desktop parity sync (skipped without sibling repo)
+        run: npm run check:parity
+
       - name: Format
         run: npm run format
 

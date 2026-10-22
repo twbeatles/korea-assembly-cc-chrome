@@ -282,6 +282,7 @@ src/
 - 스토어 권한 문안: `CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md`
 - 개인정보 처리 초안: `PRIVACY_POLICY_DRAFT_KO.md`
 - 국회 중계 사이트 실측: `SITE_COMPATIBILITY_REVIEW_2026-09-17.md`
+- 데스크톱(`korea-assembly-cc`)과의 수집 알고리즘 정합·2026-10-22 사이트 실측: `DESKTOP_PARITY.md`, 공유 계약 `parity/README.md`
 - 실중계 스모크: `LIVE_CAPTURE_SMOKE_CHECKLIST.md`
 
 ## Sync Delta (2026-07-13)
@@ -638,6 +639,18 @@ When editing this repository, align with the coverage calibration below.
 - 임계는 vitest 5 실측 기준으로 재보정했다: content 브랜치 65→62, storage 4종 75/75/70/80→73/73/65/77. `src/shared/extension-context.ts` 는 임계 유지 + 회귀 테스트 추가(`tests/extension-context.test.ts`), 쿨다운 헬퍼는 신규 테스트(`tests/autostart-cooldown.test.ts`).
 - vitest/coverage 메이저 업그레이드 전에는 반드시 `npm run test:coverage` 로 임계를 재보정하고 `COVERAGE_CALIBRATED_VITEST_MAJOR` 를 갱신한다. `npm run check:coverage-calibration` (CI·`verify` 선행 스텝)이 이를 강제한다.
 - CI 런타임은 Node 24다. `@vitest/coverage-v8` v5 는 Node 20 에서 커버리지를 0%로만 수집하므로 로컬도 Node 24 를 쓴다. 가드 스크립트가 CI(`node-version`)와 실행 중 Node 메이져를 대조해 어긋나면 먼저 실패시킨다.
+
+## Sync Delta (2026-10-22 · 데스크톱 수집 알고리즘 정합)
+
+When editing this repository, align with the cross-repository parity contract below. Details: `DESKTOP_PARITY.md`.
+
+- 형제 저장소 `korea-assembly-cc`(PySide6 + Selenium 데스크톱)와 수집 알고리즘을 같이 유지한다. 코드 공유 대신 `parity/capture-contract.json`(사이트·DOM·상수·의도적 차이)과 `parity/pipeline-vectors.json`(순수 함수 벡터)을 두 저장소에 같은 내용으로 둔다.
+- `tests/parity-contract.test.ts` 가 이 저장소 상수/함수를 계약·벡터와 대조한다. 수집 의미론을 바꾸면 `parity/` 를 먼저 고치고 데스크톱 `tests/test_parity_contract.py` 도 통과하게 맞춘 뒤 `node scripts/check-parity-sync.mjs --write` 로 사본을 맞춘다.
+- `npm run check:parity` 는 `verify`·CI 에 포함되며, 형제 저장소(`../korea-assembly-cc` 또는 `KOREA_ASSEMBLY_CC_DIR`)가 없으면 건너뛴다.
+- entry 병합 판정은 `src/core/subtitle-pipeline/entry-policy.ts` 의 `shouldMergeIntoLastEntry` 하나로 한다: 화자 channel 경계는 양쪽 모두 `primary`/`secondary` 일 때만, structured/화자 신호가 있는 entry 뒤의 fallback 은 새 entry, fallback 경로 merge gap 은 `mergeGapSeconds × fallbackMergeGapFactor(0.4)`.
+- keepalive 는 `applyKeepalive(state, now, raw)` 에 현재 preview raw 를 넘기고, compact raw 가 마지막 entry compact 와 같거나 그것으로 끝날 때만 `endTime` 을 연장한다. 연장되지 않으면 autosave 를 예약하지 않는다.
+- `applyPreview` 는 soft resync 직후에만 재추출한다(결과 동일).
+- 2026-10-22 실측: 일반 자막(본회의 smi-dw) `p.smi_word` 는 stxt 클래스·id 가 없어 unstable 이고 fallback 안정 관측 경로로 commit 된다. `#viewSubtit > #smiLoading .loadingmsg "로딩중.."` 은 placeholder 필터 대상이다. 셀렉터·화자색·미확정 색 계약은 변하지 않았다.
 
 ## Spec Kit / Spec-Driven Development (AI 에이전트 필독)
 

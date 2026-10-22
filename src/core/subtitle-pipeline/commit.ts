@@ -31,6 +31,7 @@ import {
   softResyncHistory,
 } from "./history";
 import { extractIncrementalTextWithRecentHistory } from "./extract";
+import { isSpeakerBoundary, shouldMergeIntoLastEntry } from "./entry-policy";
 import type {
   LiveRowCommitMeta,
   PipelineResult,
@@ -113,61 +114,23 @@ function appendOrMergeEntry(
   const lastEntry =
     lastEntryIndex >= 0 ? state.entries[lastEntryIndex] : undefined;
 
-  if (lastEntry && !state.lastCommittedResetAt && !meta?.forceNewEntry) {
-    const structuredBoundary = Boolean(
-      meta?.sourceNodeKey &&
-      lastEntry.sourceNodeKey &&
-      lastEntry.sourceNodeKey !== meta.sourceNodeKey,
-    );
-    const speakerChannelBoundary = Boolean(
-      meta?.speakerChannel &&
-      lastEntry.speakerChannel &&
-      meta.speakerChannel !== lastEntry.speakerChannel,
-    );
-    const speakerColorBoundary = Boolean(
-      meta?.speakerColor &&
-      lastEntry.speakerColor &&
-      meta.speakerColor !== lastEntry.speakerColor,
-    );
-    // structured node key 가 없는 fallback 은 더 짧은 merge gap 을 쓴다.
-    const isFallbackPath =
-      meta?.sourceCaptureMode === "fallback" ||
-      (!meta?.sourceNodeKey && !lastEntry.sourceNodeKey);
-    const mergeGapMs =
-      (isFallbackPath
-        ? Math.max(1, PIPELINE_DEFAULTS.mergeGapSeconds * 0.4)
-        : PIPELINE_DEFAULTS.mergeGapSeconds) * 1000;
-
-    const lastEntryEndMs = Date.parse(lastEntry.endTime);
-    const exceedsMergeGap =
-      Number.isFinite(lastEntryEndMs) && nowMs - lastEntryEndMs > mergeGapMs;
-
-    const canMerge =
-      !exceedsMergeGap &&
-      !structuredBoundary &&
-      !speakerChannelBoundary &&
-      !speakerColorBoundary &&
-      lastEntry.text.length + text.length < PIPELINE_DEFAULTS.mergeMaxChars;
-
-    if (canMerge) {
-      const mergedEntry = cloneEntryAtIndex(state, lastEntryIndex);
-      if (mergedEntry) {
-        mergedEntry.text = joinStreamText(mergedEntry.text, text);
-        mergedEntry.endTime = nowIso;
-        applySourceMeta(mergedEntry, meta);
-        return mergedEntry;
-      }
+  if (
+    lastEntry &&
+    shouldMergeIntoLastEntry(lastEntry, text, nowMs, meta, {
+      afterReset: Boolean(state.lastCommittedResetAt),
+    })
+  ) {
+    const mergedEntry = cloneEntryAtIndex(state, lastEntryIndex);
+    if (mergedEntry) {
+      mergedEntry.text = joinStreamText(mergedEntry.text, text);
+      mergedEntry.endTime = nowIso;
+      applySourceMeta(mergedEntry, meta);
+      return mergedEntry;
     }
   }
 
   const speakerChanged = Boolean(
-    lastEntry &&
-    ((meta?.speakerChannel &&
-      lastEntry.speakerChannel &&
-      meta.speakerChannel !== lastEntry.speakerChannel) ||
-      (meta?.speakerColor &&
-        lastEntry.speakerColor &&
-        meta.speakerColor !== lastEntry.speakerColor)),
+    lastEntry && isSpeakerBoundary(lastEntry, meta),
   );
 
   const entry: SubtitleEntry = {
@@ -253,6 +216,8 @@ export function applyPreview(
     next.previewAmbiguousSkipCount = 0;
   }
 
+  // soft resync 직후에만 새 history 로 다시 추출한다 (데스크톱 apply_preview 와 동일).
+  let retriedExtraction = extraction;
   if (
     next.entries.length > 0 &&
     (next.previewDesyncCount >= PIPELINE_DEFAULTS.previewResyncThreshold ||
@@ -260,17 +225,13 @@ export function applyPreview(
         PIPELINE_DEFAULTS.previewAmbiguousResyncThreshold)
   ) {
     softResyncHistory(next, settings);
+    retriedExtraction = extractIncrementalTextWithRecentHistory(
+      normalizedRaw,
+      next.confirmedCompact,
+      buildRecentCompactHistory(next.entries, settings),
+      recentDuplicateMinLength,
+    );
   }
-
-  const retriedExtraction =
-    next.previewDesyncCount === 0 && next.previewAmbiguousSkipCount === 0
-      ? extractIncrementalTextWithRecentHistory(
-          normalizedRaw,
-          next.confirmedCompact,
-          buildRecentCompactHistory(next.entries, settings),
-          recentDuplicateMinLength,
-        )
-      : extraction;
 
   if (retriedExtraction.duplicate || !retriedExtraction.text) {
     return {

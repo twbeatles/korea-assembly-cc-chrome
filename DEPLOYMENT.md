@@ -31,7 +31,7 @@
 
 현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
 
-현재 스토어 제출 준비 기준 버전은 `1.0.15` 입니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.16` 입니다.
 
 ## 3. 배포 전 검증
 
@@ -152,13 +152,13 @@ bad.zip
 Windows PowerShell 예시:
 
 ```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.15-cws.zip -Force
+Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.16-cws.zip -Force
 ```
 
 > Windows PowerShell 5.1 의 `Compress-Archive` 는 zip 내부 경로에 역슬래시를 넣어 스토어 업로드가 거부될 수 있습니다. 문제가 있으면 슬래시 경로로 직접 압축하세요.
 >
 > ```bash
-> python -c "import zipfile,os;z=zipfile.ZipFile('korea-assembly-cc-chrome-1.0.15-cws.zip','w',zipfile.ZIP_DEFLATED);[z.write(os.path.join(r,n),os.path.relpath(os.path.join(r,n),'dist').replace(os.sep,'/')) for r,_,fs in os.walk('dist') for n in fs]"
+> python -c "import zipfile,os;z=zipfile.ZipFile('korea-assembly-cc-chrome-1.0.16-cws.zip','w',zipfile.ZIP_DEFLATED);[z.write(os.path.join(r,n),os.path.relpath(os.path.join(r,n),'dist').replace(os.sep,'/')) for r,_,fs in os.walk('dist') for n in fs]"
 > ```
 
 ## 6. Chrome Web Store 배포
@@ -298,6 +298,15 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.15-c
 - 릴리스 태그나 커밋 메시지에 manifest 버전을 같이 남김
 
 ## 11. 릴리스 노트
+
+### 1.0.16 (2026-10-22)
+
+**데스크톱 앱과 수집 알고리즘 정합**
+
+- 형제 저장소 `korea-assembly-cc` 와 `parity/` 공유 계약·테스트 벡터로 수집 의미론을 함께 유지 (`DESKTOP_PARITY.md`, `npm run check:parity`)
+- entry 병합 규칙 통일: 화자 경계는 알려진 화자색(primary/secondary)일 때만, structured 자막 뒤 container fallback 은 새 항목으로 분리, fallback 경로 merge gap 은 5초 × 0.4
+- keepalive 는 현재 화면 텍스트가 마지막 자막으로 끝날 때만 종료 시각을 연장하고, 연장되지 않으면 자동 저장을 예약하지 않음
+- 2026-10-22 사이트 실측 반영: 셀렉터·화자색·미확정 색 계약 변경 없음, 일반 자막 행은 고정 키가 없어 안정 관측 fallback 경로로 저장됨
 
 ### 1.0.15 (2026-10-05)
 

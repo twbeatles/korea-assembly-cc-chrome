@@ -1,6 +1,6 @@
 {
   "name": "korea-assembly-cc-chrome",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "private": true,
   "type": "module",
   "engines": {
@@ -11,6 +11,7 @@
     "check:version": "node scripts/check-version.mjs",
     "check:injected": "node scripts/check-injected.mjs",
     "check:coverage-calibration": "node scripts/check-coverage-calibration.mjs",
+    "check:parity": "node scripts/check-parity-sync.mjs",
     "dev": "npm run build:inject && vite",
     "build": "npm run build:inject && vite build",
     "test": "vitest run",
@@ -22,7 +23,7 @@
     "typecheck:ts6": "node scripts/run-tsc.mjs 6",
     "typecheck:ts7": "node scripts/run-tsc.mjs 7",
     "lint": "eslint .",
-    "verify": "npm run check:version && npm run build:inject && npm run check:injected && npm run check:coverage-calibration && npm run format && npm run lint && npm run typecheck && npm run test:coverage && npm run typecheck:ts6 && npm audit --omit=dev --audit-level=high && npm run build",
+    "verify": "npm run check:version && npm run build:inject && npm run check:injected && npm run check:coverage-calibration && npm run check:parity && npm run format && npm run lint && npm run typecheck && npm run test:coverage && npm run typecheck:ts6 && npm audit --omit=dev --audit-level=high && npm run build",
     "format": "prettier --check .",
     "format:write": "prettier --write ."
   },

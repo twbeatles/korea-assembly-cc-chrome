@@ -375,8 +375,15 @@ export function handleTopFrameEvent(
         (!ctx.state.lastKeepaliveAt ||
           now - ctx.state.lastKeepaliveAt >= ctx.settings.keepaliveIntervalMs)
       ) {
-        ctx.state = applyKeepalive(ctx.state, now).state;
-        scheduleRunningPersist(ctx, "keepalive", now);
+        const keepalive = applyKeepalive(
+          ctx.state,
+          now,
+          captureEvent.previewText,
+        );
+        ctx.state = keepalive.state;
+        if (keepalive.changed) {
+          scheduleRunningPersist(ctx, "keepalive", now);
+        }
         syncUserInterfaces(ctx);
         return;
       }
@@ -452,8 +459,11 @@ export function handleTopFrameEvent(
       (!ctx.state.lastKeepaliveAt ||
         now - ctx.state.lastKeepaliveAt >= ctx.settings.keepaliveIntervalMs)
     ) {
-      ctx.state = applyKeepalive(ctx.state, now).state;
-      scheduleRunningPersist(ctx, "keepalive", now);
+      const keepalive = applyKeepalive(ctx.state, now, normalized);
+      ctx.state = keepalive.state;
+      if (keepalive.changed) {
+        scheduleRunningPersist(ctx, "keepalive", now);
+      }
       syncUserInterfaces(ctx);
       return;
     }

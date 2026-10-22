@@ -18,6 +18,11 @@ export {
   applyStructuredEntry,
 } from "./commit";
 export { applyKeepalive, applyReset, finalizeSession } from "./lifecycle";
+export {
+  isSpeakerBoundary,
+  shouldApplyKeepalive,
+  shouldMergeIntoLastEntry,
+} from "./entry-policy";
 
 export { hasRequiredSubtitleContent, isNoiseOnly } from "../noise-filter";
 export { normalizeRawText } from "../text-normalizer";

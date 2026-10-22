@@ -18,7 +18,9 @@
 | **지원 사이트** | 주: `assembly.webcast.go.kr` · 보조: `webcast.assembly.go.kr` (네트워크/DNS에 따라 보조 호스트는 연결되지 않을 수 있음) |
 | **내보내기**    | TXT · SRT · VTT · JSON · MD · CSV                                                                                       |
 | **저장 위치**   | 로컬 (IndexedDB / 확장 저장소)                                                                                          |
-| **현재 버전**   | 1.0.15                                                                                                                  |
+| **현재 버전**   | 1.0.16                                                                                                                  |
+
+**1.0.16 요약:** 데스크톱 앱과 수집 알고리즘을 `parity/` 공유 계약으로 맞추고 entry 병합·keepalive 규칙을 통일했습니다. 자세한 항목은 [DEPLOYMENT.md §11](DEPLOYMENT.md#11-릴리스-노트).
 
 **1.0.15 요약:** 페이지 패널·팝업·기록 화면을 간소화하고 수집 버튼 라벨을 `수집 시작`/`수집 종료`로 통일했으며, 세션 쓰기가 Web Locks 호출 오류로 실패하던 문제를 고쳤습니다. 자세한 항목은 [DEPLOYMENT.md §11](DEPLOYMENT.md#11-릴리스-노트).
 
@@ -222,16 +224,17 @@ CI나 화면 없는 환경에서는 `EXTENSION_E2E_HEADLESS=1`을 지정합니�
 
 자세한 배포 절차·툴체인·안정성·보안 문서는 아래를 참고하세요.
 
-| 문서                                                                                           | 내용                                                    |
-| ---------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
-| [DEPLOYMENT.md](DEPLOYMENT.md)                                                                 | 배포·릴리스 노트                                        |
-| [SECURITY.md](SECURITY.md)                                                                     | 위협 모델·권한 경계·e2e 훅                              |
-| [PRIVACY_POLICY_DRAFT_KO.md](PRIVACY_POLICY_DRAFT_KO.md)                                       | 개인정보처리방침 초안 (스토어 게시 전 운영자 정보 필수) |
-| [LIVE_CAPTURE_SMOKE_CHECKLIST.md](LIVE_CAPTURE_SMOKE_CHECKLIST.md)                             | 실중계 수동 스모크 체크리스트                           |
-| [SITE_COMPATIBILITY_REVIEW_2026-09-17.md](SITE_COMPATIBILITY_REVIEW_2026-09-17.md)             | 국회 중계 사이트 실측·호환 검토                         |
-| [A11Y_CHECKLIST.md](A11Y_CHECKLIST.md)                                                         | 키보드·스크린 리더 수동 점검                            |
-| [CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md](CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md) | 스토어 권한 문안                                        |
-| `CLAUDE.md`                                                                                    | AI/기여자용 컨텍스트·Sync Delta                         |
+| 문서                                                                                           | 내용                                                                  |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| [DEPLOYMENT.md](DEPLOYMENT.md)                                                                 | 배포·릴리스 노트                                                      |
+| [SECURITY.md](SECURITY.md)                                                                     | 위협 모델·권한 경계·e2e 훅                                            |
+| [PRIVACY_POLICY_DRAFT_KO.md](PRIVACY_POLICY_DRAFT_KO.md)                                       | 개인정보처리방침 초안 (스토어 게시 전 운영자 정보 필수)               |
+| [LIVE_CAPTURE_SMOKE_CHECKLIST.md](LIVE_CAPTURE_SMOKE_CHECKLIST.md)                             | 실중계 수동 스모크 체크리스트                                         |
+| [SITE_COMPATIBILITY_REVIEW_2026-09-17.md](SITE_COMPATIBILITY_REVIEW_2026-09-17.md)             | 국회 중계 사이트 실측·호환 검토                                       |
+| [DESKTOP_PARITY.md](DESKTOP_PARITY.md)                                                         | 데스크톱(korea-assembly-cc)과 수집 알고리즘 정합·공유 계약(`parity/`) |
+| [A11Y_CHECKLIST.md](A11Y_CHECKLIST.md)                                                         | 키보드·스크린 리더 수동 점검                                          |
+| [CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md](CHROME_WEB_STORE_PERMISSION_JUSTIFICATIONS.md) | 스토어 권한 문안                                                      |
+| `CLAUDE.md`                                                                                    | AI/기여자용 컨텍스트·Sync Delta                                       |
 
 ---
 

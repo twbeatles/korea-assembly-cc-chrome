@@ -209,10 +209,24 @@ function hasHighlightBackgroundImage(backgroundImage: string): boolean {
   return Boolean(normalized) && normalized !== "none";
 }
 
-function hasVisibleBackgroundHighlight(style: CSSStyleDeclaration): boolean {
+/**
+ * 미확정(인식 중) 하이라이트 판정. 데스크톱 `core/subtitle_confirmation.py` 와 같은 규칙
+ * (`parity/pipeline-vectors.json` 의 `backgroundHighlight` 벡터).
+ */
+export function hasVisibleBackgroundHighlightValues(
+  backgroundColor: string,
+  backgroundImage = "",
+): boolean {
   return (
-    hasOpaqueBackground(style.backgroundColor) ||
-    hasHighlightBackgroundImage(style.backgroundImage)
+    hasOpaqueBackground(backgroundColor) ||
+    hasHighlightBackgroundImage(backgroundImage)
+  );
+}
+
+function hasVisibleBackgroundHighlight(style: CSSStyleDeclaration): boolean {
+  return hasVisibleBackgroundHighlightValues(
+    style.backgroundColor,
+    style.backgroundImage,
   );
 }
 
@@ -220,7 +234,7 @@ function hasMeaningfulNodeText(node: HTMLElement): boolean {
   return Boolean(compactSubtitleText(node.innerText || node.textContent || ""));
 }
 
-function sampleEvenly<T>(items: T[], maxTake: number): T[] {
+export function sampleEvenly<T>(items: T[], maxTake: number): T[] {
   if (maxTake <= 0 || items.length === 0) {
     return [];
   }
