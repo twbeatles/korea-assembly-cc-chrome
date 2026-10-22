@@ -332,9 +332,12 @@ export function useHistoryTransfer({
   };
 
   const jsonTaskLocked = (): boolean => isBusy() || longTask !== null;
+  const jsonTaskBusyMessage =
+    "다른 JSON 작업이 진행 중입니다. 완료된 후 다시 시도해주세요.";
 
   const handleImportClick = (): void => {
     if (jsonTaskLocked()) {
+      setMessage(jsonTaskBusyMessage);
       return;
     }
 
@@ -346,7 +349,11 @@ export function useHistoryTransfer({
   ): Promise<void> => {
     const file = event.target.files?.[0];
     event.target.value = "";
-    if (!file || jsonTaskLocked()) {
+    if (!file) {
+      return;
+    }
+    if (jsonTaskLocked()) {
+      setMessage(jsonTaskBusyMessage);
       return;
     }
 

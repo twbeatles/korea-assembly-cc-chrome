@@ -285,17 +285,44 @@ try {
       sourceEntryIds: [entry.id],
     })),
   };
+  // 잠긴 상태의 파일 입력에 파일을 넣으면 가져오기가 조용히 무시되므로
+  // 입력이 활성화될 때까지 기다렸다가 넣는다.
+  await historyPage.waitForFunction(() => {
+    const input = document.querySelector('input[type="file"]');
+    return Boolean(input) && !input.disabled;
+  });
   await historyPage.locator('input[type="file"]').setInputFiles({
     name: "roundtrip.json",
     mimeType: "application/json",
     buffer: Buffer.from(JSON.stringify(importedSession), "utf8"),
   });
-  await historyPage
-    .getByText(
-      "JSON 가져오기를 완료했습니다. 추가 1건 / 갱신 0건 / 유지 0건 / 실패 0건 / 무효 0건",
-      { exact: true },
-    )
-    .waitFor();
+  try {
+    await historyPage
+      .getByText(
+        "JSON 가져오기를 완료했습니다. 추가 1건 / 갱신 0건 / 유지 0건 / 실패 0건 / 무효 0건",
+        { exact: true },
+      )
+      .waitFor();
+  } catch (error) {
+    const heroStatus = await historyPage
+      .locator(".hero-status")
+      .first()
+      .textContent()
+      .catch(() => null);
+    const importInputState = await historyPage
+      .evaluate(() => {
+        const input = document.querySelector('input[type="file"]');
+        return input ? { disabled: input.disabled } : null;
+      })
+      .catch(() => null);
+    console.error(
+      "JSON import confirmation not shown. hero-status:",
+      heroStatus,
+      "file-input:",
+      JSON.stringify(importInputState),
+    );
+    throw error;
+  }
   await historyPage.reload();
   await historyPage
     .locator(".session-item")

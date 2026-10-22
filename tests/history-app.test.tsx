@@ -553,6 +553,53 @@ describe("history app", () => {
     });
   });
 
+  it("shows a busy message instead of silently dropping a JSON import during another JSON task", async () => {
+    const deferred = createDeferred<void>();
+    sessionStoreMocks.deleteAllSessions.mockImplementationOnce(
+      () => deferred.promise,
+    );
+
+    render(<App />);
+    fireEvent.click(await screen.findByRole("button", { name: "전체 삭제" }));
+
+    await waitFor(() => {
+      expect(
+        (
+          document.querySelector(
+            ".hidden-file-input",
+          ) as HTMLInputElement | null
+        )?.disabled,
+      ).toBe(true);
+    });
+
+    const importInput = document.querySelector(
+      ".hidden-file-input",
+    ) as HTMLInputElement | null;
+    expect(importInput).not.toBeNull();
+    fireEvent.change(importInput!, {
+      target: {
+        files: [{ name: "roundtrip.json" }],
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "다른 JSON 작업이 진행 중입니다. 완료된 후 다시 시도해주세요.",
+        ),
+      ).toBeTruthy();
+    });
+    expect(sessionStoreMocks.importSessionRecords).not.toHaveBeenCalled();
+
+    deferred.resolve(undefined);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("저장된 기록 1건을 모두 삭제했습니다."),
+      ).toBeTruthy();
+    });
+  });
+
   it("shows a partial import summary when JSON import is cancelled after some writes", async () => {
     const deferred = createDeferred<{
       addedCount: number;
