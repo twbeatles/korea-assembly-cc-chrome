@@ -357,7 +357,7 @@ export default function App() {
 
     const handleTabUpdated = (
       _tabId: number,
-      changeInfo: chrome.tabs.TabChangeInfo,
+      changeInfo: chrome.tabs.OnUpdatedInfo,
       tab: chrome.tabs.Tab,
     ): void => {
       if (!changeInfo.status && !changeInfo.url) {

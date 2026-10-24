@@ -9,7 +9,7 @@
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON / MD / CSV 내보내기`, `history 검색/정리/편집` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정 / 수집 진단` 중심의 보조 화면입니다.
 - 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 전체 기록 검색/기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모/태그/카테고리`, `entry 체크박스 기반 부분 복사/부분 export`, `중요 표시만 export`, `시간 범위 export`, `entry 텍스트/발언자/중요 표시/entry note/labels inline 편집`, `entry 병합/분할/삭제`, `preset CRUD`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`, `실험형 side panel`이 포함됩니다.
-- 현재 기준 기본 검증 명령은 `npm run verify` 와 같다 (`check:version` · inject 생성/검사 · 커버리지 보정 검사 · format · lint · typecheck · `test:coverage` · `typecheck:ts6` · 프로덕션 audit · build — GitHub CI `verify` 잡과 동일 순서). 확장 페이지 스모크는 `npm run verify:e2e` 를 추가로 쓴다.
+- 현재 기준 기본 검증 명령은 `npm run verify` 와 같다 (`check:depsync` · `check:version` · inject 생성/검사 · 커버리지 보정 검사 · format · lint · typecheck · `test:coverage` · `typecheck:ts6` · 프로덕션 audit · build — GitHub CI `verify` 잡과 동일 순서). `check:depsync` 는 로컬 `node_modules` 가 `package-lock.json` 과 어긋나면(예: stale `@types/chrome` 로 로컬만 통과하고 CI가 깨지는 경우) 먼저 실패시키고 `npm ci` 를 유도한다. 확장 페이지 스모크는 `npm run verify:e2e` 를 추가로 쓴다.
 
 ```bash
 npm run verify

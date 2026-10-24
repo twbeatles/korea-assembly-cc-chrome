@@ -423,7 +423,7 @@ describe("options app", () => {
 
   it("falls back to another supported tab when the requested diagnostics tab disappears", async () => {
     let removedListener:
-      | ((tabId: number, removeInfo: chrome.tabs.TabRemoveInfo) => void)
+      | ((tabId: number, removeInfo: chrome.tabs.OnRemovedInfo) => void)
       | undefined;
     chromeApiMocks.addTabRemovedListener.mockImplementationOnce((listener) => {
       removedListener = listener;
