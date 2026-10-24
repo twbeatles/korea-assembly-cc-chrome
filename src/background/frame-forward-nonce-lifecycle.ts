@@ -1,14 +1,14 @@
 type WarnLogger = (message: string, error: unknown) => void;
 
 export function shouldRotateFrameForwardNonce(
-  changeInfo: Pick<chrome.tabs.OnUpdatedInfo, "status">,
+  changeInfo: Pick<chrome.tabs.TabChangeInfo, "status">,
 ): boolean {
   return changeInfo.status === "loading";
 }
 
 export async function handleFrameForwardNonceTabUpdated(
   tabId: number,
-  changeInfo: Pick<chrome.tabs.OnUpdatedInfo, "status">,
+  changeInfo: Pick<chrome.tabs.TabChangeInfo, "status">,
   rotateNonce: (tabId: number) => Promise<unknown>,
   warn: WarnLogger = (message, error) => console.warn(message, error),
 ): Promise<void> {

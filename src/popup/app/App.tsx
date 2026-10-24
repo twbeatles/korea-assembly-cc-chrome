@@ -316,7 +316,7 @@ export default function App({ surface = "popup" }: AppProps) {
 
     const handleTabUpdated = (
       _tabId: number,
-      changeInfo: chrome.tabs.OnUpdatedInfo,
+      changeInfo: chrome.tabs.TabChangeInfo,
       tab: chrome.tabs.Tab,
     ): void => {
       if (!tab.active || (!changeInfo.status && !changeInfo.url)) {
