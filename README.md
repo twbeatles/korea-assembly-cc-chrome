@@ -54,14 +54,14 @@ Chrome 확장 **Manifest V3** 소스 코드입니다.
 
 ### 🔍 어떤 프로그램을 선택해야 할까요?
 
-| 비교 항목 | Chrome 확장 프로그램 (현재 저장소) | PC 데스크톱 프로그램 (`korea-assembly-cc`) |
-| :--- | :--- | :--- |
-| **형태** | Chrome 브라우저 확장 프로그램 (Manifest V3) | Windows 독립 GUI 데스크톱 프로그램 (PySide6) |
-| **설치 방법** | [Chrome 웹 스토어](https://chromewebstore.google.com/detail/khchppfkjljacdhohihlpkbbkddmoghk) 원클릭 설치 (가장 간편) | [GitHub Releases](https://github.com/twbeatles/korea-assembly-cc/releases)에서 EXE 다운로드 또는 Python 실행 |
-| **수집 환경** | 의사중계 시청 중 우측 페이지 패널에서 바로 수집 | 백그라운드(헤드리스) 또는 브라우저 자동 제어 수집 |
-| **내보내기 형식** | TXT · SRT · VTT · JSON · MD · CSV | TXT · SRT · VTT · **DOCX · HWPX · HWP · RTF** · JSON |
-| **저장소** | 브라우저 로컬 스토리지 (IndexedDB) | 로컬 파일 및 SQLite 데이터베이스 |
-| **추천 상황** | 중계 영상을 시청하며 간편하게 자막을 확인·복사·저장하려는 경우 | 영상 시청 없이 백그라운드에서 장시간 수집하거나 한글/워드 보고서 문서가 필요한 경우 |
+| 비교 항목         | Chrome 확장 프로그램 (현재 저장소)                                                                                    | PC 데스크톱 프로그램 (`korea-assembly-cc`)                                                                   |
+| :---------------- | :-------------------------------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
+| **형태**          | Chrome 브라우저 확장 프로그램 (Manifest V3)                                                                           | Windows 독립 GUI 데스크톱 프로그램 (PySide6)                                                                 |
+| **설치 방법**     | [Chrome 웹 스토어](https://chromewebstore.google.com/detail/khchppfkjljacdhohihlpkbbkddmoghk) 원클릭 설치 (가장 간편) | [GitHub Releases](https://github.com/twbeatles/korea-assembly-cc/releases)에서 EXE 다운로드 또는 Python 실행 |
+| **수집 환경**     | 의사중계 시청 중 우측 페이지 패널에서 바로 수집                                                                       | 백그라운드(헤드리스) 또는 브라우저 자동 제어 수집                                                            |
+| **내보내기 형식** | TXT · SRT · VTT · JSON · MD · CSV                                                                                     | TXT · SRT · VTT · **DOCX · HWPX · HWP · RTF** · JSON                                                         |
+| **저장소**        | 브라우저 로컬 스토리지 (IndexedDB)                                                                                    | 로컬 파일 및 SQLite 데이터베이스                                                                             |
+| **추천 상황**     | 중계 영상을 시청하며 간편하게 자막을 확인·복사·저장하려는 경우                                                        | 영상 시청 없이 백그라운드에서 장시간 수집하거나 한글/워드 보고서 문서가 필요한 경우                          |
 
 ---
 
