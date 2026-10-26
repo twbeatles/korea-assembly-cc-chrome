@@ -40,6 +40,31 @@ Chrome 확장 **Manifest V3** 소스 코드입니다.
 
 ---
 
+## 💻 관련 프로젝트: PC 전용 데스크톱 프로그램
+
+이 확장 프로그램 외에, 브라우저 창 없이 백그라운드에서 장시간 회의를 수집하거나 **HWP·HWPX·DOCX** 등 오피스 문서로 직접 저장할 수 있는 **Windows 데스크톱 프로그램**도 별도로 제공됩니다.
+
+- 🏛️ **저장소:** [twbeatles/korea-assembly-cc (GitHub)](https://github.com/twbeatles/korea-assembly-cc)
+- 📦 **설치:** [GitHub Releases에서 최신 실행 파일(EXE) 다운로드](https://github.com/twbeatles/korea-assembly-cc/releases)
+- **주요 특징:**
+  - **헤드리스 백그라운드 수집:** 브라우저를 띄우지 않고 백그라운드에서 안정적으로 실시간 자막 수집
+  - **다양한 오피스 문서 형식:** TXT, SRT, VTT뿐만 아니라 **DOCX, HWPX, HWP, RTF** 파일로 바로 저장
+  - **대용량 SQLite DB 및 전체 검색:** 과거 수집 세션의 전문 검색(FTS), 세션 병합 및 백업 복구 제공
+  - **자동 줄넘김 정리:** 시간 간격별 문단 정리 기능 지원
+
+### 🔍 어떤 프로그램을 선택해야 할까요?
+
+| 비교 항목 | Chrome 확장 프로그램 (현재 저장소) | PC 데스크톱 프로그램 (`korea-assembly-cc`) |
+| :--- | :--- | :--- |
+| **형태** | Chrome 브라우저 확장 프로그램 (Manifest V3) | Windows 독립 GUI 데스크톱 프로그램 (PySide6) |
+| **설치 방법** | [Chrome 웹 스토어](https://chromewebstore.google.com/detail/khchppfkjljacdhohihlpkbbkddmoghk) 원클릭 설치 (가장 간편) | [GitHub Releases](https://github.com/twbeatles/korea-assembly-cc/releases)에서 EXE 다운로드 또는 Python 실행 |
+| **수집 환경** | 의사중계 시청 중 우측 페이지 패널에서 바로 수집 | 백그라운드(헤드리스) 또는 브라우저 자동 제어 수집 |
+| **내보내기 형식** | TXT · SRT · VTT · JSON · MD · CSV | TXT · SRT · VTT · **DOCX · HWPX · HWP · RTF** · JSON |
+| **저장소** | 브라우저 로컬 스토리지 (IndexedDB) | 로컬 파일 및 SQLite 데이터베이스 |
+| **추천 상황** | 중계 영상을 시청하며 간편하게 자막을 확인·복사·저장하려는 경우 | 영상 시청 없이 백그라운드에서 장시간 수집하거나 한글/워드 보고서 문서가 필요한 경우 |
+
+---
+
 ## 주요 기능
 
 - **실시간 수집** — 플레이어 진입 시 자동 시작, AI 자막 레이어 자동 열기 시도
