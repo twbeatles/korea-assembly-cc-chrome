@@ -109,6 +109,12 @@ export async function stringifySessionBackupBundleIncrementally(
     const pageSessions = sessionIdsToLoad.length
       ? await loadSessionsByIds(sessionIdsToLoad)
       : [];
+    const hydratedIds = new Set(pageSessions.map((session) => session.id));
+    if (sessionIdsToLoad.some((id) => !hydratedIds.has(id))) {
+      throw new Error(
+        "백업 중 기록이 삭제되었거나 읽기에 실패했습니다. 백업 파일을 만들지 않았습니다. 다시 시도하세요.",
+      );
+    }
 
     pageSessions.forEach((session) => {
       throwIfBackupAborted(signal, "전체 JSON 백업을 취소했습니다.");

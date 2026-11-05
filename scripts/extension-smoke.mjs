@@ -1,4 +1,4 @@
-/* global document, chrome */
+/* global document, chrome, window */
 /**
  * production closed Shadow DOM 과 호환되는 확장 스모크.
  * 패널 상태는 host light DOM data-* 미러로 읽고,
@@ -387,6 +387,47 @@ try {
   await dialog.waitFor({ state: "detached" });
   assert.equal(await historyPage.locator(".session-item").count(), 3);
 
+  // Exercise the complete library package, not just a single session export.
+  downloadedIds.add(restoredDownload.id);
+  await historyPage
+    .getByRole("button", { name: "전체 JSON 백업", exact: true })
+    .click();
+  const libraryDownload = await waitForDownload(
+    historyPage,
+    "json",
+    downloadedIds,
+  );
+  const libraryBundle = JSON.parse(
+    await readFile(libraryDownload.filename, "utf8"),
+  );
+  assert.equal(libraryBundle.sessions.length, 3);
+  assert.deepEqual(
+    new Set(libraryBundle.sessions.map((record) => record.id)),
+    new Set([exportedSession.id, fallbackSession.id, importedSession.id]),
+  );
+  libraryBundle.sessions = libraryBundle.sessions.map((record) => ({
+    ...record,
+    id: `library_${record.id}`,
+    lineageId: `library_${record.id}`,
+  }));
+  await historyPage.locator('input[type="file"]').setInputFiles({
+    name: "library-roundtrip.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(libraryBundle), "utf8"),
+  });
+  await historyPage
+    .getByText(/JSON 가져오기를 완료했습니다\. 추가 3건/)
+    .waitFor();
+  await historyPage.reload();
+  await historyPage.waitForFunction(
+    () => document.querySelectorAll(".session-item").length === 6,
+  );
+  await exerciseCrossContextFallback(
+    context,
+    historyPage.url(),
+    exportedSession,
+  );
+
   // Retain the original extension-page smoke coverage, checking rendered React
   // controls instead of accepting a static HTML document title as success.
   const extensionId = await resolveExtensionId(context);
@@ -417,7 +458,7 @@ try {
   );
 
   console.log(
-    "Extension smoke passed: DOM + iframe capture → IndexedDB reload → six export formats → restart → JSON import/export roundtrip.",
+    "Extension smoke passed: DOM + iframe capture → IndexedDB reload → six export formats → restart → JSON and library roundtrip → SW/History concurrent fallback.",
   );
 } catch (error) {
   const reportDir = resolve("test-results/extension-smoke");
@@ -443,6 +484,90 @@ try {
 } finally {
   await context?.close();
   await rm(userDataDir, { recursive: true, force: true });
+}
+
+async function exerciseCrossContextFallback(
+  browserContext,
+  historyUrl,
+  template,
+) {
+  const a = await browserContext.newPage();
+  const b = await browserContext.newPage();
+  const worker = browserContext.serviceWorkers()[0];
+  for (const surface of [a, b]) {
+    await surface.addInitScript(() =>
+      Object.defineProperty(window, "indexedDB", {
+        configurable: true,
+        value: undefined,
+      }),
+    );
+    await surface.goto(historyUrl);
+    await surface.getByRole("heading", { name: "저장된 자막 기록" }).waitFor();
+    await surface.waitForFunction(
+      () => !document.querySelector('input[type="file"]').disabled,
+    );
+  }
+  await worker.evaluate(() => {
+    globalThis.auditOriginalIndexedDB = globalThis.indexedDB;
+    Object.defineProperty(globalThis, "indexedDB", {
+      configurable: true,
+      value: undefined,
+    });
+  });
+  const records = [
+    "session_e2e_fallback_sw",
+    "session_e2e_fallback_history",
+  ].map((id) => ({
+    ...template,
+    id,
+    lineageId: id,
+    status: "saved",
+    updatedAt: new Date().toISOString(),
+  }));
+  try {
+    const [response] = await Promise.all([
+      a.evaluate(
+        (record) =>
+          chrome.runtime.sendMessage({
+            type: "PERSIST_SESSION_RECORD",
+            record,
+          }),
+        records[0],
+      ),
+      b.locator('input[type="file"]').setInputFiles({
+        name: "independent-fallback.json",
+        mimeType: "application/json",
+        buffer: Buffer.from(JSON.stringify(records[1]), "utf8"),
+      }),
+    ]);
+    assert.equal(response.ok, true);
+    await b.getByText(/JSON 가져오기를 완료했습니다\. 추가 1건/).waitFor();
+    for (const surface of [a, b]) {
+      await surface.reload();
+      await surface.waitForFunction(
+        () => document.querySelectorAll(".session-item").length === 2,
+      );
+    }
+    const ids = await a.evaluate(
+      async () =>
+        (
+          await chrome.storage.local.get(
+            "assembly-subtitle-session-fallback:index",
+          )
+        )["assembly-subtitle-session-fallback:index"],
+    );
+    assert.deepEqual(new Set(ids), new Set(records.map((record) => record.id)));
+  } finally {
+    await worker.evaluate(() => {
+      Object.defineProperty(globalThis, "indexedDB", {
+        configurable: true,
+        value: globalThis.auditOriginalIndexedDB,
+      });
+      delete globalThis.auditOriginalIndexedDB;
+    });
+    await a.close();
+    await b.close();
+  }
 }
 
 async function waitForPanelText(page, text, timeout = 15_000) {

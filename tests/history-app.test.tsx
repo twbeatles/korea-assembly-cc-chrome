@@ -758,7 +758,9 @@ describe("history app", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("JSON 가져오기 작업은 25 MiB 이하에서만 지원합니다."),
+        screen.getByText(
+          /JSON 가져오기 작업은 25 MiB 이하에서만 지원합니다\..*각 세그먼트 전체/,
+        ),
       ).toBeTruthy();
     });
     expect(sessionStoreMocks.importSessionRecords).not.toHaveBeenCalled();

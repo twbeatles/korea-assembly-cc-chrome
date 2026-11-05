@@ -160,6 +160,7 @@ import {
 import { isLiveCapturingSession } from "../../../content/runtime/capture-ownership";
 import { loadSession } from "../load-session";
 import { listSessionLineageSegments } from "./queries";
+import { editedMetadataFields } from "../backend-reconciliation";
 
 export const LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR =
   "수집 중인 기록은 자막을 삭제·병합·분할할 수 없습니다. 멈춘 뒤에 수정하세요.";
@@ -172,18 +173,22 @@ export async function saveSession(
   }
 
   const sessionId = typeof session.id === "string" ? session.id : "";
-  return writeMutatedSessionRecord(sessionId, (latest) => {
-    const normalized = normalizeSessionRecord(
-      {
-        ...session,
-        status: session.status === "running" ? "saved" : session.status,
-      },
-      {
-        forceStatus: session.status === "running" ? "saved" : session.status,
-      },
-    );
-    return mergeCaptureSnapshotWithStoredEdits(normalized, latest);
-  });
+  return writeMutatedSessionRecord(
+    sessionId,
+    (latest) => {
+      const normalized = normalizeSessionRecord(
+        {
+          ...session,
+          status: session.status === "running" ? "saved" : session.status,
+        },
+        {
+          forceStatus: session.status === "running" ? "saved" : session.status,
+        },
+      );
+      return mergeCaptureSnapshotWithStoredEdits(normalized, latest);
+    },
+    { captureSnapshot: true },
+  );
 }
 
 export async function updateRunningSession(
@@ -194,18 +199,22 @@ export async function updateRunningSession(
   }
 
   const sessionId = typeof session.id === "string" ? session.id : "";
-  return writeMutatedSessionRecord(sessionId, (latest) => {
-    const normalized = normalizeSessionRecord(
-      {
-        ...session,
-        status: "running",
-      },
-      {
-        forceStatus: "running",
-      },
-    );
-    return mergeCaptureSnapshotWithStoredEdits(normalized, latest);
-  });
+  return writeMutatedSessionRecord(
+    sessionId,
+    (latest) => {
+      const normalized = normalizeSessionRecord(
+        {
+          ...session,
+          status: "running",
+        },
+        {
+          forceStatus: "running",
+        },
+      );
+      return mergeCaptureSnapshotWithStoredEdits(normalized, latest);
+    },
+    { captureSnapshot: true },
+  );
 }
 
 export async function upsertSessionRecord(
@@ -232,12 +241,16 @@ export async function updateSessionMetadata(
     throw new Error("기록을 찾지 못했습니다.");
   }
 
-  return writeMutatedSessionRecord(sessionId, (latest) => {
-    if (!latest) {
-      throwSessionStoreMutationError("기록을 찾지 못했습니다.");
-    }
-    return applySessionMetadataPatch(latest, patch, new Date().toISOString());
-  });
+  return writeMutatedSessionRecord(
+    sessionId,
+    (latest) => {
+      if (!latest) {
+        throwSessionStoreMutationError("기록을 찾지 못했습니다.");
+      }
+      return applySessionMetadataPatch(latest, patch, new Date().toISOString());
+    },
+    { editedMetadata: editedMetadataFields(patch) },
+  );
 }
 
 export async function updateSessionLineageMetadata(
@@ -265,6 +278,7 @@ export async function updateSessionLineageMetadata(
           applySessionMetadataPatch(latest ?? segment, patch, updatedAt),
         {
           notifyRevision: false,
+          editedMetadata: editedMetadataFields(patch),
         },
       );
       records.push(saved);
@@ -286,19 +300,23 @@ export async function updateSessionContent(
   }
 
   const liveByOwnership = await isLiveCapturingSession(sessionId);
-  return writeMutatedSessionRecord(sessionId, (latest) => {
-    if (!latest) {
-      throwSessionStoreMutationError("기록을 찾지 못했습니다.");
-    }
+  return writeMutatedSessionRecord(
+    sessionId,
+    (latest) => {
+      if (!latest) {
+        throwSessionStoreMutationError("기록을 찾지 못했습니다.");
+      }
 
-    if (
-      patch.entries !== undefined &&
-      isStructuralEntryPatch(latest.entries, patch.entries) &&
-      (latest.status === "running" || liveByOwnership)
-    ) {
-      throwSessionStoreMutationError(LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR);
-    }
+      if (
+        patch.entries !== undefined &&
+        isStructuralEntryPatch(latest.entries, patch.entries) &&
+        (latest.status === "running" || liveByOwnership)
+      ) {
+        throwSessionStoreMutationError(LIVE_CAPTURE_STRUCTURAL_EDIT_ERROR);
+      }
 
-    return applySessionContentPatch(latest, patch, new Date().toISOString());
-  });
+      return applySessionContentPatch(latest, patch, new Date().toISOString());
+    },
+    { editedMetadata: editedMetadataFields(patch) },
+  );
 }

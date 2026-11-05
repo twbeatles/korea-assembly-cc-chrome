@@ -1,5 +1,6 @@
 /* eslint-disable @typescript-eslint/no-unused-vars */
 import {
+  enqueueFallbackLibraryWrite,
   enqueueSessionWrite,
   resetSessionWriteQueuesForTests,
 } from "../../session-write-queue";
@@ -112,9 +113,14 @@ import { sortSessions } from "../lineage-helpers";
 
 export async function bestEffortDeleteFallbackRecord(
   id: string,
+  upToUpdatedAt?: string,
 ): Promise<void> {
   try {
-    await deleteFallbackRecord(id);
+    await deleteChromeFallbackRecord(id, upToUpdatedAt);
+    const cached = memoryFallbackStore.get(id);
+    if (!upToUpdatedAt || (cached && cached.updatedAt <= upToUpdatedAt)) {
+      memoryFallbackStore.delete(id);
+    }
   } catch (error) {
     logStoreError(`Failed to heal fallback record for ${id}`, error);
   }
@@ -141,7 +147,10 @@ export function sanitizeFallbackIndex(value: unknown): string[] {
 export function enqueueFallbackMutation<T>(
   action: () => Promise<T>,
 ): Promise<T> {
-  const next = storeRuntime.fallbackMutationQueue.then(action, action);
+  // Every context uses the same library lock, inside any session lock.
+  // Internal helpers below must not acquire a session lock while holding it.
+  const run = () => enqueueFallbackLibraryWrite(action);
+  const next = storeRuntime.fallbackMutationQueue.then(run, run);
   storeRuntime.fallbackMutationQueue = next.then(
     () => undefined,
     () => undefined,
@@ -282,7 +291,7 @@ export function buildFallbackWriteError(action: string, error: unknown): Error {
   return new Error(`${action} 처리 중 저장소 fallback에 실패했습니다.`);
 }
 
-export async function migrateLegacyChromeFallbackIfNeeded(): Promise<void> {
+async function migrateLegacyChromeFallbackUnlocked(): Promise<void> {
   if (!hasChromeStorageFallback()) {
     return;
   }
@@ -291,19 +300,31 @@ export async function migrateLegacyChromeFallbackIfNeeded(): Promise<void> {
     FALLBACK_INDEX_STORAGE_KEY,
     LEGACY_FALLBACK_STORAGE_KEY,
   ]);
-  const existingIndex = sanitizeFallbackIndex(
-    result[FALLBACK_INDEX_STORAGE_KEY],
-  );
-  if (existingIndex.length > 0) {
-    return;
-  }
-
   const legacySnapshot = result[LEGACY_FALLBACK_STORAGE_KEY];
   if (!legacySnapshot || typeof legacySnapshot !== "object") {
     return;
   }
 
-  const snapshot = legacySnapshot as Record<string, SessionRecord>;
+  const all = await chrome.storage.local.get(null);
+  const snapshot = { ...(legacySnapshot as Record<string, SessionRecord>) };
+  // An interrupted migration can leave both formats. Never replace newer keys.
+  for (const [key, value] of Object.entries(all)) {
+    if (
+      !key.startsWith(FALLBACK_RECORD_PREFIX) ||
+      !value ||
+      typeof value !== "object"
+    )
+      continue;
+    const durable = value as SessionRecord;
+    if (
+      key !== getFallbackRecordStorageKey(durable.id) ||
+      !Array.isArray(durable.entries)
+    )
+      continue;
+    const legacy = snapshot[durable.id];
+    if (!legacy || durable.updatedAt >= legacy.updatedAt)
+      snapshot[durable.id] = durable;
+  }
   const nextIndex = Object.keys(snapshot);
   if (!nextIndex.length) {
     await chrome.storage.local.remove(LEGACY_FALLBACK_STORAGE_KEY);
@@ -328,16 +349,64 @@ export async function migrateLegacyChromeFallbackIfNeeded(): Promise<void> {
   setMemorySnapshot(snapshot);
 }
 
-export async function readChromeFallbackIndex(): Promise<string[] | undefined> {
+export async function migrateLegacyChromeFallbackIfNeeded(): Promise<void> {
+  if (hasChromeStorageFallback()) {
+    await enqueueFallbackMutation(migrateLegacyChromeFallbackUnlocked);
+  }
+}
+
+async function recoverFallbackIndexUnlocked(): Promise<{
+  index: string[];
+  metadata: Record<string, SessionRecord>;
+}> {
+  await migrateLegacyChromeFallbackUnlocked();
+  const all = await chrome.storage.local.get(null);
+  const metadata: Record<string, SessionRecord> = {};
+  for (const [key, value] of Object.entries(all)) {
+    if (
+      !key.startsWith(FALLBACK_RECORD_PREFIX) ||
+      !value ||
+      typeof value !== "object"
+    )
+      continue;
+    const record = value as SessionRecord;
+    if (
+      key === getFallbackRecordStorageKey(record.id) &&
+      record.id &&
+      Array.isArray(record.entries)
+    ) {
+      metadata[record.id] = cloneFallbackMetadataRecord(record);
+    }
+  }
+  const index = Object.keys(metadata).sort();
+  if (
+    JSON.stringify(
+      sanitizeFallbackIndex(all[FALLBACK_INDEX_STORAGE_KEY]).sort(),
+    ) !== JSON.stringify(index) ||
+    JSON.stringify(all[FALLBACK_METADATA_STORAGE_KEY] ?? {}) !==
+      JSON.stringify(metadata)
+  ) {
+    await chrome.storage.local.set({
+      [FALLBACK_INDEX_STORAGE_KEY]: index,
+      [FALLBACK_METADATA_STORAGE_KEY]: metadata,
+    });
+  }
+  return { index, metadata };
+}
+
+export async function readChromeFallbackIndex(
+  strict = false,
+): Promise<string[] | undefined> {
   if (!hasChromeStorageFallback()) {
     return undefined;
   }
 
   try {
-    await migrateLegacyChromeFallbackIfNeeded();
-    const result = await chrome.storage.local.get(FALLBACK_INDEX_STORAGE_KEY);
-    return sanitizeFallbackIndex(result[FALLBACK_INDEX_STORAGE_KEY]);
+    return await enqueueFallbackMutation(
+      async () => (await recoverFallbackIndexUnlocked()).index,
+    );
   } catch (error) {
+    if (strict) throw error;
     logStoreError("Failed to read chrome.storage.local fallback index", error);
     return undefined;
   }
@@ -379,60 +448,15 @@ export async function readChromeFallbackRecords(
 export async function readChromeFallbackMetadataRecords(
   ids: string[],
 ): Promise<Record<string, SessionRecord> | undefined> {
-  const uniqueIds = [...new Set(ids.filter(Boolean))];
-  if (!uniqueIds.length) {
-    return {};
-  }
-
-  const metadataSnapshot = await readChromeFallbackMetadataSnapshot();
-  if (metadataSnapshot) {
-    const records: Record<string, SessionRecord> = {};
-    const missingIds: string[] = [];
-    uniqueIds.forEach((id) => {
-      const record = metadataSnapshot[id];
-      if (record) {
-        records[id] = cloneFallbackMetadataRecord(record);
-      } else {
-        missingIds.push(id);
-      }
-    });
-    if (!missingIds.length) {
-      return records;
-    }
-  }
-
-  const fullRecords = await readChromeFallbackRecords(uniqueIds);
-  if (!fullRecords) {
-    return undefined;
-  }
-
-  const metadataRecords = Object.fromEntries(
-    Object.entries(fullRecords).map(([id, record]) => [
-      id,
-      cloneFallbackMetadataRecord(record),
-    ]),
-  );
-  const nextSnapshot = {
-    ...(metadataSnapshot ?? {}),
-    ...metadataRecords,
-  };
-  await persistChromeFallbackMetadataSnapshot(nextSnapshot).catch((error) => {
-    logStoreError(
-      "Failed to backfill chrome.storage.local fallback metadata",
-      error,
-    );
-  });
-
-  return {
-    ...Object.fromEntries(
-      uniqueIds
-        .map((id) => [id, metadataSnapshot?.[id]] as const)
-        .filter((entry): entry is readonly [string, SessionRecord] =>
-          Boolean(entry[1]),
-        ),
-    ),
-    ...metadataRecords,
-  };
+  const records = await readChromeFallbackRecords(ids);
+  return records
+    ? Object.fromEntries(
+        Object.entries(records).map(([id, record]) => [
+          id,
+          cloneFallbackMetadataRecord(record),
+        ]),
+      )
+    : undefined;
 }
 
 export async function saveChromeFallbackRecord(
@@ -444,13 +468,11 @@ export async function saveChromeFallbackRecord(
 
   try {
     await enqueueFallbackMutation(async () => {
-      await migrateLegacyChromeFallbackIfNeeded();
-      const index = (await readChromeFallbackIndex()) ?? [];
+      const { index, metadata: metadataSnapshot } =
+        await recoverFallbackIndexUnlocked();
       const nextIndex = index.includes(record.id)
         ? index
         : [...index, record.id];
-      const metadataSnapshot =
-        (await readChromeFallbackMetadataSnapshot()) ?? {};
       await chrome.storage.local.set({
         [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
         [FALLBACK_METADATA_STORAGE_KEY]: {
@@ -465,24 +487,23 @@ export async function saveChromeFallbackRecord(
   }
 }
 
-export async function deleteChromeFallbackRecord(id: string): Promise<void> {
+export async function deleteChromeFallbackRecord(
+  id: string,
+  upToUpdatedAt?: string,
+): Promise<void> {
   if (!hasChromeStorageFallback()) {
     return;
   }
 
   try {
     await enqueueFallbackMutation(async () => {
-      await migrateLegacyChromeFallbackIfNeeded();
-      const index = (await readChromeFallbackIndex()) ?? [];
-      const nextIndex = index.filter((item) => item !== id);
-      const metadataSnapshot =
-        (await readChromeFallbackMetadataSnapshot()) ?? {};
-      delete metadataSnapshot[id];
-      await chrome.storage.local.set({
-        [FALLBACK_INDEX_STORAGE_KEY]: nextIndex,
-        [FALLBACK_METADATA_STORAGE_KEY]: metadataSnapshot,
-      });
+      await migrateLegacyChromeFallbackUnlocked();
+      const key = getFallbackRecordStorageKey(id);
+      const snapshot = await chrome.storage.local.get(key);
+      const current = snapshot[key] as SessionRecord | undefined;
+      if (upToUpdatedAt && current && current.updatedAt > upToUpdatedAt) return;
       await chrome.storage.local.remove(getFallbackRecordStorageKey(id));
+      await recoverFallbackIndexUnlocked();
     });
   } catch (error) {
     throw buildFallbackWriteError("세션 삭제", error);
@@ -506,8 +527,8 @@ export async function clearChromeFallbackRecordsForTests(): Promise<void> {
 }
 
 export async function clearFallbackRecords(action: string): Promise<void> {
-  memoryFallbackStore.clear();
   if (!hasChromeStorageFallback()) {
+    memoryFallbackStore.clear();
     return;
   }
 
@@ -519,13 +540,16 @@ export async function clearFallbackRecords(action: string): Promise<void> {
         await chrome.storage.local.remove(keys);
       }
     });
+    memoryFallbackStore.clear();
   } catch (error) {
     throw buildFallbackWriteError(action, error);
   }
 }
 
-export async function listFallbackSessionIds(): Promise<string[]> {
-  const index = await readChromeFallbackIndex();
+export async function listFallbackSessionIds(
+  strict = false,
+): Promise<string[]> {
+  const index = await readChromeFallbackIndex(strict);
   if (index) {
     return [...index];
   }
@@ -541,19 +565,8 @@ export async function saveFallbackRecord(
   }
 
   const record = cloneSessionRecord(session);
-  const previous = memoryFallbackStore.get(record.id);
-  // chrome 영속화 성공 후에만 메모리를 최종 확정한다. 실패 시 이전 스냅샷으로 롤백.
+  await saveChromeFallbackRecord(record);
   memoryFallbackStore.set(record.id, cloneSessionRecord(record));
-  try {
-    await saveChromeFallbackRecord(record);
-  } catch (error) {
-    if (previous) {
-      memoryFallbackStore.set(record.id, cloneSessionRecord(previous));
-    } else {
-      memoryFallbackStore.delete(record.id);
-    }
-    throw error;
-  }
   return cloneSessionRecord(record);
 }
 
@@ -564,13 +577,18 @@ export async function loadFallbackRecord(
     return undefined;
   }
 
-  const index = await readChromeFallbackIndex();
-  if (index) {
-    const records = await readChromeFallbackRecords([id]);
-    if (records && records[id]) {
-      memoryFallbackStore.set(id, cloneSessionRecord(records[id]));
-      return cloneSessionRecord(records[id]);
+  if (hasChromeStorageFallback()) {
+    // Direct keyed read also discovers an orphan, and distinguishes an absent
+    // record from a failed read. Never let a stale memory copy undo deletion.
+    const key = getFallbackRecordStorageKey(id);
+    const result = await chrome.storage.local.get(key);
+    const record = result[key] as SessionRecord | undefined;
+    if (!record) {
+      memoryFallbackStore.delete(id);
+      return undefined;
     }
+    memoryFallbackStore.set(id, cloneSessionRecord(record));
+    return cloneSessionRecord(record);
   }
 
   const record = memoryFallbackStore.get(id);
@@ -618,6 +636,6 @@ export async function deleteFallbackRecord(id: string): Promise<void> {
     throw createExtensionContextInvalidatedError();
   }
 
-  memoryFallbackStore.delete(id);
   await deleteChromeFallbackRecord(id);
+  memoryFallbackStore.delete(id);
 }

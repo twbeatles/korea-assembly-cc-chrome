@@ -5,7 +5,7 @@ import { crx } from "@crxjs/vite-plugin";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
 
-import manifest from "./manifest.json";
+import manifest from "./manifest.json" with { type: "json" };
 
 const projectRoot = fileURLToPath(new URL(".", import.meta.url));
 

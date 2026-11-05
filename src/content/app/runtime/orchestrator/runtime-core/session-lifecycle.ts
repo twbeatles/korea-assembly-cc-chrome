@@ -415,8 +415,13 @@ export async function stopCaptureUnlocked(
   if (ctx.queuedSegmentRolloverEvents.length > 0) {
     const pending = ctx.queuedSegmentRolloverEvents;
     ctx.queuedSegmentRolloverEvents = [];
-    for (const event of pending) {
-      handleTopFrameEvent(ctx, event);
+    ctx.drainingEventsForStop = true;
+    try {
+      for (const event of pending) {
+        handleTopFrameEvent(ctx, event);
+      }
+    } finally {
+      ctx.drainingEventsForStop = false;
     }
   }
   clearRunningPersistTimer(ctx);

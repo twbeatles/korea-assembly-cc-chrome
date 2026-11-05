@@ -91,6 +91,16 @@ export async function persistStoppedSession(
     setPanelNotice(ctx, "모든 자막을 저장했습니다.");
   } catch (error) {
     ctx.failedStoppedSessionGuard = rememberFailedStoppedSession(record, error);
+    // The in-memory discard guard cannot survive a closed tab. Preserve a
+    // stopped snapshot for startup replay whenever Chrome storage still works.
+    try {
+      await queueExitPersistRecord({ ...record, status: "stopped" });
+    } catch (queueError) {
+      console.warn(
+        "[assembly-subtitle] Failed to queue stopped session for recovery",
+        queueError,
+      );
+    }
     reportRuntimeError(ctx, "종료된 세션 저장에 실패했습니다.", error);
   }
 }

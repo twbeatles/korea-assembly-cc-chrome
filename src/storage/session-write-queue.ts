@@ -22,13 +22,14 @@ function enqueueMemoryQueue<T>(
 ): Promise<T> {
   const previous = queues.get(sessionId) ?? Promise.resolve();
   const next = previous.then(task, task);
-  queues.set(
-    sessionId,
-    next.then(
-      () => undefined,
-      () => undefined,
-    ),
+  const settled = next.then(
+    () => undefined,
+    () => undefined,
   );
+  queues.set(sessionId, settled);
+  void settled.then(() => {
+    if (queues.get(sessionId) === settled) queues.delete(sessionId);
+  });
   return next;
 }
 
@@ -39,6 +40,20 @@ export function enqueueSessionWrite<T>(
   if (!sessionId) {
     return Promise.reject(new Error("세션 id가 올바르지 않습니다."));
   }
+  return enqueueNamedWrite(`assembly-session-write:${sessionId}`, task);
+}
+
+/** Lock order: session → fallback library. Its name cannot collide with an ID. */
+export function enqueueFallbackLibraryWrite<T>(
+  task: () => Promise<T>,
+): Promise<T> {
+  return enqueueNamedWrite("assembly-fallback-library-write", task);
+}
+
+function enqueueNamedWrite<T>(
+  name: string,
+  task: () => Promise<T>,
+): Promise<T> {
   if (passthroughForTests) {
     return task();
   }
@@ -51,14 +66,12 @@ export function enqueueSessionWrite<T>(
   if (typeof locks?.request === "function") {
     // LockManager.request 는 this 가 LockManager 여야 한다. 메서드를 떼어 호출하면
     // "Illegal invocation" 으로 모든 세션 쓰기가 실패하므로 반드시 locks 에서 직접 호출한다.
-    return locks.request(
-      `assembly-session-write:${sessionId}`,
-      { mode: "exclusive" },
-      () => enqueueMemoryQueue(sessionId, task),
+    return locks.request(name, { mode: "exclusive" }, () =>
+      enqueueMemoryQueue(name, task),
     ) as Promise<T>;
   }
 
-  return enqueueMemoryQueue(sessionId, task);
+  return enqueueMemoryQueue(name, task);
 }
 
 /** 테스트 전용: 실행 환경이 다른 것처럼 in-memory 큐를 건너뛴다. */

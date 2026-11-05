@@ -223,16 +223,33 @@ export async function buildSessionLibraryBackupExport(
   });
 
   const now = new Date();
+  // Freeze membership before hydration. Live offset pages can move whenever
+  // autosave changes updatedAt, silently skipping an existing record.
+  const [idbIds, fallbackIds] = await Promise.all([
+    tryIndexedDb(listIndexedDbSessionIds),
+    listFallbackSessionIds(true),
+  ]);
+  if (!idbIds.ok && (idbIds.error || typeof indexedDB !== "undefined")) {
+    throw new Error(
+      "전체 기록 목록을 읽지 못해 백업을 중단했습니다. 다시 시도하세요.",
+      { cause: idbIds.error },
+    );
+  }
+  const backupIds = [
+    ...new Set([...(idbIds.ok ? (idbIds.value ?? []) : []), ...fallbackIds]),
+  ];
+  throwIfAborted(options.signal, "전체 JSON 백업을 취소했습니다.");
   const { content, sessionCount } =
     await stringifySessionBackupBundleIncrementally({
       exportedAt: now.toISOString(),
       pageSize,
       signal: options.signal,
-      listSessionsPage: async ({ page, pageSize: nextPageSize }) =>
-        listSessionsPage({
-          page,
-          pageSize: nextPageSize,
-        }),
+      listSessionsPage: async ({ page, pageSize: nextPageSize }) => ({
+        sessions: backupIds
+          .slice((page - 1) * nextPageSize, page * nextPageSize)
+          .map((id) => ({ id })),
+        totalCount: backupIds.length,
+      }),
       loadSessionsByIds,
       onProgress: (completed, total) => {
         emitLongTaskProgress(options.onProgress, {

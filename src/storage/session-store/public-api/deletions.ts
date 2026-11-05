@@ -160,10 +160,11 @@ export async function deleteSession(id: string): Promise<void> {
   if (!id) {
     return;
   }
+  return enqueueSessionWrite(id, () => deleteSessionUnlocked(id));
+}
 
-  await clearQueuedExitPersistRecord(id);
-  await markSessionDeleted(id);
-
+async function deleteSessionUnlocked(id: string): Promise<void> {
+  const fallback = await loadFallbackRecord(id);
   const indexedDbResult = await tryIndexedDb(async () => {
     await withSessionStoresTransaction(
       "readwrite",
@@ -188,13 +189,15 @@ export async function deleteSession(id: string): Promise<void> {
     return true;
   });
 
-  if (indexedDbResult.ok && indexedDbResult.value) {
-    await bestEffortDeleteFallbackRecord(id);
-    await bumpSessionLibraryRevision();
-    return;
+  if (!indexedDbResult.ok && (indexedDbResult.error || !fallback)) {
+    throw new Error(
+      "IndexedDB 기록 삭제를 확인하지 못했습니다. 잠시 후 다시 시도하세요.",
+      { cause: indexedDbResult.error },
+    );
   }
-
   await deleteFallbackRecord(id);
+  await clearQueuedExitPersistRecord(id);
+  await markSessionDeleted(id);
   await bumpSessionLibraryRevision();
 }
 

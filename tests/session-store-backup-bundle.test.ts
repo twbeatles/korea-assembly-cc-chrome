@@ -32,6 +32,19 @@ function buildSession(id: string): SessionRecord {
 }
 
 describe("session backup bundle", () => {
+  it("rejects an incomplete backup when a selected record disappears", async () => {
+    await expect(
+      stringifySessionBackupBundleIncrementally({
+        exportedAt: "2026-11-05T00:00:00.000Z",
+        pageSize: 2,
+        listSessionsPage: async () => ({
+          sessions: [{ id: "a" }, { id: "b" }],
+          totalCount: 2,
+        }),
+        loadSessionsByIds: async () => [buildSession("a")],
+      }),
+    ).rejects.toThrow("읽기에 실패");
+  });
   it("hydrates each paged backup id at most once", async () => {
     const sessions = new Map([
       ["session_a", buildSession("session_a")],

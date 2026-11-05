@@ -66,6 +66,7 @@ export interface RuntimeCoreContext {
   latestRowDiagnostics: RowDiagnosticsState;
   latestFallbackCommitState: FallbackCommitState;
   segmentRolloverInFlight: boolean;
+  drainingEventsForStop: boolean;
   queuedSegmentRolloverEvents: ObserverBridgeEvent[];
   segmentRolloverToken: number;
   segmentRolloverEventsDroppedTotal: number;
@@ -145,6 +146,7 @@ export function createRuntimeCoreContext(): RuntimeCoreContext {
     },
     latestFallbackCommitState: "idle",
     segmentRolloverInFlight: false,
+    drainingEventsForStop: false,
     queuedSegmentRolloverEvents: [],
     segmentRolloverToken: 0,
     segmentRolloverEventsDroppedTotal: 0,

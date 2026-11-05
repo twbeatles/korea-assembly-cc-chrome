@@ -3,11 +3,7 @@
  * mutations-internal 과 public-api 배럴 사이의 순환을 끊기 위해
  * loadSession 을 mutations / queries 와 분리한다.
  */
-import {
-  cloneSessionRecord,
-  type SessionRecord,
-  type StoredSessionRecord,
-} from "../../core/subtitle-models";
+import { type SessionRecord } from "../../core/subtitle-models";
 import { loadFallbackRecord } from "./fallback/storage";
 import type { IndexedDbSessionRecord } from "./globals";
 import {
@@ -16,8 +12,8 @@ import {
   withSessionStoresTransaction,
 } from "./idb/database";
 import { hydrateIndexedDbSessionRecord } from "./idb/records";
-import { mergeSessionCollections } from "./lineage-helpers";
 import { normalizeSessionRecord } from "./normalize";
+import { selectLatestBackendRecord } from "./backend-reconciliation";
 
 export async function loadSession(
   id: string,
@@ -44,20 +40,16 @@ export async function loadSession(
     loadFallbackRecord(id),
   ]);
 
-  const merged = mergeSessionCollections(
-    indexedDbResult.ok && indexedDbResult.value
-      ? [cloneSessionRecord(indexedDbResult.value)]
-      : [],
-    fallbackRecord
-      ? [
-          normalizeSessionRecord(fallbackRecord as StoredSessionRecord, {
-            preserveTimestamps: true,
-          }),
-        ]
-      : [],
+  const latest = selectLatestBackendRecord(
+    indexedDbResult.ok ? indexedDbResult.value : undefined,
+    fallbackRecord,
   );
-
-  return merged[0] ? cloneSessionRecord(merged[0]) : undefined;
+  return latest
+    ? normalizeSessionRecord(latest, {
+        preserveTimestamps: true,
+        forceStatus: latest.status,
+      })
+    : undefined;
 }
 
 export async function loadSessionsByIds(

@@ -6,6 +6,30 @@ on:
   pull_request:
 
 jobs:
+  platform-regression:
+    name: Storage and export regression (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "26"
+          cache: npm
+      - run: npm ci
+      - name: UTC storage, filenames, encoding, and relative timestamps
+        env:
+          TZ: UTC
+        run: npx vitest run tests/session-store-failover.test.ts tests/session-write-queue.test.ts tests/timeline.test.ts tests/exporters-csv.test.ts tests/session-backup.test.ts tests/service-worker-commands.test.ts
+      - name: Korean timezone regression
+        env:
+          TZ: Asia/Seoul
+        run: npx vitest run tests/timeline.test.ts tests/exporters-csv.test.ts tests/session-backup.test.ts
+
   verify:
     name: verify
     runs-on: ubuntu-latest

@@ -125,6 +125,12 @@ import {
   saveFallbackRecord,
 } from "./fallback/storage";
 import { loadSession } from "./load-session";
+import {
+  EDITABLE_METADATA_FIELDS,
+  selectLatestBackendRecord,
+  type EditableMetadataField,
+  type ReconciliableRecord,
+} from "./backend-reconciliation";
 
 export function stopRunningRecord(record: SessionRecord): SessionRecord {
   const stoppedAt = record.updatedAt || new Date().toISOString();
@@ -192,8 +198,30 @@ export function throwSessionStoreMutationError(message: string): never {
 async function writeFallbackWithMutator(
   sessionId: string,
   mutate: SessionRecordMutator,
+  indexedDbRecord?: SessionRecord,
+  options: Pick<
+    WriteSessionRecordOptions,
+    "captureSnapshot" | "editedMetadata"
+  > = {},
+  idbReadCompleted = false,
 ): Promise<SessionRecord> {
-  const first = await mutate(await loadFallbackRecord(sessionId));
+  const fallback = await loadFallbackRecord(sessionId);
+  const latest = selectLatestBackendRecord(indexedDbRecord, fallback);
+  const first: ReconciliableRecord = await mutate(latest);
+  const previous = (fallback as ReconciliableRecord | undefined)
+    ?.unreconciledFallback;
+  if (previous || (options.captureSnapshot && !idbReadCompleted)) {
+    first.unreconciledFallback = {
+      editedMetadata: [
+        ...new Set([
+          ...(previous?.editedMetadata ?? []),
+          ...(options.captureSnapshot
+            ? []
+            : (options.editedMetadata ?? EDITABLE_METADATA_FIELDS)),
+        ]),
+      ],
+    };
+  }
   await saveFallbackRecord(first);
   const reread = await loadFallbackRecord(sessionId);
   if (!reread || reread.updatedAt === first.updatedAt) {
@@ -210,6 +238,8 @@ async function writeSessionRecordUnlocked(
   options: {
     allowFallbackOnIndexedDbError?: boolean;
     notifyRevision?: boolean;
+    captureSnapshot?: boolean;
+    editedMetadata?: EditableMetadataField[];
   } = {},
 ): Promise<SessionRecord> {
   if (hasExtensionContextInvalidated()) {
@@ -223,6 +253,12 @@ async function writeSessionRecordUnlocked(
   const allowFallbackOnIndexedDbError =
     options.allowFallbackOnIndexedDbError !== false;
   const notifyRevision = options.notifyRevision !== false;
+  // Read Chrome storage before opening the IDB transaction: awaiting another
+  // storage API inside an IDB transaction can let that transaction auto-close.
+  // A failed read must not be treated as an absent copy and then deleted.
+  const fallbackRecord = await loadFallbackRecord(sessionId);
+  let indexedDbRecord: SessionRecord | undefined;
+  let idbReadCompleted = false;
   const indexedDbResult = await tryIndexedDb(async () =>
     withSessionStoresTransaction(
       "readwrite",
@@ -230,9 +266,14 @@ async function writeSessionRecordUnlocked(
         const previousRecord = (await withRequest(
           sessionStore.get(sessionId),
         )) as IndexedDbSessionRecord | undefined;
-        const latest = previousRecord
+        indexedDbRecord = previousRecord
           ? await hydrateIndexedDbSessionRecord(previousRecord, chunkStore)
           : undefined;
+        idbReadCompleted = true;
+        const latest = selectLatestBackendRecord(
+          indexedDbRecord,
+          fallbackRecord,
+        );
         const record = await mutate(latest);
         return persistResolvedSessionRecord(
           record,
@@ -249,7 +290,12 @@ async function writeSessionRecordUnlocked(
   }
 
   if (indexedDbResult.ok && indexedDbResult.value) {
-    await bestEffortDeleteFallbackRecord(indexedDbResult.value.id);
+    if (fallbackRecord) {
+      await bestEffortDeleteFallbackRecord(
+        indexedDbResult.value.id,
+        fallbackRecord.updatedAt,
+      );
+    }
     await clearQueuedExitPersistRecordsUpTo(
       indexedDbResult.value.id,
       indexedDbResult.value.updatedAt,
@@ -273,7 +319,13 @@ async function writeSessionRecordUnlocked(
       : new Error("IndexedDB session write failed");
   }
 
-  const savedFallbackRecord = await writeFallbackWithMutator(sessionId, mutate);
+  const savedFallbackRecord = await writeFallbackWithMutator(
+    sessionId,
+    mutate,
+    indexedDbRecord,
+    options,
+    idbReadCompleted,
+  );
   await clearQueuedExitPersistRecordsUpTo(
     savedFallbackRecord.id,
     savedFallbackRecord.updatedAt,
@@ -285,6 +337,8 @@ async function writeSessionRecordUnlocked(
 }
 
 export interface WriteSessionRecordOptions {
+  captureSnapshot?: boolean;
+  editedMetadata?: EditableMetadataField[];
   allowFallbackOnIndexedDbError?: boolean;
   notifyRevision?: boolean;
   /**

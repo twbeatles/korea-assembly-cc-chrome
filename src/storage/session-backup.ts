@@ -392,7 +392,9 @@ export function assertSessionLibraryTransferSizeWithinLimit(
   }
 
   throw new Error(
-    `${actionLabel} 작업은 ${SESSION_LIBRARY_TRANSFER_LIMIT_LABEL} 이하에서만 지원합니다.`,
+    `${actionLabel} 작업은 ${SESSION_LIBRARY_TRANSFER_LIMIT_LABEL} 이하에서만 지원합니다. ` +
+      "기록 화면에서 각 세그먼트 전체를 JSON으로 개별 저장한 뒤 파일별로 가져오세요(각 파일도 25 MiB 이하). " +
+      "같은 기록을 시간 범위나 일부 자막으로 나누면 복원 시 합쳐지지 않습니다. 단일 세그먼트가 한도를 넘으면 현재 JSON 복원은 지원하지 않습니다.",
   );
 }
 

@@ -393,7 +393,7 @@ export function handleTopFrameEvent(
           now,
           resolveRuntimeSessionSegmentationThresholds(ctx.settings),
         );
-        if (segmentationReason) {
+        if (segmentationReason && !ctx.drainingEventsForStop) {
           ctx.lastSegmentCapacityWarningReason = null;
           // 큐를 비우지 않는다 — 이전 잔여·경합 이벤트는 롤오버 후 flush 로 재생한다.
           ctx.segmentRolloverInFlight = true;

@@ -2,6 +2,18 @@
 
 이 문서는 다음 세션의 AI 에이전트가 현재 저장소를 빠르게 파악하고, Chrome Extension 코드베이스를 안전하게 수정하기 위한 루트 컨텍스트입니다.
 
+## 현재 운영 기준 (2026-11-05)
+
+- 사용자 명시 요청 없이 Spec Kit/speckit 또는 claude-mem 스킬을 사용하지 않는다. 요청이 없으면 일반 구현·테스트를 바로 진행한다. 아래 Spec Kit 가이드는 명시적으로 요청한 경우에만 적용한다.
+- 현재 툴체인·CI·커버리지 기준은 **Node 26 / Vitest 5**다. 아래 과거 Node 24 설명은 이력이다.
+- 세션 쓰기는 양 백엔드의 최신 record를 비교한 뒤 mutator에 전달한다. IDB transaction 내부에서는 Chrome storage를 await하지 않는다. IDB 쓰기가 실패하면 transaction에서 읽은 원본도 폴백 병합에 사용한다.
+- IDB 원본을 읽지 못한 캡처 폴백에는 내부 `unreconciledFallback` 표식을 저장한다. 복구 후 원본 편집을 병합하되 폴백에서 명시적으로 비운 메타데이터도 존중한다. 표식은 JSON·정상 IDB 저장 정규화에서 제외한다.
+- 잠금 순서: 세션 ID Web Lock → 폴백 공용 Web Lock. 폴백 인덱스·metadata는 durable per-session 키에서 재구성하며, 인덱스·migration·삭제 모두 공용 잠금 안에서 처리한다. 최신 폴백 복사본은 조건부 정리한다.
+- 개별 IDB 삭제 실패는 상위로 전파한다. 최종 stopped 저장 실패는 메모리 guard와 함께 durable 종료 큐 적재도 시도한다.
+- Stop의 대기 이벤트 drain 중에는 새 세그먼트 rollover를 시작하지 않는다.
+- 백업은 시작 시 ID 집합을 고정하고 각 record 내용은 읽는 시점 기준이다. 도중 삭제·읽기 실패면 파일 생성을 중단한다. 25 MiB 초과는 세그먼트 전체 JSON을 개별 저장하도록 안내하며, 같은 ID의 부분 JSON은 자동 병합되지 않는다.
+- 감사 제안 대응·검증 범위는 `AUDIT_REMEDIATION.md`를 참고한다.
+
 ## 1. 현재 프로젝트 상태
 
 - 이 저장소의 활성 구현은 `Chrome Extension (Manifest V3) + TypeScript + React + Vite` 입니다.
@@ -685,7 +697,7 @@ When editing this repository, align with the cross-repository parity contract be
 
 ### 작업 규칙 (에이전트)
 
-1. **새 기능/큰 변경 전** 활성 `spec.md`·`tasks.md` 를 읽고, 없으면 specify→plan→tasks 순으로 만든다.
+1. **사용자가 Spec Kit을 명시적으로 요청한 경우에만** 활성 `spec.md`·`tasks.md`를 읽고, 없으면 specify→plan→tasks 순으로 만든다. 요청이 없으면 이 절의 Spec Kit 흐름을 적용하지 않는다.
 2. **구현은 tasks.md 체크리스트**를 따른다. 완료 시 `- [ ]` → `- [x]`.
 3. **`/speckit-converge` 는 tasks.md 를 rewrite 하지 않는다** — 잔여 갭만 하단 Phase 로 append.
 4. brownfield 프로젝트는 상당 기능이 이미 있을 수 있다. 중복 구현 전에 코드·`[x]` 태스크를 확인한다.
