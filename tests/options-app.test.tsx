@@ -80,6 +80,20 @@ const defaultSettings = {
 };
 
 describe("options app", () => {
+  it("saves only fields edited since loading, preserving other screens' settings", async () => {
+    render(<App />);
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
+    fireEvent.change(
+      screen.getByRole("spinbutton", { name: "자동 저장 간격" }),
+      { target: { value: "1200" } },
+    );
+    fireEvent.click(screen.getByRole("button", { name: /^저장$/ }));
+    await waitFor(() =>
+      expect(settingsStoreMocks.saveSettings).toHaveBeenCalledWith({
+        runningAutoSaveDebounceMs: 1200,
+      }),
+    );
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     window.history.replaceState({}, "", "/options.html");

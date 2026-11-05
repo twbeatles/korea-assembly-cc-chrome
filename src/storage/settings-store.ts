@@ -11,6 +11,9 @@ import {
 import { createPrefixedRandomToken } from "../shared/random-token";
 import type { ExtensionSettings } from "./types";
 import type { SegmentPreset } from "./types";
+import { isSupportedAssemblySiteUrl } from "../shared/constants";
+import { sendRuntimeMessage } from "../shared/chrome-api";
+import { enqueueSettingsWrite } from "./session-write-queue";
 
 let memorySettings: ExtensionSettings = { ...DEFAULT_EXTENSION_SETTINGS };
 
@@ -240,10 +243,11 @@ export async function getSettings(): Promise<ExtensionSettings> {
   }
 
   const data = await localStorage.get(EXTENSION_STORAGE_KEY);
-  const merged = sanitizeSettings({
-    ...DEFAULT_EXTENSION_SETTINGS,
-    ...(data[EXTENSION_STORAGE_KEY] as StoredSettings | undefined),
-  });
+  // sanitizeSettings supplies defaults after resolving aliases and migrations.
+  // Prepending canonical defaults would hide every legacy-only setting.
+  const merged = sanitizeSettings(
+    (data[EXTENSION_STORAGE_KEY] as StoredSettings | undefined) ?? {},
+  );
   memorySettings = merged;
   return merged;
 }
@@ -255,6 +259,25 @@ let settingsWriteQueue: Promise<unknown> = Promise.resolve();
 export async function saveSettings(
   partial: Partial<ExtensionSettings>,
 ): Promise<ExtensionSettings> {
+  // Web Locks in a content script belong to the page origin, so route those
+  // mutations to the extension SW rather than using a different-origin lock.
+  if (
+    typeof window !== "undefined" &&
+    isSupportedAssemblySiteUrl(window.location.href) &&
+    typeof chrome !== "undefined" &&
+    typeof chrome.runtime?.sendMessage === "function"
+  ) {
+    const response = await sendRuntimeMessage({
+      type: "UPDATE_SETTINGS",
+      settings: partial,
+    });
+    if (!response.ok || !response.settings)
+      throw new Error(
+        response.ok ? "설정 저장 결과를 받지 못했습니다." : response.error,
+      );
+    memorySettings = sanitizeSettings(response.settings);
+    return memorySettings;
+  }
   const run = async (): Promise<ExtensionSettings> => {
     const filenamePatternError =
       typeof partial.filenamePattern === "string"
@@ -268,19 +291,18 @@ export async function saveSettings(
       ...(await getSettings()),
       ...partial,
     });
-    memorySettings = next;
-
     const localStorage = getChromeLocalStorage();
     if (localStorage) {
       await localStorage.set({
         [EXTENSION_STORAGE_KEY]: next,
       });
     }
-
+    memorySettings = next;
     return next;
   };
 
-  const queued = settingsWriteQueue.then(run, run);
+  const write = () => enqueueSettingsWrite(run);
+  const queued = settingsWriteQueue.then(write, write);
   settingsWriteQueue = queued.then(
     () => undefined,
     () => undefined,
@@ -289,14 +311,5 @@ export async function saveSettings(
 }
 
 export async function resetSettings(): Promise<ExtensionSettings> {
-  memorySettings = { ...DEFAULT_EXTENSION_SETTINGS };
-
-  const localStorage = getChromeLocalStorage();
-  if (localStorage) {
-    await localStorage.set({
-      [EXTENSION_STORAGE_KEY]: memorySettings,
-    });
-  }
-
-  return memorySettings;
+  return saveSettings({ ...DEFAULT_EXTENSION_SETTINGS });
 }

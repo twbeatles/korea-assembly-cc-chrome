@@ -6,6 +6,10 @@
 
 - 사용자 명시 요청 없이 Spec Kit/speckit 또는 claude-mem 스킬을 사용하지 않는다. 요청이 없으면 일반 구현·테스트를 바로 진행한다. 아래 Spec Kit 가이드는 명시적으로 요청한 경우에만 적용한다.
 - 현재 툴체인·CI·커버리지 기준은 **Node 26 / Vitest 5**다. 아래 과거 Node 24 설명은 이력이다.
+- 설정 쓰기는 `assembly-settings-write` Web Lock 안에서 최신 값을 읽고 부분 변경을 병합한다. 페이지 origin의 content script는 `UPDATE_SETTINGS`로 SW에 위임한다. Options는 로드 이후 실제 수정한 필드만 저장하며, 메모리 상태는 durable 저장 성공 후 갱신한다.
+- 구버전 설정은 기본값을 먼저 합치지 않고 원본을 정규화해야 alias와 custom 분할 임계값이 보존된다.
+- Offscreen 문서는 SW 중단 후에도 살아 있을 수 있다. 다운로드 Blob 매핑은 매 작업 전에 최초 복원하고 변경을 직렬화한다. 이전 SW가 만든 URL도 완료·중단 시 revoke하며, 등록보다 먼저 완료된 다운로드는 현재 상태 조회로 정리한다.
+- 설정·다운로드 및 캡처/브리지 추가 감사는 `PROJECT_AUDIT_ROUND2.md`를 참고한다.
 - 세션 쓰기는 양 백엔드의 최신 record를 비교한 뒤 mutator에 전달한다. IDB transaction 내부에서는 Chrome storage를 await하지 않는다. IDB 쓰기가 실패하면 transaction에서 읽은 원본도 폴백 병합에 사용한다.
 - IDB 원본을 읽지 못한 캡처 폴백에는 내부 `unreconciledFallback` 표식을 저장한다. 복구 후 원본 편집을 병합하되 폴백에서 명시적으로 비운 메타데이터도 존중한다. 표식은 JSON·정상 IDB 저장 정규화에서 제외한다.
 - 잠금 순서: 세션 ID Web Lock → 폴백 공용 Web Lock. 폴백 인덱스·metadata는 durable per-session 키에서 재구성하며, 인덱스·migration·삭제 모두 공용 잠금 안에서 처리한다. 최신 폴백 복사본은 조건부 정리한다.

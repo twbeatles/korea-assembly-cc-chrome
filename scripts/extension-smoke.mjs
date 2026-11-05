@@ -8,6 +8,7 @@
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { isAbsolute, join, relative, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -428,6 +429,8 @@ try {
     exportedSession,
   );
 
+  await exerciseOffscreenRestart(context, historyPage);
+
   // Retain the original extension-page smoke coverage, checking rendered React
   // controls instead of accepting a static HTML document title as success.
   const extensionId = await resolveExtensionId(context);
@@ -567,6 +570,89 @@ async function exerciseCrossContextFallback(
     });
     await a.close();
     await b.close();
+  }
+}
+
+async function exerciseOffscreenRestart(browserContext, page) {
+  // Hold a synthetic download in this temporary profile until after SW restart.
+  const responses = new Set();
+  const server = createServer((_request, response) => {
+    responses.add(response);
+    response.on("close", () => responses.delete(response));
+    response.writeHead(200, {
+      "Content-Type": "application/octet-stream",
+      "Content-Length": 1024 * 1024,
+    });
+    response.write(Buffer.alloc(1024));
+  });
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const probe = await browserContext.newCDPSession(page);
+  let downloadId;
+  try {
+    const url = `http://127.0.0.1:${server.address().port}/restart-probe.bin`;
+    const result = await page.evaluate(async (downloadUrl) => {
+      const blob = await chrome.runtime.sendMessage({
+        type: "OFFSCREEN_CREATE_BLOB_URL",
+        content: "offscreen restart probe",
+        mimeType: "text/plain",
+      });
+      if (!blob.ok) throw new Error(blob.error);
+      const id = await chrome.downloads.download({
+        url: downloadUrl,
+        filename: "restart-probe.bin",
+        saveAs: false,
+      });
+      await chrome.downloads.pause(id);
+      await chrome.storage.local.set({
+        "assembly-subtitle-download-blob-urls": { [id]: blob.url },
+      });
+      return { id, blobUrl: blob.url };
+    }, url);
+    downloadId = result.id;
+    await probe.send("ServiceWorker.enable");
+    await probe.send("ServiceWorker.stopAllWorkers");
+    const wake = await page.evaluate(() =>
+      chrome.runtime.sendMessage({ type: "UPDATE_SETTINGS", settings: {} }),
+    );
+    assert.equal(wake.ok, true);
+    assert.equal(
+      await page.evaluate(
+        async (url) => (await fetch(url)).text(),
+        result.blobUrl,
+      ),
+      "offscreen restart probe",
+      "The offscreen Blob must survive service worker restart",
+    );
+    await page.evaluate((id) => chrome.downloads.cancel(id), downloadId);
+    await page.waitForFunction(async (url) => {
+      try {
+        await fetch(url);
+        return false;
+      } catch {
+        return true;
+      }
+    }, result.blobUrl);
+    const snapshot = await page.evaluate(
+      async () =>
+        (
+          await chrome.storage.local.get("assembly-subtitle-download-blob-urls")
+        )["assembly-subtitle-download-blob-urls"],
+    );
+    assert.equal(snapshot[result.id], undefined);
+    console.log(
+      "Offscreen restart: Blob survived SW stop and was revoked after cancellation.",
+    );
+  } finally {
+    if (downloadId !== undefined)
+      await page
+        .evaluate((id) => chrome.downloads.cancel(id), downloadId)
+        .catch(() => {});
+    for (const response of responses) response.destroy();
+    await new Promise((resolve) => server.close(resolve));
+    await probe.detach();
   }
 }
 

@@ -138,6 +138,9 @@ export async function downloadExportWithFallback(
 }
 
 export interface BackgroundCommandDependencies {
+  saveSettings?: (
+    settings: Partial<import("../storage/types").ExtensionSettings>,
+  ) => Promise<import("../storage/types").ExtensionSettings>;
   supportsAssemblyPage: (url?: string) => boolean;
   waitForTopFrameReady: (tabId: number) => Promise<boolean>;
   injectConfiguredContentScripts: (tabId: number) => Promise<void>;
@@ -179,6 +182,7 @@ export function isBackgroundCommandMessage(
 
   const type = (message as { type?: string }).type;
   return (
+    type === "UPDATE_SETTINGS" ||
     type === "ENSURE_CONTENT_SCRIPT" ||
     type === "GET_FRAME_FORWARD_NONCE" ||
     type === "QUEUE_EXIT_PERSIST_RECORD" ||
@@ -218,6 +222,20 @@ export async function handleBackgroundCommand(
   }
 
   switch (message.type) {
+    case "UPDATE_SETTINGS": {
+      if (
+        !dependencies.saveSettings ||
+        !message.settings ||
+        typeof message.settings !== "object" ||
+        Array.isArray(message.settings)
+      ) {
+        return { ok: false, error: "설정 저장 요청이 올바르지 않습니다." };
+      }
+      return {
+        ok: true,
+        settings: await dependencies.saveSettings(message.settings),
+      };
+    }
     case "ENSURE_CONTENT_SCRIPT":
       if (!dependencies.supportsAssemblyPage(message.url)) {
         return {

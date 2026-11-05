@@ -74,6 +74,11 @@ function enqueueNamedWrite<T>(
   return enqueueMemoryQueue(name, task);
 }
 
+/** Extension pages and the SW share this origin-scoped settings lock. */
+export function enqueueSettingsWrite<T>(task: () => Promise<T>): Promise<T> {
+  return enqueueNamedWrite("assembly-settings-write", task);
+}
+
 /** 테스트 전용: 실행 환경이 다른 것처럼 in-memory 큐를 건너뛴다. */
 export function setSessionWriteQueuePassthroughForTests(
   enabled: boolean,

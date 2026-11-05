@@ -597,7 +597,14 @@ export default function App() {
 
     setIsSaving(true);
     try {
-      const next = await saveSettings(settings);
+      const patch: Partial<ExtensionSettings> = Object.fromEntries(
+        Object.entries(settings).filter(
+          ([key, value]) =>
+            JSON.stringify(value) !==
+            JSON.stringify(savedSettings?.[key as keyof ExtensionSettings]),
+        ),
+      );
+      const next = await saveSettings(patch);
       setSettings(next);
       setSavedSettings(next);
       setNumberDrafts(buildNumberDraftState(next));

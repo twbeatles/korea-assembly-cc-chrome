@@ -6,6 +6,7 @@ import type {
   SubtitleEntry,
 } from "../core/subtitle-models";
 import type { CaptureMode } from "../core/live-capture";
+import type { ExtensionSettings } from "../storage/types";
 
 export type PersistabilityState =
   | "idle"
@@ -169,6 +170,7 @@ export type ContentToPopupMessage =
   | { type: "ERROR"; message: string };
 
 export type BackgroundCommandMessage =
+  | { type: "UPDATE_SETTINGS"; settings: Partial<ExtensionSettings> }
   | { type: "ENSURE_CONTENT_SCRIPT"; tabId: number; url?: string }
   | { type: "GET_FRAME_FORWARD_NONCE" }
   | {
@@ -232,6 +234,7 @@ export type BackgroundCommandResponse =
       downloadId?: number;
       nonce?: string;
       updatedAt?: string;
+      settings?: ExtensionSettings;
     }
   | { ok: false; error: string; requiresReload?: boolean };
 

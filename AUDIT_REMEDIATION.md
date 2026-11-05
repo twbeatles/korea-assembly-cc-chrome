@@ -2,6 +2,8 @@
 
 대상: [PROJECT_AUDIT.md](PROJECT_AUDIT.md), 2026-11-05. 감사 본문은 수정 전 증거로 보존한다. 사용자 요청에 따라 main에서 구현했으며 Spec Kit은 사용하지 않는다.
 
+설정·다운로드 및 캡처/브리지 추가 감사·수정 기록은 [PROJECT_AUDIT_ROUND2.md](PROJECT_AUDIT_ROUND2.md)에 이어진다.
+
 ## 제안별 대응
 
 | 감사 제안                         | 대응                                                                                                                      | 검증                                                                                                                         |

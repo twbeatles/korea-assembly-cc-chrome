@@ -2,6 +2,8 @@
 
 감사일: 2026-11-05 (Asia/Seoul) · 기준: `main`, `2d08586` · 제품 버전: `1.0.16`
 
+추가 범위의 감사와 수정 결과: [PROJECT_AUDIT_ROUND2.md](PROJECT_AUDIT_ROUND2.md).
+
 아래는 수정 전 기준의 감사 기록이다. 감사 당시 제품 소스·설정·테스트 코드는 수정하지 않았다. 이후 사용자 요청에 따른 개선 내역·현재 상태·검증 범위는 [AUDIT_REMEDIATION.md](AUDIT_REMEDIATION.md)에 별도로 기록한다. 실제 사용자 프로필·production 데이터는 사용하지 않았다.
 
 ## 1. Executive Summary

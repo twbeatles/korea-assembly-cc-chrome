@@ -3,6 +3,8 @@ import {
   OFFSCREEN_DOCUMENT_PATH,
 } from "../shared/constants";
 import { runStartupPersistenceMaintenance } from "./startup-persistence";
+import { saveSettings } from "../storage/settings-store";
+import { createBlobDownloadTracker } from "./blob-download-tracker";
 import {
   handleFrameForwardNonceTabRemoved,
   handleFrameForwardNonceTabUpdated,
@@ -39,13 +41,25 @@ const OFFSCREEN_DOCUMENT_URL = chrome.runtime.getURL(OFFSCREEN_DOCUMENT_PATH);
 const OFFSCREEN_JUSTIFICATION =
   "자막 export용 Blob URL을 생성하기 위해 필요합니다.";
 const frameForwardNonceByTabId = new Map<number, string>();
-const blobDownloadUrls = new Map<number, string>();
-// Tracks Blob download IDs created during the current service worker
-// generation. URLs missing from this set were restored from storage and now
-// live in a defunct offscreen document, so the `URL.revokeObjectURL` round
-// trip would be a no-op.
-const blobDownloadUrlsCreatedThisGeneration = new Set<number>();
 const BLOB_DOWNLOAD_URLS_STORAGE_KEY = "assembly-subtitle-download-blob-urls";
+const blobDownloads = createBlobDownloadTracker({
+  readSnapshot: async () =>
+    (await chrome.storage.local.get(BLOB_DOWNLOAD_URLS_STORAGE_KEY))[
+      BLOB_DOWNLOAD_URLS_STORAGE_KEY
+    ],
+  writeSnapshot: async (snapshot) => {
+    await chrome.storage.local.set({
+      [BLOB_DOWNLOAD_URLS_STORAGE_KEY]: snapshot,
+    });
+  },
+  getState: async (id) => {
+    const items = await callbackPromise<chrome.downloads.DownloadItem[]>(
+      (callback) => chrome.downloads.search({ id }, callback),
+    );
+    return items[0]?.state;
+  },
+  revoke: revokeBlobUrl,
+});
 const TOP_FRAME_READY_ATTEMPTS = 8;
 const TOP_FRAME_READY_RETRY_DELAY_MS = 150;
 const OFFSCREEN_BLOB_CHUNK_SIZE = 512 * 1024;
@@ -70,57 +84,9 @@ function supportsAssemblyPage(url?: string): boolean {
   return isSupportedAssemblySiteUrl(url);
 }
 
-async function persistBlobDownloadUrls(): Promise<void> {
-  await chrome.storage.local.set({
-    [BLOB_DOWNLOAD_URLS_STORAGE_KEY]: Object.fromEntries(
-      blobDownloadUrls.entries(),
-    ),
-  });
-}
-
-async function restoreBlobDownloadUrls(): Promise<void> {
-  const stored = await chrome.storage.local.get(BLOB_DOWNLOAD_URLS_STORAGE_KEY);
-  const snapshot = stored[BLOB_DOWNLOAD_URLS_STORAGE_KEY];
-  blobDownloadUrls.clear();
-  if (!snapshot || typeof snapshot !== "object") {
-    return;
-  }
-
-  Object.entries(snapshot as Record<string, unknown>).forEach(
-    ([key, value]) => {
-      const downloadId = Number(key);
-      if (Number.isInteger(downloadId) && typeof value === "string" && value) {
-        blobDownloadUrls.set(downloadId, value);
-      }
-    },
-  );
-}
-
 async function cleanupPersistedBlobDownloadUrls(): Promise<void> {
   try {
-    await restoreBlobDownloadUrls();
-    if (blobDownloadUrls.size === 0) {
-      return;
-    }
-
-    for (const [downloadId, blobUrl] of [...blobDownloadUrls.entries()]) {
-      const items = await callbackPromise<chrome.downloads.DownloadItem[]>(
-        (callback) => chrome.downloads.search({ id: downloadId }, callback),
-      );
-      const state = items[0]?.state;
-      if (!state || state === "complete" || state === "interrupted") {
-        blobDownloadUrls.delete(downloadId);
-        // Only revoke when this URL was created during the current SW
-        // generation. Restored entries reference a URL inside a defunct
-        // offscreen document, so the cross-context revoke message is a
-        // useless round-trip.
-        if (blobDownloadUrlsCreatedThisGeneration.has(downloadId)) {
-          blobDownloadUrlsCreatedThisGeneration.delete(downloadId);
-          await revokeBlobUrl(blobUrl);
-        }
-      }
-    }
-    await persistBlobDownloadUrls();
+    await blobDownloads.cleanup();
   } catch (error) {
     console.warn(
       "[service-worker] Failed to restore persisted Blob URLs",
@@ -413,11 +379,7 @@ async function downloadExport(
   return downloadExportWithFallback(filename, content, mimeType, {
     requestBlobUrl,
     downloadByUrl,
-    persistBlobDownload: async (downloadId, blobUrl) => {
-      blobDownloadUrls.set(downloadId, blobUrl);
-      blobDownloadUrlsCreatedThisGeneration.add(downloadId);
-      await persistBlobDownloadUrls();
-    },
+    persistBlobDownload: blobDownloads.track,
     revokeBlobUrl,
     toDataUrl,
     getByteLength: getUtf8ByteLength,
@@ -440,6 +402,7 @@ async function handleMessage(
   sender: chrome.runtime.MessageSender,
 ): Promise<BackgroundCommandResponse> {
   return handleBackgroundCommand(message, sender, {
+    saveSettings,
     supportsAssemblyPage,
     waitForTopFrameReady,
     injectConfiguredContentScripts,
@@ -547,16 +510,12 @@ chrome.downloads.onChanged.addListener((delta) => {
     return;
   }
 
-  const blobUrl = blobDownloadUrls.get(delta.id);
-  if (!blobUrl) {
-    return;
-  }
-
-  blobDownloadUrls.delete(delta.id);
-  void persistBlobDownloadUrls();
-  if (blobDownloadUrlsCreatedThisGeneration.delete(delta.id)) {
-    void revokeBlobUrl(blobUrl);
-  }
+  void blobDownloads.complete(delta.id).catch((error) => {
+    console.warn(
+      "[service-worker] Failed to clean completed Blob download",
+      error,
+    );
+  });
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
