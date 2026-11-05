@@ -378,6 +378,10 @@ try {
   await historyPage.keyboard.press("Escape");
   await dialog.waitFor({ state: "detached" });
   await historyPage.reload();
+  // Navigation completes before the asynchronous IndexedDB list is rendered.
+  await historyPage.waitForFunction(
+    () => document.querySelectorAll(".session-item").length === 3,
+  );
   assert.equal(await historyPage.locator(".session-item").count(), 3);
   await historyPage
     .locator(".session-item")

@@ -24,8 +24,10 @@
 
 ## 3. 필수 명령
 
+현재 배포 준비 버전은 `1.0.17`이며 Node.js 26 / Vitest 5를 사용합니다. 릴리스 절차·변경 이력은 `DEPLOYMENT.md`, 패키지 검증 정보는 `RELEASE_1.0.17.md`를 참고합니다.
+
 ```bash
-npm install
+npm ci
 npm run lint
 npm run typecheck      # TypeScript 7 (scripts/run-tsc.mjs)
 npm run typecheck:ts6  # TypeScript 6 비교

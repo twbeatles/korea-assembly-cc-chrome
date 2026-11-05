@@ -18,7 +18,9 @@
 | **지원 사이트** | 주: `assembly.webcast.go.kr` · 보조: `webcast.assembly.go.kr` (네트워크/DNS에 따라 보조 호스트는 연결되지 않을 수 있음) |
 | **내보내기**    | TXT · SRT · VTT · JSON · MD · CSV                                                                                       |
 | **저장 위치**   | 로컬 (IndexedDB / 확장 저장소)                                                                                          |
-| **현재 버전**   | 1.0.16                                                                                                                  |
+| **현재 버전**   | 1.0.17                                                                                                                  |
+
+**1.0.17 요약:** 저장소 장애·복구 시 기록과 편집값을 보존하고, 설정 덮어쓰기·구버전 설정 로딩·다운로드 Blob 정리 문제를 수정했습니다. 상세 변경과 검증은 [릴리스 노트](DEPLOYMENT.md#11-릴리스-노트), 감사 근거는 [저장소 개선 기록](AUDIT_REMEDIATION.md)과 [추가 감사](PROJECT_AUDIT_ROUND2.md)를 참고하세요.
 
 **1.0.16 요약:** 데스크톱 앱과 수집 알고리즘을 `parity/` 공유 계약으로 맞추고 entry 병합·keepalive 규칙을 통일했습니다. 자세한 항목은 [DEPLOYMENT.md §11](DEPLOYMENT.md#11-릴리스-노트).
 
@@ -88,7 +90,7 @@ Chrome 확장 **Manifest V3** 소스 코드입니다.
 **필요:** Node.js 26+, npm (`.nvmrc` 및 CI와 동일)
 
 ```bash
-npm install
+npm ci
 npm run build
 ```
 
@@ -226,7 +228,7 @@ npm run build
 ## 개발
 
 ```bash
-npm install
+npm ci
 npm run dev          # 개발 서버 (+ injected 빌드)
 npm run build        # dist/ 생성
 npm run verify       # version · injected · lint · typecheck · test · build

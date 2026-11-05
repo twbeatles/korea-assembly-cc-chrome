@@ -18,28 +18,29 @@
 
 ### 2.1 필수 환경
 
-- Node.js 24 이상 권장 (CI·coverage·verify 표준, V8 커버리지 수집 기준)
+- Node.js 26 (`package.json` engines·`.nvmrc`·CI·Vitest 5 coverage 기준과 동일)
 - npm
 - Chrome 최신 버전
 
 ### 2.2 버전 관리
 
-배포 전에는 아래 두 파일의 버전을 같이 올립니다.
+배포 전에는 아래 파일의 버전을 같이 올립니다.
 
 - `package.json`
 - `manifest.json`
+- `package-lock.json`의 최상위 및 `packages[""].version`
 
-현재 구조는 자동 버전 동기화가 없으므로 둘 중 하나만 바꾸면 안 됩니다.
+현재 구조는 자동 버전 동기화가 없으므로 한 파일만 바꾸면 안 됩니다.
 
-현재 스토어 제출 준비 기준 버전은 `1.0.16` 입니다.
+현재 스토어 제출 준비 기준 버전은 `1.0.17`입니다. 업로드·심사 제출은 별도 작업이며, 패키지 생성만으로 스토어 배포가 완료되지는 않습니다.
 
 ## 3. 배포 전 검증
 
 루트에서 아래 명령을 실행합니다.
 
 ```bash
-npm install
-npm run verify          # version → inject 생성 → inject 검사 → lint → typecheck → test → build
+npm ci                  # 클린 환경에서 lockfile 기준 설치; 이미 동기화된 환경은 생략 가능
+npm run verify          # depsync/version → inject → calibration/parity → format/lint → TS7/coverage/TS6 → prod audit → build
 # 또는 단계별:
 npm run build:inject    # public/injected-observer.js 생성 (gitignore · CI 필수)
 npm run check:version
@@ -57,7 +58,7 @@ npm run verify:e2e
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
 - `npm run typecheck` 는 TypeScript **7** 네이티브 CLI로 `tsconfig.json` / `tsconfig.node.json` 을 `--noEmit` 검사합니다 (`scripts/run-tsc.mjs`). ESLint용 `typescript@6` 과 dual-track 입니다. 비교가 필요하면 `npm run typecheck:ts6` 을 사용합니다.
 - TypeScript 버전 전환은 **개발/CI typecheck 툴체인** 변경이며, 확장 런타임 emit은 Vite/esbuild 경로를 유지합니다.
-- `npm run verify:e2e` 는 build 후 Playwright로 확장 **페이지**(history/options/sidepanel) smoke 를 실행합니다.
+- `npm run verify:e2e`는 `test:e2e:extension`과 같은 전체 확장 스모크를 실행합니다. DOM/iframe 수집, 저장·재조회, 6종 출력, JSON 복원, SW/History 동시 폴백, SW 중단 뒤 Blob 해제, 확장 페이지 렌더링을 검증합니다.
 - `npm run test:e2e:extension` 는 build 후 **의사중계 fixture + in-page 패널** smoke 를 실행합니다. production 패널은 closed Shadow DOM 이며, 스모크는 host 에 `data-assembly-e2e="1"` 을 켠 뒤 light DOM 미러와 `assembly-subtitle-panel-command` 를 사용합니다 (`SECURITY.md` §5).
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
 - 전체 release gate 는 `npm run verify` 로 실행할 수 있습니다.
@@ -149,17 +150,13 @@ bad.zip
     ...
 ```
 
-Windows PowerShell 예시:
+Python 3 표준 라이브러리를 쓰는 예시(저장소 루트에서 실행):
 
-```powershell
-Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.16-cws.zip -Force
+```bash
+python -c "import json,pathlib,zipfile;p=pathlib.Path('dist');v=json.loads((p/'manifest.json').read_text(encoding='utf-8'))['version'];z=zipfile.ZipFile('korea-assembly-cc-chrome-'+v+'-cws.zip','x',zipfile.ZIP_DEFLATED);[z.write(f,f.relative_to(p).as_posix()) for f in sorted(p.rglob('*')) if f.is_file()];z.close()"
 ```
 
-> Windows PowerShell 5.1 의 `Compress-Archive` 는 zip 내부 경로에 역슬래시를 넣어 스토어 업로드가 거부될 수 있습니다. 문제가 있으면 슬래시 경로로 직접 압축하세요.
->
-> ```bash
-> python -c "import zipfile,os;z=zipfile.ZipFile('korea-assembly-cc-chrome-1.0.16-cws.zip','w',zipfile.ZIP_DEFLATED);[z.write(os.path.join(r,n),os.path.relpath(os.path.join(r,n),'dist').replace(os.sep,'/')) for r,_,fs in os.walk('dist') for n in fs]"
-> ```
+`manifest.json`을 ZIP 최상위에 넣고 내부 경로를 `/`로 통일합니다. 기존 파일을 덮어쓰지 않는 `x` 모드이므로 같은 버전 ZIP이 있으면 내용을 먼저 확인하세요. 버전 변경 후 반드시 새 build로 생성하고, CRC·manifest 버전·ZIP 내부 파일과 `dist/` 바이트 일치를 확인합니다. SHA-256은 PowerShell `Get-FileHash -Algorithm SHA256 <zip 경로>`로 확인할 수 있습니다. ZIP은 `.gitignore` 대상이며 소스 커밋에 넣지 않습니다.
 
 ## 6. Chrome Web Store 배포
 
@@ -175,6 +172,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.16-c
 현재 확장에서 실제 사용하는 주요 권한:
 
 - `storage`
+- `unlimitedStorage` (긴 회의 기록의 확장 로컬 저장 용량)
 - `downloads`
 - `offscreen`
 - `activeTab`
@@ -207,6 +205,7 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.16-c
 
 - `package.json` 버전 증가
 - `manifest.json` 버전 증가
+- `package-lock.json` root 버전 동기화
 - `npm run check:version` 통과
 - `npm run check:injected` 통과
 - `npm run lint` 통과
@@ -298,6 +297,19 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.16-c
 - 릴리스 태그나 커밋 메시지에 manifest 버전을 같이 남김
 
 ## 11. 릴리스 노트
+
+### 1.0.17 (2026-11-05)
+
+**저장·복구·설정 안정성 수정**
+
+- IndexedDB/폴백 사이의 최신 기록·사용자 편집 병합, 폴백 공용 인덱스 직렬화·재구성, 삭제 실패 전달을 보강했습니다.
+- 수집 종료 시 대기 자막을 보존하고, 최종 저장 실패 시 durable 종료 큐 적재를 시도합니다.
+- 전체 백업 중 누락 기록을 성공으로 처리하지 않으며, 25 MiB 제한과 전체 세그먼트 개별 백업 방법을 안내합니다.
+- 여러 실행 환경의 설정 쓰기를 잠금으로 직렬화하고, Options는 수정한 필드만 저장합니다. 저장 실패 시 메모리 설정이 먼저 바뀌지 않습니다.
+- 구버전 설정 alias와 사용자 지정 분할 임계값이 로드 시 기본값에 가려지는 문제를 수정했습니다.
+- SW 중단·재시작 및 빠른 다운로드 완료 시 Offscreen Blob URL 정리를 보강했습니다.
+- 전체 테스트·실제 확장 스모크와 OS별 CI 회귀 설정을 보강했습니다. 로컬 검증은 Windows이며 실제 방송 장시간 운전·macOS/Linux 실행을 완료했다고 주장하지 않습니다.
+- 수정 전 근거와 검증 범위: [AUDIT_REMEDIATION.md](AUDIT_REMEDIATION.md), [PROJECT_AUDIT_ROUND2.md](PROJECT_AUDIT_ROUND2.md). 패키지 정보: [RELEASE_1.0.17.md](RELEASE_1.0.17.md).
 
 ### 1.0.16 (2026-10-22)
 

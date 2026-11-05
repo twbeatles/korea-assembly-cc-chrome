@@ -4,8 +4,10 @@
 
 ## 현재 운영 기준 (2026-11-05)
 
+- 현재 배포 준비 버전은 **1.0.17**이다. package/manifest/lockfile root를 함께 갱신하고 최신 `dist/`에서 CWS ZIP을 생성한다. 패키지 정보는 `RELEASE_1.0.17.md`, 변경 이력은 `DEPLOYMENT.md` §11을 참고한다.
+
 - 사용자 명시 요청 없이 Spec Kit/speckit 또는 claude-mem 스킬을 사용하지 않는다. 요청이 없으면 일반 구현·테스트를 바로 진행한다. 아래 Spec Kit 가이드는 명시적으로 요청한 경우에만 적용한다.
-- 현재 툴체인·CI·커버리지 기준은 **Node 26 / Vitest 5**다. 아래 과거 Node 24 설명은 이력이다.
+- 현재 툴체인·CI·커버리지 기준은 **Node 26 / Vitest 5**다.
 - 설정 쓰기는 `assembly-settings-write` Web Lock 안에서 최신 값을 읽고 부분 변경을 병합한다. 페이지 origin의 content script는 `UPDATE_SETTINGS`로 SW에 위임한다. Options는 로드 이후 실제 수정한 필드만 저장하며, 메모리 상태는 durable 저장 성공 후 갱신한다.
 - 구버전 설정은 기본값을 먼저 합치지 않고 원본을 정규화해야 alias와 custom 분할 임계값이 보존된다.
 - Offscreen 문서는 SW 중단 후에도 살아 있을 수 있다. 다운로드 Blob 매핑은 매 작업 전에 최초 복원하고 변경을 직렬화한다. 이전 SW가 만든 URL도 완료·중단 시 revoke하며, 등록보다 먼저 완료된 다운로드는 현재 상태 조회로 정리한다.
@@ -25,7 +27,7 @@
 - 최우선 기능은 `국회 AI 자막 추출`, `세션 저장`, `TXT / SRT / VTT / JSON / MD / CSV 내보내기`, `history 검색/정리/편집` 입니다.
 - 현재 주 UI 는 `사이트 안 우측 패널`이며, popup 은 `페이지 패널 열기 / 저장된 기록 / 환경 설정 / 수집 진단` 중심의 보조 화면입니다.
 - 현재 UI 보강 범위에는 `우측 패널 실시간 표시`, `history 전체 기록 검색/기록 내부 검색/복사`, `최근 N줄 복사`, `history 즐겨찾기/세션 메모/태그/카테고리`, `entry 체크박스 기반 부분 복사/부분 export`, `중요 표시만 export`, `시간 범위 export`, `entry 텍스트/발언자/중요 표시/entry note/labels inline 편집`, `entry 병합/분할/삭제`, `preset CRUD`, `전체 JSON 백업/복원`, `autosave 설정/최근 저장 시각 진단`, `autoScroll 옵션 반영`, `자막 우선 대형 미리보기`, `실시간 내용 / 수집된 자막 2단 구성`, `패널/popup 수집 진단 진입`, `즉시 노출되는 내보내기 버튼`, `실험형 side panel`이 포함됩니다.
-- 현재 기준 기본 검증 명령은 `npm run verify` 와 같다 (`check:depsync` · `check:version` · inject 생성/검사 · 커버리지 보정 검사 · format · lint · typecheck · `test:coverage` · `typecheck:ts6` · 프로덕션 audit · build — GitHub CI `verify` 잡과 동일 순서). `check:depsync` 는 로컬 `node_modules` 가 `package-lock.json` 과 어긋나면(예: stale `@types/chrome` 로 로컬만 통과하고 CI가 깨지는 경우) 먼저 실패시키고 `npm ci` 를 유도한다. 확장 페이지 스모크는 `npm run verify:e2e` 를 추가로 쓴다.
+- 현재 기준 기본 검증 명령은 `npm run verify` 와 같다 (`check:depsync` · `check:version` · inject 생성/검사 · 커버리지 보정 검사 · format · lint · typecheck · `test:coverage` · `typecheck:ts6` · 프로덕션 audit · build — GitHub CI `verify` 잡과 동일 순서). `check:depsync` 는 로컬 `node_modules` 가 `package-lock.json` 과 어긋나면(예: stale `@types/chrome` 로 로컬만 통과하고 CI가 깨지는 경우) 먼저 실패시키고 `npm ci` 를 유도한다. 전체 확장 브라우저 스모크는 `npm run verify:e2e` 또는 동일한 `npm run test:e2e:extension`을 추가로 쓴다.
 
 ```bash
 npm run verify
@@ -654,7 +656,7 @@ When editing this repository, align with the coverage calibration below.
 - `src/content/app/runtime/orchestrator/**` 는 jsdom 단위 테스트로 실행할 수 없는 크롬 런타임 통합 배선이므로 커버리지 측정에서 제외한다 (e2e 스모크 영역: `scripts/extension-smoke.mjs`, `tests/e2e-smoke.mjs`).
 - 임계는 vitest 5 실측 기준으로 재보정했다: content 브랜치 65→62, storage 4종 75/75/70/80→73/73/65/77. `src/shared/extension-context.ts` 는 임계 유지 + 회귀 테스트 추가(`tests/extension-context.test.ts`), 쿨다운 헬퍼는 신규 테스트(`tests/autostart-cooldown.test.ts`).
 - vitest/coverage 메이저 업그레이드 전에는 반드시 `npm run test:coverage` 로 임계를 재보정하고 `COVERAGE_CALIBRATED_VITEST_MAJOR` 를 갱신한다. `npm run check:coverage-calibration` (CI·`verify` 선행 스텝)이 이를 강제한다.
-- CI 런타임은 Node 24다. `@vitest/coverage-v8` v5 는 Node 20 에서 커버리지를 0%로만 수집하므로 로컬도 Node 24 를 쓴다. 가드 스크립트가 CI(`node-version`)와 실행 중 Node 메이져를 대조해 어긋나면 먼저 실패시킨다.
+- 현재 CI·로컬 검증 런타임은 Node 26이다(2026-11-05 갱신). coverage calibration 가드가 CI의 `node-version`, 실행 중 Node major, Vitest major를 대조한다.
 
 ## Sync Delta (2026-10-22 · 데스크톱 수집 알고리즘 정합)
 
