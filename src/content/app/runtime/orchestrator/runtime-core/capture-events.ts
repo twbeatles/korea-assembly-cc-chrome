@@ -40,6 +40,7 @@ import {
 } from "../../../../subtitle-event-handler";
 import { buildPersistabilityDiagnostics } from "../../../../persistability";
 import {
+  COMMIT_PENDING_FALLBACK_ON_RESET,
   SUBTITLE_RESET_GRACE_MS,
   isTopFrame,
   localFramePath,
@@ -62,6 +63,7 @@ import { resolvePreviewPersistability } from "./snapshots";
 import { scheduleRunningPersist } from "./persistence";
 import {
   clearFallbackCommitCandidate,
+  flushFallbackCommitCandidate,
   observeFallbackCommitCandidate,
 } from "./fallback-commit";
 import { rollOverRunningSessionSegment } from "./session-lifecycle";
@@ -207,6 +209,9 @@ export function scheduleDeferredSubtitleReset(ctx: RuntimeCoreContext): void {
       return;
     }
 
+    if (COMMIT_PENDING_FALLBACK_ON_RESET) {
+      flushFallbackCommitCandidate(ctx);
+    }
     ctx.state = applyReset(ctx.state, Date.now(), ctx.settings).state;
     setPersistabilityState(ctx, "idle");
     clearStructuredRuntimeState(ctx);
@@ -309,6 +314,9 @@ export function handleTopFrameEvent(
     }
 
     if (event.kind === "subtitle:reset") {
+      if (COMMIT_PENDING_FALLBACK_ON_RESET) {
+        flushFallbackCommitCandidate(ctx, now);
+      }
       scheduleDeferredSubtitleReset(ctx);
       return;
     }

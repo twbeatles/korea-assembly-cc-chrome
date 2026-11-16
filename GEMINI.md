@@ -136,6 +136,7 @@ npm run verify:e2e
 - 새 row 는 carry-over trim 과 글로벌 history 비교를 거친 뒤 실제 신규 delta 만 commit 합니다.
 - stable key 가 없으면 `unstable` 로 표시하고 raw/container fallback 을 사용합니다.
 - container text fallback 이 항상 있어야 합니다.
+- fallback commit 게이트(`src/core/subtitle-pipeline/fallback-commit-gate.ts`, parity `fallbackCommitGate`): 같은 raw 2회 또는 400ms 안정 관측, raw 가 계속 바뀌어도 첫 미확정 관측(`pendingSince`)부터 최대 2000ms 안에 commit. `subtitle:reset` 수신 즉시와 reset 적용 직전에 대기 후보를 먼저 commit 합니다(`commitPendingFallbackOnReset`).
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback 은 commit/diff 용 내부 raw 누적 원문을 잘라내지 않습니다. UI preview 는 URL 과 무관하게 `400자/3줄` tail 로 짧게 표시합니다.
 - 수집 시작 시 자막 레이어가 닫혀 있으면 page function 또는 자막 버튼 클릭으로 자동 활성화를 시도합니다.
 

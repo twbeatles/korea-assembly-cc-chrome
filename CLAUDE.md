@@ -144,6 +144,7 @@ src/
 - stable `nodeKey` 가 잡히면 같은 row 의 보정/완성은 live row 와 마지막 엔트리를 제자리 갱신하고, 새 row 만 commit 후보로 봅니다.
 - stable key 가 없으면 `unstable` 로 간주하고 기존 raw/container fallback 으로 내려갑니다.
 - 실패 시 container text fallback 을 사용합니다.
+- fallback commit 게이트(`src/core/subtitle-pipeline/fallback-commit-gate.ts`, parity `fallbackCommitGate`): 같은 raw 2회 또는 400ms 안정 관측, raw 가 계속 바뀌어도 첫 미확정 관측(`pendingSince`)부터 최대 2000ms 안에 commit. `subtitle:reset` 수신 즉시와 reset 적용 직전에 대기 후보를 먼저 commit 합니다(`commitPendingFallbackOnReset`).
 - 본회의(`xcode=10` 또는 `xcgcd=DCM000010...`) container fallback 은 commit/diff용 내부 raw 누적 원문을 잘라내지 않습니다. UI preview는 URL과 무관하게 짧게 표시해야 합니다.
 
 ### 4.2 프레임 탐색

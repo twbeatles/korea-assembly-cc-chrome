@@ -9,10 +9,16 @@ import {
   isAssemblyPlenaryUrl,
 } from "../src/shared/constants";
 import {
+  COMMIT_PENDING_FALLBACK_ON_RESET,
+  FALLBACK_COMMIT_MAX_WAIT_MS,
   FALLBACK_COMMIT_OBSERVATION_THRESHOLD,
   FALLBACK_COMMIT_STABLE_MS,
   SUBTITLE_RESET_GRACE_MS,
 } from "../src/content/app/runtime/constants";
+import {
+  decideFallbackCommit,
+  type FallbackGateCandidate,
+} from "../src/core/subtitle-pipeline/fallback-commit-gate";
 import { getSubtitleSelectorCandidates } from "../src/content/dom-probe";
 import {
   PRIMARY_SPEAKER_COLOR,
@@ -77,7 +83,24 @@ interface Vectors {
     baseTimeIso: string;
     lastEntryText: string;
     nextText: string;
+    fallbackCommit: {
+      observationThreshold: number;
+      stableMs: number;
+      maxWaitMs: number;
+    };
   };
+  fallbackCommitGate: Array<{
+    name: string;
+    steps: Array<{
+      raw: string;
+      atMs: number;
+      expected: {
+        commitNow: boolean;
+        delayMs: number;
+        observationCount: number;
+      };
+    }>;
+  }>;
   normalize: Array<{ input: string; normalized: string; compact: string }>;
   extractIncremental: Array<{
     name: string;
@@ -176,6 +199,10 @@ describe("parity capture contract (desktop ↔ chrome)", () => {
       p.fallbackCommitObservationThreshold,
     );
     expect(FALLBACK_COMMIT_STABLE_MS).toBe(p.fallbackCommitStableMs);
+    expect(FALLBACK_COMMIT_MAX_WAIT_MS).toBe(p.fallbackCommitMaxWaitMs);
+    expect(COMMIT_PENDING_FALLBACK_ON_RESET).toBe(
+      p.commitPendingFallbackOnReset,
+    );
     expect(PIPELINE_DEFAULTS.fallbackInternalRawMaxChars).toBe(
       p.fallbackInternalRawMaxChars,
     );
@@ -277,5 +304,32 @@ describe("parity pipeline vectors (desktop ↔ chrome)", () => {
         c.maxTake,
       ),
     ).toEqual(c.expectedIndices);
+  });
+
+  it("keeps fallback gate defaults equal to the contract", () => {
+    const d = vectors.defaults.fallbackCommit;
+    expect(d.observationThreshold).toBe(
+      contract.pipeline.fallbackCommitObservationThreshold,
+    );
+    expect(d.stableMs).toBe(contract.pipeline.fallbackCommitStableMs);
+    expect(d.maxWaitMs).toBe(contract.pipeline.fallbackCommitMaxWaitMs);
+  });
+
+  it.each(vectors.fallbackCommitGate)("fallbackCommitGate $name", (c) => {
+    const d = vectors.defaults.fallbackCommit;
+    let candidate: FallbackGateCandidate | null = null;
+    for (const step of c.steps) {
+      const decision = decideFallbackCommit(candidate, step.raw, step.atMs, {
+        observationThreshold: d.observationThreshold,
+        stableMs: d.stableMs,
+        maxWaitMs: d.maxWaitMs,
+      });
+      expect(decision.commitNow).toBe(step.expected.commitNow);
+      expect(decision.delayMs).toBe(step.expected.delayMs);
+      expect(decision.candidate.observationCount).toBe(
+        step.expected.observationCount,
+      );
+      candidate = decision.commitNow ? null : decision.candidate;
+    }
   });
 });

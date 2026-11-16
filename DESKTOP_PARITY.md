@@ -119,6 +119,15 @@
 - `ui/main_window_impl/pipeline_state.py`: stable row 만 commit(D5), fallback 안정 관측 게이트(D6). `pipeline_stream.py` keepalive 가 fallback 재관측으로도 집계됩니다.
 - `core/subtitle_confirmation.py`(probe JS 미러), `tests/test_parity_contract.py`, `scripts/check_parity_sync.py`, `PIPELINE_LOCK.md` §2.1 이력.
 
+## 5.1 2026-11-16 데스크톱 감사 후속 (양쪽 동시 적용)
+
+데스크톱 `PROJECT_AUDIT.md` ISSUE-001·002 에서 찾은 fallback 게이트 결함이 이 저장소에도 같은 구조로 있었습니다.
+
+- **reset 경계 유실**: 화면 clear(`subtitle:reset`) 직전 400ms 안에 갱신된 텍스트는 대기 후보에만 있었고, 다음 update 가 pending reset 을 취소한 뒤 새 raw 로 후보를 덮어써 commit 없이 사라졌습니다. → `subtitle:reset` 수신 즉시와 reset 타이머 적용 직전에 `flushFallbackCommitCandidate` 로 확정합니다(parity `commitPendingFallbackOnReset`).
+- **최대 대기 없음**: raw 가 400ms 이상 멈추지 않으면 commit 이 무기한 밀렸습니다. → 순수 함수 `decideFallbackCommit`(`src/core/subtitle-pipeline/fallback-commit-gate.ts`)가 후보 교체 뒤에도 `pendingSince` 를 유지하고 `fallbackCommitMaxWaitMs=2000` 이 지나면 commit 합니다.
+- 공유 계약: `capture-contract.json` `pipeline.fallbackCommitMaxWaitMs`, `pipeline.commitPendingFallbackOnReset`, `pipeline-vectors.json` `fallbackCommitGate`.
+- 회귀: `tests/fallback-commit-reset.test.ts`(수정 전 코드에서 2건 모두 실패 확인), `tests/parity-contract.test.ts`.
+
 ## 6. 후속 후보
 
 - `mhwa0`/`mhwa1` 화자 전환 클래스를 speaker change 신호로 쓰기 (양쪽 동시 적용, 벡터 추가 필요).

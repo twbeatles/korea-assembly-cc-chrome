@@ -15,3 +15,7 @@ export const TRANSIENT_MESSAGING_NOTICE =
 export const FRAME_FORWARD_NONCE_RESYNC_INTERVAL_MS = 15_000;
 export const FALLBACK_COMMIT_STABLE_MS = 400;
 export const FALLBACK_COMMIT_OBSERVATION_THRESHOLD = 2;
+/** raw 가 계속 바뀌어도 첫 미확정 관측부터 이 시간이 지나면 commit 한다 (데스크톱 정합). */
+export const FALLBACK_COMMIT_MAX_WAIT_MS = 2000;
+/** subtitle:reset 수신 시 대기 중인 fallback 후보를 먼저 commit 한다 (데스크톱 정합). */
+export const COMMIT_PENDING_FALLBACK_ON_RESET = true;

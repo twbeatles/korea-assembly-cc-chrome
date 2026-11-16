@@ -12,7 +12,9 @@ import {
   buildPersistabilityDiagnostics,
   resolvePreviewPersistabilityState,
 } from "../../../../persistability";
+import { decideFallbackCommit } from "../../../../../core/subtitle-pipeline/fallback-commit-gate";
 import {
+  FALLBACK_COMMIT_MAX_WAIT_MS,
   FALLBACK_COMMIT_OBSERVATION_THRESHOLD,
   FALLBACK_COMMIT_STABLE_MS,
 } from "../../constants";
@@ -45,9 +47,13 @@ export function scheduleFallbackCommitCandidate(
   candidate: FallbackCommitCandidate,
 ): void {
   clearFallbackCommitTimer(ctx);
+  const now = Date.now();
   const delayMs = Math.max(
     0,
-    FALLBACK_COMMIT_STABLE_MS - (Date.now() - candidate.firstSeenAt),
+    Math.min(
+      FALLBACK_COMMIT_STABLE_MS - (now - candidate.firstSeenAt),
+      FALLBACK_COMMIT_MAX_WAIT_MS - (now - candidate.pendingSince),
+    ),
   );
   ctx.fallbackCommitTimer = window.setTimeout(() => {
     ctx.fallbackCommitTimer = null;
@@ -163,13 +169,20 @@ export function observeFallbackCommitCandidate(
     return false;
   }
 
-  if (ctx.fallbackCommitCandidate?.raw === normalizedRaw) {
+  const previous = ctx.fallbackCommitCandidate;
+  const decision = decideFallbackCommit(previous, normalizedRaw, now, {
+    observationThreshold: FALLBACK_COMMIT_OBSERVATION_THRESHOLD,
+    stableMs: FALLBACK_COMMIT_STABLE_MS,
+    maxWaitMs: FALLBACK_COMMIT_MAX_WAIT_MS,
+  });
+
+  if (previous && !decision.replaced) {
     ctx.fallbackCommitCandidate = {
-      ...ctx.fallbackCommitCandidate,
+      ...previous,
       selector,
       framePath: framePath ? [...framePath] : undefined,
       lastSeenAt: now,
-      observationCount: ctx.fallbackCommitCandidate.observationCount + 1,
+      observationCount: decision.candidate.observationCount,
     };
   } else {
     ctx.fallbackCommitCandidate = {
@@ -177,6 +190,7 @@ export function observeFallbackCommitCandidate(
       selector,
       framePath: framePath ? [...framePath] : undefined,
       firstSeenAt: now,
+      pendingSince: decision.candidate.pendingSince,
       lastSeenAt: now,
       observationCount: 1,
       token: ++ctx.fallbackCommitToken,
@@ -185,14 +199,26 @@ export function observeFallbackCommitCandidate(
 
   setFallbackCommitState(ctx, "pending");
 
-  if (
-    ctx.fallbackCommitCandidate.observationCount >=
-      FALLBACK_COMMIT_OBSERVATION_THRESHOLD ||
-    now - ctx.fallbackCommitCandidate.firstSeenAt >= FALLBACK_COMMIT_STABLE_MS
-  ) {
+  if (decision.commitNow) {
     return commitFallbackCandidate(ctx, ctx.fallbackCommitCandidate.token, now);
   }
 
   scheduleFallbackCommitCandidate(ctx, ctx.fallbackCommitCandidate);
   return false;
+}
+
+/**
+ * 대기 중인 fallback 후보를 즉시 commit 한다.
+ * subtitle:reset 은 화면을 비우므로, 후보에만 있던 마지막 텍스트가 사라지지 않게 먼저 확정한다
+ * (parity `commitPendingFallbackOnReset`).
+ */
+export function flushFallbackCommitCandidate(
+  ctx: RuntimeCoreContext,
+  now = Date.now(),
+): boolean {
+  const candidate = ctx.fallbackCommitCandidate;
+  if (!candidate) {
+    return false;
+  }
+  return commitFallbackCandidate(ctx, candidate.token, now);
 }
