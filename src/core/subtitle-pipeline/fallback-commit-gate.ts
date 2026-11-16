@@ -11,6 +11,8 @@
  *   새 창에서 시작한다(호출 측이 후보를 비운다).
  */
 
+import { trimSubtitleWhitespace } from "../text-normalizer";
+
 export interface FallbackGateSettings {
   observationThreshold: number;
   stableMs: number;
@@ -38,7 +40,7 @@ export function decideFallbackCommit(
   now: number,
   settings: FallbackGateSettings,
 ): FallbackGateDecision {
-  const normalized = raw.trim();
+  const normalized = trimSubtitleWhitespace(raw);
   let candidate: FallbackGateCandidate;
   let replaced = false;
   if (previous && previous.raw === normalized) {

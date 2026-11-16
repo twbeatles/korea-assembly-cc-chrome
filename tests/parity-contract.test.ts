@@ -44,6 +44,7 @@ import {
   compactSubtitleText,
   joinStreamText,
   normalizeRawText,
+  trimSubtitleWhitespace,
 } from "../src/core/text-normalizer";
 import {
   hasRequiredSubtitleContent,
@@ -72,6 +73,7 @@ interface CaptureContract {
   };
   placeholderTexts: string[];
   pipeline: Record<string, number | boolean>;
+  whitespace: { extraSeparators: string[]; trimIncludesBom: boolean };
   intentionalDifferences: { mergeMaxChars: { chrome: number } };
 }
 
@@ -227,6 +229,21 @@ describe("parity capture contract (desktop ↔ chrome)", () => {
     contract.unconfirmed.knownHighlightBackgrounds.forEach((color) => {
       expect(hasVisibleBackgroundHighlightValues(color, "none")).toBe(true);
     });
+  });
+});
+
+describe("parity shared whitespace rule (desktop ↔ chrome)", () => {
+  it("treats contract separators and BOM as whitespace", () => {
+    const bom = String.fromCharCode(0xfeff);
+    contract.whitespace.extraSeparators.forEach((separator) => {
+      const sample = `가${separator}나`;
+      expect(normalizeRawText(sample)).toBe("가 나");
+      expect(compactSubtitleText(sample)).toBe("가나");
+      expect(trimSubtitleWhitespace(`${separator}가${separator}`)).toBe("가");
+    });
+    expect(contract.whitespace.trimIncludesBom).toBe(true);
+    expect(trimSubtitleWhitespace(`${bom} 가 ${bom}`)).toBe("가");
+    expect(joinStreamText(`가${bom}`, `${bom}나`)).toBe("가 나");
   });
 });
 

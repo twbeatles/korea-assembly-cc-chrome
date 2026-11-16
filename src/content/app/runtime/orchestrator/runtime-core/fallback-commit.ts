@@ -13,6 +13,7 @@ import {
   resolvePreviewPersistabilityState,
 } from "../../../../persistability";
 import { decideFallbackCommit } from "../../../../../core/subtitle-pipeline/fallback-commit-gate";
+import { trimSubtitleWhitespace } from "../../../../../core/text-normalizer";
 import {
   FALLBACK_COMMIT_MAX_WAIT_MS,
   FALLBACK_COMMIT_OBSERVATION_THRESHOLD,
@@ -163,7 +164,7 @@ export function observeFallbackCommitCandidate(
   selector?: string,
   framePath?: number[],
 ): boolean {
-  const normalizedRaw = raw.trim();
+  const normalizedRaw = trimSubtitleWhitespace(raw);
   if (!normalizedRaw) {
     clearFallbackCommitCandidate(ctx);
     return false;

@@ -128,6 +128,16 @@
 - 공유 계약: `capture-contract.json` `pipeline.fallbackCommitMaxWaitMs`, `pipeline.commitPendingFallbackOnReset`, `pipeline-vectors.json` `fallbackCommitGate`.
 - 회귀: `tests/fallback-commit-reset.test.ts`(수정 전 코드에서 2건 모두 실패 확인), `tests/parity-contract.test.ts`.
 
+## 5.2 무작위 차등 검증과 공백 규칙 (2026-11-16)
+
+데스크톱 `scripts/parity_differential.py`는 같은 무작위 입력을 두 구현에 넣어 함수 10개의 결과를 비교합니다. 이 저장소의 `tests/parity-differential.test.ts`가 Chrome 쪽 계산을 맡고, 환경 변수가 없으면 아무 일도 하지 않습니다.
+
+- 찾은 차이는 공백 문자 집합입니다. 데스크톱(Python)은 U+001C–U+001F·U+0085를 공백으로 보고, 이 저장소(JS)의 `trim`·정규식 공백 클래스는 U+FEFF를 공백으로 봅니다. 그 결과 정규화·compact·결합·증분 추출·fallback 게이트 raw 비교가 달랐습니다.
+- 두 집합의 합집합으로 통일해 계약 `capture-contract.json` `whitespace`에 고정했습니다.
+  - 이 저장소: `text-normalizer.ts`가 5개 제어문자도 공백으로 봅니다. `trimSubtitleWhitespace*`를 새로 두고 fallback 게이트 trim도 이 함수를 씁니다.
+  - 데스크톱: 결합·fallback 게이트가 U+FEFF도 자릅니다.
+- 고친 뒤 시드 3개, 약 12만 건 비교에서 차이가 없었습니다. 찾은 사례는 공유 벡터에 추가했고 `tests/parity-contract.test.ts`의 `whitespace` 검사가 계약을 대조합니다.
+
 ## 6. 후속 후보
 
 - `mhwa0`/`mhwa1` 화자 전환 클래스를 speaker change 신호로 쓰기 (양쪽 동시 적용, 벡터 추가 필요).

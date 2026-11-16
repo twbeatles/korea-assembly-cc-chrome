@@ -666,6 +666,8 @@ When editing this repository, align with the cross-repository parity contract be
 - 형제 저장소 `korea-assembly-cc`(PySide6 + Selenium 데스크톱)와 수집 알고리즘을 같이 유지한다. 코드 공유 대신 `parity/capture-contract.json`(사이트·DOM·상수·의도적 차이)과 `parity/pipeline-vectors.json`(순수 함수 벡터)을 두 저장소에 같은 내용으로 둔다.
 - `tests/parity-contract.test.ts` 가 이 저장소 상수/함수를 계약·벡터와 대조한다. 수집 의미론을 바꾸면 `parity/` 를 먼저 고치고 데스크톱 `tests/test_parity_contract.py` 도 통과하게 맞춘 뒤 `node scripts/check-parity-sync.mjs --write` 로 사본을 맞춘다.
 - `npm run check:parity` 는 `verify`·CI 에 포함되며, 형제 저장소(`../korea-assembly-cc` 또는 `KOREA_ASSEMBLY_CC_DIR`)가 없으면 건너뛴다.
+- 공백 문자 집합은 계약 `whitespace` 를 따른다. 정규화·compact·결합·fallback raw trim 은 `text-normalizer.ts` 의 `trimSubtitleWhitespace*`/`MULTI_SPACE_RE` 를 쓰고, JS 기본 `trim()` 이나 정규식 공백 클래스를 새로 쓰지 않는다.
+- 무작위 차등 검증: 데스크톱 저장소에서 `python scripts/parity_differential.py` (이 저장소 `tests/parity-differential.test.ts` 사용, 환경 변수 없으면 no-op).
 - entry 병합 판정은 `src/core/subtitle-pipeline/entry-policy.ts` 의 `shouldMergeIntoLastEntry` 하나로 한다: 화자 channel 경계는 양쪽 모두 `primary`/`secondary` 일 때만, structured/화자 신호가 있는 entry 뒤의 fallback 은 새 entry, fallback 경로 merge gap 은 `mergeGapSeconds × fallbackMergeGapFactor(0.4)`.
 - keepalive 는 `applyKeepalive(state, now, raw)` 에 현재 preview raw 를 넘기고, compact raw 가 마지막 entry compact 와 같거나 그것으로 끝날 때만 `endTime` 을 연장한다. 연장되지 않으면 autosave 를 예약하지 않는다.
 - `applyPreview` 는 soft resync 직후에만 재추출한다(결과 동일).
