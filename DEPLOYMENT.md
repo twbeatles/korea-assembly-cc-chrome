@@ -158,6 +158,19 @@ python -c "import json,pathlib,zipfile;p=pathlib.Path('dist');v=json.loads((p/'m
 
 `manifest.json`을 ZIP 최상위에 넣고 내부 경로를 `/`로 통일합니다. 기존 파일을 덮어쓰지 않는 `x` 모드이므로 같은 버전 ZIP이 있으면 내용을 먼저 확인하세요. 버전 변경 후 반드시 새 build로 생성하고, CRC·manifest 버전·ZIP 내부 파일과 `dist/` 바이트 일치를 확인합니다. SHA-256은 PowerShell `Get-FileHash -Algorithm SHA256 <zip 경로>`로 확인할 수 있습니다. ZIP은 `.gitignore` 대상이며 소스 커밋에 넣지 않습니다.
 
+간편 스크립트(루트에서 실행, 위 수동 절차와 동일하게 빌드→압축→검증):
+
+```bash
+npm run package:zip                                     # 현재 버전으로 빌드 + zip 생성
+node scripts/package-release.mjs --skip-build           # dist 그대로 zip만 생성
+node scripts/package-release.mjs --bump patch           # 1.0.17 → 1.0.18 로 올린 뒤 빌드 + zip
+node scripts/package-release.mjs --version 1.1.0 --overwrite  # 지정 버전으로 올리고 기존 zip 덮어쓰기
+```
+
+(npm v11 은 `npm run … -- <플래그>` 형태의 임의 플래그 전달을 거부하므로, 플래그가 필요하면 `node scripts/…` 로 직접 실행한다.)
+
+`--bump`/`--version` 은 `package.json`·`manifest.json`·`package-lock.json` 루트 버전을 함께 올리고 `dist/manifest.json` 일치를 확인합니다. 릴리스 게이트(`npm run verify`, e2e)는 스크립트에 포함되지 않으니 스토어 제출 전에는 체크리스트 §7을 별도로 통과하세요.
+
 ## 6. Chrome Web Store 배포
 
 ### 6.1 업로드 전 준비물

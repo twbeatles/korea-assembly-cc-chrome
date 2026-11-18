@@ -15,6 +15,7 @@
     "check:depsync": "node scripts/check-depsync.mjs",
     "dev": "npm run build:inject && vite",
     "build": "npm run build:inject && vite build",
+    "package:zip": "node scripts/package-release.mjs",
     "test": "vitest run",
     "test:e2e:extension": "npm run build && node scripts/extension-smoke.mjs",
     "test:coverage": "vitest run --coverage",
