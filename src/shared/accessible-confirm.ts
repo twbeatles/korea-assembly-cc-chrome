@@ -35,6 +35,7 @@ const DIALOG_STYLE = `
   justify-content: center;
   padding: 24px;
   background: rgba(15, 42, 74, 0.45);
+  overscroll-behavior: contain;
 }
 .assembly-confirm-dialog {
   width: min(420px, 100%);
@@ -44,6 +45,7 @@ const DIALOG_STYLE = `
   padding: 20px 22px 16px;
   color: #122033;
   font-family: inherit;
+  overscroll-behavior: contain;
 }
 .assembly-confirm-title {
   margin: 0 0 10px;
@@ -175,7 +177,8 @@ function showAccessibleConfirmDialog(
     overlay.append(style, dialog);
     document.body.append(overlay);
     document.addEventListener("keydown", onKeyDown, true);
-    confirmButton.focus();
+    // 파괴적 확인이므로 초기 포커스는 안전 동작(취소)에 둔다.
+    cancelButton.focus();
   });
 }
 

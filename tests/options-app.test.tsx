@@ -131,6 +131,7 @@ describe("options app", () => {
     }) as HTMLInputElement;
 
     fireEvent.change(debounceInput, { target: { value: "100" } });
+    fireEvent.blur(debounceInput);
 
     await waitFor(() => {
       expect(screen.getByText("250 이상이어야 합니다.")).toBeTruthy();
@@ -149,6 +150,7 @@ describe("options app", () => {
     }) as HTMLInputElement;
 
     fireEvent.change(recentCopyInput, { target: { value: "2.5" } });
+    fireEvent.blur(recentCopyInput);
 
     await waitFor(() => {
       expect(screen.getByText("정수만 입력할 수 있습니다.")).toBeTruthy();
@@ -167,6 +169,7 @@ describe("options app", () => {
     }) as HTMLInputElement;
 
     fireEvent.change(debounceInput, { target: { value: "" } });
+    fireEvent.blur(debounceInput);
     await screen.findByText("값을 입력하세요.");
 
     fireEvent.click(
@@ -188,6 +191,7 @@ describe("options app", () => {
     }) as HTMLInputElement;
 
     fireEvent.change(recentCopyInput, { target: { value: "0" } });
+    fireEvent.blur(recentCopyInput);
 
     await waitFor(() => {
       expect(screen.getByText("1 이상이어야 합니다.")).toBeTruthy();
@@ -205,6 +209,7 @@ describe("options app", () => {
       name: "저장 파일 이름",
     });
     fireEvent.change(filenameInput, { target: { value: "{date}/invalid" } });
+    fireEvent.blur(filenameInput);
 
     await waitFor(() => {
       expect(
@@ -216,6 +221,39 @@ describe("options app", () => {
     expect(
       screen.getByRole("button", { name: "저장" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("validates unblurred drafts on submit and focuses the first error", async () => {
+    render(<App />);
+    await screen.findByText("바꾼 뒤 아래 저장을 누르세요.");
+
+    const debounceInput = screen.getByRole("spinbutton", {
+      name: "자동 저장 간격",
+    }) as HTMLInputElement;
+    const filenameInput = screen.getByRole("textbox", {
+      name: "저장 파일 이름",
+    }) as HTMLInputElement;
+
+    fireEvent.change(debounceInput, { target: { value: "1200" } });
+    fireEvent.change(filenameInput, { target: { value: "{date}/invalid" } });
+    expect(
+      screen.queryByText(
+        "파일 이름에 사용할 수 없는 문자가 포함되어 있습니다.",
+      ),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "저장" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "파일 이름에 사용할 수 없는 문자가 포함되어 있습니다.",
+        ),
+      ).toBeTruthy();
+      expect(screen.getByText("잘못된 입력을 먼저 고쳐주세요.")).toBeTruthy();
+    });
+    expect(document.activeElement).toBe(filenameInput);
+    expect(settingsStoreMocks.saveSettings).not.toHaveBeenCalled();
   });
 
   it("renders persist replay diagnostics in diagnostics view", async () => {

@@ -38,6 +38,7 @@ export function SettingsView(props: {
     value: ExtensionSettings[K],
   ) => void;
   handleNumberDraftChange: (field: NumberField, value: string) => void;
+  handleNumberDraftBlur: (field: NumberField) => void;
   handleSegmentPresetChange: (preset: SegmentPreset) => void;
   setFilenamePatternError: (error: string | undefined) => void;
   handlePresetDraftChange: <K extends keyof typeof EMPTY_PRESET_DRAFT>(
@@ -65,6 +66,7 @@ export function SettingsView(props: {
     isSaving,
     updateField,
     handleNumberDraftChange,
+    handleNumberDraftBlur,
     handleSegmentPresetChange,
     setFilenamePatternError,
     handlePresetDraftChange,
@@ -89,25 +91,31 @@ export function SettingsView(props: {
 
   const renderNumberField = (field: NumberField, fullWidth = false) => {
     const fieldUnit = getFieldUnit(field);
+    const inputId = `setting-${field}`;
+    const fieldError = numberFieldErrors[field];
     return (
       <SettingInputCard
         key={field}
         title={getFieldLabel(field)}
         description={getFieldDescription(field)}
-        error={numberFieldErrors[field]}
+        error={fieldError}
         fullWidth={fullWidth}
+        htmlFor={inputId}
       >
         <div className="number-input-row">
           <input
             type="number"
+            id={inputId}
             min={getFieldMin(field)}
             step={1}
             aria-label={getFieldLabel(field)}
             value={numberDrafts[field]}
-            aria-invalid={Boolean(numberFieldErrors[field])}
+            aria-invalid={Boolean(fieldError)}
+            aria-describedby={fieldError ? `${inputId}-error` : undefined}
             onChange={(event) =>
               handleNumberDraftChange(field, event.target.value)
             }
+            onBlur={() => handleNumberDraftBlur(field)}
           />
           {fieldUnit ? <span className="input-suffix">{fieldUnit}</span> : null}
         </div>
@@ -178,17 +186,28 @@ export function SettingsView(props: {
             description={getFieldDescription("filenamePattern")}
             error={filenamePatternError}
             fullWidth
+            htmlFor="setting-filenamePattern"
           >
             <input
               type="text"
+              id="setting-filenamePattern"
               aria-label={getFieldLabel("filenamePattern")}
               aria-invalid={Boolean(filenamePatternError)}
+              aria-describedby={
+                filenamePatternError
+                  ? "setting-filenamePattern-error"
+                  : undefined
+              }
               value={settings.filenamePattern}
               onChange={(event) => {
-                const nextValue = event.target.value;
-                updateField("filenamePattern", nextValue);
-                setFilenamePatternError(validateFilenamePattern(nextValue));
+                updateField("filenamePattern", event.target.value);
+                setFilenamePatternError(undefined);
               }}
+              onBlur={() =>
+                setFilenamePatternError(
+                  validateFilenamePattern(settings.filenamePattern),
+                )
+              }
             />
           </SettingInputCard>
         </SettingsSection>

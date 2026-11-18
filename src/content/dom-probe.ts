@@ -66,7 +66,7 @@ export function getSubtitleSelectorCandidates(
   );
   extras.forEach((selector) => pushUnique(candidates, selector));
 
-  return [...candidates].sort(
+  return candidates.toSorted(
     (left, right) =>
       scoreSelector(left, primarySelector) -
       scoreSelector(right, primarySelector),

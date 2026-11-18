@@ -4,6 +4,8 @@ export const tokensStyle = `  :host {
   }
 
   .host {
+    /* 중계 페이지 안에 주입되는 임베드 UI라 시스템 테마와 무관하게 라이트로 고정한다. */
+    color-scheme: light;
     --navy-900: #0f2a4a;
     --navy-800: #173f6e;
     --navy-700: #214568;

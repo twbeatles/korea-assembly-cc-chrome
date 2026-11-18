@@ -55,7 +55,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
   } = props;
 
   return (
-    <aside className="session-list">
+    <aside className="session-list" aria-label="세션 목록">
       <div className="session-list-toolbar">
         <span>
           기록 {totalSessionCount}개 · 선택 {checkedIds.length}개
@@ -85,63 +85,69 @@ export function SessionListPanel(props: SessionListPanelProps) {
         </div>
       </div>
       {pageLineages.length ? (
-        pageLineages.map((lineage) => (
-          <div key={lineage.lineageId} className="session-item-row">
-            <label className="session-check">
-              <input
-                type="checkbox"
-                checked={checkedIdSet.has(lineage.lineageId)}
-                onChange={() => onToggleChecked(lineage.lineageId)}
+        <ul className="session-item-list" role="list">
+          {pageLineages.map((lineage) => (
+            <li key={lineage.lineageId} className="session-item-row">
+              <label className="session-check">
+                <input
+                  type="checkbox"
+                  checked={checkedIdSet.has(lineage.lineageId)}
+                  onChange={() => onToggleChecked(lineage.lineageId)}
+                  disabled={actionButtonsDisabled}
+                  aria-label={`${lineage.committeeName || lineage.title} 선택`}
+                />
+              </label>
+              <button
+                type="button"
+                className={`favorite-toggle ${lineage.starred ? "active" : ""}`}
+                onClick={() =>
+                  runBusy(
+                    `favorite_${lineage.lineageId}`,
+                    async () => {
+                      await onToggleFavorite(lineage);
+                    },
+                    "즐겨찾기 저장에 실패했습니다.",
+                    lineage.starred
+                      ? "즐겨찾기 해제를 저장하고 있습니다."
+                      : "즐겨찾기를 저장하고 있습니다.",
+                  )
+                }
                 disabled={actionButtonsDisabled}
-                aria-label={`${lineage.committeeName || lineage.title} 선택`}
-              />
-            </label>
-            <button
-              type="button"
-              className={`favorite-toggle ${lineage.starred ? "active" : ""}`}
-              onClick={() =>
-                runBusy(
-                  `favorite_${lineage.lineageId}`,
-                  async () => {
-                    await onToggleFavorite(lineage);
-                  },
-                  "즐겨찾기 저장에 실패했습니다.",
+                aria-label={
                   lineage.starred
-                    ? "즐겨찾기 해제를 저장하고 있습니다."
-                    : "즐겨찾기를 저장하고 있습니다.",
-                )
-              }
-              disabled={actionButtonsDisabled}
-              aria-label={
-                lineage.starred
-                  ? `${lineage.committeeName || lineage.title} 즐겨찾기 해제`
-                  : `${lineage.committeeName || lineage.title} 즐겨찾기 추가`
-              }
-            >
-              {lineage.starred ? "★" : "☆"}
-            </button>
-            <button
-              className={`session-item ${selectedLineageId === lineage.lineageId ? "active" : ""}`}
-              onClick={() => onSelectSession(lineage.lineageId)}
-              disabled={actionButtonsDisabled}
-            >
-              <div className="session-item-heading">
-                <strong>{lineage.committeeName || lineage.title}</strong>
-                {lineage.segmentCount > 1 ? (
-                  <span className="segment-badge">
-                    세그먼트 {lineage.segmentCount}개
-                  </span>
-                ) : null}
-              </div>
-              <span>{formatDate(lineage.startedAt)}</span>
-              <small>
-                {lineage.subtitleCount.toLocaleString("ko-KR")}문장 ·{" "}
-                {getPersistedStatusLabel(lineage.status)}
-                {lineage.note.trim() ? " · 메모" : ""}
-              </small>
-            </button>
-          </div>
-        ))
+                    ? `${lineage.committeeName || lineage.title} 즐겨찾기 해제`
+                    : `${lineage.committeeName || lineage.title} 즐겨찾기 추가`
+                }
+                aria-pressed={lineage.starred}
+              >
+                {lineage.starred ? "★" : "☆"}
+              </button>
+              <button
+                className={`session-item ${selectedLineageId === lineage.lineageId ? "active" : ""}`}
+                onClick={() => onSelectSession(lineage.lineageId)}
+                disabled={actionButtonsDisabled}
+                aria-current={
+                  selectedLineageId === lineage.lineageId ? "true" : undefined
+                }
+              >
+                <div className="session-item-heading">
+                  <strong>{lineage.committeeName || lineage.title}</strong>
+                  {lineage.segmentCount > 1 ? (
+                    <span className="segment-badge">
+                      세그먼트 {lineage.segmentCount}개
+                    </span>
+                  ) : null}
+                </div>
+                <span>{formatDate(lineage.startedAt)}</span>
+                <small>
+                  {lineage.subtitleCount.toLocaleString("ko-KR")}문장 ·{" "}
+                  {getPersistedStatusLabel(lineage.status)}
+                  {lineage.note.trim() ? " · 메모" : ""}
+                </small>
+              </button>
+            </li>
+          ))}
+        </ul>
       ) : (
         <div className="empty-card">
           {showStarredOnly
@@ -150,7 +156,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
         </div>
       )}
       {totalSessionCount > HISTORY_PAGE_SIZE ? (
-        <div className="session-pagination">
+        <nav className="session-pagination" aria-label="세션 목록 페이지">
           <button
             className="secondary"
             onClick={() => onPageChange(Math.max(1, sessionPage - 1))}
@@ -168,7 +174,7 @@ export function SessionListPanel(props: SessionListPanelProps) {
           >
             다음
           </button>
-        </div>
+        </nav>
       ) : null}
     </aside>
   );

@@ -37,8 +37,10 @@ import type {
   SegmentPreset,
 } from "../../storage/types";
 import { createPrefixedRandomToken } from "../../shared/random-token";
+import { validateFilenamePattern } from "../../shared/filename-pattern";
 import {
   EMPTY_PRESET_DRAFT,
+  NUMBER_FIELDS,
   SETTINGS_DEFAULT_MESSAGE,
   buildNumberDraftState,
   getCaptureModeSummary,
@@ -502,20 +504,17 @@ export default function App() {
         : current,
     );
 
-    const nextError = validateNumberDraft(field, value);
+    // 입력 중에는 기존 오류만 지우고, 검증은 blur/submit 에 한다.
     setNumberFieldErrors((current) => {
-      if (!nextError) {
-        const nextState = { ...current };
-        delete nextState[field];
-        return nextState;
+      if (!current[field]) {
+        return current;
       }
-      return {
-        ...current,
-        [field]: nextError,
-      };
+      const nextState = { ...current };
+      delete nextState[field];
+      return nextState;
     });
 
-    if (!nextError) {
+    if (!validateNumberDraft(field, value)) {
       setSettings((current) =>
         current
           ? {
@@ -530,6 +529,27 @@ export default function App() {
           : current,
       );
     }
+  };
+
+  const handleNumberDraftBlur = (field: NumberField): void => {
+    if (!numberDrafts) {
+      return;
+    }
+    const error = validateNumberDraft(field, numberDrafts[field]);
+    setNumberFieldErrors((current) => {
+      if (!error) {
+        if (!current[field]) {
+          return current;
+        }
+        const nextState = { ...current };
+        delete nextState[field];
+        return nextState;
+      }
+      return {
+        ...current,
+        [field]: error,
+      };
+    });
   };
 
   const handleSegmentPresetChange = (preset: SegmentPreset): void => {
@@ -570,10 +590,32 @@ export default function App() {
   };
 
   const handleSave = async (): Promise<void> => {
-    if (!settings || hasFieldErrors || isSaving) {
-      if (hasFieldErrors) {
-        setMessage("잘못된 입력을 먼저 고쳐주세요.");
+    if (!settings || !numberDrafts || isSaving) {
+      return;
+    }
+    // Final gatekeeper: blur 를 거치지 않은 드래프트까지 submit 시점에 검증한다.
+    const draftErrors: NumberFieldErrorState = {};
+    for (const field of NUMBER_FIELDS) {
+      const error = validateNumberDraft(field, numberDrafts[field] ?? "");
+      if (error) {
+        draftErrors[field] = error;
       }
+    }
+    const nextFilenameError = validateFilenamePattern(settings.filenamePattern);
+    if (Object.keys(draftErrors).length > 0 || nextFilenameError) {
+      setNumberFieldErrors(draftErrors);
+      setFilenamePatternError(nextFilenameError);
+      setMessage("잘못된 입력을 먼저 고쳐주세요.");
+      const firstInvalidField = NUMBER_FIELDS.find(
+        (field) => draftErrors[field],
+      );
+      document
+        .getElementById(
+          firstInvalidField
+            ? `setting-${firstInvalidField}`
+            : "setting-filenamePattern",
+        )
+        ?.focus();
       return;
     }
     if (!isDirty) {
@@ -703,6 +745,7 @@ export default function App() {
           isSaving={isSaving}
           updateField={updateField}
           handleNumberDraftChange={handleNumberDraftChange}
+          handleNumberDraftBlur={handleNumberDraftBlur}
           handleSegmentPresetChange={handleSegmentPresetChange}
           setFilenamePatternError={setFilenamePatternError}
           handlePresetDraftChange={handlePresetDraftChange}

@@ -166,4 +166,10 @@ export const liveStyle = `  .preview-box,
   .notice[hidden] {
     display: none;
   }
+
+  @media (prefers-reduced-motion: reduce) {
+    .preview-box {
+      transition: none;
+    }
+  }
 `;

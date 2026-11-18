@@ -114,8 +114,8 @@ export function sortSessions(
   options: SessionListOptions = {},
 ): SessionRecord[] {
   const limit = Math.max(1, options.limit ?? 100);
-  return [...records]
-    .sort((left, right) =>
+  return records
+    .toSorted((left, right) =>
       buildSessionSortKey(right).localeCompare(buildSessionSortKey(left)),
     )
     .slice(0, limit)

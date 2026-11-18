@@ -18,24 +18,16 @@
   color: var(--ink-900);
   background: #f4f7fb;
   font-family: "Noto Sans KR", "Pretendard", "Malgun Gothic", sans-serif;
+
+  color-scheme: light dark;
+  accent-color: var(--navy-800);
 }
 
 body {
   margin: 0;
 }
 
-/* accessible confirm dialog (파괴적 확인) */
-.confirm-dialog-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
-  background: rgba(15, 42, 74, 0.45);
-}
-
+/* native confirm dialog (파괴적 확인) */
 .confirm-dialog {
   width: min(420px, 100%);
   border-radius: 14px;
@@ -43,6 +35,22 @@ body {
   box-shadow: 0 24px 64px rgba(15, 42, 74, 0.28);
   padding: 20px 22px 16px;
   color: var(--ink-900);
+}
+
+dialog.confirm-dialog {
+  border: 0;
+  margin: auto;
+  max-height: calc(100dvh - 48px);
+}
+
+dialog.confirm-dialog:modal {
+  overscroll-behavior: contain;
+}
+
+dialog.confirm-dialog::backdrop {
+  background: rgba(15, 42, 74, 0.45);
+  overflow: hidden;
+  overscroll-behavior: contain;
 }
 
 .confirm-dialog-title {
@@ -214,6 +222,15 @@ button.secondary:hover:not(:disabled) {
   align-content: start;
 }
 
+.session-item-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  align-content: start;
+}
+
 .session-list-toolbar {
   display: grid;
   gap: 6px;
@@ -241,6 +258,8 @@ button.secondary:hover:not(:disabled) {
   gap: 2px;
   align-items: stretch;
   border-radius: 8px;
+  content-visibility: auto;
+  contain-intrinsic-size: auto 76px;
 }
 
 .session-check {
@@ -573,9 +592,9 @@ button.danger:hover:not(:disabled) {
   width: 140px;
 }
 
-.search-input:focus,
-.note-input:focus,
-.export-time-range input:focus {
+.search-input:focus-visible,
+.note-input:focus-visible,
+.export-time-range input:focus-visible {
   outline: none;
   border-color: var(--navy-800);
   box-shadow: 0 0 0 3px rgba(23, 63, 110, 0.12);
@@ -834,5 +853,96 @@ summary:focus-visible {
 
   .entries {
     max-height: none;
+  }
+}
+
+/* ── Reduced motion ────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  button,
+  .session-item,
+  .favorite-toggle {
+    transition: none;
+  }
+}
+
+/* ── Dark mode ─────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --navy-700: #9db9d6;
+    --navy-600: #a9c2da;
+    --navy-500: #8fa9c2;
+    --navy-400: #7d99b5;
+    --ink-900: #e8eef5;
+    --ink-700: #cfdae6;
+    --ink-500: #9db1c4;
+    --tint-100: #152639;
+    --tint-200: #1a2f47;
+    --tint-300: #24405c;
+    --tint-400: #31536f;
+    --line-soft: rgba(180, 205, 230, 0.16);
+    --line-strong: rgba(180, 205, 230, 0.28);
+
+    color: var(--ink-900);
+    background: #0c1828;
+  }
+
+  .session-list,
+  .session-detail {
+    background: #112335;
+  }
+
+  button.secondary {
+    background: var(--tint-300);
+    color: var(--ink-900);
+  }
+
+  .confirm-dialog {
+    background: #152a42;
+  }
+
+  .confirm-dialog-actions .secondary {
+    background: var(--tint-300);
+    color: var(--ink-900);
+  }
+
+  .hero-status {
+    background: var(--tint-200);
+  }
+
+  .search-input,
+  .note-input,
+  .export-time-range input[type="datetime-local"] {
+    background: rgba(10, 20, 32, 0.7);
+    border-color: var(--line-strong);
+    color: var(--ink-900);
+  }
+
+  .note-status.dirty {
+    background: #4a3413;
+    color: #ffd28a;
+  }
+
+  .selection-toolbar small,
+  .hero-status-cancel-note {
+    color: #ffcf7a;
+  }
+
+  button.danger {
+    color: #f0a8a3;
+  }
+
+  button.danger:hover:not(:disabled) {
+    background: #4c1d1a;
+  }
+
+  .warning-box {
+    background: #3a2c10;
+    color: #ffd98a;
+  }
+
+  .favorite-toggle.active {
+    color: #ffcf5c;
   }
 }

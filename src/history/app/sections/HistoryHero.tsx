@@ -71,6 +71,7 @@ export function HistoryHero(props: HistoryHeroProps) {
           className={`secondary ${showStarredOnly ? "active-toggle" : ""}`}
           onClick={onToggleStarredOnly}
           disabled={actionButtonsDisabled}
+          aria-pressed={showStarredOnly}
         >
           {showStarredOnly ? "전체 보기" : "즐겨찾기만 보기"}
         </button>
@@ -90,7 +91,10 @@ export function HistoryHero(props: HistoryHeroProps) {
         </button>
       </div>
       {heroMessage ? (
-        <div className={`hero-status ${longTask ? "long-task-status" : ""}`}>
+        <div
+          className={`hero-status ${longTask ? "long-task-status" : ""}`}
+          role="status"
+        >
           <div className="hero-status-copy">
             <span>{heroMessage}</span>
             {longTask ? (
@@ -118,7 +122,7 @@ export function HistoryHero(props: HistoryHeroProps) {
           ) : null}
         </div>
       ) : null}
-      <div className="search-row">
+      <search className="search-row">
         <input
           className="search-input"
           type="search"
@@ -133,6 +137,7 @@ export function HistoryHero(props: HistoryHeroProps) {
           value={tagFilter}
           onChange={(event) => onTagFilterChange(event.target.value)}
           placeholder="태그 필터"
+          aria-label="태그 필터"
         />
         <input
           className="search-input narrow"
@@ -140,15 +145,17 @@ export function HistoryHero(props: HistoryHeroProps) {
           value={categoryFilter}
           onChange={(event) => onCategoryFilterChange(event.target.value)}
           placeholder="카테고리 필터"
+          aria-label="카테고리 필터"
         />
         <button
           className={`secondary ${showHighlightedOnly ? "active-toggle" : ""}`}
           onClick={onToggleHighlightedOnly}
           disabled={actionButtonsDisabled}
+          aria-pressed={showHighlightedOnly}
         >
           {showHighlightedOnly ? "전체 자막 보기" : "중요 표시만"}
         </button>
-      </div>
+      </search>
       <input
         ref={importInputRef as React.Ref<HTMLInputElement>}
         className="hidden-file-input"

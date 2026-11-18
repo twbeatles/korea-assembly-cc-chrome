@@ -20,6 +20,9 @@
   background: #fbfcfe;
   font-family: "Noto Sans KR", "Pretendard", "Malgun Gothic", sans-serif;
   font-size: 13px;
+
+  color-scheme: light dark;
+  accent-color: var(--navy-800);
 }
 
 body {
@@ -398,4 +401,61 @@ button:disabled {
   margin: 0;
   color: var(--navy-500);
   font-size: 11px;
+}
+
+/* ── Dark mode ─────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --navy-700: #9db9d6;
+    --navy-600: #a9c2da;
+    --navy-500: #8fa9c2;
+    --navy-400: #7d99b5;
+    --ink-900: #e8eef5;
+    --ink-700: #cfdae6;
+    --ink-500: #9db1c4;
+    --tint-100: #152639;
+    --tint-200: #1a2f47;
+    --tint-300: #24405c;
+    --tint-400: #31536f;
+    --line-soft: rgba(180, 205, 230, 0.16);
+
+    color: var(--ink-900);
+    background: #0d1b2c;
+  }
+
+  button.secondary {
+    background: var(--tint-300);
+    color: var(--ink-900);
+  }
+
+  .summary,
+  .sidepanel-subtitle-list {
+    background: #13253a;
+  }
+
+  .feedback-toast.success {
+    background: #123f22;
+    color: #9fe0b3;
+  }
+
+  .feedback-toast.error {
+    background: #4a1a17;
+    color: #f3b3ae;
+  }
+
+  .warning-box {
+    background: #3a2c10;
+    color: #ffd98a;
+  }
+
+  .status-badge.stopped {
+    background: #4a3413;
+    color: #ffd28a;
+  }
+
+  .status-badge.error {
+    background: #4c1d1a;
+    color: #f5b5b0;
+  }
 }

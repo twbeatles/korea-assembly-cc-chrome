@@ -138,8 +138,7 @@ export function hydrateChunkedSessionRecord(
   chunks: SessionEntryChunkRecord[],
 ): SessionRecord {
   const entries = chunks
-    .slice()
-    .sort((left, right) => left.chunkIndex - right.chunkIndex)
+    .toSorted((left, right) => left.chunkIndex - right.chunkIndex)
     .flatMap((chunk) => chunk.entries.map(cloneEntry));
 
   return {

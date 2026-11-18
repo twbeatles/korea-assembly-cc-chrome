@@ -42,7 +42,7 @@ export function compareSessionSegments(
 export function sortSessionSegments<T extends SessionLineageLike>(
   sessions: T[],
 ): T[] {
-  return [...sessions].sort(compareSessionSegments);
+  return sessions.toSorted(compareSessionSegments);
 }
 
 export function mergeSessionSegmentEntries(
