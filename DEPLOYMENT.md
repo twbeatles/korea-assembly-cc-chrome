@@ -39,20 +39,27 @@
 
 ```bash
 npm install
-npm run verify          # version → inject 생성 → inject 검사 → lint → typecheck → test → build
+npm run verify          # CI verify 잡과 동일 순서의 전체 게이트
 # 또는 단계별:
+npm run check:depsync   # node_modules ↔ package-lock 일치 (어긋나면 npm ci)
 npm run build:inject    # public/injected-observer.js 생성 (gitignore · CI 필수)
 npm run check:version
 npm run check:injected
+npm run check:coverage-calibration
+npm run check:parity    # 형제 저장소 없으면 건너뜀
+npm run format
 npm run lint
 npm run typecheck
-npm run test
+npm run test:coverage
+npm run typecheck:ts6
+npm audit --omit=dev --audit-level=high
 npm run build
 npm run verify:e2e
 ```
 
 설명:
 
+- `npm install` 의 `prepare` 가 husky pre-commit 훅을 설치하며, 커밋 시 `lint-staged` 가 스테이징 파일에 prettier 를 적용한다.
 - `public/injected-observer.js` 는 git 추적하지 않는다. 클린 클론·CI 에서는 `build:inject` 또는 `verify` 가 생성한다.
 - `npm run build` 는 먼저 `scripts/build-injected.mjs` 로 `public/injected-observer.js` 를 재생성한 뒤 Vite 빌드를 수행합니다.
 - `npm run typecheck` 는 TypeScript **7** 네이티브 CLI로 `tsconfig.json` / `tsconfig.node.json` 을 `--noEmit` 검사합니다 (`scripts/run-tsc.mjs`). ESLint용 `typescript@6` 과 dual-track 입니다. 비교가 필요하면 `npm run typecheck:ts6` 을 사용합니다.
@@ -61,7 +68,7 @@ npm run verify:e2e
 - `npm run test:e2e:extension` 는 build 후 **의사중계 fixture + in-page 패널** smoke 를 실행합니다. production 패널은 closed Shadow DOM 이며, 스모크는 host 에 `data-assembly-e2e="1"` 을 켠 뒤 light DOM 미러와 `assembly-subtitle-panel-command` 를 사용합니다 (`SECURITY.md` §5).
 - 최종 배포 산출물은 `dist/` 에 생성됩니다.
 - 전체 release gate 는 `npm run verify` 로 실행할 수 있습니다.
-- GitHub Actions (`.github/workflows/ci.yml`)가 푸시/PR 시 inject 생성 → version/injected 검사 → lint → typecheck(TS7·TS6) → coverage → prod `npm audit` → build 를 실행합니다.
+- GitHub Actions (`.github/workflows/ci.yml`)가 푸시/PR 시 depsync 검사 → inject 생성 → version/injected 검사 → parity → format → lint → typecheck(TS7·TS6) → coverage → prod `npm audit` → build 를 실행합니다.
 
 추가 확인 권장:
 
@@ -390,4 +397,4 @@ Compress-Archive -Path dist\* -DestinationPath korea-assembly-cc-chrome-1.0.16-c
 
 **검증 게이트**
 
-- `npm run verify` (version · injected · lint · typecheck · test · build)
+- `npm run verify` (depsync · version · inject 생성/검사 · coverage 보정 · parity · format · lint · typecheck · coverage 테스트 · TS6 · audit · build)
