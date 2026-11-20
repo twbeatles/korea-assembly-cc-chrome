@@ -353,27 +353,33 @@ try {
   assert.equal(restoredSession.note, importedSession.note);
   assert.deepEqual(restoredSession.entries, importedSession.entries);
 
-  // Exercise the production alertdialog; Vitest intentionally uses
-  // window.confirm and cannot cover the focus trap or browser UI here.
+  // Exercise the production native modal; Vitest uses window.confirm and
+  // cannot cover browser focus and dismissal behavior here.
   const deleteButton = historyPage
     .locator(".session-detail")
     .getByRole("button", { name: "삭제", exact: true });
   await deleteButton.click();
-  const dialog = historyPage.getByRole("alertdialog");
+  const dialog = historyPage.getByRole("dialog", { name: "기록 삭제" });
   await dialog.waitFor();
-  assert.equal(await dialog.getAttribute("aria-modal"), "true");
-  const initiallyFocused = await historyPage.evaluate(
-    () => document.activeElement?.textContent,
+  assert.equal(
+    await dialog.evaluate((element) => element.matches(":modal")),
+    true,
+  );
+  assert.equal(
+    await dialog
+      .getByRole("button", { name: "취소" })
+      .evaluate((element) => element === document.activeElement),
+    true,
   );
   await historyPage.keyboard.press("Tab");
+  assert.equal(
+    await historyPage.evaluate(() => document.activeElement?.textContent),
+    "삭제",
+  );
+  await historyPage.keyboard.press("Shift+Tab");
   assert.equal(
     await historyPage.evaluate(() => document.activeElement?.textContent),
     "취소",
-  );
-  await historyPage.keyboard.press("Tab");
-  assert.equal(
-    await historyPage.evaluate(() => document.activeElement?.textContent),
-    initiallyFocused,
   );
   await historyPage.keyboard.press("Escape");
   await dialog.waitFor({ state: "detached" });
