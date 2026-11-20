@@ -231,19 +231,23 @@ npm run build
 npm ci
 npm run dev          # 개발 서버 (+ injected 빌드)
 npm run build        # dist/ 생성
-npm run verify       # version · injected · lint · typecheck · test · build
+npm run verify       # CI verify 잡과 동일한 전체 게이트
 ```
 
-| 명령                         | 설명                                                                           |
-| ---------------------------- | ------------------------------------------------------------------------------ |
-| `npm run typecheck`          | TypeScript 7 typecheck                                                         |
-| `npm run test`               | Vitest 단위 테스트                                                             |
-| `npm run test:e2e:extension` | 실제 확장 로드 → DOM/iframe 수집 → 저장/재조회 → 6종 다운로드 → JSON 복원 검증 |
-| `npm run verify:e2e`         | `test:e2e:extension`과 동일한 전체 브라우저 검증                               |
-| `npm run build:inject`       | `public/injected-observer.js` 생성 (gitignore · 클린 클론/CI에서 필요)         |
-| `npm run verify`             | version · **inject 생성** · inject 검사 · lint · typecheck · test · build      |
+| 명령                         | 설명                                                                                                                              |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| `npm run typecheck`          | TypeScript 7 typecheck                                                                                                            |
+| `npm run test`               | Vitest 단위 테스트                                                                                                                |
+| `npm run test:e2e:extension` | 실제 확장 로드 → DOM/iframe 수집 → 저장/재조회 → 6종 다운로드 → JSON 복원 검증                                                    |
+| `npm run verify:e2e`         | `test:e2e:extension`과 동일한 전체 브라우저 검증                                                                                  |
+| `npm run build:inject`       | `public/injected-observer.js` 생성 (gitignore · 클린 클론/CI에서 필요)                                                            |
+| `npm run verify`             | depsync · version · inject 생성/검사 · coverage 보정 · parity · format · lint · typecheck · coverage 테스트 · TS6 · audit · build |
 
-CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 inject 생성 후 lint · typecheck(TS7/TS6) · coverage · prod audit · build 를 실행합니다. 별도 Chromium 작업에서 위 확장 브라우저 검증도 실행합니다.
+`npm install` 시 `prepare` 스크립트가 husky 를 설치해 **pre-commit 훅**(`.husky/pre-commit` → `lint-staged`)이 스테이징된 `js/ts/json/css/md/html` 파일을 prettier 로 자동 정렬합니다. CI `format` 단계 실패를 커밋 전에 막기 위한 것입니다.
+
+`check:depsync` 는 로컬 `node_modules` 가 `package-lock.json` 과 다르면 먼저 실패하고 `npm ci` 를 안내합니다.
+
+CI: GitHub Actions (`.github/workflows/ci.yml`)가 `main`/`master` 푸시·PR 에서 depsync 검사 · inject 생성/검사 · parity · format · lint · typecheck(TS7/TS6) · coverage · prod audit · build 를 실행합니다. 별도 Chromium 작업에서 위 확장 브라우저 검증도 실행합니다.
 
 브라우저 검증은 `npx playwright install chromium`으로 브라우저를 설치한 뒤 실행합니다.
 CI나 화면 없는 환경에서는 `EXTENSION_E2E_HEADLESS=1`을 지정합니다(PowerShell: `$env:EXTENSION_E2E_HEADLESS='1'; npm run test:e2e:extension`).
